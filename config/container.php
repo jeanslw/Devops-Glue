@@ -3,6 +3,7 @@
 use GuzzleHttp\Client;
 use App\Service\GitlabService;
 use App\Service\JenkinsService;
+use App\Service\GitService;
 use Psr\SimpleCache\CacheInterface;
 use function DI\autowire;
 use function DI\create;
@@ -51,7 +52,7 @@ class FileCache implements CacheInterface
         return true; 
     }
     
-    public function getMultiple($keys, $default = null): iterable {
+    public function getMultiple($keys, $default = null): iterable { 
         $result = [];
         foreach ((array)$keys as $k) $result[$k] = $this->get($k, $default);
         return $result;
@@ -91,20 +92,59 @@ return [
         ->constructorParameter('baseUrl', $_ENV['GIT_BASE_URL'] ?? $_SERVER['GIT_BASE_URL'] ?? '')
         ->constructorParameter('token',   $_ENV['GIT_TOKEN']   ?? $_SERVER['GIT_TOKEN']   ?? ''),
 
-    // JenkinsService（严格匹配构造函数3个参数）
+    // ==========================================
+    // JenkinsService 
+    // ==========================================
     JenkinsService::class => function (\Psr\Container\ContainerInterface $c) {
         $settings = $c->has('settings') ? $c->get('settings') : [];
         $jenkins  = $settings['jenkins'] ?? [];
 
         return new \App\Service\JenkinsService(
             $c->get(\GuzzleHttp\Client::class),                          // 1. Client
-            $jenkins['url']  ?? $_ENV['JENKINS_BASE_URL']  ?? '',   // 2. baseUrl
-            $jenkins['user']  ?? $_ENV['JENKINS_USER']  ?? '',   // 3. username
-            $jenkins['token'] ?? $_ENV['JENKINS_TOKEN'] ?? '',   // 4. apiToken
-            $c->get(\App\Service\GitlabService::class),                  // 5. GitlabService
-            $c->has(\Psr\SimpleCache\CacheInterface::class)              // 6. Cache
+            $jenkins['url']   ?? $_ENV['JENKINS_BASE_URL'] ?? '',        // 2. baseUrl
+            $jenkins['user']  ?? $_ENV['JENKINS_USER']     ?? '',        // 3. username
+            $jenkins['token'] ?? $_ENV['JENKINS_TOKEN']    ?? '',        // 4. apiToken
+            $c->has(\Psr\SimpleCache\CacheInterface::class)              // 5. Cache
                 ? $c->get(\Psr\SimpleCache\CacheInterface::class)
                 : null
         );
+    },
+
+    // ==========================================
+    // GitService
+    // ==========================================
+    GitService::class => function (\Psr\Container\ContainerInterface $c) {
+        return new \App\Service\GitService(
+            $c->get(\App\Service\GitlabService::class),                  // 1. GitlabService (查 GitLab API)
+            $c->get(\App\Service\JenkinsService::class),                 // 2. JenkinsService (查 Jenkins Job 配置拿 Git URL)
+            $c->has(\Psr\SimpleCache\CacheInterface::class)              // 3. Cache
+                ? $c->get(\Psr\SimpleCache\CacheInterface::class)
+                : null
+        );
+    },
+    // ==========================================
+    // Harbor Client & Service
+    // ==========================================
+    \App\Service\HarborService::class => function (\Psr\Container\ContainerInterface $c) {
+        $settings = $c->has('settings') ? $c->get('settings') : [];
+        $harbor   = $settings['harbor'] ?? [];
+
+        $baseUrl  = $harbor['url']      ?? $_ENV['HARBOR_BASE_URL'] ?? '';
+        $username = $harbor['username']  ?? $_ENV['HARBOR_USER']     ?? 'admin';
+        $password = $harbor['password']  ?? $_ENV['HARBOR_PASSWORD'] ?? '';
+
+        // 创建 Harbor 专属的 Guzzle Client (自动带上 Basic Auth 和 Base URI)
+        $harborClient = new \GuzzleHttp\Client([
+            'base_uri' => rtrim($baseUrl, '/') . '/',
+            'timeout'  => 30,
+            'verify'   => false, // 兼容内网自签名证书
+            'auth'     => [$username, $password], // Harbor 使用 Basic Auth
+            'headers'  => [
+                'Accept'       => 'application/json',
+                'Content-Type' => 'application/json',
+            ],
+        ]);
+
+        return new \App\Service\HarborService($harborClient);
     },
 ];
