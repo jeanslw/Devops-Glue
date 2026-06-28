@@ -530,30 +530,38 @@ class JenkinsService
         return [$status];
     }
 
-    public function getBuildIdList(string $group, string $project): array
+    /**
+     * 获取构建列表
+     * 
+     * @param string $group 分组
+     * @param string $project 项目名
+     * @param string $type 列表类型 (build_id | build_time | build)
+     * @return array
+     */
+    public function getBuildListByType(string $group, string $project, string $type = 'build'): array
     {
+        // 1. 获取原始数据
         $builds = $this->fetchRawBuilds($group, $project);
-        if (isset($builds['error'])) return $builds;
-        return array_map(fn($b) => (string)($b['number'] ?? ''), $builds);
-    }
-
-    public function getBuildTimeList(string $group, string $project): array
-    {
-        $builds = $this->fetchRawBuilds($group, $project);
-        if (isset($builds['error'])) return $builds;
-        $result = [];
-        foreach ($builds as $build) {
-            $ts = (int)(($build['timestamp'] ?? 0) / 1000);
-            $result[] = "#" . ($build['number'] ?? '') . " [" . ($ts > 0 ? date('Y-m-d H:i:s', $ts) : '未知') . "]";
+        
+        // 2. 错误拦截
+        if (isset($builds['error'])) {
+            return $builds;
         }
-        return $result;
-    }
 
-    public function getBuildList(string $group, string $project): array
-    {
-        $builds = $this->fetchRawBuilds($group, $project);
-        if (isset($builds['error'])) return $builds;
-        return array_map(fn($b) => "#" . ($b['number'] ?? ''), $builds);
+        // 3. 使用 array_map + match 表达式进行优雅的数据格式化
+        return array_map(function (array $build) use ($type): string {
+            $number = (string)($build['number'] ?? '');
+            
+            return match ($type) {
+                'build_id'   => $number,
+                'build_time' => sprintf(
+                    "#%s [%s]", 
+                    $number, 
+                    ($ts = (int)(($build['timestamp'] ?? 0) / 1000)) > 0 ? date('Y-m-d H:i:s', $ts) : '未知'
+                ),
+                default      => "#{$number}", // 默认返回带 # 的格式 (包含 'build' 及其他未知类型)
+            };
+        }, $builds);
     }
 
     private function parseGitProjectPath(string $gitUrl): ?string
