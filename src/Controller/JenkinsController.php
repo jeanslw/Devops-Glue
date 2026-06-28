@@ -156,24 +156,16 @@ private function parseJobPath(array $args): array
         return $this->withJson($response, $result);
     }
 
-    // 4. 构建 ID 列表
-    public function getBuildIdList(Request $request, Response $response, array $args): Response
-    {
-        $result = $this->jenkinsService->getBuildIdList($args['group'] ?? '', $args['project'] ?? '');
-        return $this->withJson($response, $result);
-    }
-
-    // 5. 带时间的构建列表
-    public function getBuildTimeList(Request $request, Response $response, array $args): Response
-    {
-        $result = $this->jenkinsService->getBuildTimeList($args['group'] ?? '', $args['project'] ?? '');
-        return $this->withJson($response, $result);
-    }
-
-    // 6. 带#的构建列表
+    // 4.5.6. 获取构建列表
+    // Controller 层：统一的构建列表入口
     public function getBuildList(Request $request, Response $response, array $args): Response
     {
-        $result = $this->jenkinsService->getBuildList($args['group'] ?? '', $args['project'] ?? '');
+        $group = $args['group'] ?? '';
+        $project = $args['project'] ?? '';
+        $type = $args['type'] ?? 'build'; 
+
+        $result = $this->jenkinsService->getBuildListByType($group, $project, $type);
+        
         return $this->withJson($response, $result);
     }
 
