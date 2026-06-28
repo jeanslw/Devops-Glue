@@ -1,67 +1,92 @@
 <?php
 
 use Slim\App;
+use Slim\Interfaces\RouteCollectorProxyInterface as RouteCollectorProxy;
 use App\Controller\JenkinsController;
+use App\Controller\HarborController;
+use App\Controller\GitController;
 
-return function (App $app) {
-          
+// 定义正则规则
+$projectRegex = '[a-zA-Z0-9_\-]+';
+// 注意：Harbor 仓库名可能包含斜杠，允许 % 和 / 
+$repoRegex = '[a-zA-Z0-9_\-\.%\/]+'; 
+
+return function (App $app) use ($projectRegex, $repoRegex) {
+    
     // ==========================================
-    // 1. Jenkins 接口路由 (正则约束防冲突版)
+    // 0. 全局接口
     // ==========================================
-    $app->group('/api/jenkins', function ($group) {
-        
-        // --- 全局接口 (无动态参数) ---
+    $app->group('/api/main', function (RouteCollectorProxy $group) {         
         $group->get('/jobs/list', [JenkinsController::class, 'getJobsList']);
-        $group->get('/job/git/list', [JenkinsController::class, 'getJobGitList']);
-
-        // ==========================================
-        // 核心改造：使用 {build_id:\d+} 强制要求 build_id 必须是数字！
-        // 这样 FastRoute 就能完美区分 /{group}/{project}/... 和 /{project}/{build_id}/...
-        // ==========================================
-
-        // --- 带 group 的接口 ---
-        $group->get('/{group}/{project}/{build_id:\d+}/status', [JenkinsController::class, 'getBuildStatus']);
-        $group->get('/{group}/{project}/{build_id:\d+}/parameters/list', [JenkinsController::class, 'getParametersList']);
-        $group->get('/{group}/{project}/{build_id:\d+}/console', [JenkinsController::class, 'getConsoleOutput']);
-        // 去掉 {project}，branches 和 zone 保持单级在 URL 中
-        $group->post('/{group}/{branches}/{zone}/build_trigger', [JenkinsController::class, 'triggerBuild']);
-        
-        // 不带 build_id (获取列表或最新参数)
-        $group->get('/{group}/{project}/parameters/list', [JenkinsController::class, 'getParametersList']); 
-        $group->get('/{group}/{project}/build_id/list', [JenkinsController::class, 'getBuildIdList']);
-        $group->get('/{group}/{project}/build_time/list', [JenkinsController::class, 'getBuildTimeList']);
-        $group->get('/{group}/{project}/build/list', [JenkinsController::class, 'getBuildList']);
-        $group->get('/{group}/{project}/branches/list', [JenkinsController::class, 'getBranchesList']);
-
-
-        // --- 兼容无 group (仅 project) 的接口 ---
-        // 带 build_id (必须是数字，靠这个与上面的路由区分开！)
-        $group->get('/{project}/{build_id:\d+}/status', [JenkinsController::class, 'getBuildStatus']);
-        $group->get('/{project}/{build_id:\d+}/parameters/list', [JenkinsController::class, 'getParametersList']);
-        $group->get('/{project}/{build_id:\d+}/console', [JenkinsController::class, 'getConsoleOutput']);
-        // --- 兼容无 group (仅 project) 的接口 ---
-        $group->post('/{branches}/{zone}/build_trigger', [JenkinsController::class, 'triggerBuild']);
-
-        // 不带 build_id
-        $group->get('/{project}/parameters/list', [JenkinsController::class, 'getParametersList']);
-        $group->get('/{project}/build_id/list', [JenkinsController::class, 'getBuildIdList']);
-        $group->get('/{project}/build_time/list', [JenkinsController::class, 'getBuildTimeList']);
-        $group->get('/{project}/build/list', [JenkinsController::class, 'getBuildList']);
-        $group->get('/{project}/branches/list', [JenkinsController::class, 'getBranchesList']);
+        $group->get('/map/list', [JenkinsController::class, 'getJobGitList']);
     });
 
+    // ==========================================
+    // 1. Jenkins 接口路由
+    // ==========================================
+    // ==========================================
+    // 1. Jenkins 接口路由
+    // ==========================================
+    $app->group('/api/jenkins', function (RouteCollectorProxy $group) use ($projectRegex) {
+        
+        // ==========================================
+        // 【核心修复 1】：先定义一级 Job (无 group，参数较少)
+        // ==========================================
+        $group->post('/{branches}/{zone}/build_trigger', [JenkinsController::class, 'triggerBuild']);
+        
+        $group->get('/{project:'.$projectRegex.'}/{build_id:\d+}/status', [JenkinsController::class, 'getBuildStatus']);
+        $group->get('/{project:'.$projectRegex.'}/{build_id:\d+}/parameters', [JenkinsController::class, 'getParametersList']);
+        $group->get('/{project:'.$projectRegex.'}/{build_id:\d+}/console', [JenkinsController::class, 'getConsoleOutput']);
+        $group->get('/{project:'.$projectRegex.'}/parameters', [JenkinsController::class, 'getParametersList']);
+        $group->get('/{project:'.$projectRegex.'}/{type:build_id|build_time|build}', [JenkinsController::class, 'getBuildList']);
+        $group->get('/{project:'.$projectRegex.'}/branches', [JenkinsController::class, 'getBranchesList']);
+
+        // ==========================================
+        // 【核心修复 2】：再定义二级 Job (带 group，参数较多)
+        // ==========================================
+        $group->post('/{group}/{branches}/{zone}/build_trigger', [JenkinsController::class, 'triggerBuild']);
+        
+        $group->get('/{group}/{project:'.$projectRegex.'}/{build_id:\d+}/status', [JenkinsController::class, 'getBuildStatus']);
+        $group->get('/{group}/{project:'.$projectRegex.'}/{build_id:\d+}/parameters', [JenkinsController::class, 'getParametersList']);
+        $group->get('/{group}/{project:'.$projectRegex.'}/{build_id:\d+}/console', [JenkinsController::class, 'getConsoleOutput']);
+        $group->get('/{group}/{project:'.$projectRegex.'}/parameters', [JenkinsController::class, 'getParametersList']); 
+        $group->get('/{group}/{project:'.$projectRegex.'}/{type:build_id|build_time|build}', [JenkinsController::class, 'getBuildList']);
+        });
+        // ==========================================
+        // 2. Git 接口路由 (专注代码仓库、分支、Tag)
+        // ==========================================
+        $app->group('/api/git', function (RouteCollectorProxy $group) use ($projectRegex) {
+            
+            // 查询一级 Job 对应的 Git 仓库分支列表
+            $group->get('/{project:'.$projectRegex.'}/branches', [JenkinsController::class, 'getBranchesList']);
+            
+            // 查询二级 Job 对应的 Git 仓库分支列表
+            $group->get('/{group}/{project:'.$projectRegex.'}/branches', [JenkinsController::class, 'getBranchesList']);
+            
+            // 💡 扩展预留：以后如果查代码仓库的 Tag、Commit 记录，都可以直接加在这里
+            // $group->get('/{project}/tags', [GitController::class, 'getTagsList']);
+            // $group->get('/{project}/commits', [GitController::class, 'getCommitsList']);
+        });
 
     // ==========================================
-    // 2. Harbor 接口路由 (新增)
+    // 2. Harbor 接口路由
     // ==========================================
-    $app->group('/api/harbor', function ($group) {
-        // 查询类全部使用 GET
-        $group->get('/projects/list', [HarborController::class, 'getProjectsList']);
-        $group->get('/{project}/repositories/list', [HarborController::class, 'getRepositoriesList']);
-        $group->get('/{project}/{repository}/tags/list', [HarborController::class, 'getTagsList']);
-        $group->get('/{project}/{repository}/{tag}/info', [HarborController::class, 'getTagInfo']);
+    $app->group('/api/harbor', function (RouteCollectorProxy $group) use ($projectRegex, $repoRegex) {
+
+        // 1. 查询所有项目列表
+        $group->map(['GET', 'POST'], '/projects', [HarborController::class, 'getProjectsList']);
+
+        // 2. 查询指定项目下的所有镜像仓库列表
+        $group->map(['GET', 'POST'], '/{project:' . $projectRegex . '}/repositories', [HarborController::class, 'getRepositoriesList']);
+
+        // 3. 查询指定镜像仓库下的所有 Tag 列表
+        $group->map(['GET', 'POST'], '/{project:' . $projectRegex . '}/repositories/{repository:' . $repoRegex . '}/tags', [HarborController::class, 'getTagsList']);
         
-        // 动作类使用 POST
-        $group->post('/{project}/{repository}/{tag}/scan', [HarborController::class, 'triggerScan']);
+        // 4. 获取指定 Tag 的详细信息
+        $group->get('/{project:' . $projectRegex . '}/{repository:' . $repoRegex . '}/{tag}/info', [HarborController::class, 'getTagInfo']);
+        
+        // 5. 触发镜像扫描
+        $group->post('/{project:' . $projectRegex . '}/{repository:' . $repoRegex . '}/{tag}/scan', [HarborController::class, 'triggerScan']);
+        
     });
 };
