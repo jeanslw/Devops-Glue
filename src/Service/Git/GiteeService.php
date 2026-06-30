@@ -19,7 +19,6 @@ class GiteeService implements GitProviderInterface
 
     public function getBranches(string $repository): array
     {
-        // repository 格式 owner/repo，如 mindev/myapp
         $url = "{$this->baseUrl}/repos/{$repository}/branches";
         $response = $this->client->get($url);
         $branches = json_decode($response->getBody(), true);

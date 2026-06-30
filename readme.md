@@ -1,211 +1,467 @@
-# 说明文档 v1
+CI Platform API 文档 v2.1
+概述
+CI Platform 是一套为小企业提供的 DevOps 工具链集成接口，实现 Jenkins、GitLab、Gitee、GitHub、Harbor 等工具的一键集成与互通。基于 Slim 4 框架，PHP 8+。
 
-本程序仅为小企业提供工具链的集成接口，实现工具互通，一键集成服务。
-**支持**: jenkins / gitlab / gitee / github / rundeck
+环境要求
+框架: Slim 4
 
----
+PHP 版本: 8.0+
 
-## 环境信息
+PHP 扩展: php-cli, php-mbstring, php-xml, php-curl, php-zip
 
-- **框架**: slim 4 
-- **依赖服务**: php v8+
-- **扩展包**: php-cli / php-mbstring / php-xml / php-curl / php-zip / php8.1-mysql
-- **支持服务依赖**: harbor version: v1.10.1 / gitlab version: v17.0 / jenkins version: v2.555.3
-- **管理工具**: Composer，harbor v1.10 and 2.x ，gitlab v17版，giteeApi v5
+支持服务:
 
----
+Jenkins v2.555.3+
 
-## 目录结构
+GitLab v17.0
 
-```text
-|
-|   .env
-|   .gitignore
-|   composer.json
-|   readme.md
-|
-+---config
-|       container.php
-|       routes.php
-|       settings.php
-|
-+---Exceptions
-|       ApiException.php
-|
-+---public
-|       .htaccess
-|       debug.log
-|       index.php
-|
-+---src
-|   +---Controller
-|   |       BaseController.php
-|   |       GitController.php
-|   |       HarborController.php
-|   |       JenkinsController.php
-|   |
-|   \---Service
-|       |   GitService.php
-|       |   HarborService.php
-|       |   JenkinsService.php
-|       |
-|       \---Git
-|               GiteeService.php
-|               GithubService.php
-|               GitlabService.php
-|               GitProviderFactory.php
-|               GitProviderInterface.php
-|
-+---templates
-|       404.html
-|       index.html
-|     
-\---vendor
-```
+Gitee API v5
 
----
+Harbor v1.10.1 / 2.x
 
-## 配置文件
+依赖管理: Composer
 
-`config/settings.php` 和 `.env`
+快速部署
+1. 克隆仓库
+bash
+git clone https://github.com/your-name/ci-platform.git
+cd ci-platform
+2. 安装依赖
+bash
+composer install
+3. 配置环境变量
+复制配置文件模板并修改：
 
----
+bash
+cp .env.example .env
+编辑 .env 文件，填入你的服务地址和凭证：
 
-# 一、 说明 
-## **输出格式**：严格要求输出为**字符型数组格式** (第二节的8、9、10条例外，返回 json 和 text/html 格式)！
-## **路由说明**：`config/routes.php` 重要说明：jenkins 启用文件夹，最多支持两级 `{group}/{project}` 和一级 `/{project}`。
-## 1.兼容一级和多级项目的各种请求，要分两种情况：
-## 		**A**: 输入接口2级或者1级（兼容1级和2级）
-## 		**B**: 输入接口统一为1级（统一为1级，只接受JOB名称）
-##
-##
-## 2.含【重要】的接口为基础，其他接口依赖与它，依赖关系：
-##  
-##  所有JOB列表接口：/api/main/jobs/list
-##		返回结果：["myapp","php/web", "static"]
-##		说明：依赖它的接口有：build_trigger
-##
-##  构建列表接口：/api/jenkins/{group}/{project}/{build_id}/parameters
-##		返回结果：{build_id}=null：默认：{"zone":["b1","b2","test1","test2","dev"],"branches":["main","master"]},{build_id}>0:返回历史ID构建列表，{build_id}=0：最新的配置参数列表
-##  	说明：依赖它的接口有：build_trigger
-##
-##	JOB和GIT对应关系：/api/main/map/list
-##   	返回结果 [{"job_name":"java/registry","gitlab_id":2,"status":"synced","message":"","debug":{"step1_try_jobname":"java/registry","step1_result":"SUCCESS"},"web_url":"http://urs/tools/registry","current_path":"tools/registry","habbor_repository":"mycode/code-runtime"}]
-##  	说明：依赖它的接口 ：build_trigger，目前用来JOB地址反查仓库的projectId（防止Git仓库改名、名称不一致、gruopID对不上的问题），从而为GIT查询分支列表提供服务。以后用于多GIT平台的和项目的映射关系
-##
-##  /api/jenkins/{branches}/{zone}/build_trigger，
-##  	说明：如/api/jenkins/master/prod/build_trigger,触发构建需要用到校验jobName(job名称)、参数配置列表、参数配置值
-##  	jobName--依赖于-->["myapp","php/web", "static"]，判断joName是否合法。
-##       zone-->,{"zone":["b1","b2","test1","test2","dev"]}，判断zone是否合法。
-##       brancher->{"branches":["main","master"]}，判断brancher是否合法
-##
-## 3.关于输入的多级和一级的判断
-##
-##  **多级**：
-##  超过两级取最后一段，如：`AA/BB/CC`，job取 `CC`，folder取：`AA/BB`。
-##  例如输入：`folder/BB`，在 jenkins 中是否存在，type 是否 = folder，job 是否 = job (无论 pipeline，Multibranch)
-##  - `folder = folder`，`BB ≠ job` 返回：job 错误
-##  - `folder ≠ folder`，`BB = job`，返回：folder 错误
-## - `folder = folder`，`BB = job`，继续...
-##  **一级**：
-##  如请求参数：`folder`，查看是否为 job 类型，true，则继续；false，则提示非 job 类型。
+ini
+JENKINS_BASE_URL=http://192.168.137.5:8083
+JENKINS_USER=admin
+JENKINS_TOKEN=your_jenkins_token
 
+GITLAB_BASE_URL=http://192.168.137.5:8082
+GITLAB_TOKEN=your_gitlab_token
 
-# 二、 `/api/main` 模块接口列表（POST/GET）
+GITEE_BASE_URL=https://gitee.com/api/v5
+GITEE_TOKEN=your_gitee_token
 
+HARBOR_BASE_URL=http://192.168.137.5
+HARBOR_USER=admin
+HARBOR_PASSWORD=your_harbor_password
+4. 配置 Web 服务器
+将 public/ 目录设置为 Web 根目录，并配置 URL 重写。
 
-##  1. **查询所有 Job 列表**： `GET/POST /api/main/jobs/list` 
-   - **说明**：包括 jenkins 文件夹下的 job 和独立的 job, 如 `java/myapp`，`static`。
-   - **输出格式**：`["myapp", "static"]`
+Nginx 配置示例：
 
-##  2. **查询所有的 job 对应的git仓库对应关系**： `GET/POST /api/main/map/list` 【重要】
-   - **说明**：如 Job 与 Git 仓库、harbor 的对应关系。
-   - **输出格式**（JSON 格式）：[{"job_name":"java/registry","gitlab_id":2,"status":"synced","message":"","debug":{"step1_try_jobname":"java/registry","step1_result":"SUCCESS"},"web_url":"http://urs/tools/registry","current_path":"tools/registry","habbor_repository":"mycode/code-runtime"}]
- 
-# 三、 `/api/jenkins` 模块接口列表（POST/GET )
+nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+    root /path/to/ci-platform/public;
+    index index.php;
 
-##  3. **查询成功构建状态**： `GET/POST /api/jenkins/{group}/{project}/{build_id}/status` 
-   - **重要说明**：如参数 `{project}/1/status`。
-   - **输出格式**：`["SUCCESS"]`、`["FAILURE"]`、`["ABORTED"]`、`["UNSTABLE"]` 等状态。
+    location / {
+        try_files $uri $uri/ /index.php$is_args$args;
+    }
 
-##  4. **查询成功构建列表 (ID)**： `GET/POST /api/jenkins/{group}/{project}/build_id` 
-   - **重要说明**：如参数 `java/myapp` (注意 `/`)。
-   - **输出格式 (ID)**：`["12","11","10"]`
+    location ~ \.php$ {
+        fastcgi_pass 127.0.0.1:9000;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        include fastcgi_params;
+    }
+}
+Apache 配置： public/.htaccess 已包含 URL 重写规则。
 
-##  5. **查询带 '时间日期' 的成功构建列表 (time)**： `GET/POST /api/jenkins/{group}/{project}/build_time` 
-   - **重要说明**：如参数 `java/myapp`。
-   - **输出格式 (带 '时间日期' 的列表)**：`["#20 [2026-06-24 18:56:44]","#18 [2026-06-21 17:27:06]"]`
+5. 验证部署
+bash
+curl http://your-domain.com/api/main/jobs/list
+公共约定
+所有接口均支持 GET 和 POST 方法，除特殊说明外（build_trigger 仅 POST，扫描触发仅 POST）
 
-##  6. **查询带 '#' 的构建成功构建列表**： `GET/POST /api/jenkins/{group}/{project}/build` 
-   - **重要说明**：如参数 `java/myapp`。
-   - **输出格式 (带 '#' 号的列表)**：`["#14","#13","#12"]`（与第4/5条调用同种方法）
+大部分接口返回字符型数组（如 ["item1","item2"]）
 
-##  7. **查询 job 项目构建参数列表**： `GET/POST /api/jenkins/{group}/{project}/{build_id}/parameters` 【重要】
-   - `{build_id}`：可选参数
-   - **说明**：
-     - 默认（例如参数 `java/myapp`）：输出格式 `{"zone":["b1","b2","test1","test2","dev"],"branches":["main","master"]}`
-     - 如果 `{build_id}=0`，请求样式：`/api/jenkins/{group}/{project}/0/parameters`。获取 job 最新的构建参数列表，输出格式：`["zone","brancher"]`
-     - 如果 `{build_id}>0`：`/api/jenkins/{group}/{project}/{build_id}/parameters`。获取 job 构建历史参数列表，参数可能改变，输出格式：`["branch","zone"]`
+映射类接口（/api/main/map/list、/api/main/git/platforms、/api/main/git/discovery）返回 JSON 对象
 
-##  8. **控制台构建日志获取**： `GET/POST /api/jenkins/{group}/{project}/{build_id}/console` 
-   - **重要说明**：如参数 `myapp`，`build_id: 11`。
-   - **输出格式**：`text/html` (逐行显示，与 console output 一致)
+构建触发接口（/api/jenkins/.../build_trigger）返回 JSON 对象
 
-## 四	`/api/git` 模块接口列表（支持 GET 和 POST)
+控制台日志（/api/jenkins/.../console）返回 text/plain
 
-1.**查询 job 所对应的分支列表**： `GET/POST /api/jenkins/{group}/{project}/branches` 【重要】 
-   - **重要说明**：如参数 `java/myapp`。首先向 jenkins 获取 job 地址 [兼容 ssh、http]，然后向 gitlab api 查询所在的分支列表。
-   - **输出格式**：`["master","devops","test"]`
+错误格式: 统一为 {"code": HTTP状态码, "message": "错误描述"}
 
-## 五、 `/api/harbor` 模块接口列表（支持 GET 和 POST)
+一、Main 模块 (/api/main)
+1.1 获取所有 Job 列表
+URL: /api/main/jobs/list
 
-##  Harbor 功能模块列表:
+方法: GET / POST
 
-## 1. **获取项目列表**： `GET/POST /api/harbor/projects`
-   - **重要说明**: 输出格式 `["library","mycode","toolkit"]`
-## 2. **获取仓库列表**： `GET/POST /api/harbor/{projects}/{repositories}`
-   - **重要说明**: 输出格式 `["library","mycode","toolkit"]`
-## 3. **获取 Tags 列表**： `GET/POST /api/harbor/{projects}/{repositories}/tags` 
-   - **重要说明**: 输出格式 `["v1.10.1","v1.10.0","v1.9.0"]`
+说明: 包括文件夹下的 Job 和独立 Job，如 java/myapp、static
 
----
+输出: 字符串数组
 
-## 六、快速测试命令示例（curl）
+json
+["java/registry", "php/myapp", "static"]
+1.2 Job / Git / Harbor 三方映射（按项目分组）
+URL: /api/main/map/list
 
-```bash
-# 触发构建
-# 如：project:myapp ，branches=master, zone=prod
-curl -X POST "{BASE_URL}/api/jenkins/my-app/master/prod/build_trigger" 
-# 说明: "php/my-app" 是 php 文件下的 my-app
-# result: { "code": 200, "message": "构建触发成功", "job": "registry", "triggered_params": { "branches": "main", "zone": "dev", "jobname": "java/registry" } }
+方法: GET / POST
 
-# 查询[build_id]的构建状态
-# 如：project:myapp
-curl "{BASE_URL}/api/jenkins/my-app/128/status"
-# result: ["SUCCESS"]
+说明: 以 Git 仓库路径为键，展示该仓库下所有关联的 Job、Git 平台信息、Harbor 仓库等
 
-# 查询job所对应git项目的分支列表：/api/git/{group}/{project}/branches
-curl "{BASE_URL}/api/git/my-app/branches"
-# result: ["master","devops","main"]
+输出: JSON 对象
 
-# 查询 git Repositories 、 job 、镜像repositories 对应关系
-curl "{BASE_URL}/api/main/map/list"
-# result: [{"job_name":"java/registry","gitlab_id":2,"status":"synced","message":"","debug":{"step1_try_jobname":"java/registry","step1_result":"SUCCESS"},"web_url":"http://urs/tools/registry","current_path":"tools/registry","habbor_repository":"mycode/code-runtime"}]
+json
+{
+  "tools/registry": {
+    "git_platform": "gitlab",
+    "git_remote": "http://192.168.137.5:8082/tools/registry.git",
+    "project_id": 2,
+    "web_url": "http://urs/tools/registry",
+    "current_path": "tools/registry",
+    "harbor_repository": "mycode/code-runtime",
+    "jobs": ["java/registry"]
+  },
+  "tools/myapp": {
+    "git_platform": "gitlab",
+    "git_remote": "http://192.168.137.5:8082/tools/myapp.git",
+    "project_id": 5,
+    "web_url": "http://urs/tools/myapp",
+    "current_path": "tools/myapp",
+    "harbor_repository": "mycode/myapp",
+    "jobs": ["php/myapp"]
+  }
+}
+字段说明:
 
-#查询 job 项目构建参数列表**： `GET/POST /api/jenkins/{group}/{project}/{build_id}/parameters`
+project_id: Git 平台项目 ID（GitLab 可自动获取并缓存，Gitee 需手动填写）
 
-# 查询job项目构建参数列表 /api/jenkins/{group}/{project}/{build_id}/parameters
-	# 如: myfolder/myapp, [{build_id} 可选参数
-curl "{BASE_URL}/api/jenkins/myfolder/myapp/parameters"
-# result：{"zone":["b1","b2","test1","test2","dev"],"branches":["main","master"]}（默认）
+jobs: 使用该仓库的所有 Jenkins Job 名称列表
 
-	# 如果 {build_id}=0 ，请求样式：/api/jenkins/{group}/{project}/0/parameters
-	# 获取 job 最新的构建参数列表，输出格式：["zone","brancher"]
+支持手动配置中任意新增字段，自动出现在结果中
 
-	# 如果 {build_id}>0 : /api/jenkins/{group}/{project}/1/parameters 
-	# 获取 job 构建历史参数列表，参数可能改变，输出格式：["branch","zone"]
+1.3 已接入的 Git 平台列表（静态配置）
+URL: /api/main/git/platforms
 
-# 获取 Harbor Tag 列表 /api/harbor/{projects}/{repositories}/tags
-curl "{BASE_URL}/api/harbor/{projects}/{repositories}/tags" 
-# result：["v1.0.0","v1.0.1"] 
-# 说明：'aa/bb' 是'项目/仓库'名称。仓库可能包含'/' (注意 URL 编码)
+方法: GET / POST
+
+说明: 返回在 settings.php 中已配置的 Git 平台及 Harbor 的 API 版本和地址
+
+输出: JSON 对象
+
+json
+{
+  "git_platforms": [
+    {
+      "name": "gitlab",
+      "api_base_url": "http://192.168.137.5:8082/api/v4",
+      "api_version": "v4"
+    },
+    {
+      "name": "gitee",
+      "api_base_url": "https://gitee.com/api/v5",
+      "api_version": "v5"
+    }
+  ],
+  "harbor": {
+    "api_base_url": "http://192.168.137.5/api/v2.0",
+    "api_version": "v2.0"
+  }
+}
+1.4 平台接入检测（动态扫描）
+URL: /api/main/git/discovery
+
+方法: GET / POST
+
+说明: 扫描所有 Job 实际使用的 Git 平台，与静态配置对比，展示已配置和未配置的平台列表
+
+输出: JSON 对象
+
+json
+{
+  "configured": [
+    {"name": "gitlab", "api_base_url": "http://192.168.137.5:8082/api/v4"},
+    {"name": "gitee", "api_base_url": "https://gitee.com/api/v5"}
+  ],
+  "unconfigured": []
+}
+二、Jenkins 模块 (/api/jenkins)
+2.1 触发构建
+URL:
+
+单参数 Job: /api/jenkins/{job}/{branch_value}/build_trigger
+
+双参数 Job: /api/jenkins/{job}/{branch_value}/{zone_value}/build_trigger
+
+方法: POST
+
+说明: 根据 Job 实际参数个数自动匹配路由。参数名动态识别，校验失败返回具体值不合法，成功返回队列 URL
+
+输出: JSON 对象
+
+json
+{
+  "code": 200,
+  "message": "构建触发成功",
+  "job": "php/myapp",
+  "parameters": {"branches": "main", "zone": "test"},
+  "queue_id": "114",
+  "queue_url": "http://192.168.137.5:8083/queue/item/114/"
+}
+校验规则:
+
+Job 必须有恰好 1 或 2 个参数，否则拒绝
+
+参数值必须在对应参数选项中（若选项为空则从 Git 平台实时获取）
+
+错误信息仅提示值不合法，不泄露完整可用列表
+
+2.2 查询构建参数
+URL: /api/jenkins/{group}/{project}/parameters 或 /api/jenkins/{group}/{project}/{build_id}/parameters
+
+方法: GET / POST
+
+说明:
+
+无 build_id: 返回所有参数及其选项
+
+build_id=0: 返回最新构建的参数名列表
+
+build_id>0: 返回指定历史构建的参数名列表
+
+输出:
+
+默认: {"zone":["prd","test"],"branches":["main","master"]}
+
+build_id=0: ["zone","branches"]
+
+build_id>0: ["zone","branches"]
+
+2.3 查询构建状态
+URL: /api/jenkins/{group}/{project}/{build_id}/status
+
+方法: GET / POST
+
+输出: ["SUCCESS"], ["FAILURE"], ["ABORTED"], ["UNSTABLE"] 等
+
+2.4 构建 ID 列表
+URL: /api/jenkins/{group}/{project}/build_id
+
+方法: GET / POST
+
+输出: ["12","11","10"]
+
+2.5 成功构建列表（带时间）
+URL: /api/jenkins/{group}/{project}/build_time
+
+方法: GET / POST
+
+输出: ["#20 [2026-06-24 18:56:44]","#18 [2026-06-21 17:27:06]"]
+
+2.6 成功构建列表（带 # 号）
+URL: /api/jenkins/{group}/{project}/build
+
+方法: GET / POST
+
+输出: ["#14","#13","#12"]
+
+2.7 控制台日志
+URL: /api/jenkins/{group}/{project}/{build_id}/console
+
+方法: GET / POST
+
+输出: text/plain 文本流
+
+2.8 Git 分支查询（Jenkins 路径）
+URL: /api/jenkins/{group}/{project}/branches
+
+方法: GET / POST
+
+说明: 等同于 /api/git/{job}/branches
+
+三、Git 模块 (/api/git)
+3.1 查询 Job 对应的 Git 分支列表
+URL: /api/git/{group}/{project}/branches
+
+方法: GET / POST
+
+说明: 自动识别 Git 平台，调用对应 API 获取实时分支列表
+
+输出: ["master","devops","main"]
+
+四、Harbor 模块 (/api/harbor)
+4.1 获取项目列表
+URL: /api/harbor/projects
+
+方法: GET / POST
+
+输出: ["library","mycode","toolkit"]
+
+4.2 获取仓库列表
+URL: /api/harbor/{project}/repositories
+
+方法: GET / POST
+
+注意: 项目名如含 / 需 URL 编码
+
+输出: ["diagnosis-runtime","nginx"]
+
+4.3 获取 Tag 列表
+URL: /api/harbor/{project}/repositories/{repository}/tags
+
+方法: GET / POST
+
+注意: 仓库名如含 / 需双重编码（%2F）
+
+输出: ["v1.0.0","v1.0.1"]
+
+4.4 触发镜像扫描
+URL: /api/harbor/{project}/repositories/{repository}/tags/{tag}/scan
+
+方法: POST
+
+说明: 若 Harbor 未启用扫描器，返回 503 {"code":503,"message":"镜像扫描功能未启用，请联系管理员"}
+
+4.5 获取扫描报告
+URL: /api/harbor/{project}/repositories/{repository}/tags/{tag}/scan
+
+方法: GET
+
+说明: 同扫描触发，未启用时返回 503
+
+五、设计原则
+动态参数识别
+Jenkins Job 的参数名由系统自动从定义中识别，不硬编码 zone/branches。无论你在 Jenkins 中如何命名参数，系统都能自动适配。
+
+严格门禁
+构建触发必须提供与 Job 参数个数完全匹配的参数值，且值必须存在于参数选项中。错误提示仅提示具体值不合法，不泄露完整可用列表。
+
+数据一致性
+参数选项以 Jenkins 定义为权威源；Git Parameter 等动态参数取不到选项时，从对应 Git 平台实时补齐。
+
+平台接入控制
+只有在 settings.php 中配置了 base_url 和 token 的平台才被视为"已接入"，接口才能获取该平台的 Git 信息。
+
+字段动态扩展
+在 settings.php 的 job_git_map 中添加任意字段，映射接口将自动输出，无需修改代码。
+
+六、错误处理
+所有错误响应统一为以下格式：
+
+json
+{
+  "code": 400,
+  "message": "错误描述信息"
+}
+常见错误码
+状态码	说明
+200	请求成功
+400	参数错误（参数值不合法、参数个数不匹配等）
+404	资源不存在（Job 未找到、API 路由不存在）
+500	服务端错误（Jenkins/Harbor 连接失败等）
+503	服务不可用（Harbor 扫描器未启用等）
+七、项目结构
+text
+ci-platform/
+├── .env                    # 环境变量配置（不纳入版本控制）
+├── .env.example            # 配置模板
+├── composer.json           # PHP 依赖管理
+├── config/
+│   ├── container.php       # PHP-DI 容器定义
+│   ├── routes.php          # 路由注册
+│   └── settings.php        # 业务配置（含 job_git_map）
+├── public/
+│   ├── index.php           # 入口文件
+│   └── .htaccess           # Apache URL 重写
+├── src/
+│   ├── Config/
+│   │   └── AppConfig.php   # 全局配置访问层
+│   ├── Controller/
+│   │   ├── GitController.php
+│   │   ├── HarborController.php
+│   │   ├── JenkinsController.php
+│   │   └── MainController.php
+│   └── Service/
+│       ├── GitService.php
+│       ├── HarborService.php
+│       ├── JenkinsService.php
+│       ├── MapService.php  # Job/Git/Harbor 映射与缓存
+│       └── Git/
+│           ├── GiteeService.php
+│           ├── GitlabService.php
+│           ├── GitProviderFactory.php
+│           └── GitProviderInterface.php
+└── templates/
+    ├── 404.html
+    └── index.html
+八、手动映射配置
+在 settings.php 的 job_git_map 数组中，可为特定 Job 配置详细信息：
+
+php
+'job_git_map' => [
+    [
+        'job_name'          => 'java/registry',
+        'project_id'        => 2,
+        'web_url'           => 'http://urs/tools/registry',
+        'current_path'      => 'tools/registry',
+        'harbor_repository' => 'mycode/code-runtime',
+    ],
+    [
+        'job_name'          => 'static',
+        'project_id'        => null,
+        'web_url'           => 'https://gitee.com/projects/git_onee_app',
+        'current_path'      => 'projects/git_one_app',
+        'harbor_repository' => 'mycode/static-app',
+    ],
+],
+支持任意自定义字段（如 group_id、owner、namespace），配置后自动出现在映射接口返回值中，无需修改代码。
+
+九、快速测试命令（curl）
+bash
+# 触发构建（单参数）
+curl -X POST "http://your-domain.com/api/jenkins/static/master/build_trigger"
+
+# 触发构建（双参数）
+curl -X POST "http://your-domain.com/api/jenkins/php/myapp/main/test/build_trigger"
+
+# 查询构建状态
+curl "http://your-domain.com/api/jenkins/my-app/128/status"
+
+# 查询 Git 分支
+curl "http://your-domain.com/api/git/my-app/branches"
+
+# 查询三方映射
+curl "http://your-domain.com/api/main/map/list"
+
+# 查询已接入的 Git 平台
+curl "http://your-domain.com/api/main/git/platforms"
+
+# 查询平台接入检测
+curl "http://your-domain.com/api/main/git/discovery"
+
+# 查询 Job 参数
+curl "http://your-domain.com/api/jenkins/java/registry/parameters"
+
+# Harbor 项目列表
+curl "http://your-domain.com/api/harbor/projects"
+
+# Harbor 仓库列表
+curl "http://your-domain.com/api/harbor/mycode/repositories"
+
+# Harbor Tag 列表
+curl "http://your-domain.com/api/harbor/mycode/repositories/diagnosis-runtime/tags"
+
+# 触发 Harbor 扫描
+curl -X POST "http://your-domain.com/api/harbor/mycode/repositories/diagnosis-runtime/tags/v1.0.0/scan"
+
+# 获取 Harbor 扫描报告
+curl "http://your-domain.com/api/harbor/mycode/repositories/diagnosis-runtime/tags/v1.0.0/scan"
+十、更新日志
+版本	日期	变更内容
+v2.1	2026-07-01	Slim 4 重构的多平台版本。新增 Main 模块：多平台接入查询（git/platforms、git/discovery）、三方映射按项目分组（map/list）；Jenkins 触发构建支持单/双参数动态适配，参数名完全动态识别；Git 项目 ID 字段统一为 project_id；Harbor 扫描接口错误友好化（503）；新增 AppConfig 全局配置层，支持映射字段动态扩展
+v1.1	2021-11-01	增加 Harbor 查询功能（项目/仓库/Tag），主要应用于 Webhook 和 Rundeck 的表单集成
+v1.0	2018-09-28	初始版本，实现 Jenkins、Git 与 Rundeck 的三方集成 与 Webhook 触发功能
+十一、联系方式
+如有问题或建议，欢迎提交 Issue 或 Pull Request。
+
+如需私有化部署、定制开发或技术咨询，请联系：jeanslw@126.com

@@ -1,6 +1,7 @@
 <?php
 namespace App\Service;
 
+use GuzzleHttp\Exception\ClientException;
 use GuzzleHttp\Client;
 
 class JenkinsService
@@ -10,15 +11,15 @@ class JenkinsService
 
     public function __construct(array $config)
     {
-        $this->baseUrl = rtrim($config['url'], '/');  // 注意这里是 url
+        $this->baseUrl = rtrim($config['url'], '/');
         $this->client = new Client([
             'auth'    => [$config['user'], $config['token']],
             'headers' => ['Content-Type' => 'application/json'],
+            'cookies' => true,   // 启用 Cookie 存储（用于 CSRF crumb）
             'timeout' => 30,
         ]);
     }
 
-    // ---------- 所有 Job 列表 ----------
     public function getAllJobs(): array
     {
         $url = "{$this->baseUrl}/api/json?tree=jobs[name,jobs[name,jobs[name]]]";
@@ -42,7 +43,6 @@ class JenkinsService
         return $result;
     }
 
-    // ---------- 解析路径是 folder 还是 job ----------
     public function resolvePath(string $path): ?array
     {
         $jobUrl = $this->getJobUrl($path);
@@ -58,7 +58,6 @@ class JenkinsService
             }
         } catch (\Exception $e) {}
 
-        // 尝试解析为 folder/job
         $parts = explode('/', $path);
         if (count($parts) >= 2) {
             $job = array_pop($parts);
@@ -77,29 +76,22 @@ class JenkinsService
         return null;
     }
 
-    // ---------- 获取 Job 的 Git 远程地址（用于自动映射）----------
     public function getGitRemotes(string $jobPath): array
     {
         $jobUrl = $this->getJobUrl($jobPath);
         $resp = $this->client->get("{$jobUrl}/api/json?tree=scm[sources[remote],userRemoteConfigs[url]],definition[scm[sources[remote],userRemoteConfigs[url]]]");
         $data = json_decode($resp->getBody(), true);
         $remotes = [];
-        
-        // 情况1：普通 Pipeline / FreeStyle (scm.sources.remote)
         if (isset($data['scm']['sources'])) {
             foreach ($data['scm']['sources'] as $src) {
                 if (!empty($src['remote'])) $remotes[] = $src['remote'];
             }
         }
-        
-        // 情况2：GitSCM 的 userRemoteConfigs (较老的 Git 插件)
         if (isset($data['scm']['userRemoteConfigs'])) {
             foreach ($data['scm']['userRemoteConfigs'] as $cfg) {
                 if (!empty($cfg['url'])) $remotes[] = $cfg['url'];
             }
         }
-        
-        // 情况3：Multibranch Pipeline / Organization Folder (definition.scm)
         if (isset($data['definition']['scm']['sources'])) {
             foreach ($data['definition']['scm']['sources'] as $src) {
                 if (!empty($src['remote'])) $remotes[] = $src['remote'];
@@ -110,11 +102,9 @@ class JenkinsService
                 if (!empty($cfg['url'])) $remotes[] = $cfg['url'];
             }
         }
-        
         return $remotes;
     }
 
-    // ---------- 参数相关 ----------
     public function getParameters(string $jobPath, ?int $buildId = null): array
     {
         if ($buildId === null) {
@@ -129,42 +119,27 @@ class JenkinsService
     private function getCurrentParameters(string $jobPath): array
     {
         $jobUrl = $this->getJobUrl($jobPath);
-        // 拉取所有可能存选项的字段
-        $resp = $this->client->get(
-            "{$jobUrl}/api/json?tree=property[parameterDefinitions[name,choices,choiceType,choiceListMetadata[value],value,defaultValue,multiSelectDelimiter]]"
-        );
+        $resp = $this->client->get("{$jobUrl}/api/json?tree=property[parameterDefinitions[*]]");
         $data = json_decode($resp->getBody(), true);
-
-        $params = ['zone' => [], 'branches' => []];
-
+        $params = [];
         foreach ($data['property'] ?? [] as $prop) {
             foreach ($prop['parameterDefinitions'] ?? [] as $def) {
                 $name = $def['name'] ?? '';
                 $choices = [];
-
-                // 1. 标准 ChoiceParameterDefinition (choices 是数组)
                 if (isset($def['choices']) && is_array($def['choices'])) {
                     $choices = $def['choices'];
-                }
-                // 2. Active Choices 插件 (choiceListMetadata 里存选项)
-                elseif (isset($def['choiceListMetadata']) && is_array($def['choiceListMetadata'])) {
+                } elseif (isset($def['choiceListMetadata']) && is_array($def['choiceListMetadata'])) {
                     $choices = array_column($def['choiceListMetadata'], 'value');
-                }
-                // 3. Extended Choice Parameter (value 字段用换行分隔)
-                elseif (isset($def['value']) && is_string($def['value'])) {
+                } elseif (isset($def['value']) && is_string($def['value'])) {
                     $choices = array_filter(array_map('trim', explode("\n", $def['value'])));
-                }
-                // 4. 某些插件把 defaultValue 当唯一选项 (不太常见，但可兜底)
-                elseif (isset($def['defaultValue']) && !empty($def['defaultValue'])) {
+                } elseif (isset($def['defaultValue'])) {
                     $choices = [$def['defaultValue']];
                 }
-
-                if (in_array($name, ['zone', 'branches'])) {
-                    $params[$name] = array_values($choices); // 确保索引连续
+                if (!empty($name)) {
+                    $params[$name] = array_values($choices);
                 }
             }
         }
-
         return $params;
     }
 
@@ -172,7 +147,6 @@ class JenkinsService
     {
         $lastBuild = $this->getLastBuild($jobPath);
         if (!$lastBuild) return [];
-
         $resp = $this->client->get("{$lastBuild['url']}/api/json?tree=actions[parameters[name]]");
         $data = json_decode($resp->getBody(), true);
         $names = [];
@@ -181,7 +155,6 @@ class JenkinsService
                 $names[] = $p['name'];
             }
         }
-        // 去重并重建索引
         return array_values(array_unique($names));
     }
 
@@ -199,18 +172,59 @@ class JenkinsService
         return array_values(array_unique($names));
     }
 
-    // ---------- 触发构建 ----------
     public function triggerBuild(string $jobPath, array $parameters): array
     {
         $jobUrl = $this->getJobUrl($jobPath);
         $buildUrl = "{$jobUrl}/buildWithParameters";
-        $response = $this->client->post($buildUrl, ['query' => $parameters]);
+
+        try {
+            $response = $this->client->post($buildUrl, ['query' => $parameters]);
+        } catch (ClientException $e) {
+            if ($e->getResponse() && $e->getResponse()->getStatusCode() === 403) {
+                $crumb = $this->getCrumb();
+                if ($crumb) {
+                    try {
+                        $response = $this->client->post($buildUrl, [
+                            'query'   => $parameters,
+                            'headers' => [$crumb['field'] => $crumb['value']]
+                        ]);
+                    } catch (ClientException $e2) {
+                        $body = $e2->getResponse() ? $e2->getResponse()->getBody()->getContents() : '无响应';
+                        throw new \RuntimeException(
+                            "触发构建失败(已尝试 CSRF crumb)HTTP 403,Jenkins 响应: " . $body
+                        );
+                    }
+                } else {
+                    throw $e;
+                }
+            } else {
+                throw $e;
+            }
+        }
+
         $location = $response->getHeaderLine('Location');
         preg_match('#/(\d+)/?$#', $location, $matches);
-        return ['queueId' => $matches[1] ?? null, 'location' => $location];
+        $queueId = $matches[1] ?? null;
+        return [
+            'queueId'  => $queueId,
+            'queueUrl' => $location ?: ($this->baseUrl . '/queue/item/' . $queueId),
+        ];
     }
 
-    // ---------- 构建列表、状态、控制台 ----------
+    private function getCrumb(): ?array
+    {
+        try {
+            $resp = $this->client->get("{$this->baseUrl}/crumbIssuer/api/json");
+            $data = json_decode($resp->getBody(), true);
+            return [
+                'field' => $data['crumbRequestField'] ?? 'Jenkins-Crumb',
+                'value' => $data['crumb'] ?? ''
+            ];
+        } catch (\Exception $e) {
+            return null;
+        }
+    }
+
     public function getBuildIds(string $jobPath): array
     {
         $jobUrl = $this->getJobUrl($jobPath);
@@ -239,10 +253,15 @@ class JenkinsService
         $jobUrl = $this->getJobUrl($jobPath);
         $resp = $this->client->get("{$jobUrl}/api/json?tree=builds[id,result,timestamp]");
         $builds = json_decode($resp->getBody(), true)['builds'] ?? [];
-        return array_filter($builds, fn($b) => ($b['result'] ?? '') === 'SUCCESS');
+        $success = [];
+        foreach ($builds as $b) {
+            if (($b['result'] ?? '') === 'SUCCESS') {
+                $success[] = $b;
+            }
+        }
+        return $success;
     }
 
-    // ---------- 工具方法 ----------
     public function getJobUrl(string $path): string
     {
         $parts = explode('/', $path);

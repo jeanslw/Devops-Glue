@@ -49,4 +49,33 @@ return [
         'build_timeout' => (int) env('BUILD_TIMEOUT', '300'),
         'log_path'      => env('LOG_PATH', '/data/logs/ci-platform/'),
     ],
+
+    'job_git_map' => [
+        [
+            'job_name'          => 'java/registry',
+            'project_id'        => 2,
+            'web_url'           => 'http://urs/tools/registry',
+            'current_path'      => 'tools/registry',
+            'harbor_repository' => 'mycode/code-runtime',
+            'api_version'       => 'v4', //不填默认自动推导
+        ],
+        [
+            'job_name'          => 'php/myapp',
+            'project_id'        => 5,
+            'web_url'           => 'http://urs/tools/myapp',
+            'current_path'      => 'tools/myapp',
+            'harbor_repository' => 'mycode/myapp',
+            'api_version'       => 'v5',//不填默认自动推导
+        ],
+        [
+            'job_name'          => 'static',
+            'project_id'        => null,   // Gitee 项目 ID，若已知可填写
+            'web_url'           => 'https://gitee.com/lucky-boy1/git_one_app',
+            'current_path'      => 'lucky-boy1/git_one_app',
+            'group_id'          => '',
+            'owner'             => 'devops-team',
+            'harbor_repository' => 'mycode/static-app',
+            'api_version'       => 'v1',//不填默认自动推导
+        ],
+    ],
 ];
