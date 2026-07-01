@@ -15,10 +15,8 @@ $app->group('/api', function (RouteCollectorProxy $api) {
     });
 
     $api->group('/jenkins', function (RouteCollectorProxy $jenkins) {
-        // 单参数触发（只有 branch）
-        $jenkins->map(['POST'], '/{path:[^/]+(?:/[^/]+)?}/{branch_value}/build_trigger', [JenkinsController::class, 'buildTrigger']);
-        // 双参数触发（branch + zone）
-        $jenkins->map(['POST'], '/{path:[^/]+(?:/[^/]+)?}/{branch_value}/{zone_value}/build_trigger', [JenkinsController::class, 'buildTrigger']);
+        $jenkins->map(['POST'], '/{path:[^/]+(?:/[^/]+)?}/build_trigger', [JenkinsController::class, 'buildTrigger']);
+
         $jenkins->map(['GET', 'POST'], '/{path:.+}/branches', [GitController::class, 'branches']);
         $jenkins->map(['GET', 'POST'], '/{path:.+}/parameters[/{build_id}]', [JenkinsController::class, 'parameters']);
         $jenkins->map(['GET', 'POST'], '/{path:.+}/{type:build|build_id|build_time}', [JenkinsController::class, 'buildList']);

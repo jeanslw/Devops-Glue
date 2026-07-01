@@ -21,6 +21,11 @@ Harbor v1.10.1 / 2.x
 
 依赖管理: Composer
 
+输出格式(raw/json/xml)
+?format=raw(默认)
+?format=json
+?format=xml
+
 快速部署
 1. 克隆仓库
 bash
@@ -355,6 +360,7 @@ php
 bash
 # 触发构建（单参数）
 curl -X POST "http://public.test:8080/api/jenkins/static/master/build_trigger"
+说明：如果使用jenkins中Git Parameter参数化构建，一定要在Job配置的Git仓库配置项 Branch Specifier:origin/(.*)或者Git Parameter配置选项 Default Value:origin/(.*)
 
 # 触发构建（双参数）
 curl -X POST "http://public.test:8080/api/jenkins/php/myapp/main/test/build_trigger"
