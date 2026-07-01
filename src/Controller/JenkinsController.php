@@ -17,6 +17,36 @@ class JenkinsController extends BaseController
         $this->git = $git;
     }
 
+    public function parameters(Request $request, Response $response, array $args): Response
+    {
+        $path = $args['path'] ?? '';
+        $buildId = $args['build_id'] ?? null;
+
+        if ($buildId === null && preg_match('/^(.*)\/(\d+)$/', $path, $matches)) {
+            $path = $matches[1];
+            $buildId = (int)$matches[2];
+        }
+        $buildId = $buildId !== null ? (int)$buildId : null;
+
+        $resolved = $this->jenkins->resolvePath($path);
+        if (!$resolved || $resolved['type'] !== 'job') {
+            return $this->jsonError($response, 'Job not found: ' . $path, 404);
+        }
+
+        $params = $this->jenkins->getParameters($resolved['fullName'], $buildId);
+
+        if ($buildId === null && empty($params['branches'])) {
+            try {
+                $params['branches'] = $this->git->getBranchesForJob($resolved['fullName']);
+            } catch (\Exception $e) {
+                error_log("Git branches fetch failed: " . $e->getMessage());
+                $params['branches'] = [];
+            }
+        }
+
+        return $this->output($response, $params, $request);
+    }
+    
     // 参数列表（支持两种 URL 写法）
     public function buildTrigger(Request $request, Response $response, array $args): Response
     {

@@ -21,49 +21,26 @@ Harbor v1.10.1 / 2.x
 
 依赖管理: Composer
 
-输出格式(raw/json/xml)
-?format=raw(默认)
-?format=json
-?format=xml
-
 快速部署
 1. 克隆仓库
-bash
+
 git clone https://github.com/your-name/ci-platform.git
 cd ci-platform
 2. 安装依赖
-bash
+
 composer install
 3. 配置环境变量
-bash
+
 cp .env.example .env
 编辑 .env 文件，填入实际服务地址和凭证。
 
 4. 配置 Web 服务器
 将 public/ 目录设为 Web 根目录，配置 URL 重写。
 
-Nginx 示例：
 
-nginx
-server {
-    listen 80;
-    server_name your-domain.com;
-    root /path/to/ci-platform/public;
-    index index.php;
-
-    location / {
-        try_files $uri $uri/ /index.php$is_args$args;
-    }
-
-    location ~ \.php$ {
-        fastcgi_pass 127.0.0.1:9000;
-        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-        include fastcgi_params;
-    }
-}
 5. 验证部署
-bash
 curl http://your-domain.com/api/main/jobs/list
+
 公共约定
 HTTP 方法
 所有接口均支持 GET 和 POST 方法（除 build_trigger 仅 POST，扫描触发仅 POST）
@@ -80,18 +57,17 @@ HTTP 方法
 格式切换
 所有接口支持通过 ?format= 参数切换输出格式：
 
-参数	输出示例	Content-Type
-不带参数（默认 raw）	["java/registry","static"]	application/json
-?format=json	{"data":["java/registry","static"]}	application/json
-?format=xml	<?xml...><root><item>java/registry</item>...</root>	application/xml
-错误响应
-统一格式：
+参数	输出示例		Content-Type
+不带参数（默认 raw）	["java/registry","static"]
+?format=json			{"data":["java/registry","static"]}
+?format=xml				<?xml...><root><item>java/registry</item></root><application/xml
 
-json
-{
-  "code": 400,
-  "message": "错误描述"
-}
+统一格式：
+	{
+	  "code": 400,
+	  "message": "错误描述"
+	}
+	
 一、Main 模块 (/api/main)
 1.1 获取所有 Job 列表
 URL: /api/main/jobs/list
@@ -100,7 +76,7 @@ URL: /api/main/jobs/list
 
 输出: 字符串数组
 
-json
+
 ["java/registry", "php/myapp", "static"]
 1.2 Job / Git / Harbor 三方映射（按项目分组）
 URL: /api/main/map/list
@@ -109,11 +85,11 @@ URL: /api/main/map/list
 
 输出: JSON 对象（键为 Git 仓库路径）
 
-json
+
 {
   "tools/registry": {
     "git_platform": "gitlab",
-    "git_remote": "http://192.168.137.5:8082/tools/registry.git",
+    "git_remote": "http://URL/tools/registry.git",
     "project_id": 2,
     "web_url": "http://urs/tools/registry",
     "current_path": "tools/registry",
@@ -122,7 +98,7 @@ json
   },
   "tools/myapp": {
     "git_platform": "gitlab",
-    "git_remote": "http://192.168.137.5:8082/tools/myapp.git",
+    "git_remote": "http://URL/tools/myapp.git",
     "project_id": 5,
     "web_url": "http://urs/tools/myapp",
     "current_path": "tools/myapp",
@@ -142,7 +118,7 @@ json
   "git_platforms": [
     {
       "name": "gitlab",
-      "api_base_url": "http://192.168.137.5:8082/api/v4",
+      "api_base_url": "http://URL/api/v4",
       "api_version": "v4"
     },
     {
@@ -152,7 +128,7 @@ json
     }
   ],
   "harbor": {
-    "api_base_url": "http://192.168.137.5/api/v2.0",
+    "api_base_url": "http://URL/api/v2.0",
     "api_version": "v2.0"
   }
 }
@@ -166,7 +142,7 @@ URL: /api/main/git/discovery
 json
 {
   "configured": [
-    {"name": "gitlab", "api_base_url": "http://192.168.137.5:8082/api/v4"},
+    {"name": "gitlab", "api_base_url": "http://URL/api/v4"},
     {"name": "gitee", "api_base_url": "https://gitee.com/api/v5"}
   ],
   "unconfigured": []
@@ -189,15 +165,18 @@ json
   "job": "php/myapp",
   "triggered_params": {"branches": "main", "zone": "test"},
   "queue_id": "114",
-  "queue_url": "http://192.168.137.5:8083/queue/item/114/"
+  "queue_url": "http://URL/queue/item/114/"
 }
+
 校验规则:
+
+参数通过 Query String 传递
 
 Job 必须有恰好 1 或 2 个参数，否则拒绝
 
-参数值必须在对应参数选项中（若选项为空则从 Git 平台实时获取）
+参数值必须在对应Git parameter参数选项中（若选项为空则从 Git 平台实时获取）
 
-错误信息仅提示值不合法，不泄露完整可用列表
+错误信息提示值不合法。
 
 2.2 查询构建参数
 URL: /api/jenkins/{group}/{project}/parameters 或 /api/jenkins/{group}/{project}/{build_id}/parameters
@@ -327,12 +306,12 @@ json
 环境变量 (.env)
 ini
 # Jenkins
-JENKINS_BASE_URL=http://192.168.137.5:8083
+JENKINS_BASE_URL=http://URL
 JENKINS_USER=admin
 JENKINS_TOKEN=your_token
 
 # GitLab
-GITLAB_BASE_URL=http://192.168.137.5:8082
+GITLAB_BASE_URL=http://URL
 GITLAB_TOKEN=your_token
 
 # Gitee
@@ -340,7 +319,7 @@ GITEE_BASE_URL=https://gitee.com/api/v5
 GITEE_TOKEN=your_token
 
 # Harbor
-HARBOR_BASE_URL=http://192.168.137.5
+HARBOR_BASE_URL=http://URL
 HARBOR_USER=admin
 HARBOR_PASSWORD=your_password
 手动映射配置 (config/settings.php)
@@ -359,35 +338,35 @@ php
 七、快速测试命令
 bash
 # 触发构建（单参数）
-curl -X POST "http://public.test:8080/api/jenkins/static/master/build_trigger"
+curl -X POST "http://URL/api/jenkins/static/master/build_trigger"
 说明：如果使用jenkins中Git Parameter参数化构建，一定要在Job配置的Git仓库配置项 Branch Specifier:origin/(.*)或者Git Parameter配置选项 Default Value:origin/(.*)
 
 # 触发构建（双参数）
-curl -X POST "http://public.test:8080/api/jenkins/php/myapp/main/test/build_trigger"
+curl -X POST "http://URL/api/jenkins/php/myapp/main/test/build_trigger"
 
 # 查询三方映射
-curl "http://public.test:8080/api/main/map/list"
+curl "http://URL/api/main/map/list"
 
 # 查询已接入的 Git 平台
-curl "http://public.test:8080/api/main/git/platforms"
+curl "http://URL/api/main/git/platforms"
 
 # 查询平台接入检测
-curl "http://public.test:8080/api/main/git/discovery"
+curl "http://URL/api/main/git/discovery"
 
 # 查询 Job 参数
-curl "http://public.test:8080/api/jenkins/java/registry/parameters"
+curl "http://URL/api/jenkins/java/registry/parameters"
 
 # Harbor 项目列表
-curl "http://public.test:8080/api/harbor/projects"
+curl "http://URL/api/harbor/projects"
 
 # Harbor Tag 列表
-curl "http://public.test:8080/api/harbor/mycode/repositories/diagnosis-runtime/tags"
+curl "http://URL/api/harbor/mycode/repositories/diagnosis-runtime/tags"
 
 # 触发 Harbor 扫描
-curl -X POST "http://public.test:8080/api/harbor/mycode/repositories/diagnosis-runtime/tags/v1.0.0/scan"
+curl -X POST "http://URL/api/harbor/mycode/repositories/diagnosis-runtime/tags/v1.0.0/scan"
 
 # 获取 Harbor 扫描报告
-curl "http://public.test:8080/api/harbor/mycode/repositories/diagnosis-runtime/tags/v1.0.0/scan"
+curl "http://URL/api/harbor/mycode/repositories/diagnosis-runtime/tags/v1.0.0/scan"
 
 八、更新日志
 版本	日期	变更内容
