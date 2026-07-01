@@ -71,7 +71,6 @@ class AppConfig
         }
         return $platforms;
     }
-
     // 获取 Harbor 的 API 配置
     public function getHarborApiInfo(): array
     {

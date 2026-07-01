@@ -35,7 +35,12 @@ class HarborService
     {
         try {
             $res = $this->client->request($method, $uri, array_merge($options, ['http_errors' => true]));
-            $data = json_decode($res->getBody()->getContents(), true);
+            $body = $res->getBody()->getContents();
+            if (empty($body)) {
+                // 某些操作（如触发扫描）成功时返回空响应，不报错
+                return ['status' => 'ok'];
+            }
+            $data = json_decode($body, true);
             return is_array($data) ? $data : ['error' => 'Harbor返回数据格式异常'];
         } catch (ClientException $e) {
             $code = $e->getResponse()?->getStatusCode();
@@ -136,48 +141,30 @@ class HarborService
         }
     }
 
-    /**
-     * 触发镜像扫描 (POST)
-     */
     public function scanArtifact(string $project, string $repository, string $tag): array
     {
         $version = $this->detectApiVersion();
-
         if ($version === 'v2') {
-            $encodedProject = rawurlencode($project);
-            $encodedRepo   = rawurlencode($repository);
-            $encodedTag    = rawurlencode($tag);
-            $path = "/api/v2.0/projects/{$encodedProject}/repositories/{$encodedRepo}/artifacts/{$encodedTag}/scan";
-        } else {
-            // v1: 完整仓库名 = project/repository
-            $fullRepo = $project . '/' . $repository;
-            $encodedRepo = rawurlencode($fullRepo);
-            $encodedTag  = rawurlencode($tag);
-            $path = "/api/repositories/{$encodedRepo}/tags/{$encodedTag}/scan";
+            return ['error' => 'Harbor v2 scanning not implemented yet'];
         }
-
+        // v1 路径（Harbor 1.10 有效）
+        $fullRepo = $project . '/' . $repository;
+        $encodedRepo = rawurlencode($fullRepo);
+        $encodedTag  = rawurlencode($tag);
+        $path = "/api/repositories/{$encodedRepo}/tags/{$encodedTag}/scan";
         return $this->request('POST', $path);
     }
 
-    /**
-     * 获取扫描报告或状态 (GET)
-     */
     public function getScanReport(string $project, string $repository, string $tag): array
     {
         $version = $this->detectApiVersion();
-
         if ($version === 'v2') {
-            $encodedProject = rawurlencode($project);
-            $encodedRepo   = rawurlencode($repository);
-            $encodedTag    = rawurlencode($tag);
-            $path = "/api/v2.0/projects/{$encodedProject}/repositories/{$encodedRepo}/artifacts/{$encodedTag}/scan";
-        } else {
-            $fullRepo = $project . '/' . $repository;
-            $encodedRepo = rawurlencode($fullRepo);
-            $encodedTag  = rawurlencode($tag);
-            $path = "/api/repositories/{$encodedRepo}/tags/{$encodedTag}/scan";
+            return ['error' => 'Harbor v2 scanning not implemented yet'];
         }
-
+        $fullRepo = $project . '/' . $repository;
+        $encodedRepo = rawurlencode($fullRepo);
+        $encodedTag  = rawurlencode($tag);
+        $path = "/api/repositories/{$encodedRepo}/tags/{$encodedTag}/scan";
         return $this->request('GET', $path);
     }
 }

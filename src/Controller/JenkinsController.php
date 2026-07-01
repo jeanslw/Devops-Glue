@@ -6,7 +6,7 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Service\JenkinsService;
 use App\Service\GitService;
 
-class JenkinsController
+class JenkinsController extends BaseController
 {
     private JenkinsService $jenkins;
     private GitService $git;
@@ -45,129 +45,77 @@ class JenkinsController
             }
         }
 
-        return $this->jsonResponse($response, $params);
+        return $this->output($response, $params, $request);
     }
 
+    // 触发构建
     public function buildTrigger(Request $request, Response $response, array $args): Response
     {
-    $jobPath     = $args['path'] ?? '';
-    $branchValue = $args['branch_value'] ?? null;
-    $zoneValue   = $args['zone_value'] ?? null;
+        $jobPath     = $args['path'] ?? '';
+        $branchValue = $args['branch_value'] ?? null;
+        $zoneValue   = $args['zone_value'] ?? null;
 
-    if (!$branchValue) {
-        return $this->jsonError($response, 'Missing branch value', 400);
-    }
-
-    $resolved = $this->jenkins->resolvePath($jobPath);
-    if (!$resolved || $resolved['type'] !== 'job') {
-        return $this->jsonError($response, 'Invalid job: ' . $jobPath, 400);
-    }
-
-    $allParams = $this->jenkins->getParameters($resolved['fullName'], null);
-
-    // 如果 Job 没有任何参数，不允许触发
-    if (empty($allParams)) {
-        return $this->jsonError($response, 'This job has no build parameters. Triggering via this API requires at least a branch parameter.', 400);
-    }
-
-    // 强制补全 branch 参数（处理 Git Parameter 等情况）
-    $hasBranchParam = false;
-    foreach ($allParams as $name => $choices) {
-        if (stripos($name, 'branch') !== false) {
-            $hasBranchParam = true;
-            if (empty($choices)) {
-                try {
-                    $allParams[$name] = $this->git->getBranchesForJob($resolved['fullName']);
-                } catch (\Exception $e) {
-                    $allParams[$name] = [];
-                }
-            }
-            break;
+        if (!$branchValue) {
+            return $this->jsonError($response, 'Missing branch value', 400);
         }
-    }
-    if (!$hasBranchParam) {
+
+        $resolved = $this->jenkins->resolvePath($jobPath);
+        if (!$resolved || $resolved['type'] !== 'job') {
+            return $this->jsonError($response, 'Invalid job: ' . $jobPath, 400);
+        }
+
+        $currentParams = $this->jenkins->getParameters($resolved['fullName'], null);
+
+        // 如果 Job 没有任何参数，拒绝触发
+        if (empty($currentParams)) {
+            return $this->jsonError($response, 'This job has no build parameters. Triggering via this API requires at least a branch parameter.', 400);
+        }
+        
+        // 补齐 branches（处理 Git Parameter 等动态参数）
+        if (empty($currentParams['branches'])) {
+            try {
+                $currentParams['branches'] = $this->git->getBranchesForJob($resolved['fullName']);
+            } catch (\Exception $e) {
+                error_log("Build trigger branch fetch failed: " . $e->getMessage());
+                $currentParams['branches'] = [];
+            }
+        }
+
+        // 校验 zone（如果存在该参数）
+        if (isset($currentParams['zone']) && !in_array($zoneValue, $currentParams['zone'])) {
+            return $this->jsonError($response, "Invalid zone: $zoneValue", 400);
+        }
+
+        // 校验 branch
+        if (!in_array($branchValue, $currentParams['branches'] ?? [])) {
+            return $this->jsonError($response, "Invalid branch: $branchValue", 400);
+        }
+
         try {
-            $branches = $this->git->getBranchesForJob($resolved['fullName']);
-            if (!empty($branches)) {
-                $allParams['branches'] = $branches;
-            }
-        } catch (\Exception $e) {}
-    }
+            $result = $this->jenkins->triggerBuild($resolved['fullName'], [
+                'zone' => $zoneValue,
+                'branches' => $branchValue,
+            ]);
 
-    $paramCount = count($allParams);
-    $inputParamCount = $zoneValue ? 2 : 1;
+            // 构建成功响应数据（无 code 字段）
+            $responseData = [
+                'message' => '构建触发成功',
+                'job'     => $resolved['fullName'],
+                'triggered_params' => [
+                    'branches' => $branchValue,
+                    'zone'     => $zoneValue,
+                    'jobname'  => $resolved['fullName'],
+                ],
+                'queue_id'  => $result['queueId'] ?? null,
+                'queue_url' => $result['queueUrl'] ?? null,
+            ];
 
-    if ($inputParamCount !== $paramCount) {
-        return $this->jsonError($response,
-            "This job expects $paramCount parameter(s), but you provided $inputParamCount.", 400);
-    }
+            $response->getBody()->write(json_encode($responseData));
+            return $response->withHeader('Content-Type', 'application/json');
 
-    if ($paramCount > 2) {
-        return $this->jsonError($response,
-            "Jobs with more than 2 parameters are not supported via this API.", 400);
-    }
-
-    $branchParamName = $this->findBranchParamName($allParams);
-    if (!$branchParamName || !isset($allParams[$branchParamName])) {
-        return $this->jsonError($response, 'Cannot identify branch parameter', 400);
-    }
-    if (!in_array($branchValue, $allParams[$branchParamName])) {
-        return $this->jsonError($response, "Branch value '$branchValue' not allowed", 400);
-    }
-
-    $buildParams = [$branchParamName => $branchValue];
-
-    if ($paramCount === 2) {
-        if (!$zoneValue) {
-            return $this->jsonError($response, 'Missing zone value', 400);
+        } catch (\Exception $e) {
+            return $this->jsonError($response, 'Trigger failed: ' . $e->getMessage(), 500);
         }
-        $zoneParamName = $this->findZoneParamName($allParams, $branchParamName);
-        if (!$zoneParamName || !isset($allParams[$zoneParamName])) {
-            return $this->jsonError($response, 'Cannot identify zone parameter', 400);
-        }
-        if (!in_array($zoneValue, $allParams[$zoneParamName])) {
-            return $this->jsonError($response, "Zone value '$zoneValue' not allowed", 400);
-        }
-        $buildParams[$zoneParamName] = $zoneValue;
-    }
-
-    try {
-        $result = $this->jenkins->triggerBuild($resolved['fullName'], $buildParams);
-        return $this->jsonResponse($response, [
-            'code'       => 200,
-            'message'    => '构建触发成功',
-            'job'        => $resolved['fullName'],
-            'parameters' => $buildParams,
-            'queue_id'   => $result['queueId'] ?? null,
-            'queue_url'  => $result['queueUrl'] ?? null,
-        ]);
-    } catch (\Exception $e) {
-        return $this->jsonError($response, 'Trigger failed: ' . $e->getMessage(), 500);
-    }
-}
-
-    // 辅助方法 1：自动识别 branch 参数名
-    private function findBranchParamName(array $params): ?string
-    {
-        foreach ($params as $name => $choices) {
-            if (stripos($name, 'branch') !== false) return $name;
-        }
-        $names = array_keys($params);
-        return $names[0] ?? null;
-    }
-
-    // 辅助方法 2：自动识别 zone 参数名（排除已识别的 branch 参数）
-    private function findZoneParamName(array $params, string $excludeName): ?string
-    {
-        foreach ($params as $name => $choices) {
-            if ($name === $excludeName) continue;
-            if (stripos($name, 'zone') !== false || stripos($name, 'env') !== false) return $name;
-        }
-        $names = array_keys($params);
-        foreach ($names as $name) {
-            if ($name !== $excludeName) return $name;
-        }
-        return null;
     }
 
     // 状态
@@ -180,7 +128,7 @@ class JenkinsController
             return $this->jsonError($response, 'Job not found', 404);
         }
         $status = $this->jenkins->getBuildStatus($resolved['fullName'], $buildId);
-        return $this->jsonResponse($response, [$status]);
+        return $this->output($response, [$status], $request);
     }
 
     // 合并的 build 列表
@@ -206,10 +154,10 @@ class JenkinsController
             default     => [],
         };
 
-        return $this->jsonResponse($response, $result);
+        return $this->output($response, $result, $request);
     }
 
-    // 控制台
+    // 控制台（强制原样输出）
     public function console(Request $request, Response $response, array $args): Response
     {
         $path = $args['path'];
@@ -217,18 +165,6 @@ class JenkinsController
         $resolved = $this->jenkins->resolvePath($path);
         if (!$resolved) return $this->jsonError($response, 'Job not found', 404);
         $text = $this->jenkins->getConsoleOutput($resolved['fullName'], $buildId);
-        $response->getBody()->write($text);
-        return $response->withHeader('Content-Type', 'text/plain');
-    }
-
-    private function jsonResponse(Response $response, $data): Response
-    {
-        $response->getBody()->write(json_encode($data));
-        return $response->withHeader('Content-Type', 'application/json');
-    }
-
-    private function jsonError(Response $response, string $msg, int $code = 400): Response
-    {
-        return $this->jsonResponse($response->withStatus($code), ['code' => $code, 'message' => $msg]);
+        return $this->output($response, $text, $request, true);
     }
 }

@@ -67,7 +67,7 @@ return [
         return new \App\Controller\MainController(
             $c->get(JenkinsService::class),
             $c->get(MapService::class),
-            $c->get(AppConfig::class)   // 新增
+            $c->get(AppConfig::class)
         );
     },
 
