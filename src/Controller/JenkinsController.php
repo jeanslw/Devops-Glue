@@ -18,123 +18,123 @@ class JenkinsController extends BaseController
     }
 
     // 参数列表（支持两种 URL 写法）
-public function buildTrigger(Request $request, Response $response, array $args): Response
-{
-    $jobPath = $args['path'] ?? '';
+    public function buildTrigger(Request $request, Response $response, array $args): Response
+    {
+        $jobPath = $args['path'] ?? '';
 
-    // 从 Query String 获取参数
-    $queryParams = $request->getQueryParams();
-    $branchValue = $queryParams['branches'] ?? $queryParams['branch'] ?? null;
-    $zoneValue   = $queryParams['zone'] ?? null;
+        // 从 Query String 获取参数
+        $queryParams = $request->getQueryParams();
+        $branchValue = $queryParams['branches'] ?? $queryParams['branch'] ?? null;
+        $zoneValue   = $queryParams['zone'] ?? null;
 
-    if (empty($branchValue)) {
-        return $this->jsonError($response, '缺少 branches 参数', 400);
-    }
-
-    $resolved = $this->jenkins->resolvePath($jobPath);
-    if (!$resolved || $resolved['type'] !== 'job') {
-        return $this->jsonError($response, '无效的 Job: ' . $jobPath, 400);
-    }
-
-    // 1. 获取 Jenkins 原始参数
-    $allParams = $this->jenkins->getParameters($resolved['fullName'], null);
-
-    if (empty($allParams)) {
-        return $this->jsonError($response, '此 Job 没有构建参数', 400);
-    }
-
-    // 2. 自动识别 branch 参数名（优先名称含 branch，否则取第一个参数）
-    $branchParamName = null;
-    foreach ($allParams as $name => $choices) {
-        if (stripos($name, 'branch') !== false) {
-            $branchParamName = $name;
-            break;
+        if (empty($branchValue)) {
+            return $this->jsonError($response, '缺少 branches 参数', 400);
         }
-    }
-    if (!$branchParamName) {
-        $names = array_keys($allParams);
-        $branchParamName = $names[0] ?? null;
-    }
-    if (!$branchParamName) {
-        return $this->jsonError($response, '无法识别分支参数名', 400);
-    }
 
-    // 3. 获取分支选项，如果为空则从 Git 平台补齐
-    $branchOptions = $allParams[$branchParamName] ?? [];
-
-    if (empty($branchOptions)) {
-        try {
-            $gitBranches = $this->git->getBranchesForJob($resolved['fullName']);
-            if (!empty($gitBranches)) {
-                $branchOptions = $gitBranches;
-                $allParams[$branchParamName] = $gitBranches;
-                error_log("Git Parameter 插件返回空列表，已从 Git 平台补齐分支: " . implode(',', $gitBranches));
-            }
-        } catch (\Exception $e) {
-            error_log("从 Git 平台补齐分支失败: " . $e->getMessage());
+        $resolved = $this->jenkins->resolvePath($jobPath);
+        if (!$resolved || $resolved['type'] !== 'job') {
+            return $this->jsonError($response, '无效的 Job: ' . $jobPath, 400);
         }
-    }
 
-    if (empty($branchOptions)) {
-        return $this->jsonError($response, 'Jenkins 未能提供可用分支列表，且 Git 平台也不可用', 400);
-    }
+        // 1. 获取 Jenkins 原始参数
+        $allParams = $this->jenkins->getParameters($resolved['fullName'], null);
 
-    // 4. 智能适配 origin/ 前缀
-    $actualBranchValue = $branchValue;
-    if (!in_array($actualBranchValue, $branchOptions)) {
-        $allHaveOrigin = true;
-        foreach ($branchOptions as $opt) {
-            if (strpos($opt, 'origin/') !== 0) {
-                $allHaveOrigin = false;
+        if (empty($allParams)) {
+            return $this->jsonError($response, '此 Job 没有构建参数', 400);
+        }
+
+        // 2. 自动识别 branch 参数名（优先名称含 branch，否则取第一个参数）
+        $branchParamName = null;
+        foreach ($allParams as $name => $choices) {
+            if (stripos($name, 'branch') !== false) {
+                $branchParamName = $name;
                 break;
             }
         }
-        if ($allHaveOrigin) {
-            $candidate = 'origin/' . $branchValue;
-            if (in_array($candidate, $branchOptions)) {
-                $actualBranchValue = $candidate;
+        if (!$branchParamName) {
+            $names = array_keys($allParams);
+            $branchParamName = $names[0] ?? null;
+        }
+        if (!$branchParamName) {
+            return $this->jsonError($response, '无法识别分支参数名', 400);
+        }
+
+        // 3. 获取分支选项，如果为空则从 Git 平台补齐
+        $branchOptions = $allParams[$branchParamName] ?? [];
+
+        if (empty($branchOptions)) {
+            try {
+                $gitBranches = $this->git->getBranchesForJob($resolved['fullName']);
+                if (!empty($gitBranches)) {
+                    $branchOptions = $gitBranches;
+                    $allParams[$branchParamName] = $gitBranches;
+                }
+            } catch (\Exception $e) {
+                error_log("Git平台补齐分支失败: " . $e->getMessage());
             }
         }
+
+        if (empty($branchOptions)) {
+            return $this->jsonError($response, 'Jenkins未能提供可用分支列表，且 Git 平台也不可用', 400);
+        }
+
+        // 4. 智能适配 origin/ 前缀
+        $actualBranchValue = $branchValue;
         if (!in_array($actualBranchValue, $branchOptions)) {
-            $allowed = implode(', ', $branchOptions);
-            return $this->jsonError($response, "无效的分支: $branchValue，可用值: $allowed", 400);
+            $allHaveOrigin = true;
+            foreach ($branchOptions as $opt) {
+                if (strpos($opt, 'origin/') !== 0) {
+                    $allHaveOrigin = false;
+                    break;
+                }
+            }
+            if ($allHaveOrigin) {
+                $candidate = 'origin/' . $branchValue;
+                if (in_array($candidate, $branchOptions)) {
+                    $actualBranchValue = $candidate;
+                }
+            }
+            if (!in_array($actualBranchValue, $branchOptions)) {
+                $allowed = implode(', ', $branchOptions);
+                return $this->jsonError($response, "无效的分支: $branchValue,可用值: $allowed", 400);
+            }
+        }
+
+        // 5. 构造构建参数（使用原始参数名确保大小写一致）
+        $buildParams = [$branchParamName => $actualBranchValue];
+
+        // 6. 双参数处理
+        $paramNames = array_keys($allParams);
+        if (count($paramNames) === 2) {
+            if (empty($zoneValue)) {
+                return $this->jsonError($response, '缺少 zone 参数', 400);
+            }
+            $zoneParamName = ($paramNames[0] === $branchParamName) ? $paramNames[1] : $paramNames[0];
+            $zoneOptions = $allParams[$zoneParamName] ?? [];
+            if (!in_array($zoneValue, $zoneOptions)) {
+                $allowed = implode(', ', $zoneOptions);
+                return $this->jsonError($response, "无效的 zone: $zoneValue，可用值: $allowed", 400);
+            }
+            $buildParams[$zoneParamName] = $zoneValue;
+        }
+
+        // 7. 触发构建
+        try {
+            $result = $this->jenkins->triggerBuild($resolved['fullName'], $buildParams);
+            $responseData = [
+                'message'          => '构建触发成功',
+                'job'              => $resolved['fullName'],
+                'triggered_params' => $buildParams,
+                'queue_id'         => $result['queueId'] ?? null,
+                'queue_url'        => $result['queueUrl'] ?? null,
+            ];
+            $response->getBody()->write(json_encode($responseData));
+            return $response->withHeader('Content-Type', 'application/json');
+        } catch (\Exception $e) {
+            return $this->jsonError($response, '触发失败: ' . $e->getMessage(), 500);
         }
     }
-
-    // 5. 构造构建参数（使用原始参数名确保大小写一致）
-    $buildParams = [$branchParamName => $actualBranchValue];
-
-    // 6. 双参数处理
-    $paramNames = array_keys($allParams);
-    if (count($paramNames) === 2) {
-        if (empty($zoneValue)) {
-            return $this->jsonError($response, '缺少 zone 参数', 400);
-        }
-        $zoneParamName = ($paramNames[0] === $branchParamName) ? $paramNames[1] : $paramNames[0];
-        $zoneOptions = $allParams[$zoneParamName] ?? [];
-        if (!in_array($zoneValue, $zoneOptions)) {
-            $allowed = implode(', ', $zoneOptions);
-            return $this->jsonError($response, "无效的 zone: $zoneValue，可用值: $allowed", 400);
-        }
-        $buildParams[$zoneParamName] = $zoneValue;
-    }
-
-    // 7. 触发构建
-    try {
-        $result = $this->jenkins->triggerBuild($resolved['fullName'], $buildParams);
-        $responseData = [
-            'message'          => '构建触发成功',
-            'job'              => $resolved['fullName'],
-            'triggered_params' => $buildParams,
-            'queue_id'         => $result['queueId'] ?? null,
-            'queue_url'        => $result['queueUrl'] ?? null,
-        ];
-        $response->getBody()->write(json_encode($responseData));
-        return $response->withHeader('Content-Type', 'application/json');
-    } catch (\Exception $e) {
-        return $this->jsonError($response, '触发失败: ' . $e->getMessage(), 500);
-    }
-}
+    
     // 状态
     public function status(Request $request, Response $response, array $args): Response
     {
