@@ -1,4 +1,4 @@
-CI Platform API 文档 v2.1
+Devops-Glue API 文档 v2.1
 概述
 CI Platform 是一套为小企业提供的 DevOps 工具链集成接口，实现 Jenkins、GitLab、Gitee、GitHub、Harbor 等工具的一键集成与互通。基于 Slim 4 框架，PHP 8+。
 
@@ -24,8 +24,8 @@ Harbor v1.10.1 / 2.x
 快速部署
 1. 克隆仓库
 
-git clone https://github.com/your-name/ci-platform.git
-cd ci-platform
+git clone https://github.com/jeanslw/Devops-Glue.git
+cd Devops-Glue
 2. 安装依赖
 
 composer install
@@ -373,4 +373,4 @@ curl "http://URL/api/harbor/mycode/repositories/diagnosis-runtime/tags/v1.0.0/sc
 v2.1	2026-03-05	Slim 4 重构。新增 Main 模块（平台接入、多方映射）；触发构建支持单/双参数动态适配；输出格式切换（raw/json/xml）；Harbor 扫描集成（Trivy 离线）；
 v1.1	2021-11-01	增加 Harbor 查询功能
 v1.0	2018-09-28	初始版本，Jenkins、Git 与 Rundeck 三方集成
-九、如有建议可发isse，与我联系 mailto:jeanslw@qq.com
+九、如有建议可发issue，与我联系 mailto:jeanslw@qq.com
