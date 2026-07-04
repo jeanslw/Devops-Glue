@@ -1,6 +1,6 @@
 Devops-Glue API 文档 v2.1
 概述
-CI Platform 是一套为小企业提供的 DevOps 工具链集成接口，实现 Jenkins、GitLab、Gitee、GitHub、Harbor 等工具的一键集成与互通。基于 Slim 4 框架，PHP 8+。
+Devops-Glue 是一套为小企业提供的 DevOps 工具链集成接口，实现 Jenkins、GitLab、Gitee、GitHub、Harbor 等工具的一键集成与互通。基于 Slim 4 框架，PHP 8+。
 
 环境要求
 框架: Slim 4
