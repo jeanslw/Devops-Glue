@@ -31,5 +31,10 @@ return [
         'build_timeout' => (int) env('BUILD_TIMEOUT', '300'),
         'log_path'      => env('LOG_PATH', '/data/logs/ci-platform/'),
     ],
+    'cors' => [
+        'allowed_origins' => ['*'],                     // 允许的域名，* 表示全部
+        'allowed_methods' => ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+        'allowed_headers' => ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+    ],
     'job_git_map' => [],  // 清空或只留示例
 ];

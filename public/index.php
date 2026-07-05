@@ -31,6 +31,9 @@ $app->get('/', function ($request, $response, $args) {
 
 $app->addBodyParsingMiddleware();
 $app->addRoutingMiddleware();
+
+// CORS 中间件（最后添加 = 最先执行，确保在路由之前拦截 OPTIONS）
+$app->add(\App\Middleware\CorsMiddleware::class);
 $errorMiddleware = $app->addErrorMiddleware(true, true, true);
 
 // 自定义 404

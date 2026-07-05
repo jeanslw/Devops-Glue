@@ -1,0 +1,14 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8080:80"
+    env_file:
+      - config/.env
+    volumes:
+      - ./config/gitlab_id_cache.php:/var/www/html/config/gitlab_id_cache.php
+      - app_logs:/data/logs/ci-platform
+    restart: unless-stopped
+
+volumes:
+  app_logs:

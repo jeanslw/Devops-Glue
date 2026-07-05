@@ -32,6 +32,30 @@ class AppConfig
         return $this->config['git']['gitee'] ?? [];
     }
 
+    // GitHub 配置
+    public function getGithubConfig(): array
+    {
+        return $this->config['git']['github'] ?? [];
+    }
+
+    // 应用环境
+    public function getAppEnv(): string
+    {
+        return $this->config['app']['env'] ?? 'production';
+    }
+
+    // 日志路径
+    public function getLogPath(): string
+    {
+        return $this->config['app']['log_path'] ?? '';
+    }
+
+    // CORS 配置
+    public function getCorsConfig(): array
+    {
+        return $this->config['cors'] ?? ['allowed_origins' => ['*']];
+    }
+
     // 手动映射
     public function getJobGitMap(): array
     {

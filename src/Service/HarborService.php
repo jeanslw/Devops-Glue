@@ -145,7 +145,11 @@ class HarborService
     {
         $version = $this->detectApiVersion();
         if ($version === 'v2') {
-            return ['error' => 'Harbor v2 scanning not implemented yet'];
+            $encodedProject = rawurlencode($project);
+            $encodedRepo = rawurlencode($repository);
+            $encodedTag  = rawurlencode($tag);
+            $path = "/api/v2.0/projects/{$encodedProject}/repositories/{$encodedRepo}/artifacts/{$encodedTag}/scan";
+            return $this->request('POST', $path);
         }
         // v1 路径（Harbor 1.10 有效）
         $fullRepo = $project . '/' . $repository;
@@ -159,7 +163,21 @@ class HarborService
     {
         $version = $this->detectApiVersion();
         if ($version === 'v2') {
-            return ['error' => 'Harbor v2 scanning not implemented yet'];
+            $encodedProject = rawurlencode($project);
+            $encodedRepo = rawurlencode($repository);
+            $encodedTag  = rawurlencode($tag);
+            $path = "/api/v2.0/projects/{$encodedProject}/repositories/{$encodedRepo}/artifacts/{$encodedTag}/additions/vulnerabilities";
+            $data = $this->request('GET', $path);
+            if (isset($data['error'])) {
+                return $data;
+            }
+            // Harbor v2 返回的漏洞数据在 mime type 键下
+            foreach ($data as $key => $value) {
+                if (str_contains($key, 'vulnerability') && is_array($value)) {
+                    return $value;
+                }
+            }
+            return $data;
         }
         $fullRepo = $project . '/' . $repository;
         $encodedRepo = rawurlencode($fullRepo);

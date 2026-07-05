@@ -10,6 +10,7 @@ class MapService
     private array $gitlabConfig;
     private string $cacheFile;
     private array $autoCache = [];
+    private ?Logger $logger = null;
 
     public function __construct(
         JenkinsService $jenkins,
@@ -95,6 +96,11 @@ class MapService
 
         return $base;
     }
+    public function setLogger(Logger $logger): void
+    {
+        $this->logger = $logger;
+    }
+
     private function getGitlabIdWithCache(string $jobName, string $remote): ?int
     {
         if (array_key_exists($jobName, $this->autoCache)) {
@@ -138,7 +144,7 @@ class MapService
             $data = json_decode($resp->getBody(), true);
             return $data['id'] ?? null;
         } catch (\Exception $e) {
-            error_log("GitLab ID fetch failed for {$projectPath}: " . $e->getMessage());
+            $this->logger?->warning("GitLab ID fetch failed", ['project' => $projectPath, 'error' => $e->getMessage()]);
             return null;
         }
     }
@@ -157,6 +163,9 @@ class MapService
         }
         if (str_contains($url, 'gitee.com') || str_contains($url, 'gitee')) {
             return 'gitee';
+        }
+        if (str_contains($url, 'github.com') || str_contains($url, 'github')) {
+            return 'github';
         }
         return 'gitlab';
     }

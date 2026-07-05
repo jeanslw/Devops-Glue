@@ -9,6 +9,8 @@ use App\Controller\JenkinsController;
 use App\Controller\MainController;
 use App\Controller\GitController;
 use App\Controller\HarborController;
+use App\Middleware\CorsMiddleware;
+use App\Service\Logger;
 use GuzzleHttp\Client;
 use Psr\Http\Message\ResponseFactoryInterface;
 use Slim\Psr7\Factory\ResponseFactory;
@@ -26,7 +28,24 @@ return [
         return new AppConfig($settings);
     },
 
-    // Jenkins 服务
+    // ---------- 基础设施 ----------
+
+    // 日志服务
+    Logger::class => function (\Psr\Container\ContainerInterface $c) {
+        $config = $c->get(AppConfig::class);
+        return new Logger(
+            $config->getLogPath(),
+            $config->getAppEnv() === 'production' ? 'info' : 'debug'
+        );
+    },
+
+    // CORS 中间件
+    CorsMiddleware::class => function (\Psr\Container\ContainerInterface $c) {
+        $config = $c->get(AppConfig::class);
+        return new CorsMiddleware($config->getCorsConfig());
+    },
+
+    // ---------- Jenkins ----------
     JenkinsService::class => function (\Psr\Container\ContainerInterface $c) {
         return new JenkinsService(
             $c->get(AppConfig::class)->getJenkinsConfig()
@@ -36,22 +55,27 @@ return [
     // Map 服务
     MapService::class => function (\Psr\Container\ContainerInterface $c) {
         $config = $c->get(AppConfig::class);
-        return new MapService(
+        $service = new MapService(
             $c->get(JenkinsService::class),
             $config->getJobGitMap(),
             $config->getGitlabConfig(),
             __DIR__ . '/gitlab_id_cache.php'
         );
+        try { $service->setLogger($c->get(Logger::class)); } catch (\Throwable $e) {}
+        return $service;
     },
 
     // Git 服务
     GitService::class => function (\Psr\Container\ContainerInterface $c) {
         $config = $c->get(AppConfig::class);
-        return new GitService(
+        $service = new GitService(
             $c->get(MapService::class),
             $config->getGitlabConfig(),
-            $config->getGiteeConfig()
+            $config->getGiteeConfig(),
+            $config->getGithubConfig()
         );
+        try { $service->setLogger($c->get(Logger::class)); } catch (\Throwable $e) {}
+        return $service;
     },
 
     // Jenkins 控制器
@@ -67,7 +91,8 @@ return [
         return new \App\Controller\MainController(
             $c->get(JenkinsService::class),
             $c->get(MapService::class),
-            $c->get(AppConfig::class)
+            $c->get(AppConfig::class),
+            $c->get(HarborService::class)
         );
     },
 

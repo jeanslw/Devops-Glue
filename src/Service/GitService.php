@@ -8,26 +8,35 @@ class GitService
     private MapService $mapService;
     private array $gitlabConfig;
     private array $giteeConfig;
+    private array $githubConfig;
+    private ?Logger $logger = null;
 
     public function __construct(
         MapService $mapService,
         array $gitlabConfig = [],
-        array $giteeConfig = []
+        array $giteeConfig = [],
+        array $githubConfig = []
     ) {
         $this->mapService = $mapService;
         $this->gitlabConfig = $gitlabConfig;
         $this->giteeConfig = $giteeConfig;
+        $this->githubConfig = $githubConfig;
+    }
+
+    public function setLogger(Logger $logger): void
+    {
+        $this->logger = $logger;
     }
 
     public function getBranchesForJob(string $jobPath): array
     {
         $map = $this->mapService->getByJobName($jobPath);
         if (!$map) {
-            error_log("Git mapping not found for job: $jobPath");
+            $this->logger?->warning("Git mapping not found for job", ['job' => $jobPath]);
             return [];
         }
         $platform = $map['git_platform'];
-        $provider = GitProviderFactory::create($platform, $this->gitlabConfig, $this->giteeConfig);
+        $provider = GitProviderFactory::create($platform, $this->gitlabConfig, $this->giteeConfig, $this->githubConfig);
         $repo = $this->parseRepositoryPath($map['git_remote'] ?? '', $platform);
         return $provider->getBranches($repo);
     }

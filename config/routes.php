@@ -7,6 +7,27 @@ use App\Controller\HarborController;
 
 $app->group('/api', function (RouteCollectorProxy $api) {
 
+    // 健康检查
+    $api->map(['GET'], '/health', [MainController::class, 'health']);
+
+    // API 文档 (Swagger UI)
+    $api->get('/docs', function ($request, $response) {
+        $htmlFile = __DIR__ . '/../templates/swagger.html';
+        $response->getBody()->write(file_exists($htmlFile)
+            ? file_get_contents($htmlFile)
+            : '<h1>文档文件丢失</h1>');
+        return $response->withHeader('Content-Type', 'text/html; charset=utf-8');
+    });
+
+    // OpenAPI 规范
+    $api->get('/openapi.json', function ($request, $response) {
+        $specFile = __DIR__ . '/../templates/openapi.json';
+        $response->getBody()->write(file_exists($specFile)
+            ? file_get_contents($specFile)
+            : '{}');
+        return $response->withHeader('Content-Type', 'application/json');
+    });
+
     $api->group('/main', function (RouteCollectorProxy $main) {
         $main->map(['GET', 'POST'], '/jobs/list', [MainController::class, 'jobsList']);
         $main->map(['GET', 'POST'], '/map/list', [MainController::class, 'mapList']);

@@ -3,7 +3,7 @@ namespace App\Service\Git;
 
 class GitProviderFactory
 {
-    public static function create(string $platform, array $gitlabConfig, array $giteeConfig): GitProviderInterface
+    public static function create(string $platform, array $gitlabConfig, array $giteeConfig, array $githubConfig = []): GitProviderInterface
     {
         return match ($platform) {
             'gitlab' => new GitlabService(
@@ -13,6 +13,10 @@ class GitProviderFactory
             'gitee'  => new GiteeService(
                 $giteeConfig['base_url'] ?? 'https://gitee.com/api/v5',
                 $giteeConfig['token'] ?? ''
+            ),
+            'github' => new GithubService(
+                $githubConfig['base_url'] ?? 'https://api.github.com',
+                $githubConfig['token'] ?? ''
             ),
             default => throw new \InvalidArgumentException("Unsupported git platform: $platform"),
         };

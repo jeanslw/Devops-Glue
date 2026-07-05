@@ -5,6 +5,7 @@ use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Service\JenkinsService;
 use App\Service\MapService;
+use App\Service\HarborService;
 use App\Config\AppConfig;
 
 class MainController extends BaseController
@@ -12,12 +13,14 @@ class MainController extends BaseController
     private JenkinsService $jenkins;
     private MapService $map;
     private AppConfig $config;
+    private ?HarborService $harbor;
 
-    public function __construct(JenkinsService $jenkins, MapService $map, AppConfig $config)
+    public function __construct(JenkinsService $jenkins, MapService $map, AppConfig $config, ?HarborService $harbor = null)
     {
         $this->jenkins = $jenkins;
         $this->map = $map;
         $this->config = $config;
+        $this->harbor = $harbor;
     }
 
     /**
@@ -127,6 +130,51 @@ class MainController extends BaseController
             'configured'   => $configured,
             'unconfigured' => $unconfigured,
         ];
+        return $this->output($response, $data, $request);
+    }
+
+    /**
+     * 健康检查端点
+     */
+    public function health(Request $request, Response $response): Response
+    {
+        $checks = [
+            'jenkins' => false,
+            'harbor'  => false,
+        ];
+
+        try {
+            $this->jenkins->getAllJobs();
+            $checks['jenkins'] = true;
+        } catch (\Exception $e) {
+            $checks['jenkins'] = false;
+        }
+
+        if ($this->harbor) {
+            try {
+                $projects = $this->harbor->getProjects();
+                $checks['harbor'] = !isset($projects['error']);
+            } catch (\Exception $e) {
+                $checks['harbor'] = false;
+            }
+        } else {
+            $checks['harbor'] = null; // 未配置
+        }
+
+        $allOk = $checks['jenkins'] && ($checks['harbor'] === true || $checks['harbor'] === null);
+        $status = $allOk ? 'ok' : 'degraded';
+
+        $data = [
+            'status'   => $status,
+            'checks'   => $checks,
+            'app_env'  => $this->config->getAppEnv(),
+            'time'     => date('Y-m-d H:i:s'),
+        ];
+
+        if (!$allOk) {
+            return $this->jsonError($response, '服务降级: ' . json_encode($checks), 503);
+        }
+
         return $this->output($response, $data, $request);
     }
 
