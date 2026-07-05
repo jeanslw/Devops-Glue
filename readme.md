@@ -500,7 +500,7 @@ php test/test_api_html_simp.php
 十一、更新日志
 版本	日期	变更内容
 v2.2	2026-07-05	新增 GitHub 平台完整接入；Harbor v2 镜像扫描；健康检查端点 /api/health；Swagger UI 文档 /api/docs；CORS 跨域支持；结构化文件日志；Docker 部署支持；ApiException 异常类
-v2.1	2026-03-05	Slim 4 重构。新增 Main 模块（平台接入、多方映射）；触发构建支持单/双参数动态适配；输出格式切换（raw/json/xml）；Harbor 扫描集成（Trivy 离线）
+v2.0	2026-03-05	Slim 4 重构。新增 Main 模块（平台接入、多方映射）；触发构建支持单/双参数动态适配；输出格式切换（raw/json/xml）；Harbor 扫描集成（Trivy 离线）
 v1.1	2021-11-01	增加 Harbor 查询功能
 v1.0	2018-09-28	初始版本，Jenkins、Git 与 Rundeck 三方集成
 
