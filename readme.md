@@ -1,7 +1,7 @@
-Devops-Glue API 文档 v2.2
+Devops-Glue API 文档 v2.1
 概述
 
-Devops-Glue 是一套为小企业提供的 DevOps 工具链集成接口，实现 Jenkins、GitLab、Gitee、GitHub、Harbor 等工具的一键集成与互通。基于 Slim 4 框架，PHP 8+。
+Devops-Glue 是一套为小企业提供的 DevOps 工具链集成接口，基于 Slim 4 框架实现 Jenkins、GitLab/Gitee/GitHub、Harbor 等工具的一键集成与数据互通。
 
 环境要求
 框架: Slim 4
@@ -18,7 +18,7 @@ GitLab v17.0
 
 Gitee API v5
 
-GitHub API v3（公有云 + 企业版）
+GitHub API v3
 
 Harbor v1.10.1 / v2.x
 
@@ -97,7 +97,7 @@ CORS 支持
 
 日志级别：production → info，其他环境 → debug。
 
-零、健康检查
+一、健康检查
 URL: /api/health
 
 方法: GET
@@ -108,6 +108,7 @@ URL: /api/health
   "status": "ok",
   "checks": {
     "jenkins": true,
+    "git": [{"name": "gitlab", "reachable": true}],
     "harbor": true
   },
   "app_env": "production",
@@ -118,8 +119,8 @@ status: ok（正常）/ degraded（部分服务不可用）
 
 HTTP 状态码: 200（ok）/ 503（degraded）
 
-一、Main 模块 (/api/main)
-1.1 获取所有 Job 列表
+二、Main 模块 (/api/main)
+2.1 获取所有 Job 列表
 URL: /api/main/jobs/list
 
 方法: GET / POST
@@ -128,7 +129,7 @@ URL: /api/main/jobs/list
 
 
 ["java/registry", "php/myapp", "static"]
-1.2 Job / Git / Harbor 三方映射（按项目分组）
+2.2 Job / Git / Harbor 三方映射（按项目分组）
 URL: /api/main/map/list
 
 方法: GET / POST
@@ -156,7 +157,7 @@ URL: /api/main/map/list
     "jobs": ["php/myapp"]
   }
 }
-1.3 已接入的 Git 平台列表（静态配置）
+2.3 已接入的 Git 平台列表（静态配置）
 URL: /api/main/git/platforms
 
 方法: GET / POST
@@ -187,7 +188,7 @@ json
     "api_version": "v2.0"
   }
 }
-1.4 平台接入检测（动态扫描）
+2.4 平台接入检测（动态扫描）
 URL: /api/main/git/discovery
 
 方法: GET / POST
@@ -202,8 +203,8 @@ json
   ],
   "unconfigured": []
 }
-二、Jenkins 模块 (/api/jenkins)
-2.1 触发构建
+三、Jenkins 模块 (/api/jenkins)
+3.1 触发构建
 URL:
 
 单参数 Job: /api/jenkins/{job}/{branch_value}/build_trigger
@@ -233,7 +234,7 @@ Job 必须有恰好 1 或 2 个参数，否则拒绝
 
 错误信息提示值不合法。
 
-2.2 查询构建参数
+3.2 查询构建参数
 URL: /api/jenkins/{group}/{project}/parameters 或 /api/jenkins/{group}/{project}/{build_id}/parameters
 
 方法: GET / POST
@@ -254,50 +255,50 @@ build_id>0: 返回指定历史构建的参数名列表
 
 >0: ["zone","branches"]
 
-2.3 查询构建状态
+3.3 查询构建状态
 URL: /api/jenkins/{group}/{project}/{build_id}/status
 
 方法: GET / POST
 
 输出: ["SUCCESS"], ["FAILURE"], ["ABORTED"], ["UNSTABLE"]
 
-2.4 构建 ID 列表
+3.4 构建 ID 列表
 URL: /api/jenkins/{group}/{project}/build_id
 
 方法: GET / POST
 
 输出: ["12","11","10"]
 
-2.5 成功构建列表（带时间）
+3.5 成功构建列表（带时间）
 URL: /api/jenkins/{group}/{project}/build_time
 
 方法: GET / POST
 
 输出: ["#20 [2026-06-24 18:56:44]","#18 [2026-06-21 17:27:06]"]
 
-2.6 成功构建列表（带 # 号）
+3.6 成功构建列表（带 # 号）
 URL: /api/jenkins/{group}/{project}/build
 
 方法: GET / POST
 
 输出: ["#14","#13","#12"]
 
-2.7 控制台日志
+3.7 控制台日志
 URL: /api/jenkins/{group}/{project}/{build_id}/console
 
 方法: GET / POST
 
 输出: text/plain
 
-2.8 Git 分支查询（Jenkins 路径）
+3.8 Git 分支查询（Jenkins 路径）
 URL: /api/jenkins/{group}/{project}/branches
 
 方法: GET / POST
 
 说明: 等同于 /api/git/{job}/branches
 
-三、Git 模块 (/api/git)
-3.1 查询 Job 对应的 Git 分支列表
+四、Git 模块 (/api/git)
+4.1 查询 Job 对应的 Git 分支列表
 URL: /api/git/{group}/{project}/branches
 
 方法: GET / POST
@@ -306,22 +307,22 @@ URL: /api/git/{group}/{project}/branches
 
 说明: 支持 GitLab、Gitee、GitHub 三种平台，自动根据 Job 在映射配置中关联的 Git 仓库查询。
 
-四、Harbor 模块 (/api/harbor)
-4.1 获取项目列表
+五、Harbor 模块 (/api/harbor)
+5.1 获取项目列表
 URL: /api/harbor/projects
 
 方法: GET / POST
 
 输出: ["library","mycode","toolkit"]
 
-4.2 获取仓库列表
+5.2 获取仓库列表
 URL: /api/harbor/{project}/repositories
 
 方法: GET / POST
 
 输出: ["diagnosis-runtime","nginx"]
 
-4.3 获取 Tag 列表
+5.3 获取 Tag 列表
 URL: /api/harbor/{project}/repositories/{repository}/tags
 
 方法: GET / POST
@@ -330,7 +331,7 @@ URL: /api/harbor/{project}/repositories/{repository}/tags
 
 输出: ["v1.0.0","v1.0.1"]
 
-4.4 触发镜像扫描
+5.4 触发镜像扫描
 URL: /api/harbor/{project}/repositories/{repository}/tags/{tag}/scan
 
 方法: POST
@@ -339,7 +340,7 @@ URL: /api/harbor/{project}/repositories/{repository}/tags/{tag}/scan
 
 说明: 支持 Harbor v1（1.10.x）和 v2（2.x）两种 API 版本，自动检测。
 
-4.5 获取扫描报告
+5.5 获取扫描报告
 URL: /api/harbor/{project}/repositories/{repository}/tags/{tag}/scan
 
 方法: GET
@@ -348,14 +349,14 @@ URL: /api/harbor/{project}/repositories/{repository}/tags/{tag}/scan
 
 说明: Harbor v2 返回 application/vnd.security.vulnerability.report 格式的漏洞数据。
 
-五、API 文档（Swagger UI）
+六、API 文档（Swagger UI）
 URL: /api/docs
 
 方法: GET
 
 说明: 浏览器打开即可浏览全部接口，支持在线 Try it out 交互式调试。
 
-六、错误处理
+七、错误处理
 所有错误响应统一格式：
 
 json
@@ -371,7 +372,7 @@ json
 500	服务端错误（Jenkins/Harbor 连接失败等）
 503	服务不可用（Harbor 扫描器未启用等）
 
-七、配置说明
+八、配置说明
 环境变量 (.env)
 ini
 # Jenkins
@@ -420,7 +421,7 @@ php
     'allowed_methods' => ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     'allowed_headers' => ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
 ],
-八、快速测试命令
+九、快速测试命令
 bash
 # 健康检查
 curl "http://URL/api/health"
@@ -459,7 +460,7 @@ curl "http://URL/api/harbor/mycode/repositories/diagnosis-runtime/tags/v1.0.0/sc
 # CORS 预检测试
 curl -X OPTIONS "http://URL/api/main/jobs/list" -H "Origin: http://example.com" -v
 
-九、测试
+十、测试
 测试脚本位于 test/ 目录：
 
 bash
@@ -470,9 +471,9 @@ php test/test_api_html.php
 php test/test_api_html_simp.php
 生成 HTML 报告，可浏览器打开查看。
 
-十、项目结构
+十一、项目结构
 ├── config/                 # 服务端配置
-│   ├── .env                # 环境变量（密钥，不入库）
+│   ├── .env                # 环境变量
 │   ├── .env.example        # 环境变量模板
 │   ├── settings.php        # 主配置 + 映射表
 │   ├── AppConfig.php       # 配置访问器
@@ -492,16 +493,16 @@ php test/test_api_html_simp.php
 │   ├── 404.html            # 404 页面
 │   ├── swagger.html        # Swagger UI
 │   └── openapi.json        # OpenAPI 3.0 规范
-├── test/                   # 测试脚本
 ├── Dockerfile              # Docker 镜像
 ├── docker-compose.yml      # Docker 编排
 └── .dockerignore           # Docker 排除文件
 
-十一、更新日志
+十二、更新日志
+
 版本	日期	变更内容
-v2.1.2	2026-07-05	新增 GitHub 平台完整接入；Harbor v2 镜像扫描；健康检查端点 /api/health；Swagger UI 文档 /api/docs；CORS 跨域支持；结构化文件日志；Docker 部署支持；ApiException 异常类
-v2.1.1	2026-03-05	Slim 4 重构。新增 Main 模块（平台接入、多方映射）；触发构建支持单/双参数动态适配；输出格式切换（raw/json/xml）；Harbor 扫描集成（Trivy 离线）
+v2.1.2	2026-07-04	新增首页支持健康检查、 GitHub 平台接入；健康检查端点 /api/health；Swagger UI 文档 /api/docs；CORS 跨域支持；结构化文件日志；Docker 部署支持；ApiException 异常类优化。
+v2.1.1	2026-03-05	Slim 4 重构。新增 Main 模块（平台接入、多方映射）；触发构建支持单/双参数动态适配；输出格式切换（raw/json/xml）；Harbor 扫描集成（Trivy 离线），Harbor v2 镜像扫描；
 v1.1	2021-11-01	增加 Harbor 查询功能
 v1.0	2018-09-28	初始版本，Jenkins、Git 与 Rundeck 三方集成
 
-十二、如有建议可在 GitHub 仓库提 issue ，或联系EMAIL:jeanslw@qq.com
+十三、如有建议可在 GitHub 仓库提 issue ，或联系EMAIL:jeanslw@qq.com

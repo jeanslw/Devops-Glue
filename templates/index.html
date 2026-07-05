@@ -227,29 +227,46 @@
     </nav>
 
     <section class="hero">
-        <div class="status-badge">
-            <span class="status-dot"></span>
-            系统运行正常
+        <div class="status-badge" id="overall-status">
+            <span class="status-dot" id="overall-dot"></span>
+            <span id="overall-text">正在检测...</span>
         </div>
-        <h1>欢迎使用 API 服务</h1>
-        <p>这是一个基于框架构建的高性能、高可用后端服务。一切就绪，随时准备为您提供稳定的服务.</p>
+        <h1>Devops-Glue</h1>
+        <p>Jenkins · Git · Harbor 一站式 DevOps 工具链集成平台</p>
     </section>
 
     <section class="features">
+        <div class="card" id="service-status-card">
+            <div class="card-icon">📊</div>
+            <h3>服务健康状态</h3>
+            <div class="health-grid">
+                <div class="health-item" id="health-jenkins">
+                    <span class="health-icon">⏳</span>
+                    <span class="health-name">Jenkins</span>
+                    <span class="health-status">检测中...</span>
+                </div>
+                <div class="health-item" id="health-git">
+                    <span class="health-icon">⏳</span>
+                    <span class="health-name">Git 平台</span>
+                    <span class="health-status">检测中...</span>
+                </div>
+                <div class="health-item" id="health-harbor">
+                    <span class="health-icon">⏳</span>
+                    <span class="health-name">Harbor</span>
+                    <span class="health-status">检测中...</span>
+                </div>
+            </div>
+            <p style="margin-top:15px;font-size:13px;color:#999;" id="health-time"></p>
+        </div>
         <div class="card">
             <div class="card-icon">⚡</div>
-            <h3>极速响应</h3>
-            <p>采用轻量级框架，去除冗余依赖，确保每一次 API 请求都能在毫秒级完成响应。</p>
+            <h3>一键构建</h3>
+            <p>通过 API 触发 Jenkins 构建，自动适配单/双参数 Job，支持 CSRF crumb 自动处理。</p>
         </div>
         <div class="card">
-            <div class="card-icon">🔒</div>
-            <h3>安全可靠</h3>
-            <p>内置完善的中间件鉴权机制与错误拦截系统，保障数据传输与接口调用的绝对安全。</p>
-        </div>
-        <div class="card">
-            <div class="card-icon">🛠️</div>
-            <h3>易于扩展</h3>
-            <p>清晰的 MVC 架构与依赖注入设计，让业务逻辑的迭代与功能扩展变得轻而易举。</p>
+            <div class="card-icon">🔗</div>
+            <h3>多方映射</h3>
+            <p>自动关联 Jenkins Job → Git 仓库 → Harbor 镜像，三方关系一目了然。</p>
         </div>
     </section>
 
@@ -259,8 +276,99 @@
     </section>
 
     <footer class="footer">
-        &copy; 2026 © Blues.inc  Powered by Slim Framework.
+        &copy; 2026 © Blues.Inc  Powered by Slim Framework.
     </footer>
+
+    <script>
+    (async function checkHealth() {
+        const jenkinsEl  = document.getElementById('health-jenkins');
+        const gitEl      = document.getElementById('health-git');
+        const harborEl   = document.getElementById('health-harbor');
+        const overallDot = document.getElementById('overall-dot');
+        const overallTxt = document.getElementById('overall-text');
+        const timeEl     = document.getElementById('health-time');
+
+        function setHealth(el, ok, label) {
+            const icon   = el.querySelector('.health-icon');
+            const status = el.querySelector('.health-status');
+            if (ok && label && label.includes('❌')) {
+                // 部分降级：有个别平台异常
+                icon.textContent = '⚠️';
+                status.textContent = label;
+                status.style.color = '#d97706';
+            } else if (ok) {
+                icon.textContent = '✅';
+                status.textContent = label || '正常';
+                status.style.color = '#16a34a';
+            } else if (ok === null) {
+                icon.textContent = '⚠️';
+                status.textContent = label || '未配置';
+                status.style.color = '#d97706';
+            } else {
+                icon.textContent = '❌';
+                status.textContent = label || '异常';
+                status.style.color = '#dc2626';
+            }
+        }
+
+        try {
+            const res  = await fetch('/api/health');
+            const data = await res.json();
+            const checks = data.checks || {};
+
+            const jenkinsOk = checks.jenkins === true;
+            const harborOk  = checks.harbor === true;
+
+            // Git 平台：从 health 接口直接读取
+            const gitData = checks.git;
+            let gitOk = false, gitDetail = [];
+            if (gitData === null || gitData === undefined) {
+                setHealth(gitEl, null, '未配置 Git 平台');
+                gitOk = true; // 未配置不算异常
+            } else if (Array.isArray(gitData)) {
+                gitOk = gitData.some(p => p.reachable);
+                gitDetail = gitData.map(p => (p.reachable ? '✅' : '❌') + ' ' + p.name).join(' ');
+                setHealth(gitEl, gitOk, gitDetail || '无法连接');
+            } else {
+                gitOk = false;
+                setHealth(gitEl, false, '未知');
+            }
+
+            setHealth(jenkinsEl, jenkinsOk, jenkinsOk ? '正常' : 'Jenkins 不可用');
+            setHealth(harborEl,  harborOk,  harborOk === null ? '未配置' : (harborOk ? '正常' : 'Harbor 不可用'));
+
+            const allOk = jenkinsOk && gitOk && harborOk;
+            overallDot.style.background = allOk ? '#4ade80' : '#fbbf24';
+            overallTxt.textContent = allOk ? '所有服务运行正常' : '部分服务异常';
+            timeEl.textContent = '最后检测: ' + (data.time || new Date().toLocaleString());
+        } catch(e) {
+            [jenkinsEl, gitEl, harborEl].forEach(el => setHealth(el, false, '无法连接'));
+            overallDot.style.background = '#ef4444';
+            overallTxt.textContent = 'API 服务不可达';
+        }
+    })();
+    </script>
+
+    <style>
+        .health-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 12px;
+        }
+        .health-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            background: #f8fafc;
+            border-radius: 10px;
+            font-size: 15px;
+        }
+        .health-icon { font-size: 20px; }
+        .health-name { flex: 1; font-weight: 600; color: #333; }
+        .health-status { color: #666; }
+    </style>
 
 </body>
 </html>

@@ -9,7 +9,7 @@
     }
   },
   "servers": [
-    { "url": "http://public.test:8080", "description": "测试环境" }
+    { "url": "http://Your_Server_URL", "description": "测试环境" }
   ],
   "tags": [
     { "name": "Main", "description": "概览与映射" },
@@ -67,6 +67,10 @@
           "status":  { "type": "string", "example": "ok" },
           "checks":  { "type": "object", "properties": {
             "jenkins": { "type": "boolean" },
+            "git":     { "type": "array", "items": { "type": "object", "properties": {
+              "name": { "type": "string" },
+              "reachable": { "type": "boolean" }
+            }}, "nullable": true, "description": "null 表示未配置 Git 平台" },
             "harbor":  { "type": "boolean", "nullable": true }
           }},
           "app_env": { "type": "string", "example": "production" },

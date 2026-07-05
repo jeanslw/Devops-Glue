@@ -140,6 +140,7 @@ class MainController extends BaseController
     {
         $checks = [
             'jenkins' => false,
+            'git'     => [],
             'harbor'  => false,
         ];
 
@@ -148,6 +149,53 @@ class MainController extends BaseController
             $checks['jenkins'] = true;
         } catch (\Exception $e) {
             $checks['jenkins'] = false;
+        }
+
+        // Git 平台连通性检查（优先取 Job 关联的平台，Jenkins 不可用时降级为全部已配置）
+        $usedPlatforms = [];
+        try {
+            $maps = $this->map->getAllMaps();
+            foreach ($maps as $map) {
+                $platform = $map['git_platform'] ?? '';
+                if ($platform && !in_array($platform, $usedPlatforms)) {
+                    $usedPlatforms[] = $platform;
+                }
+            }
+        } catch (\Exception $e) {
+            // Jenkins 不可用，降级为检测所有已配置的 Git 平台
+        }
+
+        // 构建已配置平台的 URL 索引（含正确 API 路径）
+        $configuredPlatforms = [];
+        foreach ($this->config->getGitPlatformsConfig() as $p) {
+            $configuredPlatforms[$p['name']] = $p['api_base_url'];
+        }
+
+        if (empty($usedPlatforms)) {
+            // 无 Job 映射或 Jenkins 不可用：取全部已配置平台
+            $usedPlatforms = array_keys($configuredPlatforms);
+        }
+
+        if (empty($usedPlatforms)) {
+            $checks['git'] = null;
+        } else {
+            foreach ($usedPlatforms as $name) {
+                $apiUrl = $configuredPlatforms[$name] ?? null;
+                $reachable = false;
+                if ($apiUrl) {
+                    try {
+                        $client = new \GuzzleHttp\Client(['timeout' => 5, 'http_errors' => false]);
+                        $resp = $client->head($apiUrl);
+                        $reachable = $resp->getStatusCode() < 500;
+                    } catch (\Exception $e) {
+                        $reachable = false;
+                    }
+                }
+                $checks['git'][] = [
+                    'name'      => $name,
+                    'reachable' => $reachable,
+                ];
+            }
         }
 
         if ($this->harbor) {
@@ -161,7 +209,8 @@ class MainController extends BaseController
             $checks['harbor'] = null; // 未配置
         }
 
-        $allOk = $checks['jenkins'] && ($checks['harbor'] === true || $checks['harbor'] === null);
+        $gitOk = $checks['git'] === null || !empty(array_filter($checks['git'], fn($g) => $g['reachable']));
+        $allOk = $checks['jenkins'] && $gitOk && ($checks['harbor'] === true || $checks['harbor'] === null);
         $status = $allOk ? 'ok' : 'degraded';
 
         $data = [
@@ -171,11 +220,9 @@ class MainController extends BaseController
             'time'     => date('Y-m-d H:i:s'),
         ];
 
-        if (!$allOk) {
-            return $this->jsonError($response, '服务降级: ' . json_encode($checks), 503);
-        }
-
-        return $this->output($response, $data, $request);
+        $response->getBody()->write(json_encode($data));
+        $httpCode = $allOk ? 200 : 503;
+        return $response->withStatus($httpCode)->withHeader('Content-Type', 'application/json');
     }
 
     /**

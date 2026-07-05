@@ -111,6 +111,12 @@ class AppConfig
         ];
     }
 
+    // 按名称获取单个 Git 平台配置
+    public function getGitPlatformConfig(string $name): array
+    {
+        return $this->config['git'][$name] ?? [];
+    }
+
     // 判断某个平台是否已在配置中（用于 discovery 对比）
     public function isPlatformConfigured(string $platformName): bool
     {
