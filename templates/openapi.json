@@ -3,7 +3,7 @@
   "info": {
     "title": "Devops-Glue API",
     "version": "2.1",
-    "description": "DevOps 工具链集成接口 —— Jenkins、GitLab、Gitee、GitHub、Harbor 一键集成与互通",
+    "description": "DevOps 工具链集成接口 —— Jenkins、GitLab/Gitee/GitHub、Harbor 一键集成与数据互通。",
     "contact": {
       "email": "jeanslw@qq.com"
     }

@@ -10,7 +10,7 @@ if (!function_exists('env')) {
 return [
     // ==================== Jenkins ====================
     'jenkins' => [
-        'url'   => env('JENKINS_BASE_URL', 'http://192.168.137.5:8083'),
+        'url'   => env('JENKINS_BASE_URL', 'http://Jenkins_URL'),
         'user'  => env('JENKINS_USER', 'admin'),
         'token' => env('JENKINS_TOKEN'),
     ],
@@ -36,10 +36,10 @@ return [
 
     // ==================== Harbor ====================
     'harbor' => [
-        'url'      => env('HARBOR_BASE_URL', 'http://192.168.137.5'),
+        'url'      => env('HARBOR_BASE_URL', 'http://Harbor_URL'),
         'username' => env('HARBOR_USER', 'admin'),
         'password' => env('HARBOR_PASSWORD'),
-        'repo'     => env('HARBOR_REPO', '192.168.137.5'),
+        'repo'     => env('HARBOR_REPO', 'Harbor_URL'),
     ],
 
     // ==================== App ====================
@@ -54,26 +54,18 @@ return [
         [
             'job_name'          => 'java/registry',
             'project_id'        => 2,
-            'web_url'           => 'http://urs/tools/registry',
-            'current_path'      => 'tools/registry',
             'harbor_repository' => 'mycode/code-runtime',
             'api_version'       => 'v4', //不填默认自动推导
         ],
         [
             'job_name'          => 'php/myapp',
             'project_id'        => 5,
-            'web_url'           => 'http://urs/tools/myapp',
-            'current_path'      => 'tools/myapp',
             'harbor_repository' => 'mycode/myapp',
             'api_version'       => 'v5',//不填默认自动推导
         ],
         [
             'job_name'          => 'static',
             'project_id'        => null,   // Gitee 项目 ID，若已知可填写
-            'web_url'           => 'https://gitee.com/lucky-boy1/git_one_app',
-            'current_path'      => 'lucky-boy1/git_one_app',
-            'group_id'          => '',
-            'owner'             => 'devops-team',
             'harbor_repository' => 'mycode/static-app',
             'api_version'       => 'v1',//不填默认自动推导
         ],
