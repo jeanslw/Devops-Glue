@@ -26,7 +26,11 @@
         presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
         layout: "StandaloneLayout",
         defaultModelsExpandDepth: -1,
-        defaultModelExpandDepth: 1
+        defaultModelExpandDepth: 1,
+        requestInterceptor: function(req) {
+          req.url = req.url.replace(/%2[Ff]/g, '/');
+          return req;
+        }
       });
     };
   </script>
