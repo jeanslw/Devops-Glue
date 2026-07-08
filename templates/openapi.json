@@ -9,7 +9,7 @@
     }
   },
   "servers": [
-    { "url": "http://Your_Server_URL", "description": "测试环境" }
+    { "url": "", "description": "测试环境" }
   ],
   "tags": [
     { "name": "Main", "description": "概览与映射" },

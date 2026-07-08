@@ -19,12 +19,24 @@ $app->group('/api', function (RouteCollectorProxy $api) {
         return $response->withHeader('Content-Type', 'text/html; charset=utf-8');
     });
 
-    // OpenAPI 规范
+    // OpenAPI 规范（自动注入当前服务器地址）
     $api->get('/openapi.json', function ($request, $response) {
         $specFile = __DIR__ . '/../templates/openapi.json';
-        $response->getBody()->write(file_exists($specFile)
-            ? file_get_contents($specFile)
-            : '{}');
+        $spec = file_exists($specFile)
+            ? json_decode(file_get_contents($specFile), true)
+            : ['openapi' => '3.0.3', 'info' => ['title' => 'Devops-Glue API'], 'paths' => []];
+
+        // 从当前请求自动推导服务器 URL（80/443 省略端口）
+        $uri  = $request->getUri();
+        $port = $uri->getPort();
+        $isDefault = ($uri->getScheme() === 'http'  && $port === 80)
+                  || ($uri->getScheme() === 'https' && $port === 443);
+        $spec['servers'] = [[
+            'url'         => $uri->getScheme() . '://' . $uri->getHost() . (($port && !$isDefault) ? ':' . $port : ''),
+            'description' => '当前环境',
+        ]];
+
+        $response->getBody()->write(json_encode($spec, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
         return $response->withHeader('Content-Type', 'application/json');
     });
 

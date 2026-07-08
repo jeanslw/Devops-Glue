@@ -19,11 +19,25 @@ class HarborService
         if ($this->apiVersion !== null) {
             return $this->apiVersion;
         }
+        // 直接用 v2 项目列表端点探测，比 HEAD systeminfo 更可靠
         try {
-            $this->client->head('/api/v2.0/systeminfo', ['http_errors' => true]);
+            $this->client->get('/api/v2.0/projects', [
+                'http_errors' => true,
+                'query'       => ['page_size' => 1],
+            ]);
             $this->apiVersion = 'v2';
+        } catch (ClientException $e) {
+            $code = $e->getResponse()?->getStatusCode();
+            // 404 说明不是 v2，否则（401/403 等）v2 存在只是认证问题
+            $this->apiVersion = ($code === 404) ? 'v1' : 'v2';
         } catch (\Throwable $e) {
-            $this->apiVersion = 'v1';
+            // 连不上，尝试 v1
+            try {
+                $this->client->get('/api/projects', ['http_errors' => false]);
+                $this->apiVersion = 'v1';
+            } catch (\Throwable $e2) {
+                $this->apiVersion = 'v2'; // 都连不上默认 v2
+            }
         }
         return $this->apiVersion;
     }
