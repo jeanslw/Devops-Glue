@@ -3,6 +3,8 @@ services:
     build: .
     ports:
       - "8080:80"
+    environment:
+      - TZ=Asia/Shanghai
     env_file:
       - config/.env
     volumes:

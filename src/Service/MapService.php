@@ -2,25 +2,33 @@
 namespace App\Service;
 
 use GuzzleHttp\Client;
+use App\Service\Git\ProviderRegistry;
+use App\Exceptions\ApiException;
 
 class MapService
 {
     private JenkinsService $jenkins;
+    private ProviderRegistry $registry;
     private array $manualMap;
     private array $gitlabConfig;
     private string $cacheFile;
+    private string $defaultPlatform;
     private array $autoCache = [];
     private ?Logger $logger = null;
 
     public function __construct(
         JenkinsService $jenkins,
+        ProviderRegistry $registry,
         array $manualConfig = [],
         array $gitlabConfig = [],
-        string $cacheFile = ''
+        string $cacheFile = '',
+        string $defaultPlatform = 'gitlab'
     ) {
         $this->jenkins = $jenkins;
+        $this->registry = $registry;
         $this->gitlabConfig = $gitlabConfig;
         $this->cacheFile = $cacheFile;
+        $this->defaultPlatform = $defaultPlatform;
 
         // 索引化手动配置
         $this->manualMap = [];
@@ -60,12 +68,16 @@ class MapService
 
         $remotes = $this->jenkins->getGitRemotes($resolved['fullName']);
         $remote = $remotes[0] ?? '';
-        $platform = $this->detectPlatform($remote);
+        $detection = $this->detectPlatform($remote);
+        $platform = $detection['platform'];
+        $detectionMethod = $detection['method'];
 
         // 基础自动数据（可以设置一些默认字段）
         $base = [
-            'job_name'     => $jobName,
-            'git_platform' => $platform,
+            'job_name'         => $jobName,
+            'git_platform'     => $platform,
+            'platform_source'  => 'auto',          // auto | manual（是否由 job_git_map 手动指定）
+            'detection_method' => $detectionMethod, // exact | fallback（URL 匹配结果，仅 auto 时有意义）
             'git_remote'   => $remote,
             'status'       => 'synced',
             'message'      => '',
@@ -87,18 +99,45 @@ class MapService
                     $base[$key] = $value;
                 }
             }
+            // 如果手动指定了 git_platform，标记为手动选择（不再兜底）
+            if (!empty($this->manualMap[$jobName]['git_platform'])) {
+                $base['platform_source']  = 'manual';
+                $base['detection_method'] = 'manual';
+            }
         }
 
-        // 自动获取 GitLab 的 project_id（如果手动没填，且是 GitLab）
+        // GitLab API v4 需要 project_id（数字），其他平台用 owner/repo 路径即可
+        // 如果手动未填写且是 GitLab，则自动通过 API 查询
         if (empty($base['project_id']) && $platform === 'gitlab') {
             $base['project_id'] = $this->getGitlabIdWithCache($jobName, $remote);
         }
 
         return $base;
     }
+
     public function setLogger(Logger $logger): void
     {
         $this->logger = $logger;
+    }
+
+    /**
+     * 根据 Git remote URL 检测所属平台（委托给 ProviderRegistry）
+     *
+     * @param string $url Git remote URL
+     * @return array{platform: string, method: string} 平台名 + 检测方式（exact | fallback）
+     */
+    private function detectPlatform(string $url): array
+    {
+        try {
+            return ['platform' => $this->registry->detect($url), 'method' => 'exact'];
+        } catch (ApiException $e) {
+            $this->logger?->warning('Git 平台检测失败，回退默认平台', [
+                'url'              => $url,
+                'default_platform' => $this->defaultPlatform,
+                'error'            => $e->getMessage(),
+            ]);
+            return ['platform' => $this->defaultPlatform, 'method' => 'fallback'];
+        }
     }
 
     private function getGitlabIdWithCache(string $jobName, string $remote): ?int
@@ -151,22 +190,10 @@ class MapService
 
     private function saveAutoCache(): void
     {
-        if (!$this->cacheFile) return;
+        if (!$this->cacheFile) {
+            return;
+        }
         $content = "<?php\nreturn " . var_export($this->autoCache, true) . ";\n";
         file_put_contents($this->cacheFile, $content);
-    }
-
-    private function detectPlatform(string $url): string
-    {
-        if (str_contains($url, 'gitlab') || str_contains($url, '192.168.137.5:8082')) {
-            return 'gitlab';
-        }
-        if (str_contains($url, 'gitee.com') || str_contains($url, 'gitee')) {
-            return 'gitee';
-        }
-        if (str_contains($url, 'github.com') || str_contains($url, 'github')) {
-            return 'github';
-        }
-        return 'gitlab';
     }
 }

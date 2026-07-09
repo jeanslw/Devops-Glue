@@ -5,6 +5,8 @@ use App\Service\JenkinsService;
 use App\Service\GitService;
 use App\Service\MapService;
 use App\Service\HarborService;
+use App\Service\Git\ProviderRegistry;
+use App\Service\Git\GitProviderFactory;
 use App\Controller\JenkinsController;
 use App\Controller\MainController;
 use App\Controller\GitController;
@@ -45,11 +47,130 @@ return [
         return new CorsMiddleware($config->getCorsConfig());
     },
 
+    // ---------- Git Provider 注册表 ----------
+
+    ProviderRegistry::class => function (\Psr\Container\ContainerInterface $c) {
+        $config = $c->get(AppConfig::class);
+        $logger  = $c->get(Logger::class);
+        $registry = new ProviderRegistry();
+        $registry->setLogger($logger);
+
+        // ---- 内置平台（仅已配置的才注册，未配置的不可用也不展示）----
+
+        // GitLab（自建，base_url 为空则跳过）
+        if ($config->isPlatformConfigured('gitlab')) {
+            $gitlabCfg = $config->getGitlabConfig();
+            $registry->register(
+                'gitlab',
+                fn(string $url) => str_contains($url, 'gitlab'),
+                function () use ($gitlabCfg, $logger) {
+                    return new \App\Service\Git\GitlabService(
+                        $gitlabCfg['base_url'] ?? '',
+                        $gitlabCfg['token'] ?? '',
+                        $logger
+                    );
+                }
+            );
+        }
+
+        // Gitee（SaaS，默认 base_url 始终存在）
+        if ($config->isPlatformConfigured('gitee')) {
+            $giteeCfg = $config->getGiteeConfig();
+            $registry->register(
+                'gitee',
+                fn(string $url) => str_contains($url, 'gitee.com') || str_contains($url, 'gitee'),
+                function () use ($giteeCfg, $logger) {
+                    return new \App\Service\Git\GiteeService(
+                        $giteeCfg['base_url'] ?? 'https://gitee.com/api/v5',
+                        $giteeCfg['token'] ?? '',
+                        $logger
+                    );
+                }
+            );
+        }
+
+        // GitHub（SaaS，默认 base_url 始终存在）
+        if ($config->isPlatformConfigured('github')) {
+            $githubCfg = $config->getGithubConfig();
+            $registry->register(
+                'github',
+                fn(string $url) => str_contains($url, 'github.com') || str_contains($url, 'github'),
+                function () use ($githubCfg, $logger) {
+                    return new \App\Service\Git\GithubService(
+                        $githubCfg['base_url'] ?? 'https://api.github.com',
+                        $githubCfg['token'] ?? '',
+                        $logger
+                    );
+                }
+            );
+        }
+
+        // Gitea（自建，base_url 为空则跳过）
+        if ($config->isPlatformConfigured('gitea')) {
+            $giteaCfg = $config->getGiteaConfig();
+            $registry->register(
+                'gitea',
+                fn(string $url) => str_contains($url, 'gitea'),
+                function () use ($giteaCfg, $logger) {
+                    return new \App\Service\Git\GiteaService(
+                        $giteaCfg['base_url'] ?? '',
+                        $giteaCfg['token'] ?? '',
+                        $logger
+                    );
+                }
+            );
+        }
+
+        // ---- 自定义平台 ----
+        foreach ($config->getCustomGitProviders() as $provider) {
+            $class  = $provider['class'] ?? '';
+            $cfg    = $provider['config'] ?? [];
+            $name   = $cfg['name'] ?? '';
+            $matcher= $cfg['matcher'] ?? null;
+
+            if (empty($class) || empty($name)) {
+                $logger->warning('跳过无效的自定义 Provider 配置', ['provider' => $provider]);
+                continue;
+            }
+
+            if (!is_callable($matcher)) {
+                $logger->warning("自定义 Provider [{$name}] 缺少有效的 matcher 回调", ['class' => $class]);
+                continue;
+            }
+
+            $registry->register(
+                $name,
+                $matcher,
+                function () use ($class, $cfg, $logger) {
+                    if (!class_exists($class)) {
+                        throw new \RuntimeException("自定义 Provider 类不存在: {$class}");
+                    }
+                    return new $class($cfg, $logger);
+                }
+            );
+        }
+
+        return $registry;
+    },
+
+    // GitProviderFactory（向后兼容封装）
+    GitProviderFactory::class => function (\Psr\Container\ContainerInterface $c) {
+        $factory = new GitProviderFactory();
+        $factory->setRegistry($c->get(ProviderRegistry::class));
+        return $factory;
+    },
+
     // ---------- Jenkins ----------
     JenkinsService::class => function (\Psr\Container\ContainerInterface $c) {
-        return new JenkinsService(
+        $service = new JenkinsService(
             $c->get(AppConfig::class)->getJenkinsConfig()
         );
+        try {
+            $service->setLogger($c->get(Logger::class));
+        } catch (\Throwable $e) {
+            // Logger 不可用时静默降级
+        }
+        return $service;
     },
 
     // Map 服务
@@ -57,24 +178,31 @@ return [
         $config = $c->get(AppConfig::class);
         $service = new MapService(
             $c->get(JenkinsService::class),
+            $c->get(ProviderRegistry::class),
             $config->getJobGitMap(),
             $config->getGitlabConfig(),
-            __DIR__ . '/gitlab_id_cache.php'
+            __DIR__ . '/gitlab_id_cache.php',
+            $config->getDefaultGitPlatform()
         );
-        try { $service->setLogger($c->get(Logger::class)); } catch (\Throwable $e) {}
+        try {
+            $service->setLogger($c->get(Logger::class));
+        } catch (\Throwable $e) {
+            // Logger 不可用时静默降级
+        }
         return $service;
     },
 
     // Git 服务
     GitService::class => function (\Psr\Container\ContainerInterface $c) {
-        $config = $c->get(AppConfig::class);
         $service = new GitService(
             $c->get(MapService::class),
-            $config->getGitlabConfig(),
-            $config->getGiteeConfig(),
-            $config->getGithubConfig()
+            $c->get(ProviderRegistry::class)
         );
-        try { $service->setLogger($c->get(Logger::class)); } catch (\Throwable $e) {}
+        try {
+            $service->setLogger($c->get(Logger::class));
+        } catch (\Throwable $e) {
+            // Logger 不可用时静默降级
+        }
         return $service;
     },
 
@@ -108,7 +236,7 @@ return [
         $config = $c->get(AppConfig::class);
         $harbor = $config->getHarborConfig();
         return new Client([
-            'base_uri' => $harbor['url'] ?? 'http://192.168.137.5',
+            'base_uri' => $harbor['url'] ?? '',
             'auth'     => [
                 $harbor['username'] ?? 'admin',
                 $harbor['password'] ?? '',
@@ -119,7 +247,13 @@ return [
     },
 
     HarborService::class => function (\Psr\Container\ContainerInterface $c) {
-        return new HarborService($c->get('harborClient'));
+        $service = new HarborService($c->get('harborClient'));
+        try {
+            $service->setLogger($c->get(Logger::class));
+        } catch (\Throwable $e) {
+            // Logger 不可用时静默降级
+        }
+        return $service;
     },
 
     HarborController::class => function (\Psr\Container\ContainerInterface $c) {

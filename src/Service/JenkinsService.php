@@ -8,6 +8,8 @@ class JenkinsService
 {
     private Client $client;
     private string $baseUrl;
+    private ?Logger $logger = null;
+    private ?string $cachedVersion = null;
 
     public function __construct(array $config)
     {
@@ -18,6 +20,31 @@ class JenkinsService
             'cookies' => true,   // 启用 Cookie 存储（用于 CSRF crumb）
             'timeout' => 30,
         ]);
+    }
+
+    public function setLogger(Logger $logger): void
+    {
+        $this->logger = $logger;
+    }
+
+    /**
+     * 获取 Jenkins 版本号（惰性缓存）
+     */
+    public function getVersion(): ?string
+    {
+        if ($this->cachedVersion !== null) {
+            return $this->cachedVersion;
+        }
+        try {
+            $resp = $this->client->get("{$this->baseUrl}/api/json");
+            $data = json_decode($resp->getBody(), true);
+            $header = $resp->getHeaderLine('X-Jenkins');
+            $this->cachedVersion = $data['version'] ?? ($header ?: null);
+        } catch (\Exception $e) {
+            $this->logger?->debug('Jenkins 版本获取失败', ['error' => $e->getMessage()]);
+            $this->cachedVersion = '';
+        }
+        return $this->cachedVersion ?: null;
     }
 
     public function getAllJobs(): array
@@ -56,7 +83,12 @@ class JenkinsService
             if (str_contains($class, 'Folder')) {
                 return ['type' => 'folder', 'fullName' => $path];
             }
-        } catch (\Exception $e) {}
+        } catch (\Exception $e) {
+            $this->logger?->debug('Jenkins resolvePath: 直接路径解析失败', [
+                'path'  => $path,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         $parts = explode('/', $path);
         if (count($parts) >= 2) {
@@ -71,7 +103,13 @@ class JenkinsService
                         return ['type' => 'job', 'fullName' => "{$folder}/{$job}"];
                     }
                 }
-            } catch (\Exception $e) {}
+            } catch (\Exception $e) {
+                $this->logger?->debug('Jenkins resolvePath: Folder 内查找失败', [
+                    'folder' => $folder,
+                    'job'    => $job,
+                    'error'  => $e->getMessage(),
+                ]);
+            }
         }
         return null;
     }
@@ -190,12 +228,25 @@ class JenkinsService
                         ]);
                     } catch (ClientException $e2) {
                         $body = $e2->getResponse() ? $e2->getResponse()->getBody()->getContents() : '无响应';
+                        $this->logger?->error('触发构建失败(CSRF 重试后仍 403)', [
+                            'job'    => $jobPath,
+                            'params' => array_keys($parameters),
+                            'body'   => $body,
+                        ]);
                         throw new \RuntimeException(
-                            "触发构建失败(已尝试 CSRF crumb)HTTP 403,Jenkins 响应: " . $body
+                            "触发构建失败(权限不足或 Job 配置错误) HTTP 403，Jenkins 响应: " . $body
                         );
                     }
                 } else {
-                    throw $e;
+                    // 无法获取 CSRF crumb — 可能是 Jenkins 未启用 CSRF 保护但真的权限不足
+                    $body = $e->getResponse()->getBody()->getContents();
+                    $this->logger?->error('触发构建失败(无法获取 CSRF crumb)', [
+                        'job'  => $jobPath,
+                        'body' => $body,
+                    ]);
+                    throw new \RuntimeException(
+                        "触发构建失败(权限不足) HTTP 403，且无法获取 CSRF crumb，Jenkins 响应: " . $body
+                    );
                 }
             } else {
                 throw $e;
@@ -221,6 +272,7 @@ class JenkinsService
                 'value' => $data['crumb'] ?? ''
             ];
         } catch (\Exception $e) {
+            $this->logger?->warning('获取 Jenkins CSRF crumb 失败', ['error' => $e->getMessage()]);
             return null;
         }
     }

@@ -1,0 +1,40 @@
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+#test
+/test/
+
+# Composer
+vendor/
+composer.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.editorconfig
+.laragon
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+/logs/
+/data/logs/
+
+# Cache
+/tmp/
+/cache/
+*.cache
+
+# Project specific
+.env.production
+settings.local.php
+
+docs/

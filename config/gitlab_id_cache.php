@@ -1,1 +1,4 @@
-<?php return [];
+<?php
+return array (
+  'php/myapp' => 1,
+);

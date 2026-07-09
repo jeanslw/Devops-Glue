@@ -139,14 +139,17 @@ class MainController extends BaseController
     public function health(Request $request, Response $response): Response
     {
         $checks = [
-            'jenkins' => false,
-            'git'     => [],
-            'harbor'  => false,
+            'jenkins'         => false,
+            'jenkins_version' => null,
+            'git'             => [],
+            'harbor'          => false,
+            'harbor_version'  => null,
         ];
 
         try {
             $this->jenkins->getAllJobs();
             $checks['jenkins'] = true;
+            $checks['jenkins_version'] = $this->jenkins->getVersion();
         } catch (\Exception $e) {
             $checks['jenkins'] = false;
         }
@@ -165,15 +168,20 @@ class MainController extends BaseController
             // Jenkins 不可用，降级为检测所有已配置的 Git 平台
         }
 
-        // 构建已配置平台的 URL 索引（含正确 API 路径）
+        // 构建已配置平台的索引（URL + 版本号）
         $configuredPlatforms = [];
+        $platformVersions    = [];
         foreach ($this->config->getGitPlatformsConfig() as $p) {
             $configuredPlatforms[$p['name']] = $p['api_base_url'];
+            $platformVersions[$p['name']]    = $p['api_version'] ?? '';
         }
 
         if (empty($usedPlatforms)) {
             // 无 Job 映射或 Jenkins 不可用：取全部已配置平台
             $usedPlatforms = array_keys($configuredPlatforms);
+        } else {
+            // 只检查实际已配置的平台（job_git_map 可能引用未配置的平台）
+            $usedPlatforms = array_values(array_intersect($usedPlatforms, array_keys($configuredPlatforms)));
         }
 
         if (empty($usedPlatforms)) {
@@ -192,8 +200,9 @@ class MainController extends BaseController
                     }
                 }
                 $checks['git'][] = [
-                    'name'      => $name,
-                    'reachable' => $reachable,
+                    'name'        => $name,
+                    'api_version' => $platformVersions[$name] ?? '',
+                    'reachable'   => $reachable,
                 ];
             }
         }
@@ -202,6 +211,7 @@ class MainController extends BaseController
             try {
                 $projects = $this->harbor->getProjects();
                 $checks['harbor'] = !isset($projects['error']);
+                $checks['harbor_version'] = $this->harbor->getApiVersion();
             } catch (\Exception $e) {
                 $checks['harbor'] = false;
             }

@@ -1,7 +1,7 @@
-Devops-Glue API 文档 v2.1
+Devops-Glue API 文档 v2.2.0
 概述
 
-Devops-Glue 是一套为小企业提供的 DevOps 工具链集成接口，基于 Slim 4 框架实现 Jenkins、GitLab/Gitee/GitHub、Harbor 等工具的一键集成与数据互通。
+Devops-Glue 是一套为小企业提供的 DevOps 工具链集成接口，基于 Slim 4 框架实现 Jenkins、GitLab/Gitee/GitHub/Gitea、Harbor 等工具的一键集成与数据互通。
 
 环境要求
 框架: Slim 4
@@ -12,15 +12,19 @@ PHP 扩展: php-cli, php-mbstring, php-xml, php-curl, php-zip
 
 支持服务:
 
-Jenkins v2.555.3+
+Jenkins v2.60+（文档声明 v2.555.3为验证版本，API 从 2.0 即稳定可用）
 
-GitLab v17.0
+GitLab v9.0+（API v4，文档声明 v17.0为验证版本）
 
 Gitee API v5
 
-GitHub API v3
+GitHub API v3（通过 HTTP header 传递版本，2028年前有效）
 
-Harbor v1.10.1 / v2.x
+Gitea API v1（自建 Git 平台，v2.2.0 新增）
+
+Harbor v1.10.1 / v2.x（自动探测 API 版本）
+
+自定义 Git 平台：实现 GitProviderInterface + 在 settings.php 中注册即可接入
 
 依赖管理: Composer
 
@@ -392,6 +396,13 @@ GITHUB_TOKEN=your_token
 GITEE_BASE_URL=https://gitee.com/api/v5
 GITEE_TOKEN=your_token
 
+# Gitea
+GITEA_BASE_URL=http://your-gitea
+GITEA_TOKEN=your_token
+
+# Git 默认平台（URL 无法识别时回退，自建 GitLab/Gitea 必填）
+DEFAULT_GIT_PLATFORM=gitlab
+
 # Harbor
 HARBOR_BASE_URL=http://URL
 HARBOR_USER=admin
@@ -403,16 +414,35 @@ APP_DEBUG=false
 BUILD_TIMEOUT=300
 LOG_PATH=/data/logs/ci-platform/
 手动映射配置 (config/settings.php)
+
+每个 Job 可配置以下字段。仅 job_name 必填，其他均可省略由系统自动推导。
+
+| 字段 | 必填 | 说明 |
+|------|:--:|------|
+| `job_name` | ✅ | Jenkins Job 完整路径，如 `"java/registry"` |
+| `git_platform` | | 自建实例**强烈建议**填写。不填则系统自动检测 URL 关键词；但自建 GitLab/Gitea 的域名通常不含平台关键词，检测会失败并回退到 `DEFAULT_GIT_PLATFORM`。可选值：`gitlab` `gitee` `github` `gitea` 或自定义平台名 |
+| `git_remote` | | 不填则从 Jenkins Job 的 SCM 配置自动获取 |
+| `project_id` | | GitLab：不填自动通过 API 查询；GitHub/Gitee：如已知可填写 |
+| `web_url` | | 项目主页链接，仅用于映射展示 |
+| `current_path` | | 项目路径，不填从 `git_remote` 自动推导 |
+| `harbor_repository` | | 关联的 Harbor 仓库，格式 `"project/repository"`，仅用于映射展示 |
+| `api_version` | | **纯元数据**，不影响 API 路由（路由由各 Service 内部硬编码），仅用于映射输出展示 |
+
 php
 'job_git_map' => [
+    // 自建 GitLab（URL 不含平台关键词 → 必须指定 git_platform）
     [
         'job_name'          => 'java/registry',
+        'git_platform'      => 'gitlab',   // ← 自建实例必须
+        'git_remote'        => 'http://git.mycompany.com/tools/registry.git',
         'project_id'        => 2,
-        'web_url'           => 'http://your-gitlab/group/project',
-        'current_path'      => 'tools/registry',
         'harbor_repository' => 'mycode/code-runtime',
     ],
-    // 支持任意自定义字段，自动输出到映射接口
+    // SaaS Gitee（URL 含 gitee.com → 自动检测，可不填 git_platform）
+    [
+        'job_name'          => 'static',
+        'harbor_repository' => 'mycode/static-app',
+    ],
 ],
 CORS 配置 (config/settings.php)
 php
@@ -485,7 +515,7 @@ php test/test_api_html_simp.php
 ├── src/
 │   ├── Controller/         # 控制器
 │   ├── Service/            # 业务逻辑 + 外部 API 客户端
-│   │   └── Git/            # Git 平台适配器（GitLab/Gitee/GitHub）
+│   │   └── Git/            # Git 平台适配器（GitLab/Gitee/GitHub/Gitea + 自定义）
 │   ├── Middleware/          # PSR-15 中间件（CORS）
 │   └── Exceptions/         # 异常类
 ├── templates/              # 静态页面
@@ -497,12 +527,61 @@ php test/test_api_html_simp.php
 ├── docker-compose.yml      # Docker 编排
 └── .dockerignore           # Docker 排除文件
 
-十二、更新日志
+十二、自定义 Git 平台接入
+
+系统支持通过配置接入任意 Git 平台，无需修改源码。
+
+1. 编写 Provider 类
+在 src/Service/Git/ 目录下创建适配器类，实现 GitProviderInterface 接口：
+
+php
+namespace App\Service\Git;
+
+class BitbucketService implements GitProviderInterface
+{
+    public function getName(): string { return 'bitbucket'; }
+    public function matchUrl(string $url): bool { return str_contains($url, 'bitbucket'); }
+    public function getApiVersion(): string { return 'v2'; }
+    public function getBranches(string $repository): array { /* API 调用逻辑 */ }
+}
+2. 在 config/settings.php 中注册
+
+php
+'git' => [
+    'custom_providers' => [
+        [
+            'class'  => 'App\\Service\\Git\\BitbucketService',
+            'config' => [
+                'name'         => 'bitbucket',
+                'base_url'     => 'https://api.bitbucket.org/2.0',
+                'token'        => env('BITBUCKET_TOKEN', ''),
+                'api_version'  => 'v2',
+                'matcher'      => function (string $url): bool {
+                    return str_contains($url, 'bitbucket');
+                },
+            ],
+        ],
+    ],
+],
+3. 无需修改任何系统源码，系统启动时自动发现并注册。
+
+注意：自定义平台不支持 .env 独立环境变量配置（如 BITBUCKET_TOKEN），令牌需写入 settings.php 或自行扩展 AppConfig。
+
+4. 内置平台（GitLab/Gitee/GitHub/Gitea）如需新增，需要修改以下文件：
+   - src/Service/Git/XxxService.php（适配器类）
+   - config/container.php（ProviderRegistry 注册闭包）
+   - config/AppConfig.php（getXxxConfig + getDefaultApiVersion + getGitPlatformsConfig）
+   - config/settings.php + settings.example.php（配置段）
+   - config/.env.example（环境变量声明）
+   - readme.md（文档）
+
+十三、更新日志
 
 版本	日期	变更内容
+v2.2.0	2026-07-10	架构升级：Git 平台改为 ProviderRegistry 注册表模式，支持自定义平台接入。新增 Gitea 平台适配器。移除 MapService 硬编码 IP 和静默兜底，配置增加 GITEA_BASE_URL/GITEA_TOKEN 环境变量。
 v2.1.2	2026-07-04	新增首页支持健康检查、 GitHub 平台接入；健康检查端点 /api/health；Swagger UI 文档 /api/docs；CORS 跨域支持；结构化文件日志；Docker 部署支持；ApiException 异常类优化。
 v2.1.1	2026-03-05	Slim 4 重构。新增 Main 模块（平台接入、多方映射）；触发构建支持单/双参数动态适配；输出格式切换（raw/json/xml）；Harbor 扫描集成（Trivy 离线），Harbor v2 镜像扫描；
 v1.1	2021-11-01	增加 Harbor 查询功能
 v1.0	2018-09-28	初始版本，Jenkins、Git 与 Rundeck 三方集成
 
-十三、如有建议可在 GitHub 仓库提 issue ，或联系EMAIL:jeanslw@qq.com
+十四、如有建议可在 GitHub 仓库提 issue ，或联系EMAIL:jeanslw@qq.com

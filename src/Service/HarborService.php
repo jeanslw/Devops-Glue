@@ -8,17 +8,46 @@ class HarborService
 {
     private Client $client;
     private ?string $apiVersion = null;
+    private ?Logger $logger = null;
 
     public function __construct(Client $harborClient)
     {
         $this->client = $harborClient;
     }
 
+    public function setLogger(Logger $logger): void
+    {
+        $this->logger = $logger;
+    }
+
+    /**
+     * 获取当前探测到的 Harbor API 版本（v1 或 v2）
+     */
+    public function getApiVersion(): ?string
+    {
+        try {
+            return $this->detectApiVersion();
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * 自动探测 Harbor API 版本（惰性求值，首次调用后缓存）
+     *
+     * 策略：
+     *  1. 先尝试 v2.0 端点 /api/v2.0/projects
+     *  2. HTTP 404 → 回退 v1
+     *  3. 401/403 → 判定为 v2（认证问题，端点存在）
+     *  4. 网络不通 → 再尝试 v1 端点 /api/projects
+     *  5. 全部失败 → 默认 v2
+     */
     private function detectApiVersion(): string
     {
         if ($this->apiVersion !== null) {
             return $this->apiVersion;
         }
+
         // 直接用 v2 项目列表端点探测，比 HEAD systeminfo 更可靠
         try {
             $this->client->get('/api/v2.0/projects', [
@@ -26,17 +55,29 @@ class HarborService
                 'query'       => ['page_size' => 1],
             ]);
             $this->apiVersion = 'v2';
+            $this->logger?->info('Harbor 版本探测: v2.0');
         } catch (ClientException $e) {
             $code = $e->getResponse()?->getStatusCode();
             // 404 说明不是 v2，否则（401/403 等）v2 存在只是认证问题
             $this->apiVersion = ($code === 404) ? 'v1' : 'v2';
+            $this->logger?->debug('Harbor v2 探测响应', [
+                'http_code' => $code,
+                'detected'  => $this->apiVersion,
+            ]);
         } catch (\Throwable $e) {
             // 连不上，尝试 v1
+            $this->logger?->debug('Harbor v2 探测网络异常，回退尝试 v1', [
+                'error' => $e->getMessage(),
+            ]);
             try {
                 $this->client->get('/api/projects', ['http_errors' => false]);
                 $this->apiVersion = 'v1';
+                $this->logger?->info('Harbor 版本探测: v1 (v2 不可达后回退)');
             } catch (\Throwable $e2) {
                 $this->apiVersion = 'v2'; // 都连不上默认 v2
+                $this->logger?->warning('Harbor 版本探测: v1/v2 均不可达，默认 v2', [
+                    'error' => $e2->getMessage(),
+                ]);
             }
         }
         return $this->apiVersion;
@@ -59,8 +100,19 @@ class HarborService
         } catch (ClientException $e) {
             $code = $e->getResponse()?->getStatusCode();
             $msg = $code === 404 ? "资源不存在(404)" : "Harbor服务响应异常(HTTP {$code})";
+            $this->logger?->warning('Harbor 请求失败', [
+                'method'    => $method,
+                'uri'       => $uri,
+                'http_code' => $code,
+                'message'   => $msg,
+            ]);
             return ['error' => $msg];
         } catch (\Throwable $e) {
+            $this->logger?->error('Harbor 请求异常', [
+                'method' => $method,
+                'uri'    => $uri,
+                'error'  => $e->getMessage(),
+            ]);
             return ['error' => "Harbor请求失败: " . $e->getMessage()];
         }
     }
