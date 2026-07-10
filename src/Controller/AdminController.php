@@ -26,6 +26,8 @@ class AdminController extends BaseController
             return $this->jsonError($response, '账号或密码错误', 401);
         }
 
+        $authed = false;
+
         // 优先查数据库
         try {
             $pdo = \App\Service\Database::getPdo();
@@ -33,17 +35,22 @@ class AdminController extends BaseController
             $row->execute([$user]);
             $dbUser = $row->fetch();
             if ($dbUser && password_verify($pass, $dbUser['password_hash'])) {
-                $token = base64_encode($user . ':' . $dbUser['password_hash']);
-                return $this->output($response, ['token' => $token], $request);
+                $authed = true;
             }
         } catch (\Exception $e) {
             // DB 不可用时降级到 .env
         }
 
         // 降级：.env 验证
-        $cred = $this->config->getAdminCredentials();
-        if ($user === $cred['user'] && $pass === $cred['password'] && $pass !== '') {
-            $token = base64_encode($user . ':' . $pass);
+        if (!$authed) {
+            $cred = $this->config->getAdminCredentials();
+            if ($user === $cred['user'] && $pass === $cred['password'] && $pass !== '') {
+                $authed = true;
+            }
+        }
+
+        if ($authed) {
+            $token = base64_encode($user . ':' . $pass);  // 用原始密码，不用 hash
             return $this->output($response, ['token' => $token], $request);
         }
         return $this->jsonError($response, '账号或密码错误', 401);
@@ -249,6 +256,12 @@ class AdminController extends BaseController
         }
         $token = $m[1];
 
+        // 尝试 env 密码（token 用原始密码生成）
+        if (!empty($cred['password'])) {
+            $expected = base64_encode($cred['user'] . ':' . $cred['password']);
+            if (hash_equals($expected, $token)) return null;
+        }
+
         // 尝试 DB 密码验证
         try {
             $pdo = \App\Service\Database::getPdo();
@@ -261,12 +274,6 @@ class AdminController extends BaseController
             }
         } catch (\Exception $e) {
             // DB 不可用降级
-        }
-
-        // 降级：.env 密码
-        if (!empty($cred['password'])) {
-            $expected = base64_encode($cred['user'] . ':' . $cred['password']);
-            if (hash_equals($expected, $token)) return null;
         }
 
         // 未设任何密码则放行
