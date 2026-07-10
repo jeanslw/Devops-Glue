@@ -5,6 +5,7 @@ use App\Controller\GitController;
 use App\Controller\MainController;
 use App\Controller\HarborController;
 use App\Controller\AdminController;
+use App\Controller\BuildController;
 
 // 管理页面
 $app->get('/admin', function ($request, $response) {
@@ -104,12 +105,27 @@ $app->group('/api', function (RouteCollectorProxy $api) {
 
     $api->group('/admin', function (RouteCollectorProxy $admin) {
         $admin->map(['POST'], '/login', [AdminController::class, 'login']);
+        $admin->map(['PUT'], '/password', [AdminController::class, 'changePassword']);
         $admin->map(['GET'], '/job_git_map', [AdminController::class, 'jobGitMapList']);
         $admin->map(['POST'], '/job_git_map', [AdminController::class, 'jobGitMapSave']);
         $admin->map(['PUT'], '/job_git_map', [AdminController::class, 'jobGitMapUpdate']);
         $admin->map(['DELETE'], '/job_git_map', [AdminController::class, 'jobGitMapDelete']);
         $admin->map(['GET'], '/platform_versions', [AdminController::class, 'platformVersionsList']);
         $admin->map(['PUT'], '/platform_versions', [AdminController::class, 'platformVersionsUpdate']);
+    });
+
+    $api->group('/build', function (RouteCollectorProxy $build) {
+        $build->map(['GET', 'POST'], '/jobs/list', [BuildController::class, 'jobsList']);
+        $build->map(['GET', 'POST'], '/{path:.+}/pipelines', [BuildController::class, 'pipelines']);
+        $build->map(['GET', 'POST'], '/{path:.+}/pipelines/{id:\d+}', [BuildController::class, 'pipelineDetail']);
+        $build->map(['POST'], '/{path:.+}/pipelines/{id:\d+}/retry', [BuildController::class, 'retry']);
+        $build->map(['POST'], '/{path:.+}/pipelines/{id:\d+}/cancel', [BuildController::class, 'cancel']);
+        $build->map(['GET', 'POST'], '/{path:.+}/logs/{id:\d+}', [BuildController::class, 'logs']);
+        $build->map(['GET', 'POST'], '/{path:.+}/jobs/{id:\d+}/trace', [BuildController::class, 'jobTrace']);
+        $build->map(['POST'], '/{path:.+}/trigger', [BuildController::class, 'trigger']);
+        $build->map(['GET', 'POST'], '/{path:.+}/variables', [BuildController::class, 'variables']);
+        $build->map(['POST'], '/{path:.+}/scan-sync', [BuildController::class, 'scanSync']);
+        $build->map(['GET', 'POST'], '/{path:.+}/tag', [BuildController::class, 'tagQuery']);
     });
 
     $api->group('/jenkins', function (RouteCollectorProxy $jenkins) {

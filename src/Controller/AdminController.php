@@ -22,13 +22,77 @@ class AdminController extends BaseController
         $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
         $user = trim($body['user'] ?? '');
         $pass = $body['password'] ?? '';
+        if ($user === '' || $pass === '') {
+            return $this->jsonError($response, '账号或密码错误', 401);
+        }
 
+        // 优先查数据库
+        try {
+            $pdo = \App\Service\Database::getPdo();
+            $row = $pdo->prepare("SELECT password_hash FROM admin_users WHERE username = ?");
+            $row->execute([$user]);
+            $dbUser = $row->fetch();
+            if ($dbUser && password_verify($pass, $dbUser['password_hash'])) {
+                $token = base64_encode($user . ':' . $dbUser['password_hash']);
+                return $this->output($response, ['token' => $token], $request);
+            }
+        } catch (\Exception $e) {
+            // DB 不可用时降级到 .env
+        }
+
+        // 降级：.env 验证
         $cred = $this->config->getAdminCredentials();
         if ($user === $cred['user'] && $pass === $cred['password'] && $pass !== '') {
             $token = base64_encode($user . ':' . $pass);
             return $this->output($response, ['token' => $token], $request);
         }
         return $this->jsonError($response, '账号或密码错误', 401);
+    }
+
+    /** PUT /api/admin/password — 修改密码 */
+    public function changePassword(Request $request, Response $response): Response
+    {
+        if ($err = $this->authCheck($request, $response)) return $err;
+
+        $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
+        $oldPass = $body['old_password'] ?? '';
+        $newPass = $body['new_password'] ?? '';
+
+        if (strlen($newPass) < 6) {
+            return $this->jsonError($response, '新密码至少 6 位', 400);
+        }
+
+        try {
+            $pdo = \App\Service\Database::getPdo();
+            $cred = $this->config->getAdminCredentials();
+            $username = $cred['user'];
+
+            // 验证旧密码
+            $row = $pdo->prepare("SELECT password_hash FROM admin_users WHERE username = ?");
+            $row->execute([$username]);
+            $dbUser = $row->fetch();
+
+            $oldOk = false;
+            if ($dbUser) {
+                $oldOk = password_verify($oldPass, $dbUser['password_hash']);
+            }
+            // 降级：用 .env 密码验证
+            if (!$oldOk && $oldPass === $cred['password']) {
+                $oldOk = true;
+            }
+            if (!$oldOk) {
+                return $this->jsonError($response, '旧密码错误', 403);
+            }
+
+            // 更新密码
+            $hash = password_hash($newPass, PASSWORD_BCRYPT);
+            $pdo->prepare("INSERT INTO admin_users (username, password_hash, updated_at) VALUES (?, ?, datetime('now','localtime')) ON CONFLICT(username) DO UPDATE SET password_hash=excluded.password_hash, updated_at=excluded.updated_at")
+                ->execute([$username, $hash]);
+
+            return $this->output($response, ['success' => true, 'message' => '密码已更新，请重新登录'], $request);
+        } catch (\Exception $e) {
+            return $this->jsonError($response, '修改失败: ' . $e->getMessage(), 500);
+        }
     }
 
     // ────────────────────────── CRUD ──────────────────────────
@@ -179,27 +243,48 @@ class AdminController extends BaseController
     private function authCheck(Request $request, Response $response): ?Response
     {
         $cred = $this->config->getAdminCredentials();
-        if (empty($cred['password'])) {
-            return null; // 未设置密码则跳过认证
-        }
-
         $header = $request->getHeaderLine('Authorization');
         if (!preg_match('/^Bearer\s+(.+)$/i', $header, $m)) {
             return $this->jsonError($response, '未登录', 401);
         }
+        $token = $m[1];
 
-        $expected = base64_encode($cred['user'] . ':' . $cred['password']);
-        if (!hash_equals($expected, $m[1])) {
-            return $this->jsonError($response, 'token 无效', 401);
+        // 尝试 DB 密码验证
+        try {
+            $pdo = \App\Service\Database::getPdo();
+            $row = $pdo->prepare("SELECT password_hash FROM admin_users WHERE username = ?");
+            $row->execute([$cred['user']]);
+            $dbUser = $row->fetch();
+            if ($dbUser) {
+                $expected = base64_encode($cred['user'] . ':' . $dbUser['password_hash']);
+                if (hash_equals($expected, $token)) return null;
+            }
+        } catch (\Exception $e) {
+            // DB 不可用降级
         }
 
-        return null; // 通过
+        // 降级：.env 密码
+        if (!empty($cred['password'])) {
+            $expected = base64_encode($cred['user'] . ':' . $cred['password']);
+            if (hash_equals($expected, $token)) return null;
+        }
+
+        // 未设任何密码则放行
+        if (empty($cred['password'])) {
+            try {
+                $pdo = \App\Service\Database::getPdo();
+                $cnt = $pdo->query("SELECT count(*) c FROM admin_users")->fetch()['c'];
+                if ($cnt == 0) return null;
+            } catch (\Exception $e) {}
+        }
+
+        return $this->jsonError($response, 'token 无效', 401);
     }
 
     private function buildEntry(array $body): array
     {
         $entry = [];
-        $fields = ['job_name', 'git_platform', 'git_remote', 'project_id', 'web_url', 'current_path', 'harbor_repository', 'api_version'];
+        $fields = ['job_name', 'git_platform', 'build_provider', 'git_remote', 'project_id', 'web_url', 'current_path', 'harbor_repository', 'api_version'];
         foreach ($fields as $f) {
             if (array_key_exists($f, $body)) {
                 $val = $body[$f];

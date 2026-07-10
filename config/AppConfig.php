@@ -62,32 +62,31 @@ class AppConfig
         return $this->config['cors'] ?? ['allowed_origins' => ['*']];
     }
 
-    // 手动映射 —— 从 JSON 文件读写，路径相对于 config/ 目录
-    private function mapFilePath(): string
-    {
-        return __DIR__ . '/job_git_map.json';
-    }
-
+    // 手动映射 —— 从 SQLite 读写
     public function getJobGitMap(): array
     {
-        $file = $this->mapFilePath();
-        if (!file_exists($file)) {
-            // 首次启动自动创建空文件
-            file_put_contents($file, "[]\n", LOCK_EX);
-            return [];
-        }
-        $json = file_get_contents($file);
-        if ($json === false) return [];
-        $data = json_decode($json, true);
-        return is_array($data) ? $data : [];
+        $pdo = \App\Service\Database::getPdo();
+        return $pdo->query("SELECT * FROM job_git_map ORDER BY job_name")->fetchAll();
     }
 
     public function saveJobGitMap(array $data): void
     {
-        $file = $this->mapFilePath();
-        $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
-        if (file_put_contents($file, $json, LOCK_EX) === false) {
-            throw new \RuntimeException("无法写入配置文件: {$file}");
+        $pdo = \App\Service\Database::getPdo();
+        $pdo->exec("DELETE FROM job_git_map");
+        $stmt = $pdo->prepare("INSERT INTO job_git_map (job_name,git_platform,build_provider,git_remote,project_id,web_url,current_path,harbor_repository,api_version) VALUES (?,?,?,?,?,?,?,?,?)");
+        foreach ($data as $row) {
+            if (empty($row['job_name'])) continue;
+            $stmt->execute([
+                $row['job_name'],
+                $row['git_platform'] ?? null,
+                $row['build_provider'] ?? 'jenkins',
+                $row['git_remote'] ?? null,
+                $row['project_id'] ?? null,
+                $row['web_url'] ?? null,
+                $row['current_path'] ?? null,
+                $row['harbor_repository'] ?? null,
+                $row['api_version'] ?? null,
+            ]);
         }
     }
 
@@ -215,14 +214,7 @@ class AppConfig
         'harbor' => 'v2.0',
     ];
 
-    private function versionsFilePath(): string
-    {
-        return __DIR__ . '/platform_versions.json';
-    }
-
-    /**
-     * 获取所有平台的 API 版本（JSON 覆盖默认值）
-     */
+    /** 获取所有平台的 API 版本（SQLite 覆盖默认值） */
     public function getPlatformApiVersions(): array
     {
         $enriched = $this->getPlatformApiVersionsWithSource();
@@ -242,25 +234,21 @@ class AppConfig
     public function getPlatformApiVersionsWithSource(): array
     {
         $result = [];
-        $jsonVersions = [];
-        $file = $this->versionsFilePath();
-        if (file_exists($file)) {
-            $json = file_get_contents($file);
-            if ($json !== false) {
-                $data = json_decode($json, true);
-                if (is_array($data)) $jsonVersions = $data;
-            }
-        }
-
         foreach (self::$DEFAULT_API_VERSIONS as $name => $default) {
             $result[$name] = ['value' => $default, 'source' => 'default'];
         }
 
-        // JSON 覆盖默认
-        foreach ($jsonVersions as $name => $ver) {
-            if (isset($result[$name])) {
-                $result[$name] = ['value' => $ver, 'source' => 'json'];
+        // SQLite 覆盖默认
+        try {
+            $pdo = \App\Service\Database::getPdo();
+            $rows = $pdo->query("SELECT platform, version FROM platform_versions")->fetchAll();
+            foreach ($rows as $r) {
+                if (isset($result[$r['platform']])) {
+                    $result[$r['platform']] = ['value' => $r['version'], 'source' => 'json'];
+                }
             }
+        } catch (\Exception $e) {
+            // DB 不可用时保持默认
         }
 
         // settings.php 显式配置优先级最高
@@ -279,23 +267,14 @@ class AppConfig
 
     public function savePlatformApiVersions(array $data): void
     {
-        // 只保留有自定义值的（与默认不同的）
-        $custom = [];
+        $pdo = \App\Service\Database::getPdo();
+        $pdo->exec("DELETE FROM platform_versions");
+        $stmt = $pdo->prepare("INSERT INTO platform_versions (platform, version) VALUES (?, ?)");
         foreach ($data as $name => $ver) {
             $default = self::$DEFAULT_API_VERSIONS[$name] ?? null;
-            if ($ver !== $default && $ver !== '') {
-                $custom[$name] = $ver;
+            if ($ver !== $default && $ver !== '' && $ver !== null) {
+                $stmt->execute([$name, $ver]);
             }
-        }
-        $file = $this->versionsFilePath();
-        if (empty($custom)) {
-            // 全部恢复默认时删除文件
-            if (file_exists($file)) unlink($file);
-            return;
-        }
-        $json = json_encode($custom, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
-        if (file_put_contents($file, $json, LOCK_EX) === false) {
-            throw new \RuntimeException("无法写入配置文件: {$file}");
         }
     }
 

@@ -37,29 +37,41 @@ class MainController extends BaseController
      */
     public function mapList(Request $request, Response $response): Response
     {
-        $cacheFile = __DIR__ . '/../../config/cache/map_list.json';
-        $cacheDir  = dirname($cacheFile);
-        if (!is_dir($cacheDir)) @mkdir($cacheDir, 0777, true);
+        $cacheKey = 'map_list';
 
         // 有缓存且未过期，直接返回
-        if (file_exists($cacheFile) && (time() - filemtime($cacheFile)) < 30) {
-            $cached = json_decode(file_get_contents($cacheFile), true);
-            if (is_array($cached)) {
-                return $this->output($response, $cached, $request);
+        try {
+            $pdo = \App\Service\Database::getPdo();
+            $cached = $pdo->prepare("SELECT value FROM cache WHERE cache_key = ? AND expires_at > ?");
+            $cached->execute([$cacheKey, time()]);
+            $row = $cached->fetch();
+            if ($row) {
+                $data = json_decode($row['value'], true);
+                if (is_array($data)) {
+                    return $this->output($response, $data, $request);
+                }
             }
+        } catch (\Exception $e) {
+            // DB 不可用时继续查实时数据
         }
 
         try {
             $maps = $this->map->getAllMaps();
         } catch (\Exception $e) {
             // Jenkins 不可达时，返回过期缓存兜底
-            if (file_exists($cacheFile)) {
-                $cached = json_decode(file_get_contents($cacheFile), true);
-                if (is_array($cached)) {
-                    $cached['_stale'] = true;
-                    return $this->output($response, $cached, $request);
+            try {
+                $pdo = \App\Service\Database::getPdo();
+                $cached = $pdo->prepare("SELECT value FROM cache WHERE cache_key = ?");
+                $cached->execute([$cacheKey]);
+                $row = $cached->fetch();
+                if ($row) {
+                    $data = json_decode($row['value'], true);
+                    if (is_array($data)) {
+                        $data['_stale'] = true;
+                        return $this->output($response, $data, $request);
+                    }
                 }
-            }
+            } catch (\Exception $e2) {}
             return $this->output($response, ['_error' => 'Jenkins 服务不可达，且无可用缓存', '_detail' => $e->getMessage()], $request);
         }
 
@@ -76,6 +88,7 @@ class MainController extends BaseController
             if (!isset($grouped[$key])) {
                 $grouped[$key] = [
                     'git_platform'      => $map['git_platform'],
+                    'build_provider'    => $map['build_provider'] ?? 'jenkins',
                     'git_remote'        => $map['git_remote'],
                     'project_id'        => $map['project_id'] ?? null,
                     'web_url'           => $map['web_url'] ?? '',
@@ -93,8 +106,14 @@ class MainController extends BaseController
             sort($item['jobs']);
         }
 
-        // 写入缓存
-        file_put_contents($cacheFile, json_encode($grouped, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), LOCK_EX);
+        // 写入缓存（30s TTL）
+        try {
+            $pdo = \App\Service\Database::getPdo();
+            $stmt = $pdo->prepare("INSERT OR REPLACE INTO cache (cache_key, value, expires_at) VALUES (?, ?, ?)");
+            $stmt->execute(['map_list', json_encode($grouped, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), time() + 30]);
+        } catch (\Exception $e) {
+            // 缓存写入失败不影响响应
+        }
 
         return $this->output($response, $grouped, $request);
     }

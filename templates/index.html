@@ -64,7 +64,7 @@
     <a href="/" class="logo">🚀 Devops-Glue</a>
     <div class="nav-links">
         <a href="/admin">⚙️ 管理</a>
-        <a href="/api/docs">📖 文档</a>
+        <a href="#" onclick="var t=sessionStorage.getItem('admin_token');location.href='/api/docs'+(t?'?token='+t:'')">📖 文档</a>
         <a href="mailto:jeanslw@qq.com">💬 技术支持</a>
     </div>
 </nav>

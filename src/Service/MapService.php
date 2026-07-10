@@ -63,6 +63,25 @@ class MapService
     {
         $resolved = $this->jenkins->resolvePath($jobName);
         if (!$resolved || $resolved['type'] !== 'job') {
+            // Jenkins 找不到 → 尝试手动映射兜底（GitLab CI 项目）
+            if (isset($this->manualMap[$jobName])) {
+                $m = $this->manualMap[$jobName];
+                $platform = $m['git_platform'] ?? $this->defaultPlatform;
+                $remote   = $m['git_remote'] ?? '';
+                return array_merge([
+                    'job_name'         => $jobName,
+                    'git_platform'     => $platform,
+                    'platform_source'  => 'manual',
+                    'detection_method' => 'manual',
+                    'git_remote'       => $remote,
+                    'status'           => 'synced',
+                    'message'          => '',
+                    'project_id'       => $m['project_id'] ?? null,
+                    'web_url'          => $m['web_url'] ?? '',
+                    'current_path'     => $m['current_path'] ?? '',
+                    'harbor_repository'=> $m['harbor_repository'] ?? '',
+                ], $m);
+            }
             return null;
         }
 
@@ -95,7 +114,7 @@ class MapService
         // 动态合并：把手动配置的所有字段（除 job_name）都覆盖进来
         if (isset($this->manualMap[$jobName])) {
             foreach ($this->manualMap[$jobName] as $key => $value) {
-                if ($key !== 'job_name') {
+                if ($key !== 'job_name' && $value !== null && $value !== '') {
                     $base[$key] = $value;
                 }
             }

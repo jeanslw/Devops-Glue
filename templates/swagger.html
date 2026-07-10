@@ -22,8 +22,11 @@
   <script src="/assets/swagger-ui-standalone-preset.js"></script>
   <script>
     window.onload = function () {
+      var specUrl = '/api/openapi.json';
+      var m = location.search.match(/[?&]token=([^&]+)/);
+      if (m) { specUrl += '?token=' + decodeURIComponent(m[1]); }
       SwaggerUIBundle({
-        url: '/api/openapi.json',
+        url: specUrl,
         dom_id: '#swagger-ui',
         deepLinking: true,
         presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],

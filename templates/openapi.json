@@ -38,6 +38,10 @@
     {
       "name": "Admin",
       "description": "管理后台 —— 映射配置与对接版本"
+    },
+    {
+      "name": "Build",
+      "description": "构建/Pipeline 统一入口（Jenkins + GitLab CI）—— v2.3.0 新增"
     }
   ],
   "components": {
@@ -377,6 +381,138 @@
             "description": "configured / unconfigured 列表"
           }
         }
+      }
+    },
+    "/api/build/{path}/pipelines": {
+      "get": {
+        "tags": ["Build"],
+        "summary": "Pipeline 列表",
+        "description": "统一查询 Jenkins/GitLab CI 的 Pipeline。?list=id 返回 Jenkins 风格简洁数组",
+        "operationId": "buildPipelines",
+        "parameters": [
+          {"name": "path", "in": "path", "required": true, "schema": {"type": "string"}, "example": "tools/runner-ci"},
+          {"$ref": "#/components/parameters/format"},
+          {"name": "list", "in": "query", "schema": {"type": "string", "enum": ["id"]}, "description": "id=返回简洁 Pipeline ID 列表"}
+        ],
+        "responses": { "200": { "description": "Pipeline 列表" } }
+      }
+    },
+    "/api/build/{path}/pipelines/{id}": {
+      "get": {
+        "tags": ["Build"],
+        "summary": "Pipeline 详情 + Jobs",
+        "operationId": "buildPipelineDetail",
+        "parameters": [
+          {"name": "path", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}}
+        ],
+        "responses": { "200": { "description": "Jobs 列表" } }
+      }
+    },
+    "/api/build/{path}/pipelines/{id}/retry": {
+      "post": {
+        "tags": ["Build"],
+        "summary": "重试 Pipeline（仅 GitLab CI）",
+        "operationId": "buildRetry",
+        "parameters": [
+          {"name": "path", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}}
+        ],
+        "responses": { "200": { "description": "retry 结果" } }
+      }
+    },
+    "/api/build/{path}/pipelines/{id}/cancel": {
+      "post": {
+        "tags": ["Build"],
+        "summary": "取消 Pipeline（仅 GitLab CI）",
+        "operationId": "buildCancel",
+        "parameters": [
+          {"name": "path", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}}
+        ],
+        "responses": { "200": { "description": "cancel 结果" } }
+      }
+    },
+    "/api/build/{path}/logs/{id}": {
+      "get": {
+        "tags": ["Build"],
+        "summary": "构建日志（统一，推荐）",
+        "description": "Jenkins 和 GitLab CI 通用日志入口。替代 /api/jenkins/{job}/{id}/console 和 /api/build/{path}/jobs/{id}/trace",
+        "operationId": "buildLogs",
+        "parameters": [
+          {"name": "path", "in": "path", "required": true, "schema": {"type": "string"}, "example": "tools/runner-ci"},
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}, "example": 32}
+        ],
+        "responses": { "200": { "description": "text/plain 原始日志" } }
+      }
+    },
+    "/api/build/{path}/jobs/{id}/trace": {
+      "get": {
+        "tags": ["Build"],
+        "summary": "Job 日志（旧，建议用 /api/build/{path}/logs/{id}）",
+        "deprecated": true,
+        "operationId": "buildJobTrace",
+        "parameters": [
+          {"name": "path", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}}
+        ],
+        "responses": { "200": { "description": "text/plain 原始日志" } }
+      }
+    },
+    "/api/build/{path}/trigger": {
+      "post": {
+        "tags": ["Build"],
+        "summary": "触发构建",
+        "operationId": "buildTrigger",
+        "parameters": [
+          {"name": "path", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "requestBody": {
+          "content": { "application/json": { "schema": { "type": "object", "properties": {
+            "ref": {"type": "string", "example": "main"},
+            "variables": {"type": "object", "example": {"ENV": "test"}}
+          } } } }
+        },
+        "responses": { "200": { "description": "触发结果" } }
+      }
+    },
+    "/api/build/{path}/variables": {
+      "get": {
+        "tags": ["Build"],
+        "summary": "构建参数/CI 变量",
+        "operationId": "buildVariables",
+        "parameters": [
+          {"name": "path", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "responses": { "200": { "description": "变量列表" } }
+      }
+    },
+    "/api/build/{path}/scan-sync": {
+      "post": {
+        "tags": ["Build"],
+        "summary": "Harbor 扫描 → Commit Status 回写",
+        "operationId": "buildScanSync",
+        "parameters": [
+          {"name": "path", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "requestBody": {
+          "content": { "application/json": { "schema": { "type": "object", "properties": {
+            "tag": {"type": "string", "example": "v3.0.0", "description": "不传则取 Harbor 最新 tag"}
+          } } } }
+        },
+        "responses": { "200": { "description": "扫描同步结果" } }
+      }
+    },
+    "/api/build/{path}/tag": {
+      "get": {
+        "tags": ["Build"],
+        "summary": "查询 Pipeline → Tag 映射",
+        "operationId": "buildTagQuery",
+        "parameters": [
+          {"name": "path", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "pipeline", "in": "query", "schema": {"type": "string"}, "description": "Pipeline 编号，不传返回全部"}
+        ],
+        "responses": { "200": { "description": "pipeline→tag 映射" } }
       }
     },
     "/api/admin/login": {
@@ -867,8 +1003,9 @@
         "tags": [
           "Jenkins"
         ],
-        "summary": "控制台日志",
-        "description": "返回纯文本控制台输出，不受 format 参数影响",
+        "summary": "控制台日志（旧，建议用 /api/build/{path}/logs/{id}）",
+        "deprecated": true,
+        "description": "已统一到 Build 模块。Jenkins 和 GitLab CI 均可使用 /api/build/{path}/logs/{id}",
         "operationId": "console",
         "parameters": [
           {

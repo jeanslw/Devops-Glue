@@ -7,11 +7,15 @@ use App\Service\MapService;
 use App\Service\HarborService;
 use App\Service\Git\ProviderRegistry;
 use App\Service\Git\GitProviderFactory;
+use App\Service\Build\BuildProviderRegistry;
+use App\Service\Build\JenkinsBuildProvider;
+use App\Service\Build\GitlabCiBuildProvider;
 use App\Controller\JenkinsController;
 use App\Controller\MainController;
 use App\Controller\GitController;
 use App\Controller\HarborController;
 use App\Controller\AdminController;
+use App\Controller\BuildController;
 use App\Middleware\CorsMiddleware;
 use App\Service\Logger;
 use GuzzleHttp\Client;
@@ -161,6 +165,32 @@ return [
         return $factory;
     },
 
+    // ---------- Build Provider 注册表 ----------
+
+    BuildProviderRegistry::class => function (\Psr\Container\ContainerInterface $c) {
+        $config   = $c->get(AppConfig::class);
+        $logger   = $c->get(Logger::class);
+        $registry = new BuildProviderRegistry();
+        $registry->setLogger($logger);
+
+        // Jenkins（始终注册，向后兼容）
+        $registry->register('jenkins', function () use ($c, $logger) {
+            return new JenkinsBuildProvider($c->get(JenkinsService::class), $logger);
+        });
+
+        // GitLab CI（GitLab 已配置且有 token 时注册）
+        if ($config->isPlatformConfigured('gitlab')) {
+            $glCfg = $config->getGitlabConfig();
+            if (!empty($glCfg['base_url']) && !empty($glCfg['token'])) {
+                $registry->register('gitlab_ci', function () use ($glCfg, $logger) {
+                    return new GitlabCiBuildProvider($glCfg['base_url'], $glCfg['token'], $logger);
+                });
+            }
+        }
+
+        return $registry;
+    },
+
     // ---------- Jenkins ----------
     JenkinsService::class => function (\Psr\Container\ContainerInterface $c) {
         $service = new JenkinsService(
@@ -228,6 +258,15 @@ return [
     // Admin 控制器
     AdminController::class => function (\Psr\Container\ContainerInterface $c) {
         return new AdminController($c->get(AppConfig::class));
+    },
+
+    // Build 控制器
+    BuildController::class => function (\Psr\Container\ContainerInterface $c) {
+        return new BuildController(
+            $c->get(BuildProviderRegistry::class),
+            $c->get(AppConfig::class),
+            $c->get(HarborService::class)
+        );
     },
 
     // Git 控制器

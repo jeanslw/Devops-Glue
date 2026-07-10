@@ -311,7 +311,55 @@ URL: /api/git/{group}/{project}/branches
 
 说明: 支持 GitLab、Gitee、GitHub 三种平台，自动根据 Job 在映射配置中关联的 Git 仓库查询。
 
-五、Harbor 模块 (/api/harbor)
+五、Build 模块 (/api/build) — v2.3.0 新增
+统一 Jenkins 和 GitLab CI 的构建/Pipeline 入口。
+
+5.1 Pipeline 列表（完整）
+URL: /api/build/{project}/pipelines
+输出: {"build_provider":"gitlab_ci","project_id":"3","pipelines":[{id,iid,status,ref,sha,web_url,...}]}
+
+5.2 Pipeline 列表（简洁，Jenkins 风格）
+URL: /api/build/{project}/pipelines?list=id
+输出: ["#10","#9","#8"]
+
+5.3 Pipeline 详情 + Jobs
+URL: /api/build/{project}/pipelines/{id}
+输出: {"build_provider":"...","project_id":"3","pipeline_id":4,"jobs":[{id,name,stage,status,runner,duration}]}
+
+5.4 Job 日志
+URL: /api/build/{project}/jobs/{id}/trace
+输出: text/plain 原始日志
+
+5.5 触发构建
+URL: /api/build/{project}/trigger  (POST)
+参数: {"ref":"main","variables":{"ENV":"test"}}
+输出: {"build_provider":"...","project_id":"...","success":true,"pipeline_id":...,"web_url":"..."}
+
+5.6 重试失败的 Pipeline（仅 GitLab CI）
+URL: /api/build/{project}/pipelines/{id}/retry (POST)
+Jenkins 调用返回: {"success":false,"message":"Jenkins 不支持 retry，请使用 trigger 重新触发构建"}
+
+5.7 取消运行中的 Pipeline（仅 GitLab CI）
+URL: /api/build/{project}/pipelines/{id}/cancel (POST)
+
+5.8 构建参数/CI 变量
+URL: /api/build/{project}/variables
+输出: {"build_provider":"...","project_id":"...","variables":[{key,value:"***",options,...}]}
+
+5.9 Harbor 扫描同步
+URL: /api/build/{project}/scan-sync (POST)
+参数: {"tag":"v3.0.0"}  不传则取 Harbor 最新 tag
+功能: 查 Harbor 扫描报告 → 回写 GitLab commit status + 记录 pipeline→tag 映射
+
+5.10 查询 Pipeline → Tag 映射
+URL: /api/build/{project}/tag?pipeline=10
+输出: {"build_provider":"...","project_id":"...","tag":"v3.0.0"}
+URL: /api/build/{project}/tag  查全部映射
+
+job_git_map 配置:
+"build_provider": "jenkins" | "gitlab_ci"  （不填默认 jenkins）
+
+六、Harbor 模块 (/api/harbor)
 5.1 获取项目列表
 URL: /api/harbor/projects
 
@@ -595,6 +643,7 @@ php
 十四、更新日志
 
 版本	日期	变更内容
+v2.3.1	2026-07-10	增加 GitLab CI 支持 + Build 统一构建模块 + SQLite 持久化
 v2.3.0	2026-07-10	增加简易 UI 管理界面
 v2.2.0	2026-07-10	架构升级：Git 平台改为 ProviderRegistry 注册表模式，支持自定义平台接入。新增 Gitea 平台适配器。移除 MapService 硬编码 IP 和静默兜底，配置增加 GITEA_BASE_URL/GITEA_TOKEN 环境变量。
 v2.1.2	2026-07-04	新增首页支持健康检查、 GitHub 平台接入；健康检查端点 /api/health；Swagger UI 文档 /api/docs；CORS 跨域支持；结构化文件日志；Docker 部署支持；ApiException 异常类优化。

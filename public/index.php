@@ -8,6 +8,22 @@ require __DIR__ . '/../vendor/autoload.php';
 $dotenv = Dotenv::createImmutable(__DIR__ . '/../config');
 $dotenv->load();
 
+// 静态文件直出（PHP 内置服务器用）
+$requestUri = $_SERVER['REQUEST_URI'] ?? '';
+$requestPath = parse_url($requestUri, PHP_URL_PATH);
+$staticFile = __DIR__ . $requestPath;
+if ($requestPath !== '/' && is_file($staticFile)) {
+    $ext = strtolower(pathinfo($staticFile, PATHINFO_EXTENSION));
+    $mimeTypes = ['css' => 'text/css', 'js' => 'application/javascript', 'png' => 'image/png', 'html' => 'text/html', 'json' => 'application/json', 'svg' => 'image/svg+xml', 'woff' => 'font/woff', 'woff2' => 'font/woff2'];
+    $mime = $mimeTypes[$ext] ?? mime_content_type($staticFile) ?: 'application/octet-stream';
+    header('Content-Type: ' . $mime);
+    readfile($staticFile);
+    exit;
+}
+
+// 初始化 SQLite（自动建表 + JSON 迁移）
+\App\Service\Database::init();
+
 $containerBuilder = new ContainerBuilder();
 $containerBuilder->addDefinitions(__DIR__ . '/../config/container.php');
 $container = $containerBuilder->build();
