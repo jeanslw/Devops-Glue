@@ -1,14 +1,14 @@
 Devops-Glue API 文档 v2.3.0
 概述
 
-Devops-Glue 是一套为小企业提供的 DevOps 工具链集成接口，基于 Slim 4 框架实现 Jenkins、GitLab/Gitee/GitHub/Gitea、Harbor 等工具的一键集成与数据互通。
+Devops-Glue 是一套为小企业提供的 DevOps 工具链集成接口，基于 Slim 4 框架实现 Jenkins + Gitlab CI双通道、GitLab/Gitee/GitHub/Gitea、Harbor 等工具的一键集成与数据互通。
 
 环境要求
 框架: Slim 4
 
 PHP 版本: 8.0+
 
-PHP 扩展: php-cli, php-mbstring, php-xml, php-curl, php-zip
+PHP 扩展: pdo_sqlite, php-cli, php-mbstring, php-xml, php-curl, php-zip
 
 支持服务:
 
@@ -406,11 +406,12 @@ URL: /admin
 
 说明: Web 管理界面，需登录（账号密码在 .env 中配置 ADMIN_USER / ADMIN_PASSWORD）。
 
-四大功能：
+五大功能：
 - 服务监测 — Jenkins / Git 平台 / Harbor 连通性 + 版本号实时检测
-- 映射管理 — job_git_map 可视化增删改查，数据存储在 config/job_git_map.json
-- 项目拓扑 — Jenkins Job → Git 仓库 → Harbor 镜像 链路可视化
+- 映射管理 — job_git_map 可视化增删改查，数据存储在 SQLite
+- 项目拓扑 — Build → Git 仓库 → Harbor 镜像 链路可视化
 - 对接版本 — 各平台 API 版本号在线配置
+- 修改密码 — 管理员在线修改登录密码
 
 七、API 文档（Swagger UI）
 URL: /api/docs
@@ -484,7 +485,8 @@ LOG_PATH=/data/logs/ci-platform/
 
 | 字段 | 必填 | 说明 |
 |------|:--:|------|
-| `job_name` | ✅ | Jenkins Job 完整路径，如 `"java/registry"` |
+| `job_name` | ✅ | Jenkins Job 或 GitLab CI 项目完整路径，如 `"java/registry"` |
+| `build_provider` | | CI 系统选择：`jenkins`（默认） / `gitlab_ci`。不填默认 jenkins |
 | `git_platform` | | 自建实例**强烈建议**填写。不填则系统自动检测 URL 关键词；但自建 GitLab/Gitea 的域名通常不含平台关键词，检测会失败并回退到 `DEFAULT_GIT_PLATFORM`。可选值：`gitlab` `gitee` `github` `gitea` 或自定义平台名 |
 | `git_remote` | | 不填则从 Jenkins Job 的 SCM 配置自动获取 |
 | `project_id` | | GitLab：不填自动通过 API 查询；GitHub/Gitee：如已知可填写 |
@@ -556,41 +558,67 @@ curl "http://URL/api/harbor/mycode/repositories/diagnosis-runtime/tags/v1.0.0/sc
 curl -X OPTIONS "http://URL/api/main/jobs/list" -H "Origin: http://example.com" -v
 
 十一、测试
-测试脚本位于 test/ 目录：
 
-bash
-# 完整测试（全部接口 + 三种格式 + CORS + 健康检查）
-php test/test_api_html.php
-
-# 快速测试（核心接口）
-php test/test_api_html_simp.php
-生成 HTML 报告，可浏览器打开查看。
+测试脚本如上所示：
 
 十二、项目结构
-├── config/                 # 服务端配置
-│   ├── .env                # 环境变量
-│   ├── .env.example        # 环境变量模板
-│   ├── settings.php        # 主配置 + 映射表
-│   ├── AppConfig.php       # 配置访问器
-│   ├── container.php       # DI 容器定义
-│   └── routes.php          # 路由定义
-├── public/                 # Web 根目录
-│   ├── index.php           # 应用入口
-│   └── .htaccess           # URL 重写
-├── src/
-│   ├── Controller/         # 控制器
-│   ├── Service/            # 业务逻辑 + 外部 API 客户端
-│   │   └── Git/            # Git 平台适配器（GitLab/Gitee/GitHub/Gitea + 自定义）
-│   ├── Middleware/          # PSR-15 中间件（CORS）
-│   └── Exceptions/         # 异常类
-├── templates/              # 静态页面
-│   ├── index.html          # 首页
-│   ├── 404.html            # 404 页面
-│   ├── swagger.html        # Swagger UI
-│   └── openapi.json        # OpenAPI 3.0 规范
-├── Dockerfile              # Docker 镜像
-├── docker-compose.yml      # Docker 编排
-└── .dockerignore           # Docker 排除文件
+
++---config						# 服务端配置
+|   |   .env.example			# 环境变量模板
+|   |   AppConfig.php			# 配置访问器
+|   |   container.php			# DI 容器定义
+|   |   routes.php				# 路由定义
+|   |   settings.php			# 主配置 + 映射表
+|   |
+|   \---data					# 数据库目录
+|           data.db				# SQLite 数据库（自动创建，.gitignore 排除）
+
++---public						# Web 根目录
+|   |   .htaccess				# URL 重写
+|   |   index.php				# 应用入口
+|   |
+|   \---assets					#静态资源目录
+|
++---src
+|   +---Controller				# 控制器
+|   |       AdminController.php
+|   |       BaseController.php
+|   |       BuildController.php
+|   |       GitController.php
+|   |       HarborController.php
+|   |       JenkinsController.php
+|   |       MainController.php
+|   |
+|   \---Service					# 业务逻辑
+|       |   Database.php		
+|       |   GitService.php
+|       |   HarborService.php
+|       |   JenkinsService.php
+|       |   Logger.php
+|       |   MapService.php
+|       |
+|       +---Build				#构建相关逻辑（v2.3.0引入）
+|       |       BuildProviderInterface.php
+|       |       BuildProviderRegistry.php
+|       |       GitlabCiBuildProvider.php
+|       |       JenkinsBuildProvider.php
+|       |
+|       \---Git					# Git 平台适配器（GitLab/Gitee/GitHub/Gitea + 自定义）
+|               GiteaService.php
+|               GiteeService.php
+|               GithubService.php
+|               GitlabService.php
+|               GitProviderFactory.php
+|               GitProviderInterface.php
+|               ProviderRegistry.php
+|
++---templates
+|       404.html				# Swagger UI
+|       admin.html				# 管理页面
+|       index.html				# 首页
+|       openapi.json			# OpenAPI 3.0 规范
+|       swagger.html			# Swagger UI
+|-------------------
 
 十三、自定义 Git 平台接入
 
@@ -643,11 +671,10 @@ php
 十四、更新日志
 
 版本	日期	变更内容
-v2.3.1	2026-07-10	增加 GitLab CI 支持 + Build 统一构建模块 + SQLite 持久化
-v2.3.0	2026-07-10	增加简易 UI 管理界面
-v2.2.0	2026-07-10	架构升级：Git 平台改为 ProviderRegistry 注册表模式，支持自定义平台接入。新增 Gitea 平台适配器。移除 MapService 硬编码 IP 和静默兜底，配置增加 GITEA_BASE_URL/GITEA_TOKEN 环境变量。
-v2.1.2	2026-07-04	新增首页支持健康检查、 GitHub 平台接入；健康检查端点 /api/health；Swagger UI 文档 /api/docs；CORS 跨域支持；结构化文件日志；Docker 部署支持；ApiException 异常类优化。
-v2.1.1	2026-03-05	Slim 4 重构。新增 Main 模块（平台接入、多方映射）；触发构建支持单/双参数动态适配；输出格式切换（raw/json/xml）；Harbor 扫描集成（Trivy 离线），Harbor v2 镜像扫描；
+v2.3.0	2026-07-10	增加 GitLab CI 支持、优化jenkins实现双通道，Build统一构建模块 + SQLite 持久化，增加简易 UI 管理界面
+v2.2.0	2026-05-06	架构升级：Git 平台改为 ProviderRegistry 注册表模式，支持自定义平台接入。新增 Gitea 平台适配器。
+v2.1.2	2026-05-04	新增首页支持健康检查、 GitHub 平台接入；健康检查端点 /api/health；Swagger UI 文档，结构化文件日志；Docker 部署支持；
+v2.1.1	2026-03-05	Slim 4 重构。新增 Main 模块（平台接入、多方映射）,多版本支持；输出格式切换（raw/json/xml）；Harbor 扫描集成（Trivy 离线）和扫描报告获取；
 v1.1	2021-11-01	增加 Harbor 查询功能
 v1.0	2018-09-28	初始版本，Jenkins、Git 与 Rundeck 三方集成
 
