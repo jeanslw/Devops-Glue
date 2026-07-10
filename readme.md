@@ -1,4 +1,4 @@
-Devops-Glue API 文档 v2.2.0
+Devops-Glue API 文档 v2.3.0
 概述
 
 Devops-Glue 是一套为小企业提供的 DevOps 工具链集成接口，基于 Slim 4 框架实现 Jenkins、GitLab/Gitee/GitHub/Gitea、Harbor 等工具的一键集成与数据互通。
@@ -353,14 +353,27 @@ URL: /api/harbor/{project}/repositories/{repository}/tags/{tag}/scan
 
 说明: Harbor v2 返回 application/vnd.security.vulnerability.report 格式的漏洞数据。
 
-六、API 文档（Swagger UI）
+六、管理后台（v2.3.0 新增）
+URL: /admin
+
+说明: Web 管理界面，需登录（账号密码在 .env 中配置 ADMIN_USER / ADMIN_PASSWORD）。
+
+四大功能：
+- 服务监测 — Jenkins / Git 平台 / Harbor 连通性 + 版本号实时检测
+- 映射管理 — job_git_map 可视化增删改查，数据存储在 config/job_git_map.json
+- 项目拓扑 — Jenkins Job → Git 仓库 → Harbor 镜像 链路可视化
+- 对接版本 — 各平台 API 版本号在线配置
+
+七、API 文档（Swagger UI）
 URL: /api/docs
 
 方法: GET
 
-说明: 浏览器打开即可浏览全部接口，支持在线 Try it out 交互式调试。
+认证: 需登录（与 /admin 共用账号密码）
 
-七、错误处理
+说明: 浏览器打开后输入管理后台账号登录即可浏览全部接口，支持在线 Try it out 交互式调试。
+
+八、错误处理
 所有错误响应统一格式：
 
 json
@@ -376,7 +389,7 @@ json
 500	服务端错误（Jenkins/Harbor 连接失败等）
 503	服务不可用（Harbor 扫描器未启用等）
 
-八、配置说明
+九、配置说明
 环境变量 (.env)
 ini
 # Jenkins
@@ -407,6 +420,10 @@ DEFAULT_GIT_PLATFORM=gitlab
 HARBOR_BASE_URL=http://URL
 HARBOR_USER=admin
 HARBOR_PASSWORD=your_password
+
+# 管理后台登录
+ADMIN_USER=admin
+ADMIN_PASSWORD=
 
 # App
 APP_ENV=production
@@ -451,7 +468,7 @@ php
     'allowed_methods' => ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     'allowed_headers' => ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
 ],
-九、快速测试命令
+十、快速测试命令
 bash
 # 健康检查
 curl "http://URL/api/health"
@@ -490,7 +507,7 @@ curl "http://URL/api/harbor/mycode/repositories/diagnosis-runtime/tags/v1.0.0/sc
 # CORS 预检测试
 curl -X OPTIONS "http://URL/api/main/jobs/list" -H "Origin: http://example.com" -v
 
-十、测试
+十一、测试
 测试脚本位于 test/ 目录：
 
 bash
@@ -501,7 +518,7 @@ php test/test_api_html.php
 php test/test_api_html_simp.php
 生成 HTML 报告，可浏览器打开查看。
 
-十一、项目结构
+十二、项目结构
 ├── config/                 # 服务端配置
 │   ├── .env                # 环境变量
 │   ├── .env.example        # 环境变量模板
@@ -527,7 +544,7 @@ php test/test_api_html_simp.php
 ├── docker-compose.yml      # Docker 编排
 └── .dockerignore           # Docker 排除文件
 
-十二、自定义 Git 平台接入
+十三、自定义 Git 平台接入
 
 系统支持通过配置接入任意 Git 平台，无需修改源码。
 
@@ -575,13 +592,14 @@ php
    - config/.env.example（环境变量声明）
    - readme.md（文档）
 
-十三、更新日志
+十四、更新日志
 
 版本	日期	变更内容
+v2.3.0	2026-07-10	增加简易 UI 管理界面
 v2.2.0	2026-07-10	架构升级：Git 平台改为 ProviderRegistry 注册表模式，支持自定义平台接入。新增 Gitea 平台适配器。移除 MapService 硬编码 IP 和静默兜底，配置增加 GITEA_BASE_URL/GITEA_TOKEN 环境变量。
 v2.1.2	2026-07-04	新增首页支持健康检查、 GitHub 平台接入；健康检查端点 /api/health；Swagger UI 文档 /api/docs；CORS 跨域支持；结构化文件日志；Docker 部署支持；ApiException 异常类优化。
 v2.1.1	2026-03-05	Slim 4 重构。新增 Main 模块（平台接入、多方映射）；触发构建支持单/双参数动态适配；输出格式切换（raw/json/xml）；Harbor 扫描集成（Trivy 离线），Harbor v2 镜像扫描；
 v1.1	2021-11-01	增加 Harbor 查询功能
 v1.0	2018-09-28	初始版本，Jenkins、Git 与 Rundeck 三方集成
 
-十四、如有建议可在 GitHub 仓库提 issue ，或联系EMAIL:jeanslw@qq.com
+十五、如有建议可在 GitHub 仓库提 issue ，或联系EMAIL:jeanslw@qq.com
