@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Devops-Glue API",
-    "version": "2.2",
+    "version": "2.3",
     "description": "DevOps 工具链集成接口 —— Jenkins、GitLab/Gitee/GitHub/Gitea、Harbor 一键集成与数据互通。",
     "contact": {
       "email": "jeanslw@qq.com"
@@ -34,6 +34,10 @@
     {
       "name": "Health",
       "description": "健康检查"
+    },
+    {
+      "name": "Admin",
+      "description": "管理后台 —— 映射配置与对接版本"
     }
   ],
   "components": {
@@ -141,6 +145,11 @@
               "jenkins": {
                 "type": "boolean"
               },
+              "jenkins_version": {
+                "type": "string",
+                "example": "2.555.3",
+                "description": "Jenkins 版本号（可连通时返回）"
+              },
               "git": {
                 "type": "array",
                 "items": {
@@ -148,6 +157,10 @@
                   "properties": {
                     "name": {
                       "type": "string"
+                    },
+                    "api_version": {
+                      "type": "string",
+                      "example": "v4"
                     },
                     "reachable": {
                       "type": "boolean"
@@ -160,6 +173,11 @@
               "harbor": {
                 "type": "boolean",
                 "nullable": true
+              },
+              "harbor_version": {
+                "type": "string",
+                "example": "v2",
+                "description": "Harbor API 版本号"
               }
             }
           },
@@ -170,6 +188,66 @@
           "time": {
             "type": "string",
             "example": "2026-07-05 12:00:00"
+          }
+        }
+      },
+      "LoginRequest": {
+        "type": "object",
+        "required": ["user", "password"],
+        "properties": {
+          "user": { "type": "string", "example": "admin" },
+          "password": { "type": "string", "example": "admin123" }
+        }
+      },
+      "LoginResult": {
+        "type": "object",
+        "properties": {
+          "token": { "type": "string", "example": "YWRtaW46YWRtaW4xMjM=", "description": "Bearer token，后续请求通过 Authorization header 传递" }
+        }
+      },
+      "JobGitMapEntry": {
+        "type": "object",
+        "required": ["job_name"],
+        "properties": {
+          "job_name": { "type": "string", "description": "Jenkins Job 完整路径，必填", "example": "php/myapp" },
+          "git_platform": { "type": "string", "description": "目标 Git 平台名", "example": "gitlab" },
+          "git_remote": { "type": "string", "description": "Git 仓库远程地址", "example": "http://git.company.com/project.git" },
+          "project_id": { "type": "integer", "nullable": true, "description": "Git 项目 ID（GitLab 不填自动查询）", "example": 5 },
+          "web_url": { "type": "string", "description": "项目主页链接", "example": "http://git.company.com/project" },
+          "current_path": { "type": "string", "description": "项目路径", "example": "tools/registry" },
+          "harbor_repository": { "type": "string", "description": "关联 Harbor 仓库", "example": "mycode/myapp" },
+          "api_version": { "type": "string", "description": "平台 API 版本（纯元数据）" }
+        }
+      },
+      "MapListResult": {
+        "type": "object",
+        "description": "按项目路径分组的映射关系。Jenkins 不可达且有过期缓存时附加 _stale=true",
+        "additionalProperties": {
+          "type": "object",
+          "properties": {
+            "git_platform": { "type": "string" },
+            "git_remote": { "type": "string" },
+            "project_id": { "type": "integer", "nullable": true },
+            "web_url": { "type": "string" },
+            "harbor_repository": { "type": "string" },
+            "platform_source": { "type": "string", "enum": ["auto", "manual"] },
+            "detection_method": { "type": "string", "enum": ["exact", "fallback", "manual"] },
+            "jobs": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      },
+      "PlatformVersionsResult": {
+        "type": "object",
+        "properties": {
+          "versions": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "value": { "type": "string", "example": "v4" },
+                "source": { "type": "string", "enum": ["config", "json", "default"], "description": "config=settings.php | json=管理界面 | default=系统默认" }
+              }
+            }
           }
         }
       }
@@ -240,7 +318,7 @@
           "Main"
         ],
         "summary": "Job / Git / Harbor 三方映射",
-        "description": "按项目分组返回 Jenkins Job 与 Git 仓库、Harbor 镜像的映射关系",
+        "description": "按项目分组返回 Jenkins Job 与 Git 仓库、Harbor 镜像的映射关系。内置 30s 缓存，Jenkins 不可达时返回过期数据（附带 _stale 标记）",
         "operationId": "mapList",
         "parameters": [
           {
@@ -249,7 +327,14 @@
         ],
         "responses": {
           "200": {
-            "description": "分组映射 JSON 对象"
+            "description": "分组映射 JSON 对象",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MapListResult"
+                }
+              }
+            }
           }
         }
       }
@@ -291,6 +376,127 @@
           "200": {
             "description": "configured / unconfigured 列表"
           }
+        }
+      }
+    },
+    "/api/admin/login": {
+      "post": {
+        "tags": ["Admin"],
+        "summary": "管理后台登录",
+        "description": "使用 .env 中 ADMIN_USER / ADMIN_PASSWORD 验证，返回 Bearer token",
+        "operationId": "adminLogin",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/LoginRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "登录成功",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginResult" } } }
+          },
+          "401": {
+            "description": "账号或密码错误",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
+        }
+      }
+    },
+    "/api/admin/job_git_map": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "列出所有 Job-Git 映射",
+        "operationId": "adminMapList",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [ { "$ref": "#/components/parameters/format" } ],
+        "responses": {
+          "200": {
+            "description": "映射列表 + 可用平台",
+            "content": { "application/json": { "schema": { "type": "object", "properties": {
+              "maps": { "type": "array", "items": { "$ref": "#/components/schemas/JobGitMapEntry" } },
+              "platforms": { "type": "array", "items": { "type": "string" } }
+            } } } }
+          },
+          "401": { "$ref": "#/components/responses/400" }
+        }
+      },
+      "post": {
+        "tags": ["Admin"],
+        "summary": "新增一条映射",
+        "operationId": "adminMapCreate",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobGitMapEntry" } } }
+        },
+        "responses": {
+          "200": { "description": "新增成功" },
+          "400": { "$ref": "#/components/responses/400" },
+          "409": { "description": "job_name 已存在" }
+        }
+      },
+      "put": {
+        "tags": ["Admin"],
+        "summary": "更新一条映射（按 _original_job_name 匹配）",
+        "operationId": "adminMapUpdate",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "allOf": [
+            { "$ref": "#/components/schemas/JobGitMapEntry" },
+            { "type": "object", "properties": { "_original_job_name": { "type": "string", "description": "修改前的 job_name" } }, "required": ["_original_job_name"] }
+          ] } } }
+        },
+        "responses": {
+          "200": { "description": "更新成功" },
+          "404": { "$ref": "#/components/responses/404" }
+        }
+      },
+      "delete": {
+        "tags": ["Admin"],
+        "summary": "删除一条映射",
+        "operationId": "adminMapDelete",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "job_name", "in": "query", "required": true, "schema": { "type": "string" }, "description": "要删除的 Job 名称" }
+        ],
+        "responses": {
+          "200": { "description": "删除成功" },
+          "404": { "$ref": "#/components/responses/404" }
+        }
+      }
+    },
+    "/api/admin/platform_versions": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "获取平台对接版本",
+        "description": "返回各平台 API 版本号及来源（config=配置文件 / json=管理界面 / default=系统默认）",
+        "operationId": "adminVersionsList",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "版本信息",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlatformVersionsResult" } } }
+          }
+        }
+      },
+      "put": {
+        "tags": ["Admin"],
+        "summary": "更新平台对接版本",
+        "description": "传入 { versions: { gitlab: v5, ... } }，与默认值相同的项不保存",
+        "operationId": "adminVersionsUpdate",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "properties": {
+            "versions": { "type": "object", "description": "平台名→版本号映射", "example": { "gitlab": "v4", "harbor": "v2.0" } }
+          }, "required": ["versions"] } } }
+        },
+        "responses": {
+          "200": { "description": "更新成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlatformVersionsResult" } } } }
         }
       }
     },

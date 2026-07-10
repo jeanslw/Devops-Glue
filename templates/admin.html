@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理后台 — Devops-Glue</title>
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            font-family:'Segoe UI','Microsoft YaHei',sans-serif;
+            background:#f3f4f6; color:#333; min-height:100vh;
+        }
+
+        /* ── 顶栏 ── */
+        .topbar {
+            background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
+            padding:0 24px; height:52px; display:flex; align-items:center;
+            justify-content:space-between; color:#fff;
+        }
+        .topbar .logo { font-size:17px; font-weight:700; text-decoration:none; color:#fff; }
+        .topbar .top-right { font-size:13px; opacity:.85; display:flex; gap:16px; align-items:center; }
+        .topbar .top-right a { color:#fff; text-decoration:none; }
+        .topbar .top-right a:hover { opacity:1; }
+
+        /* ── 主体：sidebar + content ── */
+        .layout { display:flex; min-height:calc(100vh - 52px); }
+
+        /* ── 侧栏 ── */
+        .sidebar {
+            width:240px; background:#fff; border-right:1px solid #e5e7eb;
+            padding:20px 0; flex-shrink:0;
+        }
+        .sidebar .menu-item {
+            display:flex; align-items:center; gap:10px;
+            padding:12px 24px; cursor:pointer; font-size:14px;
+            color:#4b5563; border-left:3px solid transparent;
+            transition:all .15s; user-select:none;
+        }
+        .sidebar .menu-item:hover { background:#f9fafb; color:#1f2937; }
+        .sidebar .menu-item.active {
+            background:#eef2ff; color:#4f46e5; border-left-color:#4f46e5; font-weight:600;
+        }
+        .sidebar .menu-icon { font-size:17px; width:22px; text-align:center; }
+        .sidebar .menu-div { margin:12px 0; border-top:1px solid #e5e7eb; }
+
+        /* ── 内容区 ── */
+        .content { flex:1; padding:24px; overflow-y:auto; }
+
+        /* ── 服务监测卡片 ── */
+        .monitor-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px; }
+        .monitor-card {
+            background:#fff; border-radius:12px; padding:20px 24px;
+            box-shadow:0 1px 4px rgba(0,0,0,.06); border:1px solid #f3f4f6;
+        }
+        .monitor-card h4 { font-size:13px; color:#6b7280; margin-bottom:14px; text-transform:uppercase; letter-spacing:.5px; display:flex; align-items:center; gap:8px; }
+        .monitor-card h4 .dot { width:8px; height:8px; border-radius:50%; }
+        .dot-ok { background:#22c55e; } .dot-err { background:#ef4444; } .dot-off { background:#94a3b8; } .dot-load { background:#f59e0b; animation:pulse 1.5s infinite; }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+        .svc-row {
+            display:flex; align-items:center; gap:10px;
+            padding:7px 10px; border-radius:8px; font-size:13px;
+        }
+        .svc-row + .svc-row { margin-top:2px; }
+        .svc-row.parent { background:#f8fafc; font-weight:600; }
+        .svc-row.child { padding-left:32px; font-size:12px; }
+        .svc-icon { width:20px; text-align:center; font-size:14px; flex-shrink:0; }
+        .svc-name { flex:1; }
+        .svc-ver { color:#9ca3af; font-size:11px; font-weight:400; }
+        .svc-stat { font-size:12px; min-width:50px; text-align:right; }
+        .svc-stat.ok { color:#16a34a; } .svc-stat.err { color:#dc2626; } .svc-stat.off { color:#94a3b8; }
+
+        .monitor-time { text-align:right; font-size:11px; color:#9ca3af; margin-top:12px; }
+
+        /* ── 映射管理 ── */
+        .toolbar {
+            display:flex; justify-content:space-between; align-items:center;
+            margin-bottom:16px; flex-wrap:wrap; gap:10px;
+        }
+        .toolbar h3 { font-size:18px; }
+
+        .btn {
+            display:inline-block; padding:8px 18px; border-radius:8px;
+            font-size:13px; font-weight:600; cursor:pointer; border:none;
+            transition:all .2s;
+        }
+        .btn-pri { background:#4f46e5; color:#fff; }
+        .btn-pri:hover { background:#4338ca; }
+        .btn-save { background:#4f46e5; color:#fff; }
+        .btn-save:hover { background:#4338ca; }
+        .btn-cancel { background:#e5e7eb; color:#374151; }
+        .btn-cancel:hover { background:#d1d5db; }
+        .btn-sm { padding:4px 12px; font-size:12px; border-radius:6px; }
+        .btn-edit { background:#e0e7ff; color:#4f46e5; }
+        .btn-edit:hover { background:#c7d2fe; }
+        .btn-del { background:#fee2e2; color:#dc2626; }
+        .btn-del:hover { background:#fecaca; }
+
+        .card {
+            background:#fff; border-radius:12px; padding:20px 24px;
+            box-shadow:0 1px 4px rgba(0,0,0,.06); border:1px solid #f3f4f6;
+        }
+
+        table { width:100%; border-collapse:collapse; font-size:13px; }
+        th { text-align:left; padding:10px 8px; border-bottom:2px solid #e5e7eb; color:#6b7280; font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.5px; white-space:nowrap; }
+        td { padding:10px 8px; border-bottom:1px solid #f3f4f6; vertical-align:middle; }
+        tr:hover td { background:#f9fafb; }
+        td.mono { font-family:'Cascadia Code','Consolas',monospace; font-size:12px; }
+
+        .badge {
+            display:inline-block; padding:2px 10px; border-radius:12px;
+            font-size:11px; font-weight:600;
+        }
+        .badge-gitlab  { background:#fde8e8; color:#c81e1e; }
+        .badge-github  { background:#f3f4f6; color:#1f2937; }
+        .badge-gitee   { background:#fef3c7; color:#d97706; }
+        .badge-gitea   { background:#dbeafe; color:#1d4ed8; }
+        .badge-default { background:#f3f4f6; color:#6b7280; }
+
+        /* 表单面板 */
+        .form-panel {
+            background:#fff; border-radius:12px; padding:24px;
+            box-shadow:0 1px 4px rgba(0,0,0,.06); border:1px solid #f3f4f6;
+            margin-bottom:16px; display:none;
+        }
+        .form-panel.show { display:block; }
+        .form-panel h3 { font-size:15px; margin-bottom:16px; color:#4f46e5; }
+        .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+        .form-grid .full { grid-column:1/-1; }
+        label { display:block; font-size:12px; font-weight:600; color:#6b7280; margin-bottom:3px; }
+        label .req { color:#dc2626; }
+        input, select {
+            width:100%; padding:8px 12px; border:1.5px solid #d1d5db;
+            border-radius:8px; font-size:13px; font-family:inherit;
+            transition:border-color .2s;
+        }
+        input:focus, select:focus { outline:none; border-color:#667eea; box-shadow:0 0 0 3px rgba(102,126,234,.15); }
+        .form-actions { margin-top:14px; display:flex; gap:10px; }
+
+        /* Toast */
+        .toast {
+            position:fixed; top:68px; right:24px; padding:12px 24px;
+            border-radius:10px; font-size:14px; z-index:99;
+            opacity:0; transform:translateX(40px); transition:all .3s;
+        }
+        .toast.show { opacity:1; transform:translateX(0); }
+        .toast-ok  { background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; }
+        .toast-err { background:#fef2f2; color:#991b1b; border:1px solid #fecaca; }
+
+        /* ── 登录页 ── */
+        .login-wrap {
+            display:flex; justify-content:center; align-items:center;
+            min-height:100vh; background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
+        }
+        .login-card {
+            background:#fff; border-radius:16px; padding:36px 32px;
+            box-shadow:0 8px 32px rgba(0,0,0,.18); width:380px; max-width:90vw;
+            text-align:center;
+        }
+        .login-card h3 { font-size:20px; margin-bottom:6px; }
+        .login-card .sub { font-size:13px; color:#9ca3af; margin-bottom:24px; }
+        .login-card input { width:100%; padding:10px 14px; border:1.5px solid #d1d5db; border-radius:8px; font-size:14px; margin-bottom:12px; }
+        .login-card input:focus { outline:none; border-color:#667eea; box-shadow:0 0 0 3px rgba(102,126,234,.15); }
+        .login-card .btn { width:100%; }
+        .login-err { color:#dc2626; font-size:13px; margin-top:8px; display:none; }
+
+        /* ── 项目拓扑 ── */
+        .topo-card {
+            background:#fff; border-radius:12px; padding:24px 28px;
+            box-shadow:0 1px 4px rgba(0,0,0,.06); border:1px solid #f3f4f6;
+            margin-bottom:16px;
+        }
+        .topo-header {
+            display:flex; align-items:center; justify-content:space-between;
+            margin-bottom:18px; flex-wrap:wrap; gap:8px;
+        }
+        .topo-header .topo-project { font-size:15px; font-weight:700; }
+        .topo-header .topo-meta { display:flex; gap:8px; align-items:center; }
+        .topo-flow {
+            display:flex; align-items:flex-start; gap:0;
+            flex-wrap:wrap;
+        }
+        .topo-node {
+            flex:1; min-width:200px; background:#f8fafc; border-radius:10px;
+            padding:16px 20px; position:relative;
+        }
+        .topo-arrow {
+            display:flex; align-items:center; justify-content:center;
+            width:40px; flex-shrink:0; color:#9ca3af; font-size:20px;
+        }
+        .topo-node .node-label {
+            font-size:10px; text-transform:uppercase; letter-spacing:.8px;
+            color:#9ca3af; margin-bottom:8px; font-weight:600;
+        }
+        .topo-node .node-icon { font-size:22px; margin-bottom:6px; }
+        .topo-node .node-main {
+            font-size:14px; font-weight:600; color:#1f2937;
+            word-break:break-all; margin-bottom:4px;
+        }
+        .topo-node .node-sub {
+            font-size:12px; color:#6b7280;
+        }
+        .topo-node .node-sub a {
+            color:#4f46e5; text-decoration:none;
+        }
+        .topo-node .node-sub a:hover { text-decoration:underline; }
+        .topo-jobs {
+            margin-top:14px; padding-top:12px;
+            border-top:1px dashed #e5e7eb;
+        }
+        .topo-jobs .job-tag {
+            display:inline-block; padding:2px 10px; border-radius:12px;
+            font-size:11px; font-weight:600; margin:2px 4px 2px 0;
+            background:#eef2ff; color:#4f46e5;
+        }
+        .topo-empty-field { color:#9ca3af; font-style:italic; }
+
+        @media (max-width:768px) {
+            .layout { flex-direction:column; }
+            .sidebar { width:100%; display:flex; overflow-x:auto; padding:0; border-right:none; border-bottom:1px solid #e5e7eb; }
+            .sidebar .menu-item { white-space:nowrap; border-left:none; border-bottom:3px solid transparent; padding:12px 16px; }
+            .sidebar .menu-item.active { border-left:none; border-bottom-color:#4f46e5; }
+            .sidebar .menu-div { display:none; }
+            .content { padding:16px; }
+            .monitor-grid { grid-template-columns:1fr; }
+            .form-grid { grid-template-columns:1fr; }
+            .topo-flow { flex-direction:column; }
+            .topo-arrow { width:100%; transform:rotate(90deg); padding:4px 0; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ═══════════ 登录 ═══════════ -->
+<div id="login-page" class="login-wrap">
+    <div class="login-card">
+        <h3>🔐 管理登录</h3>
+        <p class="sub">Devops-Glue 管理后台</p>
+        <input id="login-user" placeholder="账号" autocomplete="username">
+        <input id="login-pass" type="password" placeholder="密码" autocomplete="current-password">
+        <button class="btn btn-pri" onclick="doLogin()">登 录</button>
+        <div class="login-err" id="login-err"></div>
+    </div>
+</div>
+
+<!-- ═══════════ 主界面 ═══════════ -->
+<div id="app-page" style="display:none;">
+
+    <div class="topbar">
+        <a href="/" class="logo">⚙️ Devops-Glue 管理后台</a>
+        <div class="top-right">
+            <a href="/">🏠 首页</a>
+            <a href="/api/docs">📖 API 文档</a>
+            <a href="#" onclick="doLogout()">🚪 退出</a>
+        </div>
+    </div>
+
+    <div class="layout">
+        <!-- 侧栏 -->
+        <div class="sidebar">
+            <div class="menu-item active" data-tab="monitor" onclick="switchTab('monitor')">
+                <span class="menu-icon">📡</span> 服务监测
+            </div>
+            <div class="menu-item" data-tab="mapping" onclick="switchTab('mapping')">
+                <span class="menu-icon">📋</span> 映射管理
+            </div>
+            <div class="menu-item" data-tab="topology" onclick="switchTab('topology')">
+                <span class="menu-icon">🗺️</span> 项目拓扑
+            </div>
+            <div class="menu-item" data-tab="versions" onclick="switchTab('versions')">
+                <span class="menu-icon">🔧</span> 对接版本
+            </div>
+        </div>
+
+        <!-- 内容 -->
+        <div class="content">
+
+            <!-- Toast -->
+            <div class="toast" id="toast"></div>
+
+            <!-- ═══ 服务监测 Tab ═══ -->
+            <div id="tab-monitor">
+                <div class="monitor-grid" id="monitor-grid">
+                    <div class="monitor-card" id="card-jenkins">
+                        <h4><span class="dot dot-load" id="dot-jenkins"></span> Jenkins</h4>
+                        <div class="svc-row parent">
+                            <span class="svc-icon" id="icon-jenkins">⏳</span>
+                            <span class="svc-name" id="name-jenkins" data-base="Jenkins">Jenkins</span>
+                            <span class="svc-stat" id="stat-jenkins">检测中…</span>
+                        </div>
+                    </div>
+
+                    <div class="monitor-card" id="card-git">
+                        <h4><span class="dot dot-load" id="dot-git"></span> Git 平台</h4>
+                        <div id="git-rows">
+                            <div class="svc-row parent">
+                                <span class="svc-icon">⏳</span>
+                                <span class="svc-name">Git 平台</span>
+                                <span class="svc-stat">检测中…</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="monitor-card" id="card-harbor">
+                        <h4><span class="dot dot-load" id="dot-harbor"></span> Harbor</h4>
+                        <div class="svc-row parent">
+                            <span class="svc-icon" id="icon-harbor">⏳</span>
+                            <span class="svc-name" id="name-harbor" data-base="Harbor">Harbor</span>
+                            <span class="svc-stat" id="stat-harbor">检测中…</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══ 映射管理 Tab ═══ -->
+            <div id="tab-mapping" style="display:none;">
+
+                <!-- 表单面板 -->
+                <div class="form-panel" id="form-panel">
+                    <h3 id="form-title">新增映射</h3>
+                    <form id="map-form" onsubmit="submitForm(event)">
+                        <input type="hidden" id="original-name">
+                        <div class="form-grid">
+                            <div>
+                                <label><span class="req">*</span> Job 名称</label>
+                                <input id="f-job_name" placeholder="例: java/registry" required>
+                            </div>
+                            <div>
+                                <label>Git 平台</label>
+                                <select id="f-git_platform"></select>
+                            </div>
+                            <div class="full">
+                                <label>Git Remote URL</label>
+                                <input id="f-git_remote" placeholder="例: http://git.company.com/project.git">
+                            </div>
+                            <div>
+                                <label>Project ID</label>
+                                <input id="f-project_id" placeholder="数字或空">
+                            </div>
+                            <div class="full">
+                                <label>Web URL</label>
+                                <input id="f-web_url" placeholder="项目主页链接">
+                            </div>
+                            <div>
+                                <label>项目路径</label>
+                                <input id="f-current_path" placeholder="例: group/project">
+                            </div>
+                            <div>
+                                <label>Harbor 仓库</label>
+                                <input id="f-harbor_repository" placeholder="例: project/repo">
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-save">💾 保存</button>
+                            <button type="button" class="btn btn-cancel" onclick="hideForm()">取消</button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- 工具栏 -->
+                <div class="toolbar">
+                    <h3>映射配置</h3>
+                    <button class="btn btn-pri" onclick="showForm()">＋ 新增映射</button>
+                </div>
+
+                <!-- 表格 -->
+                <div class="card">
+                    <div id="loading-map" style="text-align:center;padding:40px;color:#9ca3af;">加载中…</div>
+                    <div id="table-wrap" style="display:none;overflow-x:auto;">
+                        <table>
+                            <thead>
+                                <tr><th>Job 名称</th><th>Git 平台</th><th>Git Remote</th><th>Harbor 仓库</th><th>操作</th></tr>
+                            </thead>
+                            <tbody id="map-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div id="empty-msg" style="display:none;text-align:center;padding:40px;color:#9ca3af;">
+                        暂无映射配置，点击上方按钮新增
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══ API 版本 Tab ═══ -->
+            <div id="tab-versions" style="display:none;">
+                <div class="toolbar"><h3>🔧 平台对接版本配置</h3></div>
+                <div class="card">
+                    <p style="font-size:13px;color:#6b7280;margin-bottom:16px;">
+                        以下版本号用于构建各平台的 API 请求路径（如 <code>/api/v4</code>）。
+                        修改后立即生效，留空则恢复默认值。GitHub 版本通过 HTTP Header 传递，仅影响显示。
+                    </p>
+                    <div id="ver-loading" style="text-align:center;padding:30px;color:#9ca3af;">加载中…</div>
+                    <div id="ver-table-wrap" style="display:none;">
+                        <table>
+                            <thead><tr><th>平台</th><th>默认值</th><th>来源</th><th>当前版本</th><th>说明</th></tr></thead>
+                            <tbody id="ver-tbody"></tbody>
+                        </table>
+                        <div style="margin-top:16px;text-align:right;">
+                            <button class="btn btn-save" onclick="saveVersions()">💾 保存</button>
+                            <span id="ver-status" style="font-size:13px;color:#16a34a;margin-left:12px;display:none;">已保存</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══ 项目拓扑 Tab ═══ -->
+            <div id="tab-topology" style="display:none;">
+                <div id="topo-loading" style="text-align:center;padding:60px;color:#9ca3af;">加载中…</div>
+                <div id="topo-grid" style="display:none;"></div>
+                <div id="topo-empty" style="display:none;text-align:center;padding:60px;color:#9ca3af;">
+                    <p style="font-size:15px;">暂无映射数据</p>
+                    <p style="font-size:13px;margin-top:6px;">在「映射管理」中配置 job_git_map 后，这里会自动展示项目拓扑关系</p>
+                </div>
+            </div>
+
+        </div><!-- /content -->
+    </div><!-- /layout -->
+</div><!-- /app-page -->
+
+<script>
+const LOGIN_API    = '/api/admin/login';
+const MAP_API      = '/api/admin/job_git_map';
+const HEALTH_API   = '/api/health';
+const MAP_LIST_API  = '/api/main/map/list';
+const VERSIONS_API  = '/api/admin/platform_versions';
+let platforms = [];
+let token = sessionStorage.getItem('admin_token') || '';
+
+// ═══════════ Auth ═══════════
+function authHeaders() {
+    return token ? { 'Authorization': 'Bearer ' + token } : {};
+}
+
+function handle401(res) {
+    if (res.status === 401) { doLogout(); return true; }
+    return false;
+}
+
+function doLogout() {
+    token = '';
+    sessionStorage.removeItem('admin_token');
+    document.getElementById('login-page').style.display = 'flex';
+    document.getElementById('app-page').style.display = 'none';
+}
+
+async function doLogin() {
+    const user = document.getElementById('login-user').value.trim();
+    const pass = document.getElementById('login-pass').value;
+    const errEl = document.getElementById('login-err');
+    errEl.style.display = 'none';
+
+    if (!user || !pass) { errEl.textContent = '请输入账号和密码'; errEl.style.display = 'block'; return; }
+    try {
+        const res = await fetch(LOGIN_API, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({user,password:pass}) });
+        const data = await res.json();
+        if (res.ok && data.token) {
+            token = data.token;
+            sessionStorage.setItem('admin_token', token);
+            document.getElementById('login-page').style.display = 'none';
+            document.getElementById('app-page').style.display = 'block';
+            switchTab('monitor');
+        } else {
+            errEl.textContent = data.message || '登录失败';
+            errEl.style.display = 'block';
+        }
+    } catch(e) {
+        errEl.textContent = '网络错误: ' + e.message;
+        errEl.style.display = 'block';
+    }
+}
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && document.getElementById('login-page').style.display !== 'none') doLogin();
+});
+
+function switchTab(name) {
+    document.querySelectorAll('.sidebar .menu-item').forEach(el => el.classList.remove('active'));
+    document.querySelector(`[data-tab="${name}"]`).classList.add('active');
+    document.getElementById('tab-monitor').style.display = name === 'monitor' ? 'block' : 'none';
+    document.getElementById('tab-mapping').style.display = name === 'mapping' ? 'block' : 'none';
+    document.getElementById('tab-topology').style.display = name === 'topology' ? 'block' : 'none';
+    document.getElementById('tab-versions').style.display = name === 'versions' ? 'block' : 'none';
+    if (name === 'monitor') loadMonitor();
+    if (name === 'mapping') loadMaps();
+    if (name === 'topology') loadTopology();
+    if (name === 'versions') loadVersions();
+}
+
+// ═══════════ Toast ═══════════
+function toast(msg, ok) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = 'toast ' + (ok ? 'toast-ok' : 'toast-err') + ' show';
+    setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// ═══════════ 服务监测 ═══════════
+async function loadMonitor() {
+    const now = new Date().toLocaleString('zh-CN');
+
+    function setSvc(iconId, nameId, statId, dotId, ok, ver, label) {
+        const icon = document.getElementById(iconId);
+        const name = document.getElementById(nameId);
+        const stat = document.getElementById(statId);
+        const dot  = document.getElementById(dotId);
+        if (icon) icon.textContent = ok === true ? '✅' : ok === null ? '⚪' : '❌';
+        if (stat) { stat.textContent = label; stat.className = 'svc-stat ' + (ok===true?'ok':ok===null?'off':'err'); }
+        if (dot)  { dot.className = 'dot ' + (ok===true?'dot-ok':ok===null?'dot-off':'dot-err'); }
+        if (name && ver) name.innerHTML = (name.dataset.base || name.textContent) + ' <span class="svc-ver">' + ver + '</span>';
+    }
+
+    try {
+        const res = await fetch(HEALTH_API);
+        const data = await res.json();
+        const chk = data.checks || {};
+
+        // Jenkins
+        const jOk = chk.jenkins === true;
+        const jVer = chk.jenkins_version || '';
+        setSvc('icon-jenkins', 'name-jenkins', 'stat-jenkins', 'dot-jenkins', jOk, jVer ? 'v'+jVer : '', jOk?'正常':'不可达');
+
+        // Git 平台
+        const gitRows = document.getElementById('git-rows');
+        const gitData = chk.git;
+        const dotGit = document.getElementById('dot-git');
+        if (gitData === null || gitData === undefined) {
+            dotGit.className = 'dot dot-off';
+            gitRows.innerHTML = '<div class="svc-row parent"><span class="svc-icon">⚪</span><span class="svc-name">Git 平台</span><span class="svc-stat off">未配置</span></div>';
+        } else if (Array.isArray(gitData) && gitData.length > 0) {
+            dotGit.className = gitData.every(g=>g.reachable) ? 'dot dot-ok' : 'dot dot-err';
+            gitRows.innerHTML = gitData.map(g => {
+                const ok = g.reachable;
+                return `<div class="svc-row child">
+                    <span class="svc-icon">${ok ? '✅' : '❌'}</span>
+                    <span class="svc-name">${esc(g.name)}<span class="svc-ver">${g.api_version||''}</span></span>
+                    <span class="svc-stat ${ok?'ok':'err'}">${ok?'正常':'不可达'}</span>
+                </div>`;
+            }).join('') || '<div class="svc-row child"><span class="svc-icon">⚪</span><span class="svc-name">无已配置平台</span></div>';
+        } else {
+            dotGit.className = 'dot dot-off';
+            gitRows.innerHTML = '<div class="svc-row parent"><span class="svc-icon">⚪</span><span class="svc-name">Git 平台</span><span class="svc-stat off">未知</span></div>';
+        }
+
+        // Harbor
+        const hOk = chk.harbor === true;
+        const hVer = chk.harbor_version || '';
+        setSvc('icon-harbor', 'name-harbor', 'stat-harbor', 'dot-harbor', hOk, hVer, hOk===true?'正常':hOk===null?'未配置':'不可达');
+
+    } catch(e) {
+        ['jenkins','git','harbor'].forEach(k => {
+            setSvc('icon-'+k, 'name-'+k, 'stat-'+k, 'dot-'+k, false, '', '无法连接');
+        });
+    }
+}
+
+// ═══════════ 映射管理 ═══════════
+async function loadMaps() {
+    try {
+        const res = await fetch(MAP_API, { headers: authHeaders() });
+        if (handle401(res)) return;
+        const data = await res.json();
+        const maps = data.maps || [];
+        platforms = data.platforms || [];
+
+        const sel = document.getElementById('f-git_platform');
+        sel.innerHTML = '<option value="">— 自动检测 —</option>';
+        platforms.forEach(p => { sel.innerHTML += `<option value="${p}">${p}</option>`; });
+
+        const tbody = document.getElementById('map-tbody');
+        const empty = document.getElementById('empty-msg');
+        const tableWrap = document.getElementById('table-wrap');
+        document.getElementById('loading-map').style.display = 'none';
+
+        if (maps.length === 0) {
+            empty.style.display = 'block';
+            tableWrap.style.display = 'none';
+        } else {
+            empty.style.display = 'none';
+            tableWrap.style.display = 'block';
+            tbody.innerHTML = maps.map(m => {
+                const plat = m.git_platform || '—';
+                const badgeCls = plat !== '—' && platforms.includes(plat) ? 'badge-' + plat : 'badge-default';
+                return `<tr>
+                    <td><strong>${esc(m.job_name)}</strong></td>
+                    <td>${plat !== '—' ? `<span class="badge ${badgeCls}">${esc(plat)}</span>` : '—'}</td>
+                    <td class="mono">${esc(m.git_remote || '—')}</td>
+                    <td>${esc(m.harbor_repository || '—')}</td>
+                    <td style="white-space:nowrap">
+                        <button class="btn btn-sm btn-edit" onclick='editMap(${js(m)})'>✏️ 编辑</button>
+                        <button class="btn btn-sm btn-del" onclick='deleteMap("${escJs(m.job_name)}")'>🗑 删除</button>
+                    </td>
+                </tr>`;
+            }).join('');
+        }
+    } catch(e) {
+        document.getElementById('loading-map').textContent = '加载失败: ' + e.message;
+    }
+}
+
+// ═══════════ 项目拓扑 ═══════════
+async function loadTopology() {
+    const loading = document.getElementById('topo-loading');
+    const grid    = document.getElementById('topo-grid');
+    const empty   = document.getElementById('topo-empty');
+
+    loading.style.display = 'block';
+    loading.innerHTML = '<p style="font-size:15px;">⏳ 正在从 Jenkins 拉取 Job 列表…</p><p style="font-size:12px;color:#9ca3af;margin-top:4px;">首次加载稍慢，后续 30 秒内有缓存</p>';
+    grid.style.display = 'none';
+    empty.style.display = 'none';
+
+    try {
+        const res = await fetch(MAP_LIST_API);
+        const data = await res.json();
+
+        // 服务端报错
+        if (data._error) {
+            loading.innerHTML = `<p style="color:#dc2626;">⚠️ ${esc(data._error)}</p><p style="font-size:13px;color:#9ca3af;margin-top:4px;">${esc(data._detail||'')}</p>`;
+            return;
+        }
+
+        const projects = data.data || data;
+        const entries = Array.isArray(projects) ? projects : Object.entries(projects).map(([k,v]) => ({project:k, ...v}));
+
+        if (entries.length === 0) {
+            loading.style.display = 'none';
+            empty.style.display = 'block';
+            return;
+        }
+
+        // 过期缓存标记
+        let staleNote = '';
+        if (data._stale) {
+            staleNote = '<div style="text-align:center;margin-bottom:12px;padding:8px;background:#fef3c7;border-radius:8px;font-size:12px;color:#92400e;">⚠️ Jenkins 暂时不可达，显示的是最近一次缓存数据</div>';
+        }
+
+        loading.style.display = 'none';
+        grid.style.display = 'block';
+        grid.innerHTML = staleNote + entries.map((p, i) => {
+            const platform = p.git_platform || '—';
+            const source   = p.platform_source || '';
+            const method   = p.detection_method || '';
+            let detectBadge = '';
+            if (source === 'manual') detectBadge = '<span class="badge" style="background:#fef3c7;color:#d97706;">手动映射</span>';
+            else if (method === 'fallback') detectBadge = '<span class="badge" style="background:#fef2f2;color:#dc2626;">兜底识别</span>';
+            else if (method === 'exact') detectBadge = '<span class="badge" style="background:#ecfdf5;color:#065f46;">自动识别</span>';
+
+            // Jenkins Jobs
+            const jobs = (p.jobs || []).map(j => `<span class="job-tag">${esc(j)}</span>`).join(' ') || '<span class="topo-empty-field">无关联 Job</span>';
+
+            // Git
+            const gitUrl = p.git_remote || '';
+            const gitDisplay = gitUrl
+                ? `<a href="${esc(gitUrl)}" target="_blank" title="${esc(gitUrl)}">${esc(truncateUrl(gitUrl))}</a>`
+                : '<span class="topo-empty-field">未配置</span>';
+
+            // Harbor
+            const harbor = p.harbor_repository || '';
+            const harborDisplay = harbor
+                ? `<span style="font-family:monospace;font-size:12px;">${esc(harbor)}</span>`
+                : '<span class="topo-empty-field">未关联</span>';
+
+            const platformCls = platform !== '—' && platform.length > 0 ? 'badge-' + platform : 'badge-default';
+
+            return `<div class="topo-card">
+                <div class="topo-header">
+                    <span class="topo-project">📦 ${esc(p.project || p.current_path || '未命名项目')}</span>
+                    <div class="topo-meta">
+                        <span class="badge ${platformCls}">${esc(platform)}</span>
+                        ${detectBadge}
+                    </div>
+                </div>
+                <div class="topo-flow">
+                    <div class="topo-node">
+                        <div class="node-label">⚡ Jenkins</div>
+                        <div class="topo-jobs">${jobs}</div>
+                    </div>
+                    <div class="topo-arrow">→</div>
+                    <div class="topo-node">
+                        <div class="node-label">🔗 Git 仓库</div>
+                        <div class="node-sub">${gitDisplay}</div>
+                    </div>
+                    <div class="topo-arrow">→</div>
+                    <div class="topo-node">
+                        <div class="node-label">🐳 Harbor 镜像</div>
+                        <div class="node-sub">${harborDisplay}</div>
+                    </div>
+                </div>
+            </div>`;
+        }).join('');
+
+    } catch(e) {
+        loading.innerHTML = '<p style="color:#dc2626;">⚠️ 网络请求失败</p><p style="font-size:13px;color:#9ca3af;margin-top:6px;">请确认服务正常运行：' + esc(e.message) + '</p>';
+    }
+}
+
+function truncateUrl(url) {
+    // 取 URL 中最后一段有意义的部分
+    const cleaned = url.replace(/\.git$/, '').replace(/\/+$/, '');
+    const parts = cleaned.split('/');
+    const last = parts.pop() || '';
+    const second = parts.pop() || '';
+    if (second) return second + '/' + last;
+    return last || url;
+}
+
+// ═══════════ API 版本管理 ═══════════
+const VER_INFO = {
+    gitlab: {label:'GitLab', desc:'API v4，2017年至今无破坏性变更'},
+    gitee:  {label:'Gitee',  desc:'API v5，SaaS 平台端点稳定'},
+    github: {label:'GitHub', desc:'通过 X-GitHub-Api-Version Header 传递，仅影响显示'},
+    gitea:  {label:'Gitea',  desc:'API v1，自建平台'},
+    harbor: {label:'Harbor', desc:'支持 v1.10 / v2.0 自动探测'},
+};
+let currentVersions = {};
+
+async function loadVersions() {
+    document.getElementById('ver-loading').style.display = 'block';
+    document.getElementById('ver-table-wrap').style.display = 'none';
+    try {
+        const res = await fetch(VERSIONS_API, { headers: authHeaders() });
+        if (handle401(res)) return;
+        const data = await res.json();
+        const raw = data.versions || {};
+        // 兼容旧格式（纯字符串）和新格式（{value, source}）
+        currentVersions = {};
+        Object.entries(raw).forEach(([k, v]) => {
+            currentVersions[k] = typeof v === 'object' ? v : {value: v, source: 'unknown'};
+        });
+        document.getElementById('ver-loading').style.display = 'none';
+        document.getElementById('ver-table-wrap').style.display = 'block';
+        const tbody = document.getElementById('ver-tbody');
+        tbody.innerHTML = Object.entries(VER_INFO).map(([key, info]) => {
+            const entry = currentVersions[key] || {value: '', source: 'default'};
+            const val = entry.value || '';
+            const src = entry.source;
+            const defVer = getDefaultVer(key);
+            const isDefault = val === defVer || val === '';
+
+            let srcBadge = '';
+            if (src === 'config')  srcBadge = '<span class="badge" style="background:#fde8e8;color:#c81e1e;">配置文件</span>';
+            else if (src === 'json') srcBadge = '<span class="badge" style="background:#dbeafe;color:#1d4ed8;">管理界面</span>';
+            else srcBadge = '<span class="badge" style="background:#f3f4f6;color:#6b7280;">系统默认</span>';
+
+            const readonly = src === 'config';
+            const displayVal = readonly ? val : (isDefault ? '' : val);
+            const ph = readonly ? val : defVer;
+            const inputStyle = readonly
+                ? 'width:120px;padding:6px 10px;background:#f9fafb;color:#9ca3af;cursor:not-allowed;'
+                : (isDefault ? 'width:120px;padding:6px 10px;' : 'width:120px;padding:6px 10px;border-color:#f59e0b;background:#fffbeb;');
+
+            return `<tr>
+                <td><strong>${info.label}</strong> <span style="color:#9ca3af;font-size:11px;">(${key})</span></td>
+                <td><code style="font-size:12px;color:#6b7280;">${esc(defVer)}</code></td>
+                <td>${srcBadge}</td>
+                <td><input data-platform="${key}" value="${esc(displayVal)}" placeholder="${esc(ph)}"
+                      style="${inputStyle}" ${readonly ? 'readonly title="此值由 config/settings.php 显式配置，优先级最高，如需修改请编辑配置文件"' : ''}></td>
+                <td style="font-size:12px;color:#6b7280;">${info.desc}</td>
+            </tr>`;
+        }).join('');
+    } catch(e) {
+        document.getElementById('ver-loading').innerHTML = '<p style="color:#dc2626;">加载失败: ' + esc(e.message) + '</p>';
+    }
+}
+
+function getDefaultVer(key) {
+    const defaults = { gitlab:'v4', gitee:'v5', github:'v3', gitea:'v1', harbor:'v2.0' };
+    return defaults[key] || '';
+}
+
+async function saveVersions() {
+    const versions = {};
+    document.querySelectorAll('#ver-tbody input').forEach(inp => {
+        const val = inp.value.trim();
+        if (val) versions[inp.dataset.platform] = val;
+    });
+    try {
+        const res = await fetch(VERSIONS_API, {
+            method: 'PUT',
+            headers: Object.assign({'Content-Type':'application/json'}, authHeaders()),
+            body: JSON.stringify({versions})
+        });
+        if (handle401(res)) return;
+        const data = await res.json();
+        if (res.ok) {
+            const st = document.getElementById('ver-status');
+            st.style.display = 'inline';
+            setTimeout(() => st.style.display = 'none', 2000);
+            currentVersions = data.versions || {};
+            loadVersions();
+        } else {
+            toast(data.message || '保存失败', false);
+        }
+    } catch(e) { toast('网络错误: ' + e.message, false); }
+}
+
+// ── 表单 ──
+function showForm(editData) {
+    const panel = document.getElementById('form-panel');
+    panel.classList.add('show');
+    if (editData) {
+        document.getElementById('form-title').textContent = '编辑映射: ' + editData.job_name;
+        document.getElementById('original-name').value = editData.job_name;
+        document.getElementById('f-job_name').value = editData.job_name || '';
+        document.getElementById('f-job_name').readOnly = true;
+        document.getElementById('f-git_platform').value = editData.git_platform || '';
+        document.getElementById('f-git_remote').value = editData.git_remote || '';
+        document.getElementById('f-project_id').value = editData.project_id ?? '';
+        document.getElementById('f-web_url').value = editData.web_url || '';
+        document.getElementById('f-current_path').value = editData.current_path || '';
+        document.getElementById('f-harbor_repository').value = editData.harbor_repository || '';
+    } else {
+        document.getElementById('form-title').textContent = '新增映射';
+        document.getElementById('original-name').value = '';
+        document.getElementById('f-job_name').readOnly = false;
+        document.getElementById('map-form').reset();
+    }
+    panel.scrollIntoView({behavior:'smooth'});
+}
+
+function hideForm() {
+    document.getElementById('form-panel').classList.remove('show');
+}
+
+async function submitForm(e) {
+    e.preventDefault();
+    const original = document.getElementById('original-name').value;
+    const isEdit = !!original;
+    const body = {
+        job_name: document.getElementById('f-job_name').value.trim(),
+        git_platform: document.getElementById('f-git_platform').value,
+        git_remote: document.getElementById('f-git_remote').value.trim(),
+        project_id: document.getElementById('f-project_id').value.trim(),
+        web_url: document.getElementById('f-web_url').value.trim(),
+        current_path: document.getElementById('f-current_path').value.trim(),
+        harbor_repository: document.getElementById('f-harbor_repository').value.trim(),
+    };
+    if (isEdit) body._original_job_name = original;
+    Object.keys(body).forEach(k => { if (body[k] === '') body[k] = null; });
+
+    try {
+        const res = await fetch(MAP_API, {
+            method: isEdit ? 'PUT' : 'POST',
+            headers: Object.assign({'Content-Type':'application/json'}, authHeaders()),
+            body: JSON.stringify(body)
+        });
+        if (handle401(res)) return;
+        const data = await res.json();
+        if (res.ok) {
+            toast(isEdit ? '已更新' : '已新增', true);
+            hideForm();
+            loadMaps();
+        } else {
+            toast(data.message || '操作失败', false);
+        }
+    } catch(e) { toast('网络错误: ' + e.message, false); }
+}
+
+function editMap(item) { showForm(item); }
+
+async function deleteMap(jobName) {
+    if (!confirm('确定删除映射 "' + jobName + '" 吗？')) return;
+    try {
+        const res = await fetch(MAP_API + '?job_name=' + encodeURIComponent(jobName), { method:'DELETE', headers:authHeaders() });
+        if (handle401(res)) return;
+        const data = await res.json();
+        if (res.ok) { toast('已删除 ' + jobName, true); loadMaps(); }
+        else { toast(data.message || '删除失败', false); }
+    } catch(e) { toast('网络错误: ' + e.message, false); }
+}
+
+// ═══════════ Helpers ═══════════
+function esc(s) {
+    if (!s) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escJs(s) { return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'\\"'); }
+function js(obj) { return JSON.stringify(obj).replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+
+// ═══════════ Init ═══════════
+if (token) {
+    document.getElementById('login-page').style.display = 'none';
+    document.getElementById('app-page').style.display = 'block';
+    switchTab('monitor');
+} else {
+    document.getElementById('login-page').style.display = 'flex';
+    document.getElementById('app-page').style.display = 'none';
+}
+</script>
+
+</body>
+</html>

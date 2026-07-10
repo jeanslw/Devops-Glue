@@ -14,6 +14,9 @@
   </style>
 </head>
 <body>
+  <div style="background:#f8f9fa;padding:8px 20px;text-align:right;border-bottom:1px solid #e5e7eb;font-size:13px;">
+    <a href="/" style="color:#4f46e5;text-decoration:none;">🏠 返回首页</a>
+  </div>
   <div id="swagger-ui"></div>
   <script src="/assets/swagger-ui-bundle.js"></script>
   <script src="/assets/swagger-ui-standalone-preset.js"></script>
@@ -29,6 +32,9 @@
         defaultModelExpandDepth: 1,
         requestInterceptor: function(req) {
           req.url = req.url.replace(/%2[Ff]/g, '/');
+          // 从 URL 参数读取 token，注入所有请求
+          var m = location.search.match(/[?&]token=([^&]+)/);
+          if (m) { req.headers.Authorization = 'Bearer ' + decodeURIComponent(m[1]); }
           return req;
         }
       });

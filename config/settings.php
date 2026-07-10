@@ -64,6 +64,12 @@ return [
         'password' => env('HARBOR_PASSWORD'),
     ],
 
+    // ==================== 管理后台 ====================
+    'admin' => [
+        'user'     => env('ADMIN_USER', 'admin'),
+        'password' => env('ADMIN_PASSWORD', ''),
+    ],
+
     // ==================== App ====================
     'app' => [
         'env'           => env('APP_ENV', 'production'),
@@ -75,14 +81,15 @@ return [
     /*
      * Job ↔ Git ↔ Harbor 三方映射表
      *
+     * 数据已迁移到 config/job_git_map.json，通过管理界面 /admin 编辑。
+     * 字段说明（仅保留文档参考）：
+     *
      * ┌──────────────┬──────┬──────────────────────────────────────────────────┐
      * │ 字段           │ 必填  │ 说明                                             │
      * ├──────────────┼──────┼──────────────────────────────────────────────────┤
      * │ job_name     │ ✅   │ Jenkins Job 完整路径，如 "java/registry"            │
      * │ git_platform │      │ 自建实例强烈建议。不填则自动检测 URL 关键词，          │
-     * │              │      │ 自建 GitLab/Gitea 的 URL 不含关键词时回退            │
-     * │              │      │ DEFAULT_GIT_PLATFORM。可选值: gitlab|gitee|github|  │
-     * │              │      │ gitea 或自定义平台名                                │
+     * │              │      │ 可选值: gitlab|gitee|github|gitea 或自定义平台名      │
      * │ git_remote   │      │ 不填则从 Jenkins Job 的 SCM 配置自动获取             │
      * │ project_id   │      │ GitLab: 不填自动通过 API 查询; GitHub/Gitee: 可填    │
      * │ web_url      │      │ 项目主页链接，仅用于映射输出展示                      │
@@ -92,36 +99,5 @@ return [
      * │ api_version  │      │ 纯元数据，不影响 API 路由，仅用于映射输出展示          │
      * └──────────────┴──────┴──────────────────────────────────────────────────┘
      */
-    'job_git_map' => [
-        // ----- 示例 1：自建 GitLab（URL 不含平台关键词，必须指定 git_platform）-----
-        [
-            'job_name'          => 'java/registry',     // ✅ 必填
-            'git_platform'      => 'gitlab',             //    自建实例必须
-            'git_remote'        => 'http://git.mycompany.com/tools/registry.git',
-            'project_id'        => 2,                    //    可选，不填自动查 API
-            'web_url'           => 'http://git.mycompany.com/tools/registry',
-            'current_path'      => 'tools/registry',
-            'harbor_repository' => 'mycode/code-runtime',
-        ],
-        // ----- 示例 2：不指定 git_platform，由系统根据 URL 自动检测 -----
-        [
-            'job_name'          => 'php/myapp',
-            'project_id'        => 5,                    //    可选，不填自动查 API
-            'harbor_repository' => 'mycode/myapp',
-        ],
-        // ----- 示例 3：自建 Gitea（URL 不含关键词，必须手动指定 git_platform）-----
-        // [
-        //     'job_name'          => 'gitea-project',
-        //     'git_platform'      => 'gitea',            //    自建实例必须
-        //     'git_remote'        => 'http://code.mycompany.com/team/project.git',
-        //     'harbor_repository' => 'mycode/gitea-app',
-        // ],
-        // ----- 示例 4：gitee.com（SaaS，URL 含 gitee.com，自动检测即可）-----
-        [
-            'job_name'          => 'static',
-            // git_platform 不填：URL https://gitee.com/... → 自动识别为 gitee
-            'project_id'        => null,
-            'harbor_repository' => 'mycode/static-app',
-        ],
-    ],
+    'job_git_map' => [], // 由 AdminController 管理，运行时从 config/job_git_map.json 加载
 ];

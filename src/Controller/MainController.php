@@ -33,11 +33,36 @@ class MainController extends BaseController
     }
 
     /**
-     * 获取三方映射关系（按项目分组）
+     * 获取三方映射关系（按项目分组），带 30s 缓存
      */
     public function mapList(Request $request, Response $response): Response
     {
-        $maps = $this->map->getAllMaps();
+        $cacheFile = __DIR__ . '/../../config/cache/map_list.json';
+        $cacheDir  = dirname($cacheFile);
+        if (!is_dir($cacheDir)) @mkdir($cacheDir, 0777, true);
+
+        // 有缓存且未过期，直接返回
+        if (file_exists($cacheFile) && (time() - filemtime($cacheFile)) < 30) {
+            $cached = json_decode(file_get_contents($cacheFile), true);
+            if (is_array($cached)) {
+                return $this->output($response, $cached, $request);
+            }
+        }
+
+        try {
+            $maps = $this->map->getAllMaps();
+        } catch (\Exception $e) {
+            // Jenkins 不可达时，返回过期缓存兜底
+            if (file_exists($cacheFile)) {
+                $cached = json_decode(file_get_contents($cacheFile), true);
+                if (is_array($cached)) {
+                    $cached['_stale'] = true;
+                    return $this->output($response, $cached, $request);
+                }
+            }
+            return $this->output($response, ['_error' => 'Jenkins 服务不可达，且无可用缓存', '_detail' => $e->getMessage()], $request);
+        }
+
         $grouped = [];
         foreach ($maps as $map) {
             $key = $map['current_path'] ?? '';
@@ -55,6 +80,8 @@ class MainController extends BaseController
                     'project_id'        => $map['project_id'] ?? null,
                     'web_url'           => $map['web_url'] ?? '',
                     'harbor_repository' => $map['harbor_repository'] ?? '',
+                    'platform_source'   => $map['platform_source'] ?? 'auto',
+                    'detection_method'  => $map['detection_method'] ?? '',
                     'jobs'              => [],
                 ];
             }
@@ -65,6 +92,9 @@ class MainController extends BaseController
             $item['jobs'] = array_unique($item['jobs']);
             sort($item['jobs']);
         }
+
+        // 写入缓存
+        file_put_contents($cacheFile, json_encode($grouped, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), LOCK_EX);
 
         return $this->output($response, $grouped, $request);
     }

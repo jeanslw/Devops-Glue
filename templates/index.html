@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Devops-Glue 系统运行中</title>
+    <title>Devops-Glue</title>
     <style>
         * { margin:0; padding:0; box-sizing:border-box; }
         body {
@@ -18,232 +18,106 @@
             align-items:center; border-bottom:1px solid rgba(255,255,255,.15);
         }
         .logo { font-size:20px; font-weight:700; color:#fff; text-decoration:none; }
-        .nav-links a { color:rgba(255,255,255,.85); text-decoration:none; margin-left:24px; font-size:14px; }
+        .nav-links { display:flex; gap:24px; }
+        .nav-links a { color:rgba(255,255,255,.85); text-decoration:none; font-size:14px; }
         .nav-links a:hover { color:#fff; }
 
-        /* ---- 主区域 ---- */
-        .main { max-width:720px; margin:0 auto; padding:24px 20px 32px; }
+        .main { max-width:960px; margin:0 auto; padding:32px 20px; }
 
-        /* 简短介绍 */
-        .hero { text-align:center; color:#fff; padding-bottom:20px; }
-        .hero h1 { font-size:26px; font-weight:700; margin-bottom:6px; }
-        .hero p  { font-size:14px; opacity:.8; }
+        .hero { text-align:center; color:#fff; padding-bottom:28px; }
+        .hero h1 { font-size:28px; font-weight:700; margin-bottom:8px; }
+        .hero p  { font-size:15px; opacity:.8; }
 
-        /* 整体状态条 */
-        .status-bar {
-            display:flex; align-items:center; justify-content:center;
-            gap:10px; margin-bottom:18px; color:#fff;
-        }
-        .status-dot { width:12px; height:12px; border-radius:50%; background:#4ade80; animation:pulse 2s infinite; }
-        @keyframes pulse {
-            0%{box-shadow:0 0 0 0 rgba(74,222,128,.7)}
-            70%{box-shadow:0 0 0 10px rgba(74,222,128,0)}
-            100%{box-shadow:0 0 0 0 rgba(74,222,128,0)}
-        }
-        .status-bar span { font-size:13px; opacity:.85; }
+        /* ── 功能卡片：3x2 网格 ── */
+        .features { display:grid; grid-template-columns:1fr 1fr 1fr; gap:20px; }
 
-        /* 健康卡片 */
-        .health-card {
-            background:#fff; border-radius:14px; padding:24px 28px;
-            box-shadow:0 6px 24px rgba(0,0,0,.12); margin-bottom:20px;
-        }
-        .health-card h3 { font-size:13px; color:#888; text-transform:uppercase; letter-spacing:1px; margin-bottom:14px; }
-
-        .svc-line {
-            display:flex; align-items:center; gap:10px;
-            padding:8px 12px; border-radius:8px; font-size:14px;
-        }
-        .svc-line + .svc-line { margin-top:4px; }
-        .svc-line.root { background:#f0f4ff; font-weight:600; }
-        .svc-line.child { background:#fafbfc; padding-left:36px; font-size:13px; }
-        .svc-icon { width:22px; text-align:center; font-size:16px; flex-shrink:0; }
-        .svc-name { flex:1; }
-        .svc-ver  { color:#888; font-size:11px; margin-left:6px; font-weight:400; }
-        .svc-stat { font-size:13px; min-width:56px; text-align:right; }
-
-        .health-time { text-align:right; font-size:11px; color:#aaa; margin-top:10px; }
-
-        /* 功能卡片 */
-        .features { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:24px; }
         .feat-card {
-            background:rgba(255,255,255,.14); backdrop-filter:blur(6px);
-            border-radius:14px; padding:24px 28px; color:#fff;
-            border:1px solid rgba(255,255,255,.18);
+            background:rgba(255,255,255,.13); backdrop-filter:blur(8px);
+            border-radius:16px; padding:32px 28px; color:#fff;
+            border:1px solid rgba(255,255,255,.16);
+            transition:transform .2s,box-shadow .2s;
         }
-        .feat-icon { font-size:32px; margin-bottom:10px; }
-        .feat-card h4 { font-size:18px; margin-bottom:8px; }
-        .feat-card p  { font-size:14px; opacity:.82; line-height:1.6; }
-
-        /* 操作 */
-        .actions { text-align:center; padding-bottom:28px; }
-        .btn {
-            display:inline-block; padding:12px 30px; border-radius:50px;
-            font-size:14px; font-weight:600; text-decoration:none; transition:all .25s; margin:0 8px;
+        .feat-card:hover {
+            transform:translateY(-4px);
+            box-shadow:0 8px 30px rgba(0,0,0,.2);
         }
-        .btn-white { background:#fff; color:#667eea; box-shadow:0 4px 12px rgba(0,0,0,.15); }
-        .btn-white:hover { transform:translateY(-2px); box-shadow:0 6px 20px rgba(0,0,0,.25); }
-        .btn-outline { color:#fff; border:2px solid rgba(255,255,255,.6); }
-        .btn-outline:hover { background:#fff; color:#667eea; }
+        .feat-icon { font-size:40px; margin-bottom:16px; line-height:1; }
+        .feat-card h4 { font-size:17px; margin-bottom:10px; font-weight:700; }
+        .feat-card p  { font-size:13px; opacity:.82; line-height:1.7; }
 
-        .footer { text-align:center; padding:14px; color:rgba(255,255,255,.4); font-size:11px; border-top:1px solid rgba(255,255,255,.06); }
+        .footer { text-align:center; padding:16px; color:rgba(255,255,255,.35); font-size:11px; border-top:1px solid rgba(255,255,255,.06); margin-top:32px; }
+
+        @media (max-width:768px) {
+            .features { grid-template-columns:1fr 1fr; gap:14px; }
+            .feat-card { padding:24px 20px; }
+            .nav-links { gap:14px; }
+        }
+        @media (max-width:480px) {
+            .features { grid-template-columns:1fr; }
+            .navbar { padding:10px 16px; }
+        }
     </style>
 </head>
 <body>
 
 <nav class="navbar">
     <a href="/" class="logo">🚀 Devops-Glue</a>
-    <div class="nav-links"><a href="/api/docs">API 文档</a></div>
+    <div class="nav-links">
+        <a href="/admin">⚙️ 管理</a>
+        <a href="/api/docs">📖 文档</a>
+        <a href="mailto:jeanslw@qq.com">💬 技术支持</a>
+    </div>
 </nav>
 
 <div class="main">
 
-    <!-- 简短介绍 -->
     <div class="hero">
         <h1>Devops-Glue</h1>
         <p>Jenkins · Git · Harbor 一站式 DevOps 工具链集成平台</p>
     </div>
 
-    <!-- 状态条 -->
-    <div class="status-bar">
-        <div class="status-dot" id="overall-dot"></div>
-        <span id="overall-text">检测中…</span>
-    </div>
-
-    <!-- 服务运行状态（树形） -->
-    <div class="health-card">
-        <h3>📡 服务运行状态</h3>
-        <div id="health-grid">
-            <div class="svc-line root" id="hl-jenkins">
-                <span class="svc-icon">⏳</span>
-                <span class="svc-name">Jenkins</span>
-                <span class="svc-stat">检测中…</span>
-            </div>
-            <div class="svc-line root" id="hl-git-head">
-                <span class="svc-icon">⏳</span>
-                <span class="svc-name">Git 平台</span>
-                <span class="svc-stat">检测中…</span>
-            </div>
-            <!-- Git 子节点由 JS 动态注入 -->
-            <div class="svc-line root" id="hl-harbor">
-                <span class="svc-icon">⏳</span>
-                <span class="svc-name">Harbor</span>
-                <span class="svc-stat">检测中…</span>
-            </div>
-        </div>
-        <div class="health-time" id="health-time"></div>
-    </div>
-
-    <!-- 功能简介 -->
     <div class="features">
+        <!-- 1 -->
         <div class="feat-card">
             <div class="feat-icon">⚡</div>
-            <h4>一键构建</h4>
-            <p>API 触发 Jenkins 构建，自动适配单/双参数 Job，CSRF crumb 自动处理。</p>
+            <h4>一键构建触发</h4>
+            <p>API 调用即可触发 Jenkins Job，自动处理 CSRF Crumb、单/双参数适配，无需登录 Jenkins 后台。</p>
         </div>
+        <!-- 2 -->
         <div class="feat-card">
             <div class="feat-icon">🔗</div>
-            <h4>多方映射</h4>
-            <p>Jenkins Job → Git 仓库 → Harbor 镜像，三方关系自动关联，映射一目了然。</p>
+            <h4>三方映射关联</h4>
+            <p>Jenkins Job ↔ Git 仓库 ↔ Harbor 镜像，三方关系自动关联、统一查询，链路一目了然。</p>
         </div>
-    </div>
-
-    <div class="actions">
-        <a href="/api/docs" class="btn btn-white">📖 API 文档</a>
-        <a href="mailto:jeanslw@qq.com" class="btn btn-outline">💬 联系支持</a>
+        <!-- 3 -->
+        <div class="feat-card">
+            <div class="feat-icon">🌐</div>
+            <h4>多平台统一接入</h4>
+            <p>GitLab · GitHub · Gitee · Gitea 统一 API 接口，自建与 SaaS 无差别对接，支持自定义平台扩展。</p>
+        </div>
+        <!-- 4 -->
+        <div class="feat-card">
+            <div class="feat-icon">🔍</div>
+            <h4>镜像安全扫描</h4>
+            <p>Harbor 镜像漏洞扫描，API 触发 + 报告查询，上线前的安全卡点，杜绝高危漏洞上线。</p>
+        </div>
+        <!-- 5 -->
+        <div class="feat-card">
+            <div class="feat-icon">📋</div>
+            <h4>分支与参数可视化</h4>
+            <p>Git 分支列表、Jenkins 构建参数直接透出，无需在各平台后台之间来回切换。</p>
+        </div>
+        <!-- 6 -->
+        <div class="feat-card">
+            <div class="feat-icon">📡</div>
+            <h4>服务健康自检</h4>
+            <p>实时检测 Jenkins · Git 平台 · Harbor 连通性与版本号，故障快速定位，状态一目了然。</p>
+        </div>
     </div>
 
 </div>
 
-<footer class="footer">&copy; 2026 Blues.Inc &nbsp;|&nbsp; Powered by Slim Framework</footer>
-
-<script>
-(async function() {
-    const grid    = document.getElementById('health-grid');
-    const dot     = document.getElementById('overall-dot');
-    const txt     = document.getElementById('overall-text');
-    const timeEl  = document.getElementById('health-time');
-
-    function setLine(el, ok, label) {
-        const icon = el.querySelector('.svc-icon');
-        const stat = el.querySelector('.svc-stat');
-        if (ok === true)  { icon.textContent='✅'; stat.textContent=label||'正常'; stat.style.color='#16a34a'; }
-        else if (ok===null){ icon.textContent='⚪'; stat.textContent=label||'未配置'; stat.style.color='#94a3b8'; }
-        else              { icon.textContent='❌'; stat.textContent=label||'不可达'; stat.style.color='#dc2626'; }
-    }
-
-    function addGitChild(name, version, reachable) {
-        const div = document.createElement('div');
-        div.className = 'svc-line child';
-        div.setAttribute('data-git','1');
-        const verSpan = version ? `<span class="svc-ver">${version}</span>` : '';
-        div.innerHTML = `<span class="svc-icon"></span>
-                         <span class="svc-name">${name}${verSpan}</span>
-                         <span class="svc-stat"></span>`;
-        grid.insertBefore(div, document.getElementById('hl-harbor'));
-        setLine(div, reachable, reachable ? '正常' : '不可达');
-        return reachable;
-    }
-
-    try {
-        const res  = await fetch('/api/health');
-        const data = await res.json();
-        const chk  = data.checks || {};
-
-        const jOk = chk.jenkins === true;
-        const jVer = chk.jenkins_version || '';
-        const hOk = chk.harbor === true;
-        const hVer = chk.harbor_version || '';
-
-        // Jenkins
-        const jenkinsEl = document.getElementById('hl-jenkins');
-        const jName = jenkinsEl.querySelector('.svc-name');
-        if (jVer) jName.innerHTML = 'Jenkins <span class="svc-ver">v' + jVer + '</span>';
-        setLine(jenkinsEl, jOk, jOk ? '正常' : '不可达');
-
-        // Git 平台（树形：父节点 + 子节点，仅已配置的出现）
-        const gitHead = document.getElementById('hl-git-head');
-        const gitData = chk.git;
-        let gitAllOk = true;
-
-        // 清除旧子节点
-        grid.querySelectorAll('[data-git]').forEach(e => e.remove());
-
-        if (gitData === null || gitData === undefined) {
-            setLine(gitHead, null, '未配置');
-        } else if (Array.isArray(gitData) && gitData.length > 0) {
-            setLine(gitHead, true, '');
-            gitHead.querySelector('.svc-stat').textContent = '';
-            gitData.forEach(p => {
-                const ok = addGitChild(p.name, p.api_version || '', p.reachable);
-                if (!ok) gitAllOk = false;
-            });
-        } else {
-            setLine(gitHead, false, '未知');
-            gitAllOk = false;
-        }
-
-        // Harbor
-        const harborEl = document.getElementById('hl-harbor');
-        const hName = harborEl.querySelector('.svc-name');
-        if (hVer) hName.innerHTML = 'Harbor <span class="svc-ver">' + hVer + '</span>';
-        if (hOk === null) setLine(harborEl, null, '未配置');
-        else setLine(harborEl, hOk, hOk ? '正常' : '不可达');
-
-        const harborEff = hOk === null ? true : hOk;
-        const allOk = jOk && gitAllOk && harborEff;
-        dot.style.background = allOk ? '#4ade80' : '#fbbf24';
-        txt.textContent = allOk ? '所有服务正常' : '部分服务异常';
-        timeEl.textContent = '检测时间: ' + (data.time || '—');
-
-    } catch(e) {
-        ['hl-jenkins','hl-git-head','hl-harbor'].forEach(id => {
-            const el = document.getElementById(id); if (el) setLine(el, false, '无法连接');
-        });
-        dot.style.background = '#ef4444';
-        txt.textContent = 'API 不可达';
-    }
-})();
-</script>
+<footer class="footer">&copy; 2026 Blues.Inc &nbsp;|&nbsp; Devops-Glue</footer>
 
 </body>
 </html>

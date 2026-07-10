@@ -11,6 +11,7 @@ use App\Controller\JenkinsController;
 use App\Controller\MainController;
 use App\Controller\GitController;
 use App\Controller\HarborController;
+use App\Controller\AdminController;
 use App\Middleware\CorsMiddleware;
 use App\Service\Logger;
 use GuzzleHttp\Client;
@@ -222,6 +223,11 @@ return [
             $c->get(AppConfig::class),
             $c->get(HarborService::class)
         );
+    },
+
+    // Admin 控制器
+    AdminController::class => function (\Psr\Container\ContainerInterface $c) {
+        return new AdminController($c->get(AppConfig::class));
     },
 
     // Git 控制器
