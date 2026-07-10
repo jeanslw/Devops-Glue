@@ -8,6 +8,20 @@ if (!function_exists('env')) {
 }
 
 return [
+    /*
+     * ==================== Build Provider 配置模式 ====================
+     *
+     * job_git_map 中 build_provider 字段决定每个项目使用的 CI 系统：
+     *   'jenkins'   — Jenkins（默认，不填即走）
+     *   'gitlab_ci' — GitLab CI/CD
+     *
+     * 三种全局模式（通过 .env 控制哪些 Provider 注册到容器）：
+     *   1. 纯 Jenkins  — GITLAB_BASE_URL 留空，仅 jenkins 注册
+     *   2. 纯 GitLab CI — JENKINS_BASE_URL 留空 + GITLAB_BASE_URL 配置，仅 gitlab_ci 注册
+     *   3. 共存模式     — 两者都配，job_git_map.build_provider 逐项目选择
+     *
+     * Jenkins 始终注册（向后兼容）；GitLab CI 仅在 GitLab 已配置且有 token 时注册。
+     */
     // ==================== Jenkins ====================
     'jenkins' => [
         'url'   => env('JENKINS_BASE_URL', ''),
