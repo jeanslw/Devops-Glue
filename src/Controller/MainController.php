@@ -29,16 +29,22 @@ class MainController extends BaseController
     public function jobsList(Request $request, Response $response): Response
     {
         $buildMode = $_ENV['BUILD_MODE'] ?? 'both';
+        $jobs = [];
         if ($buildMode === 'gitlab_ci') {
-            $jobs = [];
             foreach ($this->config->getJobGitMap() as $m) {
-                if (($m['build_provider'] ?? 'jenkins') === 'gitlab_ci') {
-                    $jobs[] = $m['job_name'];
+                if (($m['build_provider'] ?? 'jenkins') === 'gitlab_ci') $jobs[] = $m['job_name'];
+            }
+        } else {
+            // jenkins/both：尝试实时获取，失败降级读 DB
+            try {
+                $jobs = $this->jenkins->getAllJobs();
+            } catch (\Exception $e) {
+                foreach ($this->config->getJobGitMap() as $m) {
+                    if (($m['status'] ?? 'active') === 'disabled') continue;
+                    if (($m['build_provider'] ?? 'jenkins') !== 'gitlab_ci') $jobs[] = $m['job_name'];
                 }
             }
-            return $this->output($response, $jobs, $request);
         }
-        $jobs = $this->jenkins->getAllJobs();
         return $this->output($response, $jobs, $request);
     }
 
