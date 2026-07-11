@@ -84,10 +84,6 @@ class JenkinsBuildProvider implements BuildProviderInterface
         if (!empty($ref) && empty($inputParams)) {
             $inputParams['branches'] = $ref;
         }
-        if (empty($inputParams)) {
-            return ['success' => false, 'message' => '缺少构建参数，请先调用 /variables 查看所需参数'];
-        }
-
         // 1. 校验 Job 是否存在
         try {
             $resolved = $this->jenkins->resolvePath($projectId);
@@ -132,7 +128,10 @@ class JenkinsBuildProvider implements BuildProviderInterface
             } catch (\Exception $e) {}
         }
 
-        // 4. 验证传入的每个参数：key 必须存在于 Jenkins，value 必须在选项内
+        // 4. 验证传入参数
+        if (empty($inputParams)) {
+            return ['success' => false, 'message' => '缺少参数，可用参数: ' . implode(', ', $paramNames)];
+        }
         $buildParams = [];
         foreach ($inputParams as $key => $value) {
             $matchedKey = $this->matchParamKey($key, $paramNames);
