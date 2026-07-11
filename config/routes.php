@@ -129,6 +129,9 @@ $app->group('/api', function (RouteCollectorProxy $api) {
         $build->map(['GET', 'POST'], '/{path:.+}/tag', [BuildController::class, 'tagQuery']);
     });
 
+    // Jenkins 路由（BUILD_MODE=gitlab_ci 时禁用）
+    $buildMode = $_ENV['BUILD_MODE'] ?? 'both';
+    if ($buildMode !== 'gitlab_ci') {
     $api->group('/jenkins', function (RouteCollectorProxy $jenkins) {
         $jenkins->map(['POST'], '/{path:[^/]+(?:/[^/]+)?}/build_trigger', [JenkinsController::class, 'buildTrigger']);
         $jenkins->map(['GET', 'POST'], '/{path:.+}/branches', [GitController::class, 'branches']);
@@ -137,6 +140,7 @@ $app->group('/api', function (RouteCollectorProxy $api) {
         $jenkins->map(['GET', 'POST'], '/{path:.+}/{build_id}/status', [JenkinsController::class, 'status']);
         $jenkins->map(['GET', 'POST'], '/{path:.+}/{build_id}/console', [JenkinsController::class, 'console']);
     });
+    } // /if BUILD_MODE !== gitlab_ci
 
     $api->group('/git', function (RouteCollectorProxy $git) {
         $git->map(['GET', 'POST'], '/{path:.+}/branches', [GitController::class, 'branches']);
