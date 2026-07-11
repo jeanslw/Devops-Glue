@@ -200,17 +200,8 @@ class MainController extends BaseController
             $checks['jenkins'] = null; // gitlab_ci 模式不查 Jenkins
         }
 
-        // Git 平台连通性检查（直接从数据库读取，不调 Jenkins）
-        $usedPlatforms = [];
-        $maps = $this->config->getJobGitMap();
-        foreach ($maps as $m) {
-            $p = $m['git_platform'] ?? '';
-            if ($p && !in_array($p, $usedPlatforms)) $usedPlatforms[] = $p;
-        }
-        // 没有映射数据时降级为所有已配置平台
-        if (empty($usedPlatforms)) {
-            $usedPlatforms = [];
-        }
+        // Git 平台连通性检查
+        $usedPlatforms = $this->mapping->usedGitPlatforms();
 
         // 构建已配置平台的索引（URL + 版本号）
         $configuredPlatforms = [];
