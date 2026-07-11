@@ -601,9 +601,10 @@ async function loadMonitor() {
 
     } catch(e) {
         const msg = e.name === 'AbortError' ? '超时' : '无法连接';
-        ['jenkins','git','harbor'].forEach(k => {
-            setSvc('icon-'+k, 'name-'+k, 'stat-'+k, 'dot-'+k, false, '', msg);
-        });
+        setSvc('icon-jenkins', 'name-jenkins', 'stat-jenkins', 'dot-jenkins', false, '', msg);
+        document.getElementById('dot-git').className = 'dot dot-err';
+        document.getElementById('git-rows').innerHTML = '<div class="svc-row parent"><span class="svc-icon">❌</span><span class="svc-name">Git 平台</span><span class="svc-stat err">' + msg + '</span></div>';
+        setSvc('icon-harbor', 'name-harbor', 'stat-harbor', 'dot-harbor', false, '', msg);
     }
 }
 
