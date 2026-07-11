@@ -28,6 +28,21 @@ function doLogout() {
     document.getElementById('app-page').style.display = 'none';
 }
 
+async function doDiscover() {
+    if (!confirm('将自动扫描 Jenkins/GitLab CI 项目并导入映射表，已有项目不会重复。确定？')) return;
+    try {
+        const res = await fetch('/api/admin/discover', { method:'POST', headers: authHeaders() });
+        if (handle401(res)) return;
+        const data = await res.json();
+        if (res.ok) {
+            toast(`发现 ${data.found} 项，新增 ${data.saved} 项`, true);
+            loadMaps();
+        } else {
+            toast(data.message || '扫描失败', false);
+        }
+    } catch(e) { toast('网络错误: ' + e.message, false); }
+}
+
 async function doLogin() {
     const user = document.getElementById('login-user').value.trim();
     const pass = document.getElementById('login-pass').value;
