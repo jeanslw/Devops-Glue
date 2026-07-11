@@ -271,8 +271,11 @@
                 <span class="menu-icon">🔧</span> 对接版本
             </div>
             <div class="menu-div"></div>
-            <div class="menu-item" data-tab="account" onclick="switchTab('account')">
-                <span class="menu-icon">⚙️</span> 基本设置
+            <div class="menu-item" data-tab="mode" onclick="switchTab('mode')">
+                <span class="menu-icon">🔧</span> 配置模式
+            </div>
+            <div class="menu-item" data-tab="password" onclick="switchTab('password')">
+                <span class="menu-icon">🔑</span> 修改密码
             </div>
         </div>
 
@@ -431,37 +434,36 @@
                 </div>
             </div>
 
-            <!-- ═══ 基本设置 Tab ═══ -->
-            <div id="tab-account" style="display:none;">
+            <!-- ═══ 配置模式 Tab ═══ -->
+            <div id="tab-mode" style="display:none;">
+                <div class="toolbar"><h3>🔧 配置模式</h3></div>
+                <div class="monitor-card">
+                    <div id="mode-display" style="text-align:center;padding:30px 0;font-size:15px;line-height:2.2;">
+                        加载中…
+                    </div>
+                </div>
+            </div>
 
-                <!-- 配置模式 -->
-                <div class="toolbar"><h3>⚙️ 基本设置</h3></div>
-                <div class="monitor-grid" style="grid-template-columns:1fr 1fr;margin-bottom:16px;">
-                    <div class="monitor-card">
-                        <h4>🔧 配置模式</h4>
-                        <div id="mode-display" style="text-align:center;padding:20px 0;font-size:15px;line-height:2.2;">
-                            加载中…
+            <!-- ═══ 修改密码 Tab ═══ -->
+            <div id="tab-password" style="display:none;">
+                <div class="toolbar"><h3>🔑 修改密码</h3></div>
+                <div class="card" style="max-width:480px;">
+                    <form onsubmit="changePassword(event)">
+                        <div style="margin-bottom:10px;">
+                            <label>旧密码</label>
+                            <input type="password" id="old-pass" required placeholder="输入当前密码">
                         </div>
-                    </div>
-                    <div class="monitor-card">
-                        <h4>🔑 修改密码</h4>
-                        <form onsubmit="changePassword(event)">
-                            <div style="margin-bottom:10px;">
-                                <label>旧密码</label>
-                                <input type="password" id="old-pass" required placeholder="输入当前密码">
-                            </div>
-                            <div style="margin-bottom:10px;">
-                                <label>新密码</label>
-                                <input type="password" id="new-pass" required placeholder="至少 6 位" minlength="6">
-                            </div>
-                            <div style="margin-bottom:10px;">
-                                <label>确认新密码</label>
-                                <input type="password" id="new-pass2" required placeholder="再输入一次" minlength="6">
-                            </div>
-                            <button type="submit" class="btn btn-save">💾 更新密码</button>
-                            <span id="pwd-msg" style="margin-left:12px;font-size:13px;"></span>
-                        </form>
-                    </div>
+                        <div style="margin-bottom:10px;">
+                            <label>新密码</label>
+                            <input type="password" id="new-pass" required placeholder="至少 6 位" minlength="6">
+                        </div>
+                        <div style="margin-bottom:10px;">
+                            <label>确认新密码</label>
+                            <input type="password" id="new-pass2" required placeholder="再输入一次" minlength="6">
+                        </div>
+                        <button type="submit" class="btn btn-save">💾 更新密码</button>
+                        <span id="pwd-msg" style="margin-left:12px;font-size:13px;"></span>
+                    </form>
                 </div>
             </div>
 
@@ -533,14 +535,14 @@ document.addEventListener('keydown', function(e) {
 function switchTab(name) {
     document.querySelectorAll('.sidebar .menu-item').forEach(el => el.classList.remove('active'));
     document.querySelector(`[data-tab="${name}"]`).classList.add('active');
-    ['monitor','mapping','topology','versions','account'].forEach(t => {
+    ['monitor','mapping','topology','versions','mode','password'].forEach(t => {
         document.getElementById('tab-' + t).style.display = name === t ? 'block' : 'none';
     });
     if (name === 'monitor') loadMonitor();
     if (name === 'mapping') loadMaps();
     if (name === 'topology') loadTopology();
     if (name === 'versions') loadVersions();
-    if (name === 'account') loadSettings();
+    if (name === 'mode') loadSettings();
 }
 
 // ═══════════ Toast ═══════════
