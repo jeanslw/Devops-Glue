@@ -187,6 +187,8 @@ class MainController extends BaseController
      */
     public function health(Request $request, Response $response): Response
     {
+        set_time_limit(15);
+        ini_set('default_socket_timeout', 5);
         $checks = [
             'jenkins'         => false,
             'jenkins_version' => null,
