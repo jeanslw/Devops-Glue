@@ -2,17 +2,20 @@
 namespace App\Service\Build;
 
 use App\Service\JenkinsService;
+use App\Service\GitService;
 use App\Service\Logger;
 
 class JenkinsBuildProvider implements BuildProviderInterface
 {
     private JenkinsService $jenkins;
+    private ?GitService $git;
     private ?Logger $logger;
 
-    public function __construct(JenkinsService $jenkins, ?Logger $logger = null)
+    public function __construct(JenkinsService $jenkins, ?GitService $git = null, ?Logger $logger = null)
     {
         $this->jenkins = $jenkins;
-        $this->logger  = $logger;
+        $this->git    = $git;
+        $this->logger = $logger;
     }
 
     public function getName(): string { return 'jenkins'; }
@@ -77,9 +80,82 @@ class JenkinsBuildProvider implements BuildProviderInterface
 
     public function trigger(string $projectId, string $ref, array $variables = []): array
     {
-        $params = array_merge(['branches' => $ref], $variables);
+        $branchValue = $ref;
+        $zoneValue   = $variables['zone'] ?? '';
+
+        if (empty($branchValue)) {
+            return ['success' => false, 'message' => '缺少分支参数'];
+        }
+
+        // 1. 获取 Jenkins 参数定义
         try {
-            $result = $this->jenkins->triggerBuild($projectId, $params);
+            $allParams = $this->jenkins->getParameters($projectId, null);
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => '获取构建参数失败: ' . $e->getMessage()];
+        }
+
+        if (empty($allParams)) {
+            // 无参数 Job：直接触发
+            try {
+                $result = $this->jenkins->triggerBuild($projectId, []);
+                return ['success' => true, 'queue_id' => $result['queue_id'] ?? '', 'queue_url' => $result['queue_url'] ?? '', 'message' => '构建已触发'];
+            } catch (\Exception $e) {
+                return ['success' => false, 'message' => '触发失败: ' . $e->getMessage()];
+            }
+        }
+
+        // 2. 自动识别 branch 参数名
+        $branchParamName = null;
+        foreach ($allParams as $name => $choices) {
+            if (stripos($name, 'branch') !== false) { $branchParamName = $name; break; }
+        }
+        if (!$branchParamName) $branchParamName = array_keys($allParams)[0] ?? null;
+        if (!$branchParamName) {
+            return ['success' => false, 'message' => '无法识别分支参数名'];
+        }
+
+        // 3. 分支选项为空时从 Git 补齐
+        $branchOptions = $allParams[$branchParamName] ?? [];
+        if (empty($branchOptions) && $this->git) {
+            try {
+                $gitBranches = $this->git->getBranchesForJob($projectId);
+                if (!empty($gitBranches)) { $branchOptions = $gitBranches; $allParams[$branchParamName] = $gitBranches; }
+            } catch (\Exception $e) {}
+        }
+
+        // 4. 验证分支值
+        if (!empty($branchOptions)) {
+            $actual = $branchValue;
+            if (!in_array($actual, $branchOptions)) {
+                // 尝试 origin/ 前缀适配
+                $allOrigin = true;
+                foreach ($branchOptions as $opt) { if (strpos($opt, 'origin/') !== 0) { $allOrigin = false; break; } }
+                if ($allOrigin && in_array('origin/' . $branchValue, $branchOptions)) {
+                    $actual = 'origin/' . $branchValue;
+                } else {
+                    return ['success' => false, 'message' => "无效的分支: {$branchValue}，可用值: " . implode(', ', array_slice($branchOptions, 0, 10))];
+                }
+            }
+            $branchValue = $actual;
+        }
+
+        // 5. 构造参数
+        $buildParams = [$branchParamName => $branchValue];
+
+        // 6. 双参数处理
+        $paramNames = array_keys($allParams);
+        if (count($paramNames) === 2 && !empty($zoneValue)) {
+            $zoneParamName = ($paramNames[0] === $branchParamName) ? $paramNames[1] : $paramNames[0];
+            $zoneOptions = $allParams[$zoneParamName] ?? [];
+            if (!in_array($zoneValue, $zoneOptions)) {
+                return ['success' => false, 'message' => "无效的 zone: {$zoneValue}，可用值: " . implode(', ', $zoneOptions)];
+            }
+            $buildParams[$zoneParamName] = $zoneValue;
+        }
+
+        // 7. 触发
+        try {
+            $result = $this->jenkins->triggerBuild($projectId, $buildParams);
             return [
                 'success'   => true,
                 'queue_id'  => $result['queue_id'] ?? '',

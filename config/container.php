@@ -195,7 +195,7 @@ return [
         // Jenkins
         if (in_array($buildMode, ['jenkins', 'both'])) {
             $registry->register('jenkins', function () use ($c, $logger) {
-                return new JenkinsBuildProvider($c->get(JenkinsService::class), $logger);
+                return new JenkinsBuildProvider($c->get(JenkinsService::class), $c->get(GitService::class), $logger);
             });
         }
 
