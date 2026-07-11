@@ -194,12 +194,17 @@ class MainController extends BaseController
             'harbor_version'  => null,
         ];
 
-        try {
-            $this->jenkins->getAllJobs();
-            $checks['jenkins'] = true;
-            $checks['jenkins_version'] = $this->jenkins->getVersion();
-        } catch (\Exception $e) {
-            $checks['jenkins'] = false;
+        $buildMode = $_ENV['BUILD_MODE'] ?? 'both';
+        if ($buildMode !== 'gitlab_ci') {
+            try {
+                $this->jenkins->getAllJobs();
+                $checks['jenkins'] = true;
+                $checks['jenkins_version'] = $this->jenkins->getVersion();
+            } catch (\Exception $e) {
+                $checks['jenkins'] = false;
+            }
+        } else {
+            $checks['jenkins'] = null; // gitlab_ci 模式不查 Jenkins
         }
 
         // Git 平台连通性检查（直接从数据库读取，不调 Jenkins）
