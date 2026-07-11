@@ -173,13 +173,17 @@ return [
         $registry = new BuildProviderRegistry();
         $registry->setLogger($logger);
 
-        // Jenkins（始终注册，向后兼容）
-        $registry->register('jenkins', function () use ($c, $logger) {
-            return new JenkinsBuildProvider($c->get(JenkinsService::class), $logger);
-        });
+        $buildMode = $_ENV['BUILD_MODE'] ?? 'both';
 
-        // GitLab CI（GitLab 已配置且有 token 时注册）
-        if ($config->isPlatformConfigured('gitlab')) {
+        // Jenkins
+        if (in_array($buildMode, ['jenkins', 'both'])) {
+            $registry->register('jenkins', function () use ($c, $logger) {
+                return new JenkinsBuildProvider($c->get(JenkinsService::class), $logger);
+            });
+        }
+
+        // GitLab CI
+        if (in_array($buildMode, ['gitlab_ci', 'both']) && $config->isPlatformConfigured('gitlab')) {
             $glCfg = $config->getGitlabConfig();
             if (!empty($glCfg['base_url']) && !empty($glCfg['token'])) {
                 $registry->register('gitlab_ci', function () use ($glCfg, $logger) {
