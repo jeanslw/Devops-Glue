@@ -223,13 +223,8 @@ class MainController extends BaseController
             $platformVersions[$p['name']]    = $p['api_version'] ?? '';
         }
 
-        if (empty($usedPlatforms)) {
-            // 无 Job 映射或 Jenkins 不可用：取全部已配置平台
-            $usedPlatforms = array_keys($configuredPlatforms);
-        } else {
-            // 只检查实际已配置的平台（job_git_map 可能引用未配置的平台）
-            $usedPlatforms = array_values(array_intersect($usedPlatforms, array_keys($configuredPlatforms)));
-        }
+        // 只检查 job_git_map 中实际引用的平台
+        $usedPlatforms = array_values(array_intersect($usedPlatforms, array_keys($configuredPlatforms)));
 
         if (empty($usedPlatforms)) {
             $checks['git'] = null;
@@ -243,7 +238,7 @@ class MainController extends BaseController
                         curl_setopt_array($ch, [
                             CURLOPT_NOBODY           => true,
                             CURLOPT_RETURNTRANSFER   => true,
-                            CURLOPT_TIMEOUT          => 4,
+                            CURLOPT_TIMEOUT          => 3,
                             CURLOPT_CONNECTTIMEOUT   => 2,
                             CURLOPT_DNS_CACHE_TIMEOUT => 10,
                         ]);
