@@ -595,7 +595,7 @@ curl -X OPTIONS "http://URL/api/main/jobs/list" -H "Origin: http://example.com" 
 |       |   HarborService.php
 |       |   JenkinsService.php
 |       |   Logger.php
-|       |   MapService.php
+|       |   GitRemoteResolver.php
 |       |
 |       +---Build				#构建相关逻辑（v2.3.0引入）
 |       |       BuildProviderInterface.php
