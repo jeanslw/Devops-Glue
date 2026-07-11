@@ -422,19 +422,20 @@ async function loadSettings() {
         let mode = '', diagram = '';
         if (hasJenkins && hasGitlab) {
             mode = '<span class="badge" style="background:#dbeafe;color:#1d4ed8;font-size:13px;">共存模式</span>';
-            diagram = '<div style="font-size:13px;"><b>项目</b></div>'
+            diagram = '<div style="border:3px solid #e91e63;">🐺 Git 项目</div>'
+				+ '<div style="font-size:15px;">⬇</div>'
                 + '<div style="display:flex;justify-content:center;gap:20px;margin:8px 0;">'
                 + '<div style="border:2px solid #f59e0b;border-radius:8px;padding:8px 16px;">⚡ Jenkins</div>'
                 + '<div style="border:2px solid #e91e63;border-radius:8px;padding:8px 16px;">🐺 GitLab CI</div>'
                 + '</div>'
-                + '<div style="font-size:13px;">⬇</div>'
+                + '<div style="font-size:15px;">⬇</div>'
                 + '<div style="border:2px solid #22c55e;border-radius:8px;padding:8px 16px;">🐳 Harbor</div>';
         } else if (hasGitlab) {
             mode = '<span class="badge" style="background:#fce4ec;color:#c81e1e;font-size:13px;">GitLab CI 模式</span>';
-            diagram = '<div style="font-size:13px;"><b>项目</b> → 🐺 <b>GitLab CI</b> → 🐳 <b>Harbor</b></div>';
+            diagram = '<div style="font-size:13px;"><b>Git项目</b> → 🐺 <b>GitLab CI</b> → 🐳 <b>Harbor</b></div>';
         } else {
             mode = '<span class="badge" style="background:#fff8e1;color:#d97706;font-size:13px;">Jenkins 模式</span>';
-            diagram = '<div style="font-size:13px;"><b>项目</b> → ⚡ <b>Jenkins</b> → 🐳 <b>Harbor</b></div>';
+            diagram = '<div style="font-size:13px;"><b>Git项目</b> → ⚡ <b>Jenkins</b> → 🐳 <b>Harbor</b></div>';
         }
         display.innerHTML = '<div style="margin-bottom:10px;">' + mode + '</div>' + diagram;
     } catch(e) {
