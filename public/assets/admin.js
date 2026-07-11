@@ -442,6 +442,26 @@ async function loadSettings() {
     }
 }
 
+// ── 连接测试 ──
+async function testConnection() {
+    const el = document.getElementById('conn-loading');
+    el.textContent = '检测中…';
+    try {
+        const res = await fetch('/api/health');
+        const d = await res.json();
+        const c = d.checks || {};
+        let html = '';
+        html += `<span class="badge ${c.jenkins?'badge-gitea':'badge-gitlab'}">${c.jenkins?'✅ Jenkins':'❌ Jenkins'}</span> `;
+        const git = c.git;
+        if (git === null) html += '<span class="badge badge-default">⚪ Git 未配置</span> ';
+        else if (Array.isArray(git)) git.forEach(g => {
+            html += `<span class="badge ${g.reachable?'badge-gitea':'badge-gitlab'}">${g.reachable?'✅':'❌'} ${g.name}</span> `;
+        });
+        html += `<span class="badge ${c.harbor===true?'badge-gitea':c.harbor===null?'badge-default':'badge-gitlab'}">${c.harbor===true?'✅ Harbor':c.harbor===null?'⚪ Harbor':'❌ Harbor'}</span>`;
+        el.innerHTML = html;
+    } catch(e) { el.textContent = '测试失败: ' + e.message; }
+}
+
 // ── 密码修改 ──
 async function changePassword(e) {
     e.preventDefault();
