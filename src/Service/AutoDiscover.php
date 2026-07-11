@@ -123,6 +123,7 @@ class AutoDiscover
 
                 foreach ($data as $p) {
                     $path = $p['path_with_namespace'] ?? '';
+                    if (empty($p['jobs_enabled'])) continue; // 没开 CI 的跳过
                     $remote = $p['http_url_to_repo'] ?? '';
                     if ($remote && in_array($remote, $existingRemotes)) continue;
                     $found[] = ['entry' => [
