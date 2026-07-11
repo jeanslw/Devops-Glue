@@ -147,12 +147,12 @@ class BuildController extends BaseController
         }
 
         // POST JSON body 优先，GET query string 兜底（兼容旧版 Jenkins 调用方式）
-        $ref  = $body['ref'] ?? 'main';
+        $ref  = $body['ref'] ?? $qs['ref'] ?? '';
         $vars = $body['variables'] ?? [];
-        // Query String 全部作为 variables（兼容任意 Jenkins 参数名）
         foreach ($qs as $k => $v) {
             if (!in_array($k, ['format','token','ref']) && !isset($vars[$k])) $vars[$k] = $v;
         }
+        // 有 ref 但没传具体参数 → 自动映射到分支参数
         if (empty($vars) && !empty($ref)) $vars['branches'] = $ref;
 
         $p      = $this->registry->create($provider);

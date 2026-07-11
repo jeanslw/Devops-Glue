@@ -80,10 +80,12 @@ class JenkinsBuildProvider implements BuildProviderInterface
 
     public function trigger(string $projectId, string $ref, array $variables = []): array
     {
-        // 合并：ref 作为备选值，variables 优先
         $inputParams = $variables;
         if (!empty($ref) && empty($inputParams)) {
             $inputParams['branches'] = $ref;
+        }
+        if (empty($inputParams)) {
+            return ['success' => false, 'message' => '缺少构建参数，请先调用 /variables 查看所需参数'];
         }
 
         // 1. 校验 Job 是否存在
