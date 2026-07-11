@@ -187,8 +187,6 @@ class MainController extends BaseController
      */
     public function health(Request $request, Response $response): Response
     {
-        set_time_limit(10); // 整个健康检查最多 10 秒
-
         $checks = [
             'jenkins'         => false,
             'jenkins_version' => null,
