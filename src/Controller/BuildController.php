@@ -134,19 +134,25 @@ class BuildController extends BaseController
         return $this->output($response, $trace, $request, true);
     }
 
-    /** POST /api/build/{path}/trigger */
+    /** POST /api/build/{path}/trigger（兼容 GET Query String 触发） */
     public function trigger(Request $request, Response $response, array $args): Response
     {
         $path = $args['path'] ?? '';
         $body = $request->getParsedBody() ?? [];
+        $qs   = $request->getQueryParams();
         [$provider, $projectId] = $this->resolve($path);
 
         if (!$this->registry->isRegistered($provider)) {
             return $this->jsonError($response, "Build 系统 '{$provider}' 未配置", 400);
         }
 
-        $ref       = $body['ref'] ?? 'main';
+        // POST JSON body 优先，GET query string 兜底（兼容旧版 Jenkins 调用方式）
+        $ref       = $body['ref'] ?? $qs['branches'] ?? $qs['ref'] ?? 'main';
         $variables = $body['variables'] ?? [];
+        // 把 query string 里多余参数当 variables
+        foreach (['zone','env','tag'] as $k) {
+            if (!empty($qs[$k]) && !isset($variables[$k])) $variables[$k] = $qs[$k];
+        }
 
         $p      = $this->registry->create($provider);
         $result = $p->trigger($projectId, $ref, $variables);
