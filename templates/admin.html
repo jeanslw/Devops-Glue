@@ -560,7 +560,10 @@ async function loadMonitor() {
     }
 
     try {
-        const res = await fetch(HEALTH_API);
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 5000);
+        const res = await fetch(HEALTH_API, { signal: ctrl.signal });
+        clearTimeout(timer);
         const data = await res.json();
         const chk = data.checks || {};
 
@@ -597,8 +600,9 @@ async function loadMonitor() {
         setSvc('icon-harbor', 'name-harbor', 'stat-harbor', 'dot-harbor', hOk, hVer, hOk===true?'正常':hOk===null?'未配置':'不可达');
 
     } catch(e) {
+        const msg = e.name === 'AbortError' ? '超时' : '无法连接';
         ['jenkins','git','harbor'].forEach(k => {
-            setSvc('icon-'+k, 'name-'+k, 'stat-'+k, 'dot-'+k, false, '', '无法连接');
+            setSvc('icon-'+k, 'name-'+k, 'stat-'+k, 'dot-'+k, false, '', msg);
         });
     }
 }
