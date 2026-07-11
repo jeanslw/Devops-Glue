@@ -10,19 +10,21 @@ class AutoDiscover
     private JenkinsService $jenkins;
     private ProviderRegistry $gitRegistry;
     private AppConfig $config;
+    private MappingManager $mapping;
     private ?Logger $logger;
 
-    public function __construct(JenkinsService $jenkins, ProviderRegistry $gitRegistry, AppConfig $config, ?Logger $logger = null)
+    public function __construct(JenkinsService $jenkins, ProviderRegistry $gitRegistry, AppConfig $config, MappingManager $mapping, ?Logger $logger = null)
     {
         $this->jenkins     = $jenkins;
         $this->gitRegistry = $gitRegistry;
         $this->config      = $config;
+        $this->mapping     = $mapping;
         $this->logger      = $logger;
     }
 
     public function discover(): array
     {
-        $buildMode = $_ENV['BUILD_MODE'] ?? 'both';
+        $buildMode = $this->mapping->buildMode();
         $existingRemotes = $this->existingRemotes();
         $errors    = [];
         $found     = [];
