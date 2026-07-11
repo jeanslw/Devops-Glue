@@ -5,7 +5,7 @@ use GuzzleHttp\Client;
 use App\Service\Git\ProviderRegistry;
 use App\Exceptions\ApiException;
 
-class MapService
+class GitRemoteResolver
 {
     private JenkinsService $jenkins;
     private ProviderRegistry $registry;

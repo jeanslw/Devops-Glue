@@ -6,15 +6,15 @@ use GuzzleHttp\Exception\GuzzleException;
 
 class GitService
 {
-    private MapService $mapService;
+    private GitRemoteResolver $remoteResolver;
     private ProviderRegistry $registry;
     private ?Logger $logger = null;
 
     public function __construct(
-        MapService $mapService,
+        GitRemoteResolver $remoteResolver,
         ProviderRegistry $registry
     ) {
-        $this->mapService = $mapService;
+        $this->remoteResolver = $remoteResolver;
         $this->registry = $registry;
     }
 
@@ -25,7 +25,7 @@ class GitService
 
     public function getBranchesForJob(string $jobPath): array
     {
-        $map = $this->mapService->getByJobName($jobPath);
+        $map = $this->remoteResolver->getByJobName($jobPath);
         if (!$map) {
             $this->logger?->warning("Git mapping not found for job", ['job' => $jobPath]);
             return [];
