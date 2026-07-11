@@ -38,24 +38,23 @@ class MainController extends BaseController
     public function mapList(Request $request, Response $response): Response
     {
         $cacheKey = 'map_list';
-
-        // 有缓存且未过期，直接返回
-        try {
-            $pdo = \App\Service\Database::getPdo();
-            $cached = $pdo->prepare("SELECT value FROM cache WHERE cache_key = ? AND expires_at > ?");
-            $cached->execute([$cacheKey, time()]);
-            $row = $cached->fetch();
-            if ($row) {
-                $data = json_decode($row['value'], true);
-                if (is_array($data)) {
-                    return $this->output($response, $data, $request);
-                }
-            }
-        } catch (\Exception $e) {
-            // DB 不可用时继续查实时数据
-        }
-
         $buildMode = $_ENV['BUILD_MODE'] ?? 'both';
+
+        // 有缓存且未过期，直接返回（gitlab_ci 模式跳过缓存，避免 Jenkins 旧数据）
+        if ($buildMode !== 'gitlab_ci') {
+            try {
+                $pdo = \App\Service\Database::getPdo();
+                $cached = $pdo->prepare("SELECT value FROM cache WHERE cache_key = ? AND expires_at > ?");
+                $cached->execute([$cacheKey, time()]);
+                $row = $cached->fetch();
+                if ($row) {
+                    $data = json_decode($row['value'], true);
+                    if (is_array($data)) {
+                        return $this->output($response, $data, $request);
+                    }
+                }
+            } catch (\Exception $e) {}
+        }
         try {
             if ($buildMode === 'gitlab_ci') {
                 $maps = $this->config->getJobGitMap();
