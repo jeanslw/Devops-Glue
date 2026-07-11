@@ -240,14 +240,21 @@ class MainController extends BaseController
                 $apiUrl = $configuredPlatforms[$name] ?? null;
                 $reachable = false;
                 if ($apiUrl) {
-                    // 用 fsockopen 替代 Guzzle，避免 DNS/SSL 卡死
-                    $parts = parse_url($apiUrl);
-                    $host = $parts['host'] ?? '';
-                    $port = $parts['port'] ?? (($parts['scheme'] ?? '') === 'https' ? 443 : 80);
-                    if ($host) {
-                        $errno = 0; $errstr = '';
-                        $fp = @fsockopen(($parts['scheme'] === 'https' ? 'ssl://' : '') . $host, $port, $errno, $errstr, 2);
-                        if ($fp) { fclose($fp); $reachable = true; }
+                    try {
+                        $ch = curl_init($apiUrl);
+                        curl_setopt_array($ch, [
+                            CURLOPT_NOBODY           => true,
+                            CURLOPT_RETURNTRANSFER   => true,
+                            CURLOPT_TIMEOUT          => 4,
+                            CURLOPT_CONNECTTIMEOUT   => 2,
+                            CURLOPT_DNS_CACHE_TIMEOUT => 10,
+                        ]);
+                        curl_exec($ch);
+                        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                        $reachable = $httpCode > 0 && $httpCode < 500;
+                        curl_close($ch);
+                    } catch (\Exception $e) {
+                        $reachable = false;
                     }
                 }
                 $checks['git'][] = [
