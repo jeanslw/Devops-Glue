@@ -46,8 +46,12 @@ class Database
             web_url TEXT,
             current_path TEXT,
             harbor_repository TEXT,
-            api_version TEXT
+            api_version TEXT,
+            status TEXT DEFAULT 'active'
         )");
+
+        // v2.3.x 迁移：加 status 列
+        try { $pdo->exec("ALTER TABLE job_git_map ADD COLUMN status TEXT DEFAULT 'active'"); } catch (\Exception $e) {}
 
         $pdo->exec("CREATE TABLE IF NOT EXISTS platform_versions (
             platform TEXT PRIMARY KEY,

@@ -291,7 +291,7 @@ class AdminController extends BaseController
     private function buildEntry(array $body): array
     {
         $entry = [];
-        $fields = ['job_name', 'git_platform', 'build_provider', 'git_remote', 'project_id', 'web_url', 'current_path', 'harbor_repository', 'api_version'];
+        $fields = ['job_name', 'git_platform', 'build_provider', 'git_remote', 'project_id', 'web_url', 'current_path', 'harbor_repository', 'api_version', 'status'];
         foreach ($fields as $f) {
             if (array_key_exists($f, $body)) {
                 $val = $body[$f];

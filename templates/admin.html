@@ -341,6 +341,13 @@
                                     <option value="gitlab_ci">gitlab_ci</option>
                                 </select>
                             </div>
+                            <div>
+                                <label>状态</label>
+                                <select id="f-status">
+                                    <option value="active">启用</option>
+                                    <option value="disabled">禁用</option>
+                                </select>
+                            </div>
                             <div class="full">
                                 <label>Git Remote URL</label>
                                 <input id="f-git_remote" placeholder="例: http://git.company.com/project.git">
@@ -381,7 +388,7 @@
                     <div id="table-wrap" style="display:none;overflow-x:auto;">
                         <table>
                             <thead>
-                                <tr><th>Job 名称</th><th>构建源</th><th>Git 平台</th><th>Git Remote</th><th>Harbor 仓库</th><th>操作</th></tr>
+                                <tr><th>Job 名称</th><th>构建源</th><th>Git 平台</th><th>Git Remote</th><th>Harbor 仓库</th><th>状态</th><th>操作</th></tr>
                             </thead>
                             <tbody id="map-tbody"></tbody>
                         </table>
@@ -641,6 +648,7 @@ async function loadMaps() {
                     <td>${plat !== '—' ? `<span class="badge ${badgeCls}">${esc(plat)}</span>` : '—'}</td>
                     <td class="mono">${esc(m.git_remote || '—')}</td>
                     <td>${esc(m.harbor_repository || '—')}</td>
+                    <td>${(m.status||'active')==='disabled'?'<span class="badge" style="background:#fef2f2;color:#dc2626;">禁用</span>':'<span class="badge" style="background:#f0fdf4;color:#16a34a;">启用</span>'}</td>
                     <td style="white-space:nowrap">
                         <button class="btn btn-sm btn-edit" onclick='editMap(${js(m)})'>✏️ 编辑</button>
                         <button class="btn btn-sm btn-del" onclick='deleteMap("${escJs(m.job_name)}")'>🗑 删除</button>
@@ -930,6 +938,7 @@ function showForm(editData) {
         document.getElementById('f-job_name').readOnly = true;
         document.getElementById('f-git_platform').value = editData.git_platform || '';
         document.getElementById('f-build_provider').value = editData.build_provider || '';
+        document.getElementById('f-status').value = editData.status || 'active';
         document.getElementById('f-git_remote').value = editData.git_remote || '';
         document.getElementById('f-project_id').value = editData.project_id ?? '';
         document.getElementById('f-web_url').value = editData.web_url || '';
@@ -956,6 +965,7 @@ async function submitForm(e) {
         job_name: document.getElementById('f-job_name').value.trim(),
         git_platform: document.getElementById('f-git_platform').value,
         build_provider: document.getElementById('f-build_provider').value,
+        status: document.getElementById('f-status').value,
         git_remote: document.getElementById('f-git_remote').value.trim(),
         project_id: document.getElementById('f-project_id').value.trim(),
         web_url: document.getElementById('f-web_url').value.trim(),

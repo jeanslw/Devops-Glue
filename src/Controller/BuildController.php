@@ -30,6 +30,7 @@ class BuildController extends BaseController
             $job = $m['job_name'] ?? '';
             $cp  = $m['current_path'] ?? '';
             if ($job === $projectPath || $cp === $projectPath || $job === str_replace('-', '/', $projectPath)) {
+                if (($m['status'] ?? 'active') === 'disabled') continue; // 禁用跳过
                 if (!empty($m['build_provider'])) $provider = $m['build_provider'];
                 if ($provider !== 'jenkins' && !empty($m['project_id'])) $projectId = (string) $m['project_id'];
                 break;
@@ -104,6 +105,7 @@ class BuildController extends BaseController
         $hasJenkins = false;
         $hasGitlab  = false;
         foreach ($maps as $m) {
+            if (($m['status'] ?? 'active') === 'disabled') continue;
             $bp = $m['build_provider'] ?? 'jenkins';
             if ($bp === 'jenkins') $hasJenkins = true;
             if ($bp === 'gitlab_ci') $hasGitlab = true;
