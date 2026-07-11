@@ -91,6 +91,7 @@ $app->group('/api', function (RouteCollectorProxy $api) {
         $admin->map(['DELETE'], '/job_git_map', [AdminController::class, 'jobGitMapDelete']);
         $admin->map(['GET'], '/platform_versions', [AdminController::class, 'platformVersionsList']);
         $admin->map(['PUT'], '/platform_versions', [AdminController::class, 'platformVersionsUpdate']);
+        $admin->map(['POST'], '/discover', [AdminController::class, 'discover']);
     });
 
     $api->group('/build', function (RouteCollectorProxy $build) {
