@@ -101,9 +101,10 @@ class BuildController extends BaseController
     /** GET /api/build/config-mode — 公开，返回当前配置模式（不查 CI 系统） */
     public function configMode(Request $request, Response $response): Response
     {
-        // 配置模式看 Provider 注册状态（不依赖映射记录）
-        $hasJenkins = $this->registry->isRegistered('jenkins');
-        $hasGitlab  = $this->registry->isRegistered('gitlab_ci');
+        // 配置模式：.env BUILD_MODE 控制，默认 both
+        $envMode = $_ENV['BUILD_MODE'] ?? 'both';
+        $hasJenkins = in_array($envMode, ['jenkins', 'both']) && $this->registry->isRegistered('jenkins');
+        $hasGitlab  = in_array($envMode, ['gitlab_ci', 'both']) && $this->registry->isRegistered('gitlab_ci');
         $mode = ($hasJenkins && $hasGitlab) ? 'both' : ($hasGitlab ? 'gitlab_ci' : 'jenkins');
         return $this->output($response, ['mode' => $mode, 'has_jenkins' => $hasJenkins, 'has_gitlab_ci' => $hasGitlab], $request);
     }
