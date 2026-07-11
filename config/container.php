@@ -49,6 +49,7 @@ return [
             $c->get(JenkinsService::class),
             $c->get(ProviderRegistry::class),
             $c->get(AppConfig::class),
+            $c->get(MappingManager::class),
             $c->get(Logger::class)
         );
     },
