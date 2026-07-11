@@ -122,7 +122,6 @@ $app->group('/api', function (RouteCollectorProxy $api) {
         $build->map(['POST'], '/{path:.+}/pipelines/{id:\d+}/retry', [BuildController::class, 'retry']);
         $build->map(['POST'], '/{path:.+}/pipelines/{id:\d+}/cancel', [BuildController::class, 'cancel']);
         $build->map(['GET', 'POST'], '/{path:.+}/logs/{id:\d+}', [BuildController::class, 'logs']);
-        $build->map(['GET', 'POST'], '/{path:.+}/jobs/{id:\d+}/trace', [BuildController::class, 'jobTrace']);
         $build->map(['POST'], '/{path:.+}/trigger', [BuildController::class, 'trigger']);
         $build->map(['GET', 'POST'], '/{path:.+}/variables', [BuildController::class, 'variables']);
         $build->map(['POST'], '/{path:.+}/scan-sync', [BuildController::class, 'scanSync']);
@@ -144,7 +143,6 @@ $app->group('/api', function (RouteCollectorProxy $api) {
         $jenkins->map(['GET', 'POST'], '/{path:.+}/parameters[/{build_id}]', [JenkinsController::class, 'parameters']);
         $jenkins->map(['GET', 'POST'], '/{path:.+}/{type:build|build_id|build_time}', [JenkinsController::class, 'buildList']);
         $jenkins->map(['GET', 'POST'], '/{path:.+}/{build_id}/status', [JenkinsController::class, 'status']);
-        $jenkins->map(['GET', 'POST'], '/{path:.+}/{build_id}/console', [JenkinsController::class, 'console']);
     });
     } // /if BUILD_MODE !== gitlab_ci
 

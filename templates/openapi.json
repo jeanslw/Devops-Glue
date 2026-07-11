@@ -197,30 +197,77 @@
       },
       "LoginRequest": {
         "type": "object",
-        "required": ["user", "password"],
+        "required": [
+          "user",
+          "password"
+        ],
         "properties": {
-          "user": { "type": "string", "example": "admin" },
-          "password": { "type": "string", "example": "admin123" }
+          "user": {
+            "type": "string",
+            "example": "admin"
+          },
+          "password": {
+            "type": "string",
+            "example": "admin123"
+          }
         }
       },
       "LoginResult": {
         "type": "object",
         "properties": {
-          "token": { "type": "string", "example": "YWRtaW46YWRtaW4xMjM=", "description": "Bearer token，后续请求通过 Authorization header 传递" }
+          "token": {
+            "type": "string",
+            "example": "YWRtaW46YWRtaW4xMjM=",
+            "description": "Bearer token，后续请求通过 Authorization header 传递"
+          }
         }
       },
       "JobGitMapEntry": {
         "type": "object",
-        "required": ["job_name"],
+        "required": [
+          "job_name"
+        ],
         "properties": {
-          "job_name": { "type": "string", "description": "Jenkins Job 完整路径，必填", "example": "php/myapp" },
-          "git_platform": { "type": "string", "description": "目标 Git 平台名", "example": "gitlab" },
-          "git_remote": { "type": "string", "description": "Git 仓库远程地址", "example": "http://git.company.com/project.git" },
-          "project_id": { "type": "integer", "nullable": true, "description": "Git 项目 ID（GitLab 不填自动查询）", "example": 5 },
-          "web_url": { "type": "string", "description": "项目主页链接", "example": "http://git.company.com/project" },
-          "current_path": { "type": "string", "description": "项目路径", "example": "tools/registry" },
-          "harbor_repository": { "type": "string", "description": "关联 Harbor 仓库", "example": "mycode/myapp" },
-          "api_version": { "type": "string", "description": "平台 API 版本（纯元数据）" }
+          "job_name": {
+            "type": "string",
+            "description": "Jenkins Job 完整路径，必填",
+            "example": "php/myapp"
+          },
+          "git_platform": {
+            "type": "string",
+            "description": "目标 Git 平台名",
+            "example": "gitlab"
+          },
+          "git_remote": {
+            "type": "string",
+            "description": "Git 仓库远程地址",
+            "example": "http://git.company.com/project.git"
+          },
+          "project_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Git 项目 ID（GitLab 不填自动查询）",
+            "example": 5
+          },
+          "web_url": {
+            "type": "string",
+            "description": "项目主页链接",
+            "example": "http://git.company.com/project"
+          },
+          "current_path": {
+            "type": "string",
+            "description": "项目路径",
+            "example": "tools/registry"
+          },
+          "harbor_repository": {
+            "type": "string",
+            "description": "关联 Harbor 仓库",
+            "example": "mycode/myapp"
+          },
+          "api_version": {
+            "type": "string",
+            "description": "平台 API 版本（纯元数据）"
+          }
         }
       },
       "MapListResult": {
@@ -229,14 +276,43 @@
         "additionalProperties": {
           "type": "object",
           "properties": {
-            "git_platform": { "type": "string" },
-            "git_remote": { "type": "string" },
-            "project_id": { "type": "integer", "nullable": true },
-            "web_url": { "type": "string" },
-            "harbor_repository": { "type": "string" },
-            "platform_source": { "type": "string", "enum": ["auto", "manual"] },
-            "detection_method": { "type": "string", "enum": ["exact", "fallback", "manual"] },
-            "jobs": { "type": "array", "items": { "type": "string" } }
+            "git_platform": {
+              "type": "string"
+            },
+            "git_remote": {
+              "type": "string"
+            },
+            "project_id": {
+              "type": "integer",
+              "nullable": true
+            },
+            "web_url": {
+              "type": "string"
+            },
+            "harbor_repository": {
+              "type": "string"
+            },
+            "platform_source": {
+              "type": "string",
+              "enum": [
+                "auto",
+                "manual"
+              ]
+            },
+            "detection_method": {
+              "type": "string",
+              "enum": [
+                "exact",
+                "fallback",
+                "manual"
+              ]
+            },
+            "jobs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
           }
         }
       },
@@ -248,8 +324,19 @@
             "additionalProperties": {
               "type": "object",
               "properties": {
-                "value": { "type": "string", "example": "v4" },
-                "source": { "type": "string", "enum": ["config", "json", "default"], "description": "config=settings.php | json=管理界面 | default=系统默认" }
+                "value": {
+                  "type": "string",
+                  "example": "v4"
+                },
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "config",
+                    "json",
+                    "default"
+                  ],
+                  "description": "config=settings.php | json=管理界面 | default=系统默认"
+                }
               }
             }
           }
@@ -385,139 +472,321 @@
     },
     "/api/build/{path}/pipelines": {
       "get": {
-        "tags": ["Build"],
+        "tags": [
+          "Build"
+        ],
         "summary": "Pipeline 列表",
         "description": "统一查询 Jenkins/GitLab CI 的 Pipeline。?list=id 返回 Jenkins 风格简洁数组",
         "operationId": "buildPipelines",
         "parameters": [
-          {"name": "path", "in": "path", "required": true, "schema": {"type": "string"}, "example": "tools/runner-ci"},
-          {"$ref": "#/components/parameters/format"},
-          {"name": "list", "in": "query", "schema": {"type": "string", "enum": ["id"]}, "description": "id=返回简洁 Pipeline ID 列表"}
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "tools/runner-ci"
+          },
+          {
+            "$ref": "#/components/parameters/format"
+          },
+          {
+            "name": "list",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "id"
+              ]
+            },
+            "description": "id=返回简洁 Pipeline ID 列表"
+          }
         ],
-        "responses": { "200": { "description": "Pipeline 列表" } }
+        "responses": {
+          "200": {
+            "description": "Pipeline 列表"
+          }
+        }
       }
     },
     "/api/build/{path}/pipelines/{id}": {
       "get": {
-        "tags": ["Build"],
+        "tags": [
+          "Build"
+        ],
         "summary": "Pipeline 详情 + Jobs",
         "operationId": "buildPipelineDetail",
         "parameters": [
-          {"name": "path", "in": "path", "required": true, "schema": {"type": "string"}},
-          {"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}}
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
         ],
-        "responses": { "200": { "description": "Jobs 列表" } }
+        "responses": {
+          "200": {
+            "description": "Jobs 列表"
+          }
+        }
       }
     },
     "/api/build/{path}/pipelines/{id}/retry": {
       "post": {
-        "tags": ["Build"],
+        "tags": [
+          "Build"
+        ],
         "summary": "重试 Pipeline（仅 GitLab CI）",
         "operationId": "buildRetry",
         "parameters": [
-          {"name": "path", "in": "path", "required": true, "schema": {"type": "string"}},
-          {"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}}
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
         ],
-        "responses": { "200": { "description": "retry 结果" } }
+        "responses": {
+          "200": {
+            "description": "retry 结果"
+          }
+        }
       }
     },
     "/api/build/{path}/pipelines/{id}/cancel": {
       "post": {
-        "tags": ["Build"],
+        "tags": [
+          "Build"
+        ],
         "summary": "取消 Pipeline（仅 GitLab CI）",
         "operationId": "buildCancel",
         "parameters": [
-          {"name": "path", "in": "path", "required": true, "schema": {"type": "string"}},
-          {"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}}
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
         ],
-        "responses": { "200": { "description": "cancel 结果" } }
+        "responses": {
+          "200": {
+            "description": "cancel 结果"
+          }
+        }
       }
     },
     "/api/build/{path}/logs/{id}": {
       "get": {
-        "tags": ["Build"],
+        "tags": [
+          "Build"
+        ],
         "summary": "构建日志（统一，推荐）",
-        "description": "Jenkins 和 GitLab CI 通用日志入口。替代 /api/jenkins/{job}/{id}/console 和 /api/build/{path}/jobs/{id}/trace",
+        "description": "Jenkins 和 GitLab CI 通用日志入口",
         "operationId": "buildLogs",
         "parameters": [
-          {"name": "path", "in": "path", "required": true, "schema": {"type": "string"}, "example": "tools/runner-ci"},
-          {"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}, "example": 32}
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "tools/runner-ci"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "example": 32
+          }
         ],
-        "responses": { "200": { "description": "text/plain 原始日志" } }
-      }
-    },
-    "/api/build/{path}/jobs/{id}/trace": {
-      "get": {
-        "tags": ["Build"],
-        "summary": "Job 日志（旧，建议用 /api/build/{path}/logs/{id}）",
-        "deprecated": true,
-        "operationId": "buildJobTrace",
-        "parameters": [
-          {"name": "path", "in": "path", "required": true, "schema": {"type": "string"}},
-          {"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}}
-        ],
-        "responses": { "200": { "description": "text/plain 原始日志" } }
+        "responses": {
+          "200": {
+            "description": "text/plain 原始日志"
+          }
+        }
       }
     },
     "/api/build/{path}/trigger": {
       "post": {
-        "tags": ["Build"],
+        "tags": [
+          "Build"
+        ],
         "summary": "触发构建",
         "operationId": "buildTrigger",
         "parameters": [
-          {"name": "path", "in": "path", "required": true, "schema": {"type": "string"}}
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "requestBody": {
-          "content": { "application/json": { "schema": { "type": "object", "properties": {
-            "ref": {"type": "string", "example": "main"},
-            "variables": {"type": "object", "example": {"ENV": "test"}}
-          } } } }
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ref": {
+                    "type": "string",
+                    "example": "main"
+                  },
+                  "variables": {
+                    "type": "object",
+                    "example": {
+                      "ENV": "test"
+                    }
+                  }
+                }
+              }
+            }
+          }
         },
-        "responses": { "200": { "description": "触发结果" } }
+        "responses": {
+          "200": {
+            "description": "触发结果"
+          }
+        }
       }
     },
     "/api/build/{path}/variables": {
       "get": {
-        "tags": ["Build"],
+        "tags": [
+          "Build"
+        ],
         "summary": "构建参数/CI 变量",
         "operationId": "buildVariables",
         "parameters": [
-          {"name": "path", "in": "path", "required": true, "schema": {"type": "string"}}
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
-        "responses": { "200": { "description": "变量列表" } }
+        "responses": {
+          "200": {
+            "description": "变量列表"
+          }
+        }
       }
     },
     "/api/build/{path}/scan-sync": {
       "post": {
-        "tags": ["Build"],
+        "tags": [
+          "Build"
+        ],
         "summary": "Harbor 扫描 → Commit Status 回写",
         "operationId": "buildScanSync",
         "parameters": [
-          {"name": "path", "in": "path", "required": true, "schema": {"type": "string"}}
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "requestBody": {
-          "content": { "application/json": { "schema": { "type": "object", "properties": {
-            "tag": {"type": "string", "example": "v3.0.0", "description": "不传则取 Harbor 最新 tag"}
-          } } } }
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "tag": {
+                    "type": "string",
+                    "example": "v3.0.0",
+                    "description": "不传则取 Harbor 最新 tag"
+                  }
+                }
+              }
+            }
+          }
         },
-        "responses": { "200": { "description": "扫描同步结果" } }
+        "responses": {
+          "200": {
+            "description": "扫描同步结果"
+          }
+        }
       }
     },
     "/api/build/{path}/tag": {
       "get": {
-        "tags": ["Build"],
+        "tags": [
+          "Build"
+        ],
         "summary": "查询 Pipeline → Tag 映射",
         "operationId": "buildTagQuery",
         "parameters": [
-          {"name": "path", "in": "path", "required": true, "schema": {"type": "string"}},
-          {"name": "pipeline", "in": "query", "schema": {"type": "string"}, "description": "Pipeline 编号，不传返回全部"}
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "pipeline",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Pipeline 编号，不传返回全部"
+          }
         ],
-        "responses": { "200": { "description": "pipeline→tag 映射" } }
+        "responses": {
+          "200": {
+            "description": "pipeline→tag 映射"
+          }
+        }
       }
     },
     "/api/admin/login": {
       "post": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "管理后台登录",
         "description": "使用 .env 中 ADMIN_USER / ADMIN_PASSWORD 验证，返回 Bearer token",
         "operationId": "adminLogin",
@@ -525,114 +794,266 @@
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/LoginRequest" }
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
             }
           }
         },
         "responses": {
           "200": {
             "description": "登录成功",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginResult" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResult"
+                }
+              }
+            }
           },
           "401": {
             "description": "账号或密码错误",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
     },
     "/api/admin/job_git_map": {
       "get": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "列出所有 Job-Git 映射",
         "operationId": "adminMapList",
-        "security": [{ "bearerAuth": [] }],
-        "parameters": [ { "$ref": "#/components/parameters/format" } ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
         "responses": {
           "200": {
             "description": "映射列表 + 可用平台",
-            "content": { "application/json": { "schema": { "type": "object", "properties": {
-              "maps": { "type": "array", "items": { "$ref": "#/components/schemas/JobGitMapEntry" } },
-              "platforms": { "type": "array", "items": { "type": "string" } }
-            } } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "maps": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/JobGitMapEntry"
+                      }
+                    },
+                    "platforms": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
-          "401": { "$ref": "#/components/responses/400" }
+          "401": {
+            "$ref": "#/components/responses/400"
+          }
         }
       },
       "post": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "新增一条映射",
         "operationId": "adminMapCreate",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobGitMapEntry" } } }
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobGitMapEntry"
+              }
+            }
+          }
         },
         "responses": {
-          "200": { "description": "新增成功" },
-          "400": { "$ref": "#/components/responses/400" },
-          "409": { "description": "job_name 已存在" }
+          "200": {
+            "description": "新增成功"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "409": {
+            "description": "job_name 已存在"
+          }
         }
       },
       "put": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "更新一条映射（按 _original_job_name 匹配）",
         "operationId": "adminMapUpdate",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "allOf": [
-            { "$ref": "#/components/schemas/JobGitMapEntry" },
-            { "type": "object", "properties": { "_original_job_name": { "type": "string", "description": "修改前的 job_name" } }, "required": ["_original_job_name"] }
-          ] } } }
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/JobGitMapEntry"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "_original_job_name": {
+                        "type": "string",
+                        "description": "修改前的 job_name"
+                      }
+                    },
+                    "required": [
+                      "_original_job_name"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
         },
         "responses": {
-          "200": { "description": "更新成功" },
-          "404": { "$ref": "#/components/responses/404" }
+          "200": {
+            "description": "更新成功"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
         }
       },
       "delete": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "删除一条映射",
         "operationId": "adminMapDelete",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
-          { "name": "job_name", "in": "query", "required": true, "schema": { "type": "string" }, "description": "要删除的 Job 名称" }
+          {
+            "name": "job_name",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "要删除的 Job 名称"
+          }
         ],
         "responses": {
-          "200": { "description": "删除成功" },
-          "404": { "$ref": "#/components/responses/404" }
+          "200": {
+            "description": "删除成功"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
         }
       }
     },
     "/api/admin/platform_versions": {
       "get": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "获取平台对接版本",
         "description": "返回各平台 API 版本号及来源（config=配置文件 / json=管理界面 / default=系统默认）",
         "operationId": "adminVersionsList",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "版本信息",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlatformVersionsResult" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformVersionsResult"
+                }
+              }
+            }
           }
         }
       },
       "put": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "更新平台对接版本",
         "description": "传入 { versions: { gitlab: v5, ... } }，与默认值相同的项不保存",
         "operationId": "adminVersionsUpdate",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "type": "object", "properties": {
-            "versions": { "type": "object", "description": "平台名→版本号映射", "example": { "gitlab": "v4", "harbor": "v2.0" } }
-          }, "required": ["versions"] } } }
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "versions": {
+                    "type": "object",
+                    "description": "平台名→版本号映射",
+                    "example": {
+                      "gitlab": "v4",
+                      "harbor": "v2.0"
+                    }
+                  }
+                },
+                "required": [
+                  "versions"
+                ]
+              }
+            }
+          }
         },
         "responses": {
-          "200": { "description": "更新成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlatformVersionsResult" } } } }
+          "200": {
+            "description": "更新成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformVersionsResult"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -991,50 +1412,6 @@
                   "items": {
                     "type": "string"
                   }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/jenkins/{job}/{buildId}/console": {
-      "get": {
-        "tags": [
-          "Jenkins"
-        ],
-        "summary": "控制台日志（旧，建议用 /api/build/{path}/logs/{id}）",
-        "deprecated": true,
-        "description": "已统一到 Build 模块。Jenkins 和 GitLab CI 均可使用 /api/build/{path}/logs/{id}",
-        "operationId": "console",
-        "parameters": [
-          {
-            "name": "job",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            },
-            "example": "php/myapp",
-            "allowReserved": true
-          },
-          {
-            "name": "buildId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            },
-            "example": 14
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "控制台日志（text/plain）",
-            "content": {
-              "text/plain": {
-                "schema": {
-                  "type": "string"
                 }
               }
             }
