@@ -863,7 +863,6 @@ async function loadSettings() {
         // 公开端点，不调 CI 系统
         const res = await fetch('/api/build/config-mode');
         const data = await res.json();
-        const mode = data.mode || 'jenkins';
         const hasJenkins = data.has_jenkins;
         const hasGitlab  = data.has_gitlab_ci;
 
