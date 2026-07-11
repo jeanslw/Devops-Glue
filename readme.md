@@ -97,7 +97,7 @@ CORS 支持
 ],
 
 日志
-日志写入 LOG_PATH 指定的目录（默认 /data/logs/ci-platform/），JSON 格式，按天滚动。
+日志写入 LOG_PATH 指定的目录（默认 /applogs/），JSON 格式，按天滚动。
 
 日志级别：production → info，其他环境 → debug。
 
@@ -478,7 +478,7 @@ ADMIN_PASSWORD=
 APP_ENV=production
 APP_DEBUG=false
 BUILD_TIMEOUT=300
-LOG_PATH=/data/logs/ci-platform/
+LOG_PATH=/applogs/
 手动映射配置 (config/settings.php)
 
 每个 Job 可配置以下字段。仅 job_name 必填，其他均可省略由系统自动推导。
