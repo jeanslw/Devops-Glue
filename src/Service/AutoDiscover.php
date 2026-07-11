@@ -23,14 +23,13 @@ class AutoDiscover
     public function discover(): array
     {
         $buildMode = $_ENV['BUILD_MODE'] ?? 'both';
-        $existing  = $this->existingJobNames();
-        $existingPaths = $this->existingPaths();
+        $existingRemotes = $this->existingRemotes();
         $errors    = [];
         $found     = [];
 
         if (in_array($buildMode, ['jenkins', 'both'])) {
             try {
-                $found = array_merge($found, $this->scanJenkins($existing, $existingPaths));
+                $found = array_merge($found, $this->scanJenkins($existingRemotes));
             } catch (\Exception $e) {
                 $errors[] = 'Jenkins: ' . $e->getMessage();
             }
@@ -38,7 +37,7 @@ class AutoDiscover
 
         if (in_array($buildMode, ['gitlab_ci', 'both'])) {
             try {
-                $found = array_merge($found, $this->scanGitlabCi($existing, $existingPaths));
+                $found = array_merge($found, $this->scanGitlabCi($existingRemotes));
             } catch (\Exception $e) {
                 $errors[] = 'GitLab CI: ' . $e->getMessage();
             }
@@ -68,14 +67,14 @@ class AutoDiscover
 
     // ── Jenkins ──
 
-    private function scanJenkins(array &$existing, array &$existingPaths): array
+    private function scanJenkins(array &$existingRemotes): array
     {
         $found = [];
         try {
             foreach ($this->jenkins->getAllJobs() as $jobName) {
-                if (in_array($jobName, $existing)) continue;
                 $remotes  = $this->jenkins->getGitRemotes($jobName);
                 $remote   = $remotes[0] ?? '';
+                if ($remote && in_array($remote, $existingRemotes)) continue;
                 $platform = $this->detectPlatform($remote);
 
                 $found[] = ['entry' => [
@@ -88,9 +87,7 @@ class AutoDiscover
                     'web_url'        => '',
                     'harbor_repository' => '',
                 ], 'source' => 'jenkins'];
-                $existing[] = $jobName;
-                $path = $this->extractPath($remote, $jobName);
-                if ($path) $existingPaths[] = $path;
+                if ($remote) $existingRemotes[] = $remote;
             }
         } catch (\Exception $e) {
             $this->logger?->warning('AutoDiscover Jenkins 扫描失败', ['error' => $e->getMessage()]);
@@ -100,7 +97,7 @@ class AutoDiscover
 
     // ── GitLab CI ──
 
-    private function scanGitlabCi(array &$existing, array &$existingPaths): array
+    private function scanGitlabCi(array &$existingRemotes): array
     {
         $found = [];
         $glCfg = $this->config->getGitlabConfig();
@@ -126,18 +123,19 @@ class AutoDiscover
 
                 foreach ($data as $p) {
                     $path = $p['path_with_namespace'] ?? '';
-                    if (in_array($path, $existing) || in_array($path, $existingPaths)) continue;
+                    $remote = $p['http_url_to_repo'] ?? '';
+                    if ($remote && in_array($remote, $existingRemotes)) continue;
                     $found[] = ['entry' => [
                         'job_name'       => $path,
                         'build_provider' => 'gitlab_ci',
                         'git_platform'   => 'gitlab',
-                        'git_remote'     => $p['http_url_to_repo'] ?? '',
+                        'git_remote'     => $remote,
                         'current_path'   => $path,
                         'project_id'     => $p['id'] ?? null,
                         'web_url'        => $p['web_url'] ?? '',
                         'harbor_repository' => '',
                     ], 'source' => 'gitlab_ci'];
-                    $existing[] = $path;
+                    if ($remote) $existingRemotes[] = $remote;
                 }
                 $page++;
             }
@@ -149,14 +147,12 @@ class AutoDiscover
 
     // ── helpers ──
 
-    private function existingJobNames(): array
+    /**
+     * 已存在的 git_remote 集合（去重依据：同一 git 仓库只保留一条映射）
+     */
+    private function existingRemotes(): array
     {
-        return array_column($this->config->getJobGitMap(), 'job_name');
-    }
-
-    private function existingPaths(): array
-    {
-        return array_filter(array_column($this->config->getJobGitMap(), 'current_path'));
+        return array_filter(array_column($this->config->getJobGitMap(), 'git_remote'));
     }
 
     private function detectPlatform(string $remote): string
