@@ -135,7 +135,7 @@ class MainController extends BaseController
      */
     public function gitDiscovery(Request $request, Response $response): Response
     {
-        $maps = $this->map->getAllMaps();
+        $maps = $this->config->getJobGitMap();
         $usedPlatforms = [];
         foreach ($maps as $map) {
             $platform = $map['git_platform'] ?? '';
