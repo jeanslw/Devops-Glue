@@ -129,9 +129,15 @@ $app->group('/api', function (RouteCollectorProxy $api) {
         $build->map(['GET', 'POST'], '/{path:.+}/tag', [BuildController::class, 'tagQuery']);
     });
 
-    // Jenkins 路由（BUILD_MODE=gitlab_ci 时禁用）
+    // Jenkins 路由
     $buildMode = $_ENV['BUILD_MODE'] ?? 'both';
-    if ($buildMode !== 'gitlab_ci') {
+    if ($buildMode === 'gitlab_ci') {
+        // 友好提示而非 404
+        $api->any('/jenkins[/{path:.*}]', function ($request, $response) {
+            $response->getBody()->write(json_encode(['code' => 400, 'message' => 'Jenkins 未配置，当前为 gitlab_ci 模式']));
+            return $response->withStatus(400)->withHeader('Content-Type', 'application/json');
+        });
+    } else {
     $api->group('/jenkins', function (RouteCollectorProxy $jenkins) {
         $jenkins->map(['POST'], '/{path:[^/]+(?:/[^/]+)?}/build_trigger', [JenkinsController::class, 'buildTrigger']);
         $jenkins->map(['GET', 'POST'], '/{path:.+}/branches', [GitController::class, 'branches']);
