@@ -58,28 +58,35 @@ class MainController extends BaseController
         $buildMode = $_ENV['BUILD_MODE'] ?? 'both';
         try {
             if ($buildMode === 'gitlab_ci') {
-                // 纯 GitLab CI：直接从 DB 读，不调 Jenkins
                 $maps = $this->config->getJobGitMap();
-                foreach ($maps as &$m) { $m['build_provider'] = $m['build_provider'] ?? 'gitlab_ci'; }
             } else {
                 $maps = $this->map->getAllMaps();
+                // 纯 Jenkins 模式过滤 gitlab_ci 条目
+                if ($buildMode === 'jenkins') {
+                    $maps = array_filter($maps, fn($m) => ($m['build_provider'] ?? 'jenkins') !== 'gitlab_ci');
+                }
             }
         } catch (\Exception $e) {
-            // Jenkins 不可达时，返回过期缓存兜底
-            try {
-                $pdo = \App\Service\Database::getPdo();
-                $cached = $pdo->prepare("SELECT value FROM cache WHERE cache_key = ?");
-                $cached->execute([$cacheKey]);
-                $row = $cached->fetch();
-                if ($row) {
-                    $data = json_decode($row['value'], true);
-                    if (is_array($data)) {
-                        $data['_stale'] = true;
-                        return $this->output($response, $data, $request);
+            // gitlab_ci 模式：Jenkins 不可达不影响，直接用 DB
+            if ($buildMode === 'gitlab_ci') {
+                $maps = $this->config->getJobGitMap();
+            } else {
+                // Jenkins 模式：尝试过期缓存兜底
+                try {
+                    $pdo = \App\Service\Database::getPdo();
+                    $cached = $pdo->prepare("SELECT value FROM cache WHERE cache_key = ?");
+                    $cached->execute([$cacheKey]);
+                    $row = $cached->fetch();
+                    if ($row) {
+                        $data = json_decode($row['value'], true);
+                        if (is_array($data)) {
+                            $data['_stale'] = true;
+                            return $this->output($response, $data, $request);
+                        }
                     }
-                }
-            } catch (\Exception $e2) {}
-            return $this->output($response, ['_error' => 'Jenkins 服务不可达，且无可用缓存', '_detail' => $e->getMessage()], $request);
+                } catch (\Exception $e2) {}
+                return $this->output($response, ['_error' => 'Jenkins 服务不可达，且无可用缓存', '_detail' => $e->getMessage()], $request);
+            }
         }
 
         $grouped = [];
