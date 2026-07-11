@@ -6,105 +6,47 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Config\AppConfig;
 use App\Service\Build\BuildProviderRegistry;
 use App\Service\HarborService;
+use App\Service\MappingManager;
 
 class BuildController extends BaseController
 {
     private BuildProviderRegistry $registry;
     private AppConfig $config;
+    private MappingManager $mapping;
     private ?HarborService $harbor;
 
-    public function __construct(BuildProviderRegistry $registry, AppConfig $config, ?HarborService $harbor = null)
+    public function __construct(BuildProviderRegistry $registry, AppConfig $config, MappingManager $mapping, ?HarborService $harbor = null)
     {
         $this->registry = $registry;
         $this->config   = $config;
+        $this->mapping  = $mapping;
         $this->harbor   = $harbor;
     }
 
     private function resolve(string $projectPath): array
     {
-        $maps = $this->config->getJobGitMap();
-        $provider  = 'jenkins';
-        $projectId = $projectPath;
-
-        foreach ($maps as $m) {
-            $job = $m['job_name'] ?? '';
-            $cp  = $m['current_path'] ?? '';
-            if ($job === $projectPath || $cp === $projectPath || $job === str_replace('-', '/', $projectPath)) {
-                if (($m['status'] ?? 'active') === 'disabled') continue; // 禁用跳过
-                if (!empty($m['build_provider'])) $provider = $m['build_provider'];
-                if ($provider !== 'jenkins' && !empty($m['project_id'])) $projectId = (string) $m['project_id'];
-                break;
-            }
-        }
-
-        // GitLab CI 用数字 ID，Jenkins 用项目路径
-        if ($provider !== 'jenkins' && !is_numeric($projectId)) {
-            // 尝试 job_git_map 中 project_id 兜底
-            foreach ($maps as $m) {
-                if (($m['current_path'] ?? '') === $projectPath && !empty($m['project_id'])) {
-                    $projectId = (string) $m['project_id'];
-                    break;
-                }
-            }
-        }
-
-        return [$provider, $projectId];
+        $r = $this->mapping->resolveProject($projectPath);
+        return [$r['provider'], $r['projectId']];
     }
 
-    /** GET /api/build/jobs/list — 全量 Job 列表（Jenkins + GitLab CI） */
     public function jobsList(Request $request, Response $response): Response
     {
         $all = [];
-        $names = $this->registry->getRegisteredNames();
-
-        // Jenkins
-        if (in_array('jenkins', $names)) {
-            try {
-                $jenkins = $this->registry->create('jenkins');
-                $maps = $this->config->getJobGitMap();
-                $jenkinsJobs = [];
-                foreach ($maps as $m) {
-                    $bp = $m['build_provider'] ?? 'jenkins';
-                    if ($bp === 'jenkins') {
-                        $jenkinsJobs[] = [
-                            'job_name'       => $m['job_name'] ?? '',
-                            'ci_provider'    => 'jenkins',
-                            'project_id'     => $m['project_id'] ?? ($m['current_path'] ?? $m['job_name']),
-                            'current_path'   => $m['current_path'] ?? '',
-                        ];
-                    }
-                }
-                $all = array_merge($all, $jenkinsJobs);
-            } catch (\Exception $e) {
-                // Jenkins 不可用，跳过
-            }
+        foreach ($this->mapping->activeMaps() as $m) {
+            $all[] = [
+                'job_name'     => $m['job_name'] ?? '',
+                'ci_provider'  => $m['build_provider'] ?? 'jenkins',
+                'project_id'   => $m['project_id'] ?? ($m['current_path'] ?? $m['job_name']),
+                'current_path' => $m['current_path'] ?? '',
+            ];
         }
-
-        // GitLab CI（从 job_git_map 读取）
-        if (in_array('gitlab_ci', $names)) {
-            $maps = $this->config->getJobGitMap();
-            foreach ($maps as $m) {
-                if (($m['build_provider'] ?? 'jenkins') === 'gitlab_ci') {
-                    $all[] = [
-                        'job_name'       => $m['job_name'] ?? '',
-                        'ci_provider'    => 'gitlab_ci',
-                        'project_id'     => (string) ($m['project_id'] ?? ''),
-                        'current_path'   => $m['current_path'] ?? '',
-                    ];
-                }
-            }
-        }
-
         return $this->output($response, $all, $request);
     }
 
-    /** GET /api/build/config-mode — 公开，返回当前配置模式（不查 CI 系统） */
     public function configMode(Request $request, Response $response): Response
     {
-        // 配置模式：.env BUILD_MODE 控制，默认 both
-        $envMode = $_ENV['BUILD_MODE'] ?? 'both';
-        $hasJenkins = in_array($envMode, ['jenkins', 'both']) && $this->registry->isRegistered('jenkins');
-        $hasGitlab  = in_array($envMode, ['gitlab_ci', 'both']) && $this->registry->isRegistered('gitlab_ci');
+        $hasJenkins = $this->mapping->hasJenkins() && $this->registry->isRegistered('jenkins');
+        $hasGitlab  = $this->mapping->hasGitlabCi() && $this->registry->isRegistered('gitlab_ci');
         $mode = ($hasJenkins && $hasGitlab) ? 'both' : ($hasGitlab ? 'gitlab_ci' : 'jenkins');
         return $this->output($response, ['mode' => $mode, 'has_jenkins' => $hasJenkins, 'has_gitlab_ci' => $hasGitlab], $request);
     }

@@ -5,6 +5,7 @@ use App\Service\JenkinsService;
 use App\Service\GitService;
 use App\Service\MapService;
 use App\Service\HarborService;
+use App\Service\MappingManager;
 use App\Service\Git\ProviderRegistry;
 use App\Service\Git\GitProviderFactory;
 use App\Service\Build\BuildProviderRegistry;
@@ -36,6 +37,11 @@ return [
     },
 
     // ---------- 基础设施 ----------
+
+    // 映射查询（数据层）
+    MappingManager::class => function (\Psr\Container\ContainerInterface $c) {
+        return new MappingManager($c->get(AppConfig::class));
+    },
 
     // 日志服务
     Logger::class => function (\Psr\Container\ContainerInterface $c) {
@@ -255,6 +261,7 @@ return [
             $c->get(JenkinsService::class),
             $c->get(MapService::class),
             $c->get(AppConfig::class),
+            $c->get(MappingManager::class),
             $c->get(HarborService::class)
         );
     },
@@ -269,6 +276,7 @@ return [
         return new BuildController(
             $c->get(BuildProviderRegistry::class),
             $c->get(AppConfig::class),
+            $c->get(MappingManager::class),
             $c->get(HarborService::class)
         );
     },
