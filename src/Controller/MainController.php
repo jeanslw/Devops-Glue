@@ -58,17 +58,17 @@ class MainController extends BaseController
         try {
             if ($buildMode === 'gitlab_ci') {
                 $maps = $this->config->getJobGitMap();
+                $maps = array_values(array_filter($maps, fn($m) => ($m['build_provider'] ?? 'jenkins') === 'gitlab_ci'));
             } else {
                 $maps = $this->map->getAllMaps();
-                // 纯 Jenkins 模式过滤 gitlab_ci 条目
                 if ($buildMode === 'jenkins') {
                     $maps = array_filter($maps, fn($m) => ($m['build_provider'] ?? 'jenkins') !== 'gitlab_ci');
                 }
             }
         } catch (\Exception $e) {
-            // gitlab_ci 模式：Jenkins 不可达不影响，直接用 DB
             if ($buildMode === 'gitlab_ci') {
                 $maps = $this->config->getJobGitMap();
+                $maps = array_values(array_filter($maps, fn($m) => ($m['build_provider'] ?? 'jenkins') === 'gitlab_ci'));
             } else {
                 return $this->output($response, ['_error' => 'Jenkins 服务不可达', '_detail' => $e->getMessage()], $request);
             }
