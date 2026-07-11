@@ -86,16 +86,27 @@ class JenkinsBuildProvider implements BuildProviderInterface
             $inputParams['branches'] = $ref;
         }
 
-        // 1. 获取 Jenkins 参数定义
+        // 1. 校验 Job 是否存在
         try {
-            $allParams = $this->jenkins->getParameters($projectId, null);
+            $resolved = $this->jenkins->resolvePath($projectId);
+            if (!$resolved || ($resolved['type'] ?? '') !== 'job') {
+                return ['success' => false, 'message' => "Job 不存在: {$projectId}"];
+            }
+            $fullName = $resolved['fullName'];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => "Jenkins 不可达: " . $e->getMessage()];
+        }
+
+        // 2. 获取 Jenkins 参数定义
+        try {
+            $allParams = $this->jenkins->getParameters($fullName, null);
         } catch (\Exception $e) {
             return ['success' => false, 'message' => '获取构建参数失败: ' . $e->getMessage()];
         }
 
         if (empty($allParams)) {
             try {
-                $result = $this->jenkins->triggerBuild($projectId, []);
+                $result = $this->jenkins->triggerBuild($fullName, []);
                 return ['success' => true, 'queue_id' => $result['queue_id'] ?? '', 'queue_url' => $result['queue_url'] ?? '', 'message' => '构建已触发'];
             } catch (\Exception $e) {
                 return ['success' => false, 'message' => '触发失败: ' . $e->getMessage()];
@@ -114,7 +125,7 @@ class JenkinsBuildProvider implements BuildProviderInterface
         $branchOptions = $allParams[$branchKey] ?? [];
         if (empty($branchOptions) && $this->git) {
             try {
-                $gitBranches = $this->git->getBranchesForJob($projectId);
+                $gitBranches = $this->git->getBranchesForJob($fullName);
                 if (!empty($gitBranches)) { $branchOptions = $gitBranches; $allParams[$branchKey] = $gitBranches; }
             } catch (\Exception $e) {}
         }
@@ -141,7 +152,7 @@ class JenkinsBuildProvider implements BuildProviderInterface
 
         // 5. 触发
         try {
-            $result = $this->jenkins->triggerBuild($projectId, $buildParams);
+            $result = $this->jenkins->triggerBuild($fullName, $buildParams);
             return [
                 'success'   => true,
                 'queue_id'  => $result['queue_id'] ?? '',
