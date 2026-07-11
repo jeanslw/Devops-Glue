@@ -24,25 +24,20 @@ class JenkinsBuildProvider implements BuildProviderInterface
     {
         try {
             $buildIds = $this->jenkins->getBuildIds($projectId);
+            $timestamps = $this->jenkins->getBuildTimestamps($projectId); // 批量一次拿
             $ids = array_slice($buildIds, 0, $perPage);
             $result = [];
             foreach ($ids as $bid) {
-                $created = '';
-                try {
-                    $status = $this->jenkins->getBuildStatus($projectId, (int) $bid);
-                    $created = $this->jenkins->getBuildTimestamp($projectId, (int) $bid);
-                } catch (\Exception $e) {
-                    $status = 'unknown';
-                }
+                $ts = $timestamps[(int) $bid] ?? '';
                 $result[] = [
                     'id'         => (int) $bid,
                     'iid'        => (int) $bid,
-                    'status'     => strtolower($status),
+                    'status'     => 'unknown',
                     'ref'        => '',
                     'sha'        => '',
                     'web_url'    => $this->jenkins->getJobUrl($projectId) . '/' . $bid . '/',
-                    'created_at' => $created,
-                    'updated_at' => $created,
+                    'created_at' => $ts,
+                    'updated_at' => $ts,
                 ];
             }
             return $result;
