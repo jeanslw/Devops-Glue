@@ -89,6 +89,8 @@ class AutoDiscover
                     'harbor_repository' => '',
                 ], 'source' => 'jenkins'];
                 $existing[] = $jobName;
+                $path = $this->extractPath($remote, $jobName);
+                if ($path) $existingPaths[] = $path;
             }
         } catch (\Exception $e) {
             $this->logger?->warning('AutoDiscover Jenkins 扫描失败', ['error' => $e->getMessage()]);
