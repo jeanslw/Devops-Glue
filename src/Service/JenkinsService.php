@@ -307,7 +307,7 @@ class JenkinsService
     }
 
     /**
-     * 批量获取构建时间戳（一次 API 调用，大幅提速）
+     * 批量获取构建 ID + 时间 + 状态（一次 API 调用）
      */
     public function getBuildTimestamps(string $jobPath): array
     {
@@ -318,7 +318,10 @@ class JenkinsService
             $map = [];
             foreach ($data['builds'] ?? [] as $b) {
                 $ts = (int) ($b['timestamp'] ?? 0);
-                $map[(int) $b['number']] = $ts > 0 ? date('Y-m-d H:i:s', (int) ($ts / 1000)) : '';
+                $map[(int) $b['number']] = [
+                    'time'   => $ts > 0 ? date('Y-m-d H:i:s', (int) ($ts / 1000)) : '',
+                    'status' => strtolower($b['result'] ?? 'unknown'),
+                ];
             }
             return $map;
         } catch (\Exception $e) {
