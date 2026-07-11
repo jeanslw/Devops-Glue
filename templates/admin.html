@@ -272,7 +272,7 @@
             </div>
             <div class="menu-div"></div>
             <div class="menu-item" data-tab="account" onclick="switchTab('account')">
-                <span class="menu-icon">🔑</span> 修改密码
+                <span class="menu-icon">⚙️</span> 基本设置
             </div>
         </div>
 
@@ -424,26 +424,37 @@
                 </div>
             </div>
 
-            <!-- ═══ 修改密码 Tab ═══ -->
+            <!-- ═══ 基本设置 Tab ═══ -->
             <div id="tab-account" style="display:none;">
-                <div class="toolbar"><h3>🔑 修改密码</h3></div>
-                <div class="card" style="max-width:480px;">
-                    <form onsubmit="changePassword(event)">
-                        <div style="margin-bottom:14px;">
-                            <label>旧密码</label>
-                            <input type="password" id="old-pass" required placeholder="输入当前密码">
+
+                <!-- 配置模式 -->
+                <div class="toolbar"><h3>⚙️ 基本设置</h3></div>
+                <div class="monitor-grid" style="grid-template-columns:1fr 1fr;margin-bottom:16px;">
+                    <div class="monitor-card">
+                        <h4>🔧 配置模式</h4>
+                        <div id="mode-display" style="text-align:center;padding:20px 0;font-size:15px;line-height:2.2;">
+                            加载中…
                         </div>
-                        <div style="margin-bottom:14px;">
-                            <label>新密码</label>
-                            <input type="password" id="new-pass" required placeholder="至少 6 位" minlength="6">
-                        </div>
-                        <div style="margin-bottom:14px;">
-                            <label>确认新密码</label>
-                            <input type="password" id="new-pass2" required placeholder="再输入一次" minlength="6">
-                        </div>
-                        <button type="submit" class="btn btn-save">💾 更新密码</button>
-                        <span id="pwd-msg" style="margin-left:12px;font-size:13px;"></span>
-                    </form>
+                    </div>
+                    <div class="monitor-card">
+                        <h4>🔑 修改密码</h4>
+                        <form onsubmit="changePassword(event)">
+                            <div style="margin-bottom:10px;">
+                                <label>旧密码</label>
+                                <input type="password" id="old-pass" required placeholder="输入当前密码">
+                            </div>
+                            <div style="margin-bottom:10px;">
+                                <label>新密码</label>
+                                <input type="password" id="new-pass" required placeholder="至少 6 位" minlength="6">
+                            </div>
+                            <div style="margin-bottom:10px;">
+                                <label>确认新密码</label>
+                                <input type="password" id="new-pass2" required placeholder="再输入一次" minlength="6">
+                            </div>
+                            <button type="submit" class="btn btn-save">💾 更新密码</button>
+                            <span id="pwd-msg" style="margin-left:12px;font-size:13px;"></span>
+                        </form>
+                    </div>
                 </div>
             </div>
 
@@ -522,7 +533,7 @@ function switchTab(name) {
     if (name === 'mapping') loadMaps();
     if (name === 'topology') loadTopology();
     if (name === 'versions') loadVersions();
-    if (name === 'account') {} // no auto-load
+    if (name === 'account') loadSettings();
 }
 
 // ═══════════ Toast ═══════════
@@ -843,6 +854,40 @@ async function saveVersions() {
             toast(data.message || '保存失败', false);
         }
     } catch(e) { toast('网络错误: ' + e.message, false); }
+}
+
+// ── 基本设置 ──
+async function loadSettings() {
+    const display = document.getElementById('mode-display');
+    try {
+        // 从映射表判断配置模式（不调 CI 系统，避免超时）
+        const res = await fetch('/api/admin/job_git_map', { headers: authHeaders() });
+        const data = await res.json();
+        const maps = data.maps || [];
+        const hasJenkins = maps.some(m => (m.build_provider || 'jenkins') === 'jenkins');
+        const hasGitlab  = maps.some(m => m.build_provider === 'gitlab_ci');
+
+        let mode = '', diagram = '';
+        if (hasJenkins && hasGitlab) {
+            mode = '<span class="badge" style="background:#dbeafe;color:#1d4ed8;font-size:13px;">共存模式</span>';
+            diagram = '<div style="font-size:13px;"><b>项目</b></div>'
+                + '<div style="display:flex;justify-content:center;gap:20px;margin:8px 0;">'
+                + '<div style="border:2px solid #f59e0b;border-radius:8px;padding:8px 16px;">⚡ Jenkins</div>'
+                + '<div style="border:2px solid #e91e63;border-radius:8px;padding:8px 16px;">🐺 GitLab CI</div>'
+                + '</div>'
+                + '<div style="font-size:13px;">⬇</div>'
+                + '<div style="border:2px solid #22c55e;border-radius:8px;padding:8px 16px;">🐳 Harbor</div>';
+        } else if (hasGitlab) {
+            mode = '<span class="badge" style="background:#fce4ec;color:#c81e1e;font-size:13px;">GitLab CI 模式</span>';
+            diagram = '<div style="font-size:13px;"><b>项目</b> → 🐺 <b>GitLab CI</b> → 🐳 <b>Harbor</b></div>';
+        } else {
+            mode = '<span class="badge" style="background:#fff8e1;color:#d97706;font-size:13px;">Jenkins 模式</span>';
+            diagram = '<div style="font-size:13px;"><b>项目</b> → ⚡ <b>Jenkins</b> → 🐳 <b>Harbor</b></div>';
+        }
+        display.innerHTML = '<div style="margin-bottom:10px;">' + mode + '</div>' + diagram;
+    } catch(e) {
+        display.innerHTML = '<span style="color:#9ca3af;">无法检测（请先登录）</span>';
+    }
 }
 
 // ── 密码修改 ──
