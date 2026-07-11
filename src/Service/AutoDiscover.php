@@ -20,21 +20,32 @@ class AutoDiscover
         $this->logger      = $logger;
     }
 
-    /**
-     * 扫描 Jenkins + GitLab CI，返回发现的条目
-     */
     public function discover(): array
     {
         $buildMode = $_ENV['BUILD_MODE'] ?? 'both';
         $existing  = $this->existingJobNames();
+        $existingPaths = $this->existingPaths();
+        $errors    = [];
         $found     = [];
 
         if (in_array($buildMode, ['jenkins', 'both'])) {
-            $found = array_merge($found, $this->scanJenkins($existing));
+            try {
+                $found = array_merge($found, $this->scanJenkins($existing, $existingPaths));
+            } catch (\Exception $e) {
+                $errors[] = 'Jenkins: ' . $e->getMessage();
+            }
         }
 
         if (in_array($buildMode, ['gitlab_ci', 'both'])) {
-            $found = array_merge($found, $this->scanGitlabCi($existing));
+            try {
+                $found = array_merge($found, $this->scanGitlabCi($existing, $existingPaths));
+            } catch (\Exception $e) {
+                $errors[] = 'GitLab CI: ' . $e->getMessage();
+            }
+        }
+
+        if (!empty($errors)) {
+            $found[] = ['entry' => ['job_name' => '__errors__'], 'source' => '_errors', '_errors' => $errors];
         }
 
         return $found;
@@ -57,7 +68,7 @@ class AutoDiscover
 
     // ── Jenkins ──
 
-    private function scanJenkins(array &$existing): array
+    private function scanJenkins(array &$existing, array &$existingPaths): array
     {
         $found = [];
         try {
@@ -87,7 +98,7 @@ class AutoDiscover
 
     // ── GitLab CI ──
 
-    private function scanGitlabCi(array &$existing): array
+    private function scanGitlabCi(array &$existing, array &$existingPaths): array
     {
         $found = [];
         $glCfg = $this->config->getGitlabConfig();
@@ -98,8 +109,13 @@ class AutoDiscover
         try {
             $client = new Client([
                 'headers' => ['PRIVATE-TOKEN' => $token],
-                'timeout' => 10, 'connect_timeout' => 5,
+                'timeout' => 10, 'connect_timeout' => 5, 'http_errors' => false,
             ]);
+            // 快速验证认证
+            $test = $client->get("{$base}/api/v4/user");
+            if ($test->getStatusCode() === 401) {
+                throw new \RuntimeException('GitLab Token 无效，请检查 GITLAB_TOKEN');
+            }
             $page = 1;
             while ($page <= 10) {
                 $resp = $client->get("{$base}/api/v4/projects?per_page=100&page={$page}&membership=true&order_by=last_activity_at");
@@ -108,7 +124,7 @@ class AutoDiscover
 
                 foreach ($data as $p) {
                     $path = $p['path_with_namespace'] ?? '';
-                    if (in_array($path, $existing)) continue;
+                    if (in_array($path, $existing) || in_array($path, $existingPaths)) continue;
                     $found[] = ['entry' => [
                         'job_name'       => $path,
                         'build_provider' => 'gitlab_ci',
@@ -134,6 +150,11 @@ class AutoDiscover
     private function existingJobNames(): array
     {
         return array_column($this->config->getJobGitMap(), 'job_name');
+    }
+
+    private function existingPaths(): array
+    {
+        return array_filter(array_column($this->config->getJobGitMap(), 'current_path'));
     }
 
     private function detectPlatform(string $remote): string

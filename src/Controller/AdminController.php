@@ -25,11 +25,19 @@ class AdminController extends BaseController
             return $this->jsonError($response, '自动发现功能未启用（Jenkins 不可用）', 503);
         }
         try {
-            $found   = $this->autoDiscover->discover();
-            $saved   = $this->autoDiscover->saveDiscovered($found);
+            $raw = $this->autoDiscover->discover();
+            // 分离错误信息
+            $errors = [];
+            $found = array_filter($raw, function ($i) use (&$errors) {
+                if (($i['source'] ?? '') === '_errors') { $errors = $i['_errors'] ?? []; return false; }
+                return true;
+            });
+            $found = array_values($found);
+            $saved = $this->autoDiscover->saveDiscovered($found);
             return $this->output($response, [
                 'found' => count($found),
                 'saved' => $saved,
+                'errors' => $errors,
                 'items' => array_map(fn($i) => $i['entry']['job_name'], $found),
             ], $request);
         } catch (\Exception $e) {
