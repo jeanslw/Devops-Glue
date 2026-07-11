@@ -203,18 +203,16 @@ class MainController extends BaseController
             $checks['jenkins'] = false;
         }
 
-        // Git 平台连通性检查（优先取 Job 关联的平台，Jenkins 不可用时降级为全部已配置）
+        // Git 平台连通性检查（直接从数据库读取，不调 Jenkins）
         $usedPlatforms = [];
-        try {
-            $maps = $this->map->getAllMaps();
-            foreach ($maps as $map) {
-                $platform = $map['git_platform'] ?? '';
-                if ($platform && !in_array($platform, $usedPlatforms)) {
-                    $usedPlatforms[] = $platform;
-                }
-            }
-        } catch (\Exception $e) {
-            // Jenkins 不可用，降级为检测所有已配置的 Git 平台
+        $maps = $this->config->getJobGitMap();
+        foreach ($maps as $m) {
+            $p = $m['git_platform'] ?? '';
+            if ($p && !in_array($p, $usedPlatforms)) $usedPlatforms[] = $p;
+        }
+        // 没有映射数据时降级为所有已配置平台
+        if (empty($usedPlatforms)) {
+            $usedPlatforms = [];
         }
 
         // 构建已配置平台的索引（URL + 版本号）
@@ -241,7 +239,7 @@ class MainController extends BaseController
                 $reachable = false;
                 if ($apiUrl) {
                     try {
-                        $client = new \GuzzleHttp\Client(['timeout' => 5, 'http_errors' => false]);
+                        $client = new \GuzzleHttp\Client(['timeout' => 3, 'connect_timeout' => 2, 'http_errors' => false]);
                         $resp = $client->head($apiUrl);
                         $reachable = $resp->getStatusCode() < 500;
                     } catch (\Exception $e) {

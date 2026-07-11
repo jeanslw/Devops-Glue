@@ -18,7 +18,7 @@ class JenkinsService
             'auth'    => [$config['user'], $config['token']],
             'headers' => ['Content-Type' => 'application/json'],
             'cookies' => true,   // 启用 Cookie 存储（用于 CSRF crumb）
-            'timeout' => 30,
+            'timeout' => 5, 'connect_timeout' => 3,
         ]);
     }
 
