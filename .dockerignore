@@ -1,0 +1,12 @@
+.git
+.gitignore
+.github
+.claude
+.workflow
+.laragon
+.editorconfig
+vendor
+test
+*.md
+LICENSE
+docker-compose.yml
