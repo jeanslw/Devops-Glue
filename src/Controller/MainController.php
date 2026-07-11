@@ -55,8 +55,15 @@ class MainController extends BaseController
             // DB 不可用时继续查实时数据
         }
 
+        $buildMode = $_ENV['BUILD_MODE'] ?? 'both';
         try {
-            $maps = $this->map->getAllMaps();
+            if ($buildMode === 'gitlab_ci') {
+                // 纯 GitLab CI：直接从 DB 读，不调 Jenkins
+                $maps = $this->config->getJobGitMap();
+                foreach ($maps as &$m) { $m['build_provider'] = $m['build_provider'] ?? 'gitlab_ci'; }
+            } else {
+                $maps = $this->map->getAllMaps();
+            }
         } catch (\Exception $e) {
             // Jenkins 不可达时，返回过期缓存兜底
             try {
