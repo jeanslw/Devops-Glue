@@ -306,6 +306,26 @@ class JenkinsService
         }
     }
 
+    /**
+     * 批量获取构建时间戳（一次 API 调用，大幅提速）
+     */
+    public function getBuildTimestamps(string $jobPath): array
+    {
+        try {
+            $jobUrl = $this->getJobUrl($jobPath);
+            $resp = $this->client->get("{$jobUrl}/api/json?tree=builds[number,timestamp,result]");
+            $data = json_decode($resp->getBody(), true);
+            $map = [];
+            foreach ($data['builds'] ?? [] as $b) {
+                $ts = (int) ($b['timestamp'] ?? 0);
+                $map[(int) $b['number']] = $ts > 0 ? date('Y-m-d H:i:s', (int) ($ts / 1000)) : '';
+            }
+            return $map;
+        } catch (\Exception $e) {
+            return [];
+        }
+    }
+
     public function getConsoleOutput(string $jobPath, int $buildId): string
     {
         $buildUrl = $this->getBuildUrl($jobPath, $buildId);
