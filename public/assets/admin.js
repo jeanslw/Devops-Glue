@@ -150,7 +150,7 @@ async function loadMaps() {
         platforms = data.platforms || [];
 
         const sel = document.getElementById('f-git_platform');
-        sel.innerHTML = '<option value="">— 自动检测 —</option>';
+        sel.innerHTML = '<option value="">— 自动检测（IP 地址需手动选）—</option>';
         platforms.forEach(p => { sel.innerHTML += `<option value="${p}">${p}</option>`; });
 
         const tbody = document.getElementById('map-tbody');
