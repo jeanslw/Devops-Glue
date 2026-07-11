@@ -23,21 +23,20 @@ class JenkinsBuildProvider implements BuildProviderInterface
     public function getPipelines(string $projectId, int $perPage = 20): array
     {
         try {
-            $buildIds = $this->jenkins->getBuildIds($projectId);
-            $timestamps = $this->jenkins->getBuildTimestamps($projectId); // 批量一次拿
-            $ids = array_slice($buildIds, 0, $perPage);
+            $builds = $this->jenkins->getBuildTimestamps($projectId); // 一次 API：ID + 时间 + 状态
+            $ids = array_slice(array_keys($builds), 0, $perPage);
             $result = [];
             foreach ($ids as $bid) {
-                $ts = $timestamps[(int) $bid] ?? '';
+                $info = $builds[$bid] ?? ['time' => '', 'status' => 'unknown'];
                 $result[] = [
                     'id'         => (int) $bid,
                     'iid'        => (int) $bid,
-                    'status'     => 'unknown',
+                    'status'     => $info['status'],
                     'ref'        => '',
                     'sha'        => '',
                     'web_url'    => $this->jenkins->getJobUrl($projectId) . '/' . $bid . '/',
-                    'created_at' => $ts,
-                    'updated_at' => $ts,
+                    'created_at' => $info['time'],
+                    'updated_at' => $info['time'],
                 ];
             }
             return $result;
