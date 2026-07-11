@@ -187,8 +187,7 @@ class MainController extends BaseController
      */
     public function health(Request $request, Response $response): Response
     {
-        set_time_limit(15);
-        ini_set('default_socket_timeout', 5);
+        $debug = [];
         $checks = [
             'jenkins'         => false,
             'jenkins_version' => null,
@@ -197,6 +196,7 @@ class MainController extends BaseController
             'harbor_version'  => null,
         ];
 
+        $t0 = microtime(true);
         try {
             $this->jenkins->getAllJobs();
             $checks['jenkins'] = true;
@@ -204,6 +204,7 @@ class MainController extends BaseController
         } catch (\Exception $e) {
             $checks['jenkins'] = false;
         }
+        $debug[] = 'jenkins:' . round(microtime(true) - $t0, 1) . 's';
 
         // Git 平台连通性检查（直接从数据库读取，不调 Jenkins）
         $usedPlatforms = [];
@@ -228,6 +229,7 @@ class MainController extends BaseController
         // 只检查 job_git_map 中实际引用的平台
         $usedPlatforms = array_values(array_intersect($usedPlatforms, array_keys($configuredPlatforms)));
 
+        $tg = microtime(true);
         if (empty($usedPlatforms)) {
             $checks['git'] = null;
         } else {
@@ -260,6 +262,9 @@ class MainController extends BaseController
             }
         }
 
+        $debug[] = 'git:' . round(microtime(true) - $tg, 1) . 's';
+
+        $th = microtime(true);
         if ($this->harbor) {
             try {
                 $projects = $this->harbor->getProjects();
@@ -272,6 +277,9 @@ class MainController extends BaseController
             $checks['harbor'] = null; // 未配置
         }
 
+        $debug[] = 'harbor:' . round(microtime(true) - $th, 1) . 's';
+        $debug[] = 'total:' . round(microtime(true) - $t0, 1) . 's';
+
         $gitOk = $checks['git'] === null || !empty(array_filter($checks['git'], fn($g) => $g['reachable']));
         $allOk = $checks['jenkins'] && $gitOk && ($checks['harbor'] === true || $checks['harbor'] === null);
         $status = $allOk ? 'ok' : 'degraded';
@@ -279,6 +287,7 @@ class MainController extends BaseController
         $data = [
             'status'   => $status,
             'checks'   => $checks,
+            'debug'    => $debug,
             'app_env'  => $this->config->getAppEnv(),
             'time'     => date('Y-m-d H:i:s'),
         ];
