@@ -73,7 +73,7 @@ class AppConfig
     {
         $pdo = \App\Service\Database::getPdo();
         $pdo->exec("DELETE FROM job_git_map");
-        $stmt = $pdo->prepare("INSERT INTO job_git_map (job_name,git_platform,build_provider,git_remote,project_id,web_url,current_path,harbor_repository,api_version) VALUES (?,?,?,?,?,?,?,?,?)");
+        $stmt = $pdo->prepare("INSERT INTO job_git_map (job_name,git_platform,build_provider,git_remote,project_id,web_url,current_path,harbor_repository,api_version,status) VALUES (?,?,?,?,?,?,?,?,?,?)");
         foreach ($data as $row) {
             if (empty($row['job_name'])) continue;
             $stmt->execute([
@@ -86,6 +86,7 @@ class AppConfig
                 $row['current_path'] ?? null,
                 $row['harbor_repository'] ?? null,
                 $row['api_version'] ?? null,
+                $row['status'] ?? 'active',
             ]);
         }
     }
