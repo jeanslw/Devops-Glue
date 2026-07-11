@@ -147,15 +147,16 @@ class BuildController extends BaseController
         }
 
         // POST JSON body 优先，GET query string 兜底（兼容旧版 Jenkins 调用方式）
-        $ref       = $body['ref'] ?? $qs['branches'] ?? $qs['ref'] ?? 'main';
-        $variables = $body['variables'] ?? [];
-        // 把 query string 里多余参数当 variables
-        foreach (['zone','env','tag'] as $k) {
-            if (!empty($qs[$k]) && !isset($variables[$k])) $variables[$k] = $qs[$k];
+        $ref  = $body['ref'] ?? 'main';
+        $vars = $body['variables'] ?? [];
+        // Query String 全部作为 variables（兼容任意 Jenkins 参数名）
+        foreach ($qs as $k => $v) {
+            if (!in_array($k, ['format','token','ref']) && !isset($vars[$k])) $vars[$k] = $v;
         }
+        if (empty($vars) && !empty($ref)) $vars['branches'] = $ref;
 
         $p      = $this->registry->create($provider);
-        $result = $p->trigger($projectId, $ref, $variables);
+        $result = $p->trigger($projectId, $ref, $vars);
         return $this->output($response, [
             'build_provider' => $provider,
             'project_id'     => $projectId,
