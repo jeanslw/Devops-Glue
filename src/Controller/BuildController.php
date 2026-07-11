@@ -217,18 +217,20 @@ class BuildController extends BaseController
         $p   = $this->registry->create($provider);
         $vars = $p->getVariables($projectId);
 
-        // 简单格式（兼容旧 Jenkins）：{"branches":["main","master"]}
-        if (($request->getQueryParams()['format'] ?? '') === 'simple') {
-            $simple = [];
-            foreach ($vars as $v) { $simple[$v['key']] = $v['options'] ?? []; }
-            return $this->output($response, $simple, $request);
+        // 默认简单格式："branches":["main","master"]
+        $simple = [];
+        foreach ($vars as $v) { $simple[$v['key']] = $v['options'] ?? []; }
+
+        // ?format=full 返回完整格式
+        if (($request->getQueryParams()['format'] ?? '') === 'full') {
+            return $this->output($response, [
+                'build_provider' => $provider,
+                'project_id'     => $projectId,
+                'variables'      => $vars,
+            ], $request);
         }
 
-        return $this->output($response, [
-            'build_provider' => $provider,
-            'project_id'     => $projectId,
-            'variables'      => $vars,
-        ], $request);
+        return $this->output($response, $simple, $request);
     }
 
     /** POST /api/build/{path}/scan-sync */
