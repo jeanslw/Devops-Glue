@@ -216,6 +216,14 @@ class BuildController extends BaseController
 
         $p   = $this->registry->create($provider);
         $vars = $p->getVariables($projectId);
+
+        // 简单格式（兼容旧 Jenkins）：{"branches":["main","master"]}
+        if (($request->getQueryParams()['format'] ?? '') === 'simple') {
+            $simple = [];
+            foreach ($vars as $v) { $simple[$v['key']] = $v['options'] ?? []; }
+            return $this->output($response, $simple, $request);
+        }
+
         return $this->output($response, [
             'build_provider' => $provider,
             'project_id'     => $projectId,
