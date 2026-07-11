@@ -4,7 +4,6 @@ namespace App\Controller;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Service\JenkinsService;
-use App\Service\MapService;
 use App\Service\HarborService;
 use App\Service\MappingManager;
 use App\Config\AppConfig;
@@ -12,15 +11,13 @@ use App\Config\AppConfig;
 class MainController extends BaseController
 {
     private JenkinsService $jenkins;
-    private MapService $map;
     private AppConfig $config;
     private MappingManager $mapping;
     private ?HarborService $harbor;
 
-    public function __construct(JenkinsService $jenkins, MapService $map, AppConfig $config, MappingManager $mapping, ?HarborService $harbor = null)
+    public function __construct(JenkinsService $jenkins, AppConfig $config, MappingManager $mapping, ?HarborService $harbor = null)
     {
         $this->jenkins = $jenkins;
-        $this->map = $map;
         $this->config = $config;
         $this->mapping = $mapping;
         $this->harbor = $harbor;
@@ -137,14 +134,7 @@ class MainController extends BaseController
      */
     public function gitDiscovery(Request $request, Response $response): Response
     {
-        $maps = $this->config->getJobGitMap();
-        $usedPlatforms = [];
-        foreach ($maps as $map) {
-            $platform = $map['git_platform'] ?? '';
-            if ($platform && !in_array($platform, $usedPlatforms)) {
-                $usedPlatforms[] = $platform;
-            }
-        }
+        $usedPlatforms = $this->mapping->usedGitPlatforms();
 
         $configured = [];
         $unconfigured = [];
@@ -210,17 +200,8 @@ class MainController extends BaseController
             $checks['jenkins'] = null; // gitlab_ci 模式不查 Jenkins
         }
 
-        // Git 平台连通性检查（直接从数据库读取，不调 Jenkins）
-        $usedPlatforms = [];
-        $maps = $this->config->getJobGitMap();
-        foreach ($maps as $m) {
-            $p = $m['git_platform'] ?? '';
-            if ($p && !in_array($p, $usedPlatforms)) $usedPlatforms[] = $p;
-        }
-        // 没有映射数据时降级为所有已配置平台
-        if (empty($usedPlatforms)) {
-            $usedPlatforms = [];
-        }
+        // Git 平台连通性检查
+        $usedPlatforms = $this->mapping->usedGitPlatforms();
 
         // 构建已配置平台的索引（URL + 版本号）
         $configuredPlatforms = [];
