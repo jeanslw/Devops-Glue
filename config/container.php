@@ -250,7 +250,6 @@ return [
     MainController::class => function (\Psr\Container\ContainerInterface $c) {
         return new \App\Controller\MainController(
             $c->get(JenkinsService::class),
-            $c->get(MapService::class),
             $c->get(AppConfig::class),
             $c->get(MappingManager::class),
             $c->get(HarborService::class)
