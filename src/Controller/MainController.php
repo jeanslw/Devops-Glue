@@ -71,21 +71,7 @@ class MainController extends BaseController
             if ($buildMode === 'gitlab_ci') {
                 $maps = $this->config->getJobGitMap();
             } else {
-                // Jenkins 模式：尝试过期缓存兜底
-                try {
-                    $pdo = \App\Service\Database::getPdo();
-                    $cached = $pdo->prepare("SELECT value FROM cache WHERE cache_key = ?");
-                    $cached->execute([$cacheKey]);
-                    $row = $cached->fetch();
-                    if ($row) {
-                        $data = json_decode($row['value'], true);
-                        if (is_array($data)) {
-                            $data['_stale'] = true;
-                            return $this->output($response, $data, $request);
-                        }
-                    }
-                } catch (\Exception $e2) {}
-                return $this->output($response, ['_error' => 'Jenkins 服务不可达，且无可用缓存', '_detail' => $e->getMessage()], $request);
+                return $this->output($response, ['_error' => 'Jenkins 服务不可达', '_detail' => $e->getMessage()], $request);
             }
         }
 
