@@ -11,7 +11,6 @@ use App\Service\Git\GitProviderFactory;
 use App\Service\Build\BuildProviderRegistry;
 use App\Service\Build\JenkinsBuildProvider;
 use App\Service\Build\GitlabCiBuildProvider;
-use App\Controller\JenkinsController;
 use App\Controller\MainController;
 use App\Controller\GitController;
 use App\Controller\HarborController;
@@ -245,14 +244,6 @@ return [
             // Logger 不可用时静默降级
         }
         return $service;
-    },
-
-    // Jenkins 控制器
-    JenkinsController::class => function (\Psr\Container\ContainerInterface $c) {
-        return new JenkinsController(
-            $c->get(JenkinsService::class),
-            $c->get(GitService::class)
-        );
     },
 
     // Main 控制器

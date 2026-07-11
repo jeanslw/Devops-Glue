@@ -1,6 +1,5 @@
 <?php
 use Slim\Routing\RouteCollectorProxy;
-use App\Controller\JenkinsController;
 use App\Controller\GitController;
 use App\Controller\MainController;
 use App\Controller\HarborController;
@@ -128,23 +127,11 @@ $app->group('/api', function (RouteCollectorProxy $api) {
         $build->map(['GET', 'POST'], '/{path:.+}/tag', [BuildController::class, 'tagQuery']);
     });
 
-    // Jenkins 路由
-    $buildMode = $_ENV['BUILD_MODE'] ?? 'both';
-    if ($buildMode === 'gitlab_ci') {
-        // 友好提示而非 404
-        $api->any('/jenkins[/{path:.*}]', function ($request, $response) {
-            $response->getBody()->write(json_encode(['code' => 400, 'message' => 'Jenkins 未配置，当前为 gitlab_ci 模式']));
-            return $response->withStatus(400)->withHeader('Content-Type', 'application/json');
-        });
-    } else {
-    $api->group('/jenkins', function (RouteCollectorProxy $jenkins) {
-        $jenkins->map(['POST'], '/{path:[^/]+(?:/[^/]+)?}/build_trigger', [JenkinsController::class, 'buildTrigger']);
-        $jenkins->map(['GET', 'POST'], '/{path:.+}/branches', [GitController::class, 'branches']);
-        $jenkins->map(['GET', 'POST'], '/{path:.+}/parameters[/{build_id}]', [JenkinsController::class, 'parameters']);
-        $jenkins->map(['GET', 'POST'], '/{path:.+}/{type:build|build_id|build_time}', [JenkinsController::class, 'buildList']);
-        $jenkins->map(['GET', 'POST'], '/{path:.+}/{build_id}/status', [JenkinsController::class, 'status']);
+    // /api/jenkins 已废弃 → 请使用 /api/build
+    $api->any('/jenkins[/{path:.*}]', function ($request, $response) {
+        $response->getBody()->write(json_encode(['code' => 400, 'message' => '请使用 /api/build 统一接口']));
+        return $response->withStatus(400)->withHeader('Content-Type', 'application/json');
     });
-    } // /if BUILD_MODE !== gitlab_ci
 
     $api->group('/git', function (RouteCollectorProxy $git) {
         $git->map(['GET', 'POST'], '/{path:.+}/branches', [GitController::class, 'branches']);
