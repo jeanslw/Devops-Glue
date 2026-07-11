@@ -44,29 +44,9 @@ $app->group('/api', function (RouteCollectorProxy $api) {
             return $response->withHeader('Content-Type', 'text/html; charset=utf-8');
         }
 
-        // 未登录 → 显示登录页
-        $loginPage = '<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>API 文档登录</title>
-        <style>
-        *{margin:0;padding:0;box-sizing:border-box}body{font-family:Segoe UI,Microsoft YaHei,sans-serif;background:linear-gradient(135deg,#667eea,#764ba2);min-height:100vh;display:flex;align-items:center;justify-content:center}
-        .box{background:#fff;border-radius:16px;padding:36px 32px;box-shadow:0 8px 32px rgba(0,0,0,.18);width:380px;max-width:90vw;text-align:center}
-        .box h3{font-size:20px;margin-bottom:4px}.box .sub{font-size:13px;color:#9ca3af;margin-bottom:24px}
-        .box input{width:100%;padding:10px 14px;border:1.5px solid #d1d5db;border-radius:8px;font-size:14px;margin-bottom:12px}
-        .box input:focus{outline:none;border-color:#667eea;box-shadow:0 0 0 3px rgba(102,126,234,.15)}
-        .box .btn{width:100%;padding:10px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;border:none;background:#4f46e5;color:#fff;transition:all .2s}
-        .box .btn:hover{background:#4338ca}
-        .err{color:#dc2626;font-size:13px;margin-top:8px;display:none}
-        .back{margin-top:16px;font-size:13px}.back a{color:#4f46e5;text-decoration:none}
-        </style></head><body>
-        <div class="box"><h3>📖 API 文档</h3><p class="sub">请使用管理后台账号登录</p>
-        <input id="u" placeholder="账号" autocomplete="username"><input id="p" type="password" placeholder="密码" autocomplete="current-password">
-        <button class="btn" onclick="login()">登 录</button><div class="err" id="e"></div>
-        <div class="back"><a href="/">🏠 回首页</a></div></div>
-        <script>
-        async function login(){var u=document.getElementById("u").value.trim(),p=document.getElementById("p").value,e=document.getElementById("e");e.style.display="none";if(!u||!p){e.textContent="请输入账号密码";e.style.display="block";return}
-        try{var r=await fetch("/api/admin/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user:u,password:p})});var d=await r.json();if(r.ok&&d.token){location.href="/api/docs?token="+d.token}else{e.textContent=d.message||"登录失败";e.style.display="block"}}catch(x){e.textContent="网络错误: "+x.message;e.style.display="block"}}
-        document.addEventListener("keydown",function(ev){if(ev.key==="Enter")login()});
-        </script></body></html>';
-        $response->getBody()->write($loginPage);
+        // 未登录 → 登录页
+        $loginFile = __DIR__ . '/../templates/swagger-auth.html';
+        $response->getBody()->write(file_exists($loginFile) ? file_get_contents($loginFile) : '<h1>登录页丢失</h1>');
         return $response->withHeader('Content-Type', 'text/html; charset=utf-8');
     });
 
