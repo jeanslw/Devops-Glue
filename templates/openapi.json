@@ -680,6 +680,45 @@
             "description": "触发结果"
           }
         }
+      },
+      "get": {
+        "tags": [
+          "Build"
+        ],
+        "summary": "触发构建（GET，参数走 Query String）",
+        "operationId": "buildTriggerGet",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "static"
+          },
+          {
+            "name": "branches",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "参数名取决于 Jenkins 配置"
+          },
+          {
+            "name": "zone",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "可选，第二个参数"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "触发结果"
+          }
+        }
       }
     },
     "/api/build/{path}/variables": {

@@ -102,7 +102,7 @@ $app->group('/api', function (RouteCollectorProxy $api) {
         $build->map(['POST'], '/{path:.+}/pipelines/{id:\d+}/retry', [BuildController::class, 'retry']);
         $build->map(['POST'], '/{path:.+}/pipelines/{id:\d+}/cancel', [BuildController::class, 'cancel']);
         $build->map(['GET', 'POST'], '/{path:.+}/logs/{id:\d+}', [BuildController::class, 'logs']);
-        $build->map(['POST'], '/{path:.+}/trigger', [BuildController::class, 'trigger']);
+        $build->map(['GET', 'POST'], '/{path:.+}/trigger', [BuildController::class, 'trigger']);
         $build->map(['GET', 'POST'], '/{path:.+}/variables', [BuildController::class, 'variables']);
         $build->map(['POST'], '/{path:.+}/scan-sync', [BuildController::class, 'scanSync']);
         $build->map(['GET', 'POST'], '/{path:.+}/tag', [BuildController::class, 'tagQuery']);
