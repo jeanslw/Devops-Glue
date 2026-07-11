@@ -200,15 +200,14 @@ class JenkinsBuildProvider implements BuildProviderInterface
     {
         try {
             $params = $this->jenkins->getParameters($projectId);
-            // Jenkins 参数格式：{"branches":["main","master"],"zone":["test","prd"]}
             $result = [];
             foreach ($params as $key => $options) {
-                $result[] = [
-                    'key'       => $key,
-                    'value'     => '',
-                    'options'   => is_array($options) ? $options : [],
-                    'type'      => 'choice',
-                ];
+                $opts = is_array($options) ? $options : [];
+                // 分支参数为空时从 Git 补齐
+                if (empty($opts) && stripos($key, 'branch') !== false && $this->git) {
+                    try { $opts = $this->git->getBranchesForJob($projectId); } catch (\Exception $e) {}
+                }
+                $result[] = ['key' => $key, 'value' => '', 'options' => $opts, 'type' => 'choice'];
             }
             return $result;
         } catch (\Exception $e) {
