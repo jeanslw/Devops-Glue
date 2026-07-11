@@ -3,7 +3,7 @@
 use App\Config\AppConfig;
 use App\Service\JenkinsService;
 use App\Service\GitService;
-use App\Service\MapService;
+use App\Service\GitRemoteResolver;
 use App\Service\HarborService;
 use App\Service\MappingManager;
 use App\Service\Git\ProviderRegistry;
@@ -213,10 +213,10 @@ return [
         return $service;
     },
 
-    // Map 服务
-    MapService::class => function (\Psr\Container\ContainerInterface $c) {
+    // Git remote 解析
+    GitRemoteResolver::class => function (\Psr\Container\ContainerInterface $c) {
         $config = $c->get(AppConfig::class);
-        $service = new MapService(
+        $service = new GitRemoteResolver(
             $c->get(JenkinsService::class),
             $c->get(ProviderRegistry::class),
             $config->getJobGitMap(),
@@ -235,7 +235,7 @@ return [
     // Git 服务
     GitService::class => function (\Psr\Container\ContainerInterface $c) {
         $service = new GitService(
-            $c->get(MapService::class),
+            $c->get(GitRemoteResolver::class),
             $c->get(ProviderRegistry::class)
         );
         try {
