@@ -240,12 +240,14 @@ class MainController extends BaseController
                 $apiUrl = $configuredPlatforms[$name] ?? null;
                 $reachable = false;
                 if ($apiUrl) {
-                    try {
-                        $client = new \GuzzleHttp\Client(['timeout' => 3, 'connect_timeout' => 2, 'http_errors' => false]);
-                        $resp = $client->head($apiUrl);
-                        $reachable = $resp->getStatusCode() < 500;
-                    } catch (\Exception $e) {
-                        $reachable = false;
+                    // 用 fsockopen 替代 Guzzle，避免 DNS/SSL 卡死
+                    $parts = parse_url($apiUrl);
+                    $host = $parts['host'] ?? '';
+                    $port = $parts['port'] ?? (($parts['scheme'] ?? '') === 'https' ? 443 : 80);
+                    if ($host) {
+                        $errno = 0; $errstr = '';
+                        $fp = @fsockopen(($parts['scheme'] === 'https' ? 'ssl://' : '') . $host, $port, $errno, $errstr, 2);
+                        if ($fp) { fclose($fp); $reachable = true; }
                     }
                 }
                 $checks['git'][] = [
