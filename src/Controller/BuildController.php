@@ -97,6 +97,26 @@ class BuildController extends BaseController
         return $this->output($response, $all, $request);
     }
 
+    /** GET /api/build/config-mode — 公开，返回当前配置模式（不查 CI 系统） */
+    public function configMode(Request $request, Response $response): Response
+    {
+        $maps = $this->config->getJobGitMap();
+        $hasJenkins = false;
+        $hasGitlab  = false;
+        foreach ($maps as $m) {
+            $bp = $m['build_provider'] ?? 'jenkins';
+            if ($bp === 'jenkins') $hasJenkins = true;
+            if ($bp === 'gitlab_ci') $hasGitlab = true;
+        }
+        // 无映射时，检查 Provider 注册状态
+        if (!$hasJenkins && !$hasGitlab) {
+            $hasJenkins = $this->registry->isRegistered('jenkins');
+            $hasGitlab  = $this->registry->isRegistered('gitlab_ci');
+        }
+        $mode = ($hasJenkins && $hasGitlab) ? 'both' : ($hasGitlab ? 'gitlab_ci' : 'jenkins');
+        return $this->output($response, ['mode' => $mode, 'has_jenkins' => $hasJenkins, 'has_gitlab_ci' => $hasGitlab], $request);
+    }
+
     /** GET /api/build/{path}/pipelines */
     public function pipelines(Request $request, Response $response, array $args): Response
     {

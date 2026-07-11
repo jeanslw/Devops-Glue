@@ -860,12 +860,12 @@ async function saveVersions() {
 async function loadSettings() {
     const display = document.getElementById('mode-display');
     try {
-        // 从映射表判断配置模式（不调 CI 系统，避免超时）
-        const res = await fetch('/api/admin/job_git_map', { headers: authHeaders() });
+        // 公开端点，不调 CI 系统
+        const res = await fetch('/api/build/config-mode');
         const data = await res.json();
-        const maps = data.maps || [];
-        const hasJenkins = maps.some(m => (m.build_provider || 'jenkins') === 'jenkins');
-        const hasGitlab  = maps.some(m => m.build_provider === 'gitlab_ci');
+        const mode = data.mode || 'jenkins';
+        const hasJenkins = data.has_jenkins;
+        const hasGitlab  = data.has_gitlab_ci;
 
         let mode = '', diagram = '';
         if (hasJenkins && hasGitlab) {
