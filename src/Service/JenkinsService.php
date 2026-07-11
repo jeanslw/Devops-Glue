@@ -293,6 +293,19 @@ class JenkinsService
         return $data['result'] ?? 'UNKNOWN';
     }
 
+    public function getBuildTimestamp(string $jobPath, int $buildId): string
+    {
+        try {
+            $buildUrl = $this->getBuildUrl($jobPath, $buildId);
+            $resp = $this->client->get("{$buildUrl}/api/json?tree=timestamp");
+            $data = json_decode($resp->getBody(), true);
+            $ts = (int) ($data['timestamp'] ?? 0);
+            return $ts > 0 ? date('Y-m-d H:i:s', (int) ($ts / 1000)) : '';
+        } catch (\Exception $e) {
+            return '';
+        }
+    }
+
     public function getConsoleOutput(string $jobPath, int $buildId): string
     {
         $buildUrl = $this->getBuildUrl($jobPath, $buildId);

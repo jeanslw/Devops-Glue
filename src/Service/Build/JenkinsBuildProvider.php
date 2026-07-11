@@ -27,8 +27,10 @@ class JenkinsBuildProvider implements BuildProviderInterface
             $ids = array_slice($buildIds, 0, $perPage);
             $result = [];
             foreach ($ids as $bid) {
+                $created = '';
                 try {
                     $status = $this->jenkins->getBuildStatus($projectId, (int) $bid);
+                    $created = $this->jenkins->getBuildTimestamp($projectId, (int) $bid);
                 } catch (\Exception $e) {
                     $status = 'unknown';
                 }
@@ -39,8 +41,8 @@ class JenkinsBuildProvider implements BuildProviderInterface
                     'ref'        => '',
                     'sha'        => '',
                     'web_url'    => $this->jenkins->getJobUrl($projectId) . '/' . $bid . '/',
-                    'created_at' => '',
-                    'updated_at' => '',
+                    'created_at' => $created,
+                    'updated_at' => $created,
                 ];
             }
             return $result;
