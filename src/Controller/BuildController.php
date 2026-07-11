@@ -217,12 +217,11 @@ class BuildController extends BaseController
         $p   = $this->registry->create($provider);
         $vars = $p->getVariables($projectId);
 
-        // 默认简单格式："branches":["main","master"]
         $simple = [];
         foreach ($vars as $v) { $simple[$v['key']] = $v['options'] ?? []; }
 
-        // ?format=full 返回完整格式
-        if (($request->getQueryParams()['format'] ?? '') === 'full') {
+        // ?format=json 返回完整格式，默认/raw 返回简单格式
+        if (($request->getQueryParams()['format'] ?? 'raw') === 'json') {
             return $this->output($response, [
                 'build_provider' => $provider,
                 'project_id'     => $projectId,
