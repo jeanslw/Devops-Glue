@@ -4,6 +4,7 @@ use App\Config\AppConfig;
 use App\Service\JenkinsService;
 use App\Service\GitService;
 use App\Service\GitRemoteResolver;
+use App\Service\AutoDiscover;
 use App\Service\HarborService;
 use App\Service\MappingManager;
 use App\Service\Git\ProviderRegistry;
@@ -40,6 +41,16 @@ return [
     // 映射查询（数据层）
     MappingManager::class => function (\Psr\Container\ContainerInterface $c) {
         return new MappingManager($c->get(AppConfig::class));
+    },
+
+    // 自动发现
+    AutoDiscover::class => function (\Psr\Container\ContainerInterface $c) {
+        return new AutoDiscover(
+            $c->get(JenkinsService::class),
+            $c->get(ProviderRegistry::class),
+            $c->get(AppConfig::class),
+            $c->get(Logger::class)
+        );
     },
 
     // 日志服务
@@ -258,7 +269,10 @@ return [
 
     // Admin 控制器
     AdminController::class => function (\Psr\Container\ContainerInterface $c) {
-        return new AdminController($c->get(AppConfig::class));
+        return new AdminController(
+            $c->get(AppConfig::class),
+            $c->get(AutoDiscover::class)
+        );
     },
 
     // Build 控制器

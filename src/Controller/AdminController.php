@@ -4,14 +4,37 @@ namespace App\Controller;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Config\AppConfig;
+use App\Service\AutoDiscover;
 
 class AdminController extends BaseController
 {
     private AppConfig $config;
+    private ?AutoDiscover $autoDiscover;
 
-    public function __construct(AppConfig $config)
+    public function __construct(AppConfig $config, ?AutoDiscover $autoDiscover = null)
     {
-        $this->config = $config;
+        $this->config       = $config;
+        $this->autoDiscover = $autoDiscover;
+    }
+
+    /** POST /api/admin/discover — 自动扫描并保存未入库的项目 */
+    public function discover(Request $request, Response $response): Response
+    {
+        if ($err = $this->authCheck($request, $response)) return $err;
+        if (!$this->autoDiscover) {
+            return $this->jsonError($response, '自动发现功能未启用（Jenkins 不可用）', 503);
+        }
+        try {
+            $found   = $this->autoDiscover->discover();
+            $saved   = $this->autoDiscover->saveDiscovered($found);
+            return $this->output($response, [
+                'found' => count($found),
+                'saved' => $saved,
+                'items' => array_map(fn($i) => $i['entry']['job_name'], $found),
+            ], $request);
+        } catch (\Exception $e) {
+            return $this->jsonError($response, '扫描失败: ' . $e->getMessage(), 500);
+        }
     }
 
     /**

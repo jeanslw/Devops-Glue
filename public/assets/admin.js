@@ -180,7 +180,7 @@ async function loadMaps() {
                     <td style="white-space:nowrap">
                         <button class="btn btn-sm btn-edit" onclick='editMap(${js(m)})'>✏️ 编辑</button>
                         <button class="btn btn-sm btn-del" onclick='deleteMap("${escJs(m.job_name)}")'>🗑 删除</button>
-                        <a href="/api/build/${esc(encodeURIComponent(m.job_name))}/pipelines?list=id" target="_blank" style="color:#4f46e5;font-size:12px;margin-left:6px;">📋</a>
+                        <a href="/api/build/${esc(encodeURI(m.job_name))}/pipelines?list=id" target="_blank" style="color:#4f46e5;font-size:12px;margin-left:6px;">📋</a>
                     </td>
                 </tr>`;
             }).join('');
@@ -526,7 +526,7 @@ function editMap(item) { showForm(item); }
 async function deleteMap(jobName) {
     if (!confirm('确定删除映射 "' + jobName + '" 吗？')) return;
     try {
-        const res = await fetch(MAP_API + '?job_name=' + encodeURIComponent(jobName), { method:'DELETE', headers:authHeaders() });
+        const res = await fetch(MAP_API + '?job_name=' + encodeURI(jobName), { method:'DELETE', headers:authHeaders() });
         if (handle401(res)) return;
         const data = await res.json();
         if (res.ok) { toast('已删除 ' + jobName, true); loadMaps(); }
