@@ -73,6 +73,8 @@ class MainController extends BaseController
         }
         try {
             $maps = $this->config->getJobGitMap();
+            // 过滤禁用 + 模式筛选
+            $maps = array_filter($maps, fn($m) => ($m['status'] ?? 'active') === 'active');
             if ($buildMode === 'gitlab_ci') {
                 $maps = array_values(array_filter($maps, fn($m) => ($m['build_provider'] ?? 'jenkins') === 'gitlab_ci'));
             } elseif ($buildMode === 'jenkins') {
