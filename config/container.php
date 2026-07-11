@@ -287,8 +287,7 @@ return [
                 $harbor['password'] ?? '',
             ],
             'headers'  => ['Accept' => 'application/json'],
-            'timeout'  => 5,
-            'connect_timeout' => 3,
+            'timeout'  => 15,
         ]);
     },
 

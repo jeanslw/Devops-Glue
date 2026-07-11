@@ -187,7 +187,6 @@ class MainController extends BaseController
      */
     public function health(Request $request, Response $response): Response
     {
-        $debug = [];
         $checks = [
             'jenkins'         => false,
             'jenkins_version' => null,
@@ -196,7 +195,6 @@ class MainController extends BaseController
             'harbor_version'  => null,
         ];
 
-        $t0 = microtime(true);
         try {
             $this->jenkins->getAllJobs();
             $checks['jenkins'] = true;
@@ -204,7 +202,6 @@ class MainController extends BaseController
         } catch (\Exception $e) {
             $checks['jenkins'] = false;
         }
-        $debug[] = 'jenkins:' . round(microtime(true) - $t0, 1) . 's';
 
         // Git 平台连通性检查（直接从数据库读取，不调 Jenkins）
         $usedPlatforms = [];
@@ -229,7 +226,6 @@ class MainController extends BaseController
         // 只检查 job_git_map 中实际引用的平台
         $usedPlatforms = array_values(array_intersect($usedPlatforms, array_keys($configuredPlatforms)));
 
-        $tg = microtime(true);
         if (empty($usedPlatforms)) {
             $checks['git'] = null;
         } else {
@@ -262,23 +258,25 @@ class MainController extends BaseController
             }
         }
 
-        $debug[] = 'git:' . round(microtime(true) - $tg, 1) . 's';
-
-        $th = microtime(true);
         if ($this->harbor) {
             try {
-                $projects = $this->harbor->getProjects();
-                $checks['harbor'] = !isset($projects['error']);
-                $checks['harbor_version'] = $this->harbor->getApiVersion();
+                // 健康检查用短超时 client，不影响正常 Harbor 操作
+                $qClient = new \GuzzleHttp\Client([
+                    'base_uri' => $this->config->getHarborConfig()['url'] ?? '',
+                    'auth'     => [$this->config->getHarborConfig()['username'] ?? 'admin', $this->config->getHarborConfig()['password'] ?? ''],
+                    'timeout'  => 5,
+                    'connect_timeout' => 3,
+                    'http_errors' => false,
+                ]);
+                $resp = $qClient->get('/api/v2.0/projects');
+                $checks['harbor'] = $resp->getStatusCode() < 500;
+                $checks['harbor_version'] = 'v2';
             } catch (\Exception $e) {
                 $checks['harbor'] = false;
             }
         } else {
-            $checks['harbor'] = null; // 未配置
+            $checks['harbor'] = null;
         }
-
-        $debug[] = 'harbor:' . round(microtime(true) - $th, 1) . 's';
-        $debug[] = 'total:' . round(microtime(true) - $t0, 1) . 's';
 
         $gitOk = $checks['git'] === null || !empty(array_filter($checks['git'], fn($g) => $g['reachable']));
         $allOk = $checks['jenkins'] && $gitOk && ($checks['harbor'] === true || $checks['harbor'] === null);
@@ -287,7 +285,6 @@ class MainController extends BaseController
         $data = [
             'status'   => $status,
             'checks'   => $checks,
-            'debug'    => $debug,
             'app_env'  => $this->config->getAppEnv(),
             'time'     => date('Y-m-d H:i:s'),
         ];

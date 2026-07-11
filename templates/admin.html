@@ -560,10 +560,7 @@ async function loadMonitor() {
     }
 
     try {
-        const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 25000);
-        const res = await fetch(HEALTH_API, { signal: ctrl.signal });
-        clearTimeout(timer);
+        const res = await fetch(HEALTH_API);
         const data = await res.json();
         const chk = data.checks || {};
 
