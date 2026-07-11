@@ -6,6 +6,7 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Service\JenkinsService;
 use App\Service\MapService;
 use App\Service\HarborService;
+use App\Service\MappingManager;
 use App\Config\AppConfig;
 
 class MainController extends BaseController
@@ -13,13 +14,15 @@ class MainController extends BaseController
     private JenkinsService $jenkins;
     private MapService $map;
     private AppConfig $config;
+    private MappingManager $mapping;
     private ?HarborService $harbor;
 
-    public function __construct(JenkinsService $jenkins, MapService $map, AppConfig $config, ?HarborService $harbor = null)
+    public function __construct(JenkinsService $jenkins, MapService $map, AppConfig $config, MappingManager $mapping, ?HarborService $harbor = null)
     {
         $this->jenkins = $jenkins;
         $this->map = $map;
         $this->config = $config;
+        $this->mapping = $mapping;
         $this->harbor = $harbor;
     }
 
@@ -28,24 +31,14 @@ class MainController extends BaseController
      */
     public function jobsList(Request $request, Response $response): Response
     {
-        $buildMode = $_ENV['BUILD_MODE'] ?? 'both';
-        $jobs = [];
-        if ($buildMode === 'gitlab_ci') {
-            foreach ($this->config->getJobGitMap() as $m) {
-                if (($m['build_provider'] ?? 'jenkins') === 'gitlab_ci') $jobs[] = $m['job_name'];
-            }
-        } else {
-            // jenkins/both：尝试实时获取，失败降级读 DB
-            try {
-                $jobs = $this->jenkins->getAllJobs();
-            } catch (\Exception $e) {
-                foreach ($this->config->getJobGitMap() as $m) {
-                    if (($m['status'] ?? 'active') === 'disabled') continue;
-                    if (($m['build_provider'] ?? 'jenkins') !== 'gitlab_ci') $jobs[] = $m['job_name'];
-                }
-            }
+        if ($this->mapping->buildMode() === 'gitlab_ci') {
+            return $this->output($response, $this->mapping->activeJobNames(), $request);
         }
-        return $this->output($response, $jobs, $request);
+        try {
+            return $this->output($response, $this->jenkins->getAllJobs(), $request);
+        } catch (\Exception $e) {
+            return $this->output($response, $this->mapping->activeJobNames(), $request);
+        }
     }
 
     /**
