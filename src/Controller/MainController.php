@@ -56,22 +56,14 @@ class MainController extends BaseController
             } catch (\Exception $e) {}
         }
         try {
+            $maps = $this->config->getJobGitMap();
             if ($buildMode === 'gitlab_ci') {
-                $maps = $this->config->getJobGitMap();
                 $maps = array_values(array_filter($maps, fn($m) => ($m['build_provider'] ?? 'jenkins') === 'gitlab_ci'));
-            } else {
-                $maps = $this->map->getAllMaps();
-                if ($buildMode === 'jenkins') {
-                    $maps = array_filter($maps, fn($m) => ($m['build_provider'] ?? 'jenkins') !== 'gitlab_ci');
-                }
+            } elseif ($buildMode === 'jenkins') {
+                $maps = array_values(array_filter($maps, fn($m) => ($m['build_provider'] ?? 'jenkins') !== 'gitlab_ci'));
             }
         } catch (\Exception $e) {
-            if ($buildMode === 'gitlab_ci') {
-                $maps = $this->config->getJobGitMap();
-                $maps = array_values(array_filter($maps, fn($m) => ($m['build_provider'] ?? 'jenkins') === 'gitlab_ci'));
-            } else {
-                return $this->output($response, ['_error' => 'Jenkins 服务不可达', '_detail' => $e->getMessage()], $request);
-            }
+            $maps = [];
         }
 
         $grouped = [];
