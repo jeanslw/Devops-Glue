@@ -4,7 +4,6 @@
 .env.*.local
 
 #test
-/test/
 .claude/
 .github/
 .gitignore
