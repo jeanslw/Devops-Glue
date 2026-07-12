@@ -5,7 +5,9 @@
 
 #test
 /test/
-/.claude/*
+.claude/
+.github/
+.gitignore
 
 # Composer
 vendor/
