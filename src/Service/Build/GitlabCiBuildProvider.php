@@ -38,13 +38,20 @@ class GitlabCiBuildProvider implements BuildProviderInterface
                 'ref'        => $p['ref'] ?? '',
                 'sha'        => $p['sha'] ?? '',
                 'web_url'    => $p['web_url'] ?? '',
-                'created_at' => $p['created_at'] ?? '',
-                'updated_at' => $p['updated_at'] ?? '',
+                'created_at' => $this->fmtTime($p['created_at'] ?? ''),
+                'updated_at' => $this->fmtTime($p['updated_at'] ?? ''),
             ], $data);
         } catch (\Exception $e) {
             $this->logger?->error('GitLab CI pipeline 查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
             return [];
         }
+    }
+
+    private function fmtTime(string $iso): string
+    {
+        if (empty($iso)) return '';
+        $ts = strtotime($iso);
+        return $ts ? date('Y-m-d H:i:s', $ts) : $iso;
     }
 
     public function getJobs(string $projectId, int $pipelineId): array
