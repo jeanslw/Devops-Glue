@@ -331,7 +331,7 @@ class BuildController extends BaseController
 
             // 6. 记录 pipeline → tag 映射
             if ($iid > 0) {
-                $this->recordPipelineTag($path, (int) $iid, $tag);
+                $this->recordPipelineTag($path, (int) $iid, $tag, $harborRepo);
             }
 
             return $this->output($response, [
@@ -356,11 +356,12 @@ class BuildController extends BaseController
         $pipeline = $request->getQueryParams()['pipeline'] ?? '';
 
         $tags = $this->loadPipelineTags();
-        $entry = $tags[$path] ?? [];
-        $tag  = $pipeline ? ($entry[$pipeline] ?? null) : null;
+        $entry  = $tags[$path] ?? [];
+        $tagInfo = $pipeline ? ($entry[$pipeline] ?? null) : null;
+        $tag     = is_array($tagInfo) ? ($tagInfo['tag'] ?? '') : $tagInfo;
+        $harbor  = is_array($tagInfo) ? ($tagInfo['harbor'] ?? '') : '';
 
         if ($pipeline && !$tag) {
-            // 不存在不报错，返回空
             if (($request->getQueryParams()['format'] ?? 'raw') === 'raw') {
                 return $this->output($response, [], $request);
             }
@@ -373,15 +374,9 @@ class BuildController extends BaseController
             ], $request);
         }
 
-        // ?format=raw → tag + harbor 仓库
+        // ?format=raw → 仓库:tag
         if ($pipeline && ($request->getQueryParams()['format'] ?? 'raw') === 'raw') {
-            $harborRepo = '';
-            foreach ($this->mapping->activeMaps() as $m) {
-                if (($m['current_path'] ?? $m['job_name'] ?? '') === $path) {
-                    $harborRepo = $m['harbor_repository'] ?? ''; break;
-                }
-            }
-            return $this->output($response, $harborRepo ? [$harborRepo . ':' . $tag] : [$tag], $request);
+            return $this->output($response, $harbor ? [$harbor . ':' . $tag] : [$tag], $request);
         }
 
         [$provider, $projectId] = $this->resolve($path);
@@ -390,6 +385,7 @@ class BuildController extends BaseController
             'project_id'     => $projectId,
             'pipeline'       => $pipeline ?: null,
             'tag'            => $tag,
+            'harbor_repository' => $harbor,
             'all'            => $pipeline ? null : $entry,
         ], $request);
     }
@@ -400,10 +396,13 @@ class BuildController extends BaseController
     {
         try {
             $pdo = \App\Service\Database::getPdo();
-            $rows = $pdo->query("SELECT project, pipeline_iid, tag, created_at FROM pipeline_tags ORDER BY created_at DESC")->fetchAll();
+            $rows = $pdo->query("SELECT project, pipeline_iid, tag, harbor_repository, created_at FROM pipeline_tags ORDER BY created_at DESC")->fetchAll();
             $result = [];
             foreach ($rows as $r) {
-                $result[$r['project']][(string) $r['pipeline_iid']] = $r['tag'];
+                $result[$r['project']][(string) $r['pipeline_iid']] = [
+                    'tag'    => $r['tag'],
+                    'harbor' => $r['harbor_repository'] ?? '',
+                ];
             }
             return $result;
         } catch (\Exception $e) {
@@ -411,14 +410,14 @@ class BuildController extends BaseController
         }
     }
 
-    private function recordPipelineTag(string $path, int $pipelineIid, string $tag): void
+    private function recordPipelineTag(string $path, int $pipelineIid, string $tag, string $harborRepo = ''): void
     {
         try {
             $pdo = \App\Service\Database::getPdo();
-            $stmt = $pdo->prepare("INSERT OR REPLACE INTO pipeline_tags (project, pipeline_iid, tag) VALUES (?, ?, ?)");
-            $stmt->execute([$path, $pipelineIid, $tag]);
+            $stmt = $pdo->prepare("INSERT OR REPLACE INTO pipeline_tags (project, pipeline_iid, tag, harbor_repository) VALUES (?, ?, ?, ?)");
+            $stmt->execute([$path, $pipelineIid, $tag, $harborRepo]);
         } catch (\Exception $e) {
-            // 静默失败，不影响主流程
+            // 静默失败
         }
     }
 }

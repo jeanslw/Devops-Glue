@@ -62,9 +62,12 @@ class Database
             project TEXT NOT NULL,
             pipeline_iid INTEGER NOT NULL,
             tag TEXT NOT NULL,
+            harbor_repository TEXT,
             created_at TEXT DEFAULT (datetime('now','localtime')),
             PRIMARY KEY (project, pipeline_iid)
         )");
+
+        try { $pdo->exec("ALTER TABLE pipeline_tags ADD COLUMN harbor_repository TEXT"); } catch (\Exception $e) {}
 
         $pdo->exec("CREATE TABLE IF NOT EXISTS cache (
             cache_key TEXT PRIMARY KEY,
