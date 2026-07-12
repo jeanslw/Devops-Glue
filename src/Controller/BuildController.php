@@ -82,7 +82,7 @@ class BuildController extends BaseController
                 'id'      => array_map($idx, $filtered),
                 'success' => array_map($idx, $filtered),
                 'build'   => array_map(fn($p) => '#' . $idx($p), $filtered),
-                'time'    => array_map(fn($p) => $p['created_at'] ?? '', $filtered),  // ["2026-07-12 06:02:29",...]
+                'time'    => array_map(fn($p) => '#' . $idx($p) . ' [' . ($p['created_at'] ?? '') . ']', $filtered),
                 default   => $filtered,
             };
             return $this->output($response, $result, $request);
@@ -111,7 +111,7 @@ class BuildController extends BaseController
 
         // ?format=raw → Jenkins 风格 ["SUCCESS"] / ["failed"]
         if (($request->getQueryParams()['format'] ?? 'raw') === 'raw') {
-            $statuses = array_map(fn($j) => strtoupper($j['status'] ?? 'unknown'), $jobs);
+            $statuses = array_map(fn($j) => $j['status'] ?? 'unknown', $jobs);
             return $this->output($response, $statuses, $request);
         }
 
