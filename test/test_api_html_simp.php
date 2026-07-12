@@ -131,7 +131,7 @@ addRow('Harbor', '项目列表', "$baseUrl/api/harbor/projects", $res);
 $loginRes = apiCall("$baseUrl/api/admin/login", 'POST');
 $loginData = json_decode($loginRes['body'], true);
 $token = $loginData['token'] ?? '';
-addRow('Admin', '登录', "$baseUrl/api/admin/login", $loginRes);
+addRow('Admin', '登录 (POST)', "$baseUrl/api/admin/login", $loginRes);
 
 if ($token) {
     $res = apiCall("$baseUrl/api/admin/job_git_map");
