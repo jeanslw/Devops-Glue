@@ -566,7 +566,8 @@ php
 十四、更新日志
 
 版本	日期	变更内容
-v2.3.0	2026-07-10	增加 GitLab CI 支持、优化jenkins实现双通道，Build统一构建模块 + SQLite 持久化，增加简易 UI 管理界面
+v2.3.0	2026-07-10	增加 GitLab CI 双通道 + Build 统一构建模块 + SQLite 持久化 + 管理 UI
+	v2.3.1	2026-07-12	scan-sync 公共端点；BUILD_MODE 三种配置模式；输出格式统一 raw/json/xml；Harbor 扫描回写优化
 v2.2.0	2026-05-06	架构升级：Git 平台改为 ProviderRegistry 注册表模式，支持自定义平台接入。新增 Gitea 平台适配器。
 v2.1.2	2026-05-04	新增首页支持健康检查、 GitHub 平台接入；健康检查端点 /api/health；Swagger UI 文档，结构化文件日志；Docker 部署支持；
 v2.1.1	2026-03-05	Slim 4 重构。新增 Main 模块（平台接入、多方映射）,多版本支持；输出格式切换（raw/json/xml）；Harbor 扫描集成（Trivy 离线）和扫描报告获取；
