@@ -243,28 +243,23 @@ class BuildController extends BaseController
         return $this->output($response, $simple, $request);
     }
 
-    /** POST /api/build/{path}/scan-sync */
+    /** POST /api/build/{path}/scan-sync（公共端点，不限制 BUILD_MODE） */
     public function scanSync(Request $request, Response $response, array $args): Response
     {
         $path = $args['path'] ?? '';
-        [$provider, $projectId] = $this->resolve($path);
+        $body   = $request->getParsedBody() ?? [];
+        $tag    = $body['tag'] ?? null;
 
-        if (!$this->registry->isRegistered($provider)) {
-            return $this->jsonError($response, "Build 系统 '{$provider}' 未配置", 400);
-        }
-
-        // 1. 获取 job_git_map 中的 harbor 映射
+        // 1. 获取 job_git_map 中的 harbor 映射（不依赖 CI 系统）
         $maps = $this->config->getJobGitMap();
         $harborRepo = '';
-        $sha = '';
+        $provider   = 'jenkins';
         foreach ($maps as $m) {
             $job = $m['job_name'] ?? '';
             $cp  = $m['current_path'] ?? '';
             if ($job === $path || $cp === $path) {
                 $harborRepo = $m['harbor_repository'] ?? '';
-                if (empty($sha) && !empty($m['git_remote'])) {
-                    // 从 git_remote 无法获取 sha，需要从 pipeline 拿
-                }
+                $provider   = $m['build_provider'] ?? 'jenkins';
                 break;
             }
         }
@@ -273,95 +268,80 @@ class BuildController extends BaseController
             return $this->jsonError($response, "项目 '{$path}' 未配置 harbor_repository", 400);
         }
 
-        // 2. 获取最新 pipeline
-        $p = $this->registry->create($provider);
-        $pipelines = $p->getPipelines($projectId, 1);
-        if (empty($pipelines)) {
-            return $this->jsonError($response, '没有找到 pipeline', 404);
-        }
-        $latestPipeline  = $pipelines[0];
-        $sha  = $latestPipeline['sha'] ?? '';
-        $iid  = $latestPipeline['iid'] ?? 0;
-        if (empty($sha)) {
-            return $this->jsonError($response, 'pipeline 缺少 sha', 400);
-        }
-
-        // 3. 查 Harbor 扫描报告
+        // 2. 解析 Harbor 仓库信息
         $parts = explode('/', $harborRepo, 2);
         if (count($parts) !== 2) {
             return $this->jsonError($response, "harbor_repository 格式错误: {$harborRepo}", 400);
         }
         [$harborProject, $harborRepoName] = $parts;
 
-        // 支持手动传 tag（POST body），不传则取最新
-        $body   = $request->getParsedBody() ?? [];
-        $searchTag = $body['tag'] ?? null;
-
-        try {
-            if ($searchTag) {
-                $tag = $searchTag;
-            } else {
-                $tags = $this->harbor->getTags($harborProject, $harborRepoName);
-                if (empty($tags)) {
-                    return $this->jsonError($response, "Harbor 仓库 {$harborRepo} 没有 tag", 404);
-                }
-                $tag = $tags[0];
-            }
-
-            // 获取扫描报告
-            $scan = $this->harbor->getScanReport($harborProject, $harborRepoName, $tag);
-
-            // 4. 判断扫描结果（仅 GitLab CI 支持 Harbor 扫描 + commit status 回写）
-            $vulnCount = 0;
-            $state     = 'unknown';
-            $result    = ['success' => false, 'message' => 'Jenkins 不支持 commit status 回写'];
-
-            if ($provider === 'gitlab_ci') {
-                if (!$this->harbor) {
-                    $state  = 'pending';
-                    $desc   = "#{$iid} → {$tag} · Harbor 未配置";
-                    $result = ['success' => false, 'message' => 'Harbor 未配置'];
-                } else {
-                    try {
-                        $scan = $this->harbor->getScanReport($harborProject, $harborRepoName, $tag);
-                        if (isset($scan['error']) || isset($scan['code'])) {
-                            $state  = 'pending';
-                            $desc   = "#{$iid} → {$tag} · 扫描未启用";
-                            $result = ['success' => false, 'message' => $scan['message'] ?? '扫描功能未启用'];
-                        } else {
-                            $vulns = $scan['vulnerabilities'] ?? $scan ?? [];
-                            $vulnCount = is_array($vulns) ? count($vulns) : 0;
-                            $state = $vulnCount > 0 ? 'failed' : 'success';
-                            $desc  = "#{$iid} → {$tag} · " . ($vulnCount > 0 ? "{$vulnCount} vulns" : 'clean');
-                        }
-                        $harborUrl = $this->config->getHarborConfig()['url'] ?? '';
-                        $result = $p->setCommitStatus($projectId, $sha, $state, 'harbor-scan', $desc, $harborUrl);
-                    } catch (\Exception $e) {
-                        $state  = 'pending';
-                        $desc   = "#{$iid} → {$tag} · 扫描不可用";
-                        $result = ['success' => false, 'message' => $e->getMessage()];
-                    }
-                }
-            }
-
-            // 5. 记录 pipeline → tag 映射
-            if ($iid > 0) {
-                $this->recordPipelineTag($path, (int) $iid, $tag, $harborRepo);
-            }
-
-            return $this->output($response, [
-                'build_provider'       => $provider,
-                'sha'                  => $sha,
-                'tag'                  => $tag,
-                'harbor_repository'    => $harborRepo,
-                'vulnerability_count'  => $vulnCount,
-                'scan_state'           => $state,
-                'commit_status'        => $result,
-            ], $request);
-
-        } catch (\Exception $e) {
-            return $this->jsonError($response, '扫描同步失败: ' . $e->getMessage(), 500);
+        // tag 不传则取 Harbor 最新
+        if (!$tag && $this->harbor) {
+            $tags = $this->harbor->getTags($harborProject, $harborRepoName);
+            if (!empty($tags)) $tag = $tags[0];
         }
+        if (!$tag) {
+            return $this->jsonError($response, '缺少 tag 参数且 Harbor 无可用 tag', 400);
+        }
+
+        // 3. 尝试获取 pipeline info（仅用于 commit status）
+        $sha  = '';
+        $iid  = 0;
+        try {
+            $projectId = $path;
+            if ($this->registry->isRegistered($provider)) {
+                $p = $this->registry->create($provider);
+                $pipelines = $p->getPipelines($projectId, 1);
+                if (!empty($pipelines)) {
+                    $sha = $pipelines[0]['sha'] ?? '';
+                    $iid = (int) ($pipelines[0]['iid'] ?? 0);
+                }
+            }
+        } catch (\Exception $e) {}
+
+        // 4. Harbor 扫描 + commit status 回写（仅 GitLab CI + sha 有效时）
+        $vulnCount = 0;
+        $state     = 'unknown';
+        $result    = ['success' => false, 'message' => ''];
+
+        if ($provider === 'gitlab_ci' && $sha) {
+            if (!$this->harbor) {
+                $state  = 'pending';
+                $result = ['success' => false, 'message' => 'Harbor 未配置'];
+            } else {
+                try {
+                    $scan = $this->harbor->getScanReport($harborProject, $harborRepoName, $tag);
+                    if (isset($scan['error']) || isset($scan['code'])) {
+                        $state  = 'pending';
+                        $result = ['success' => false, 'message' => $scan['message'] ?? '扫描功能未启用'];
+                    } else {
+                        $vulns = $scan['vulnerabilities'] ?? $scan ?? [];
+                        $vulnCount = is_array($vulns) ? count($vulns) : 0;
+                        $state = $vulnCount > 0 ? 'failed' : 'success';
+                    }
+                    $desc  = "#{$iid} → {$tag} · " . ($vulnCount > 0 ? "{$vulnCount} vulns" : ($state === 'pending' ? '扫描未启用' : 'clean'));
+                    $harborUrl = $this->config->getHarborConfig()['url'] ?? '';
+                    $p = $this->registry->create($provider);
+                    $result = $p->setCommitStatus($projectId, $sha, $state, 'harbor-scan', $desc, $harborUrl);
+                } catch (\Exception $e) {
+                    $state  = 'pending';
+                    $result = ['success' => false, 'message' => $e->getMessage()];
+                }
+            }
+        }
+
+        // 5. 记录 pipeline → tag 映射
+        $this->recordPipelineTag($path, $iid ?: time(), $tag, $harborRepo);
+
+        return $this->output($response, [
+            'build_provider'       => $provider,
+            'sha'                  => $sha ?: 'N/A',
+            'tag'                  => $tag,
+            'harbor_repository'    => $harborRepo,
+            'vulnerability_count'  => $vulnCount,
+            'scan_state'           => $state,
+            'commit_status'        => $result,
+        ], $request);
     }
 
     /** GET /api/build/{path}/tag?pipeline=10 — 查 pipeline 对应的 tag */
