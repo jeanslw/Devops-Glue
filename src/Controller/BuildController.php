@@ -253,14 +253,6 @@ class BuildController extends BaseController
             return $this->jsonError($response, "Build 系统 '{$provider}' 未配置", 400);
         }
 
-        if ($provider !== 'gitlab_ci') {
-            return $this->jsonError($response, "scan-sync 仅支持 gitlab_ci，当前: {$provider}", 400);
-        }
-
-        if (!$this->harbor) {
-            return $this->jsonError($response, 'Harbor 未配置', 500);
-        }
-
         // 1. 获取 job_git_map 中的 harbor 映射
         $maps = $this->config->getJobGitMap();
         $harborRepo = '';
@@ -319,29 +311,38 @@ class BuildController extends BaseController
             // 获取扫描报告
             $scan = $this->harbor->getScanReport($harborProject, $harborRepoName, $tag);
 
-            // 4. 判断扫描结果
-            $vulns = $scan['vulnerabilities'] ?? $scan ?? [];
-            $vulnCount = is_array($vulns) ? count($vulns) : 0;
-            $state = $vulnCount > 0 ? 'failed' : 'success';
-            $desc  = "#{$iid} → {$tag} · " . ($vulnCount > 0 ? "{$vulnCount} vulns" : 'clean');
+            // 4. 判断扫描结果（仅 GitLab CI 支持 Harbor 扫描 + commit status 回写）
+            $vulnCount = 0;
+            $state     = 'unknown';
+            $result    = ['success' => false, 'message' => 'Jenkins 不支持 commit status 回写'];
 
-            // 5. 回写 GitLab commit status
-            $harborUrl = $this->config->getHarborConfig()['url'] ?? '';
-            $result = $p->setCommitStatus($projectId, $sha, $state, 'harbor-scan', $desc, $harborUrl);
+            if ($provider === 'gitlab_ci' && $this->harbor) {
+                try {
+                    $scan = $this->harbor->getScanReport($harborProject, $harborRepoName, $tag);
+                    $vulns = $scan['vulnerabilities'] ?? $scan ?? [];
+                    $vulnCount = is_array($vulns) ? count($vulns) : 0;
+                    $state = $vulnCount > 0 ? 'failed' : 'success';
+                    $desc  = "#{$iid} → {$tag} · " . ($vulnCount > 0 ? "{$vulnCount} vulns" : 'clean');
+                    $harborUrl = $this->config->getHarborConfig()['url'] ?? '';
+                    $result = $p->setCommitStatus($projectId, $sha, $state, 'harbor-scan', $desc, $harborUrl);
+                } catch (\Exception $e) {
+                    $result = ['success' => false, 'message' => $e->getMessage()];
+                }
+            }
 
-            // 6. 记录 pipeline → tag 映射
+            // 5. 记录 pipeline → tag 映射
             if ($iid > 0) {
                 $this->recordPipelineTag($path, (int) $iid, $tag, $harborRepo);
             }
 
             return $this->output($response, [
-                'build_provider'    => $provider,
-                'sha'               => $sha,
-                'tag'               => $tag,
-                'harbor_repository' => $harborRepo,
-                'vulnerability_count' => $vulnCount,
-                'scan_state'        => $state,
-                'commit_status'     => $result,
+                'build_provider'       => $provider,
+                'sha'                  => $sha,
+                'tag'                  => $tag,
+                'harbor_repository'    => $harborRepo,
+                'vulnerability_count'  => $vulnCount,
+                'scan_state'           => $state,
+                'commit_status'        => $result,
             ], $request);
 
         } catch (\Exception $e) {
