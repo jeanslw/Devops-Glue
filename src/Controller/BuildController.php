@@ -373,9 +373,15 @@ class BuildController extends BaseController
             ], $request);
         }
 
-        // ?format=raw → 纯 tag 数组
+        // ?format=raw → tag + harbor 仓库
         if ($pipeline && ($request->getQueryParams()['format'] ?? 'raw') === 'raw') {
-            return $this->output($response, [$tag], $request);
+            $harborRepo = '';
+            foreach ($this->mapping->activeMaps() as $m) {
+                if (($m['current_path'] ?? $m['job_name'] ?? '') === $path) {
+                    $harborRepo = $m['harbor_repository'] ?? ''; break;
+                }
+            }
+            return $this->output($response, $harborRepo ? [$harborRepo . ':' . $tag] : [$tag], $request);
         }
 
         [$provider, $projectId] = $this->resolve($path);
