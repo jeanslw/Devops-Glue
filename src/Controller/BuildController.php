@@ -316,17 +316,31 @@ class BuildController extends BaseController
             $state     = 'unknown';
             $result    = ['success' => false, 'message' => 'Jenkins 不支持 commit status 回写'];
 
-            if ($provider === 'gitlab_ci' && $this->harbor) {
-                try {
-                    $scan = $this->harbor->getScanReport($harborProject, $harborRepoName, $tag);
-                    $vulns = $scan['vulnerabilities'] ?? $scan ?? [];
-                    $vulnCount = is_array($vulns) ? count($vulns) : 0;
-                    $state = $vulnCount > 0 ? 'failed' : 'success';
-                    $desc  = "#{$iid} → {$tag} · " . ($vulnCount > 0 ? "{$vulnCount} vulns" : 'clean');
-                    $harborUrl = $this->config->getHarborConfig()['url'] ?? '';
-                    $result = $p->setCommitStatus($projectId, $sha, $state, 'harbor-scan', $desc, $harborUrl);
-                } catch (\Exception $e) {
-                    $result = ['success' => false, 'message' => $e->getMessage()];
+            if ($provider === 'gitlab_ci') {
+                if (!$this->harbor) {
+                    $state  = 'pending';
+                    $desc   = "#{$iid} → {$tag} · Harbor 未配置";
+                    $result = ['success' => false, 'message' => 'Harbor 未配置'];
+                } else {
+                    try {
+                        $scan = $this->harbor->getScanReport($harborProject, $harborRepoName, $tag);
+                        if (isset($scan['error']) || isset($scan['code'])) {
+                            $state  = 'pending';
+                            $desc   = "#{$iid} → {$tag} · 扫描未启用";
+                            $result = ['success' => false, 'message' => $scan['message'] ?? '扫描功能未启用'];
+                        } else {
+                            $vulns = $scan['vulnerabilities'] ?? $scan ?? [];
+                            $vulnCount = is_array($vulns) ? count($vulns) : 0;
+                            $state = $vulnCount > 0 ? 'failed' : 'success';
+                            $desc  = "#{$iid} → {$tag} · " . ($vulnCount > 0 ? "{$vulnCount} vulns" : 'clean');
+                        }
+                        $harborUrl = $this->config->getHarborConfig()['url'] ?? '';
+                        $result = $p->setCommitStatus($projectId, $sha, $state, 'harbor-scan', $desc, $harborUrl);
+                    } catch (\Exception $e) {
+                        $state  = 'pending';
+                        $desc   = "#{$iid} → {$tag} · 扫描不可用";
+                        $result = ['success' => false, 'message' => $e->getMessage()];
+                    }
                 }
             }
 
