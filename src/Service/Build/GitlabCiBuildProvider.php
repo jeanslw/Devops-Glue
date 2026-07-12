@@ -76,7 +76,11 @@ class GitlabCiBuildProvider implements BuildProviderInterface
         $url = "{$this->baseUrl}/api/v4/projects/{$encoded}/jobs/{$jobId}/trace";
         try {
             $resp = $this->http->get($url);
-            return (string) $resp->getBody();
+            $raw = (string) $resp->getBody();
+            // 清洗 ANSI 转义码 + GitLab Runner 时间戳前缀
+            $raw = preg_replace("/\e\[[0-9;]*[mK]/", '', $raw);
+            $raw = preg_replace('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z\s+\d+[A-Z]\s+/m', '', $raw);
+            return $raw;
         } catch (\Exception $e) {
             $this->logger?->error('GitLab CI job trace 查询失败', ['project' => $projectId, 'job' => $jobId, 'error' => $e->getMessage()]);
             return '日志获取失败: ' . $e->getMessage();

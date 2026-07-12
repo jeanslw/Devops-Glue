@@ -40,6 +40,10 @@ class BuildController extends BaseController
                 'current_path' => $m['current_path'] ?? '',
             ];
         }
+        // ?format=raw → 纯 job 名数组
+        if (($request->getQueryParams()['format'] ?? 'raw') === 'raw') {
+            return $this->output($response, array_column($all, 'job_name'), $request);
+        }
         return $this->output($response, $all, $request);
     }
 
@@ -75,10 +79,10 @@ class BuildController extends BaseController
             $iidKey = 'iid'; // GitLab CI 用 iid，Jenkins 用 id
             $idx = fn($p) => $p[$iidKey] ?? $p['id'] ?? 0;
             $result = match ($listFormat) {
-                'id'      => array_map($idx, $filtered),                                           // [11,10,9]
-                'success' => array_map($idx, $filtered),                                           // [2] (仅成功)
-                'build'   => array_map(fn($p) => '#' . $idx($p), $filtered),                       // ["#11","#10","#9"]
-                'time'    => array_map(fn($p) => '#' . $idx($p) . ' [' . ($p['created_at'] ?? '') . ']', $filtered),
+                'id'      => array_map($idx, $filtered),
+                'success' => array_map($idx, $filtered),
+                'build'   => array_map(fn($p) => '#' . $idx($p), $filtered),
+                'time'    => array_map(fn($p) => $p['created_at'] ?? '', $filtered),  // ["2026-07-12 06:02:29",...]
                 default   => $filtered,
             };
             return $this->output($response, $result, $request);
@@ -104,6 +108,13 @@ class BuildController extends BaseController
 
         $p  = $this->registry->create($provider);
         $jobs = $p->getJobs($projectId, $pipelineId);
+
+        // ?format=raw → Jenkins 风格 ["SUCCESS"] / ["failed"]
+        if (($request->getQueryParams()['format'] ?? 'raw') === 'raw') {
+            $statuses = array_map(fn($j) => strtoupper($j['status'] ?? 'unknown'), $jobs);
+            return $this->output($response, $statuses, $request);
+        }
+
         return $this->output($response, [
             'build_provider' => $provider,
             'project_id'     => $projectId,
@@ -349,7 +360,22 @@ class BuildController extends BaseController
         $tag  = $pipeline ? ($entry[$pipeline] ?? null) : null;
 
         if ($pipeline && !$tag) {
-            return $this->jsonError($response, "未找到 {$path} pipeline #{$pipeline} 的 tag 映射", 404);
+            // 不存在不报错，返回空
+            if (($request->getQueryParams()['format'] ?? 'raw') === 'raw') {
+                return $this->output($response, [], $request);
+            }
+            return $this->output($response, [
+                'build_provider' => $this->mapping->resolveProject($path)['provider'],
+                'project_id'     => $this->mapping->resolveProject($path)['projectId'],
+                'pipeline'       => $pipeline,
+                'tag'            => null,
+                'all'            => null,
+            ], $request);
+        }
+
+        // ?format=raw → 纯 tag 数组
+        if ($pipeline && ($request->getQueryParams()['format'] ?? 'raw') === 'raw') {
+            return $this->output($response, [$tag], $request);
         }
 
         [$provider, $projectId] = $this->resolve($path);
