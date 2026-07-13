@@ -5,8 +5,6 @@
 
 #test
 .claude/
-.github/
-.gitignore
 
 # Composer
 vendor/

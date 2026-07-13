@@ -1,0 +1,27 @@
+name: Security Check
+
+on: [push, pull_request]
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PHP Lint
+        run: |
+          find . -name "*.php" -not -path "./vendor/*" | while read f; do
+            php -l "$f" || exit 1
+          done
+
+      - name: Check Hardcoded Secrets
+        run: |
+          # 检查源码中是否误提交了真实凭证（排除 .env 和 vendor）
+          if grep -rE "(glpat-|1165125392|Admin12345)" . \
+            --include="*.php" --include="*.json" \
+            --exclude-dir=vendor --exclude-dir=.git \
+            --exclude="*.env*" --exclude="*/.env"; then
+            echo "❌ 发现硬编码的敏感信息！"
+            exit 1
+          fi
+          echo "✅ 未发现敏感信息"
