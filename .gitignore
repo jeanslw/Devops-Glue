@@ -40,3 +40,6 @@ config/data/
 settings.local.php
 
 docs/
+
+# Test reports
+public/test_report_*
