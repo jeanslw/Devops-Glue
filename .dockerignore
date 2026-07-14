@@ -4,9 +4,15 @@
 .github
 .workflow
 .laragon
+.idea
+config/.env
 .editorconfig
-vendor
+vendor/
+Dockerfile
 test
 *.md
 LICENSE
-docker-compose.yml
+docker-compose/
+config/docker/
+system_info.png
+system_running.png

@@ -1,37 +1,55 @@
-FROM php:8.3-apache
+# ========== 阶段1: 安装 Composer 依赖 ==========
+# FROM 和 AS vendor
+FROM php:8.3-fpm-bookworm AS vendor
 
-# 系统依赖 + PHP 扩展
+WORKDIR /app
+
 RUN apt-get update && apt-get install -y \
-    libzip-dev \
-    libsqlite3-dev \
-    unzip \
-    && docker-php-ext-install zip pdo_sqlite mbstring curl xml \
+        unzip \
+        libzip-dev \
+    && docker-php-ext-install zip \
+    && rm -rf /var/lib/apt/lists/*
+	
+RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer \
+    && composer config -g repo.packagist composer https://mirrors.aliyun.com/composer/
+
+COPY composer.json composer.lock ./
+RUN composer install --no-dev --optimize-autoloader --no-scripts \
+    && rm /usr/local/bin/composer
+
+# ========== 阶段2: 生成镜像 ==========
+FROM php:8.3-fpm-bookworm AS production
+
+# 安装系统依赖 + Nginx + Supervisor
+RUN apt-get update && apt-get install -y \
+        nginx supervisor \
+        libzip-dev libicu-dev libpng-dev libjpeg-dev libfreetype6-dev \
+    --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
-# Apache 重写 + 允许 .htaccess
-RUN a2enmod rewrite \
-    && sed -ri '/<Directory \/var\/www\/>/,/<\/Directory>/s/AllowOverride None/AllowOverride All/' /etc/apache2/apache2.conf
+# 安装 PHP 扩展
+ADD https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions /usr/local/bin/
+RUN chmod +x /usr/local/bin/install-php-extensions \
+    && install-php-extensions pdo_mysql opcache zip intl gd bcmath
 
-# 工作目录
-WORKDIR /var/www/html
+# 配置 PHP-FPM
+RUN sed -i 's|^listen = .*|listen = /run/php/php-fpm.sock|' /usr/local/etc/php-fpm.d/www.conf \
+    && echo "clear_env = no" >> /usr/local/etc/php-fpm.d/www.conf \
+    && mkdir -p /run/php
 
-# Composer
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
-
-# 先复制依赖清单（利用 Docker 层缓存）
-COPY composer.json composer.lock* ./
-
-# 安装 PHP 依赖
-RUN composer install --no-dev --optimize-autoloader --no-interaction
-
-# 再复制源码
+# 复制应用代码
+WORKDIR /app
+COPY --from=vendor /app/vendor ./vendor
 COPY . .
 
-# Apache 指向 public/
-ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
-RUN sed -ri 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf
+# 构建时放入默认配置
+COPY config/docker/nginx.conf /etc/nginx/sites-available/default
+COPY config/docker/php-fpm.conf /usr/local/etc/php-fpm.d/zz-custom.conf
+COPY config/docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# 日志目录
-RUN mkdir -p /data/logs/ci-platform && chmod 755 /data/logs/ci-platform
+RUN rm -f /etc/nginx/sites-enabled/default \
+    && ln -sf /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
 
 EXPOSE 80
+
+CMD ["/usr/bin/supervisord", "-n", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
