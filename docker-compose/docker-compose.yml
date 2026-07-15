@@ -20,8 +20,7 @@ services:
     networks:
       - devops-net
     depends_on:
-      mysql:
-        condition: service_healthy
+      - mysql
 
   mysql:
     image: mysql:8.4
@@ -32,15 +31,10 @@ services:
     volumes:
       - mysql-data:/var/lib/mysql
     ports:
-      - "3306:3306"
+      - "3307:3306"
     restart: unless-stopped
     networks:
       - devops-net
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
 
 networks:
