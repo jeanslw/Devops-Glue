@@ -123,7 +123,8 @@ class Database
         // 字段类型映射
         $PK       = $isMySQL ? 'INT AUTO_INCREMENT PRIMARY KEY' : 'INTEGER PRIMARY KEY AUTOINCREMENT';
         $TEXT_PK  = $isMySQL ? 'VARCHAR(255) PRIMARY KEY'      : 'TEXT PRIMARY KEY';
-        $VARCHAR  = $isMySQL ? 'VARCHAR(255)'                   : 'TEXT';  // 有 DEFAULT 的列不能用 TEXT
+        $VARCHAR  = $isMySQL ? 'VARCHAR(255)'                   : 'TEXT';  // DEFAULT / INDEX 的列不能用 TEXT
+        $VCHAR255 = $isMySQL ? 'VARCHAR(255) NOT NULL'          : 'TEXT NOT NULL';  // 复合主键中的列
         $NOW      = self::sqlNow();
         $ENGINE   = $isMySQL ? ' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4' : '';
 
@@ -150,9 +151,9 @@ class Database
 
         // pipeline_tags
         $pdo->exec("CREATE TABLE IF NOT EXISTS pipeline_tags (
-            project TEXT NOT NULL,
+            project {$VCHAR255},
             pipeline_iid INTEGER NOT NULL,
-            tag TEXT NOT NULL,
+            tag {$VARCHAR} NOT NULL,
             harbor_repository TEXT,
             created_at TEXT DEFAULT ({$NOW}),
             PRIMARY KEY (project, pipeline_iid)
