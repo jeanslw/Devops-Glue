@@ -3,6 +3,7 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
+    image: devops-glue:latest
     container_name: devops-glue
     env_file:
       - ../config/.env
