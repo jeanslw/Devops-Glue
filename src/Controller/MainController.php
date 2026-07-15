@@ -108,7 +108,8 @@ class MainController extends BaseController
         // 写入缓存（30s TTL）
         try {
             $pdo = \App\Service\Database::getPdo();
-            $stmt = $pdo->prepare("INSERT OR REPLACE INTO cache (cache_key, value, expires_at) VALUES (?, ?, ?)");
+            $sql = \App\Service\Database::sqlUpsert('cache', 'cache_key, value, expires_at', '?, ?, ?');
+            $stmt = $pdo->prepare($sql);
             $stmt->execute(['map_list', json_encode($grouped, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), time() + 30]);
         } catch (\Exception $e) {
             // 缓存写入失败不影响响应

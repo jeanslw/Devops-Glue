@@ -1,4 +1,4 @@
-Devops-Glue API 文档 v2.3.0
+Devops-Glue API 文档 v2.3.1
 概述
 
 Devops-Glue 是一套为小企业提供的 DevOps 工具链集成接口，基于 Slim 4 框架实现 Jenkins + Gitlab CI双通道、GitLab/Gitee/GitHub/Gitea、Harbor 等工具的一键集成与数据互通。
@@ -8,7 +8,9 @@ Devops-Glue 是一套为小企业提供的 DevOps 工具链集成接口，基于
 
 PHP 版本: 8.0+
 
-PHP 扩展: pdo_sqlite, php-cli, php-mbstring, php-xml, php-curl, php-zip
+PHP 扩展: pdo_sqlite, pdo_mysql, php-cli, php-mbstring, php-xml, php-curl, php-zip
+
+数据库: SQLite（默认）或 MySQL 8.0+（DB_DRIVER=mysql）
 
 支持服务:
 
@@ -50,11 +52,15 @@ curl http://your-domain.com/api/main/jobs/list
 
 Docker 部署
 
+cd docker-compose
 docker compose up -d
 
 # 访问
-curl http://localhost/api/health
-浏览器打开 http://localhost/api/docs 查看 API 文档。
+curl http://localhost:8080/api/health
+浏览器打开 http://localhost:8080/api/docs 查看 API 文档。
+
+MySQL 模式：.env 中设置 DB_DRIVER=mysql，容器自动启动 MySQL 8.4 并建库。
+SQLite 模式：默认，数据文件在 config/data/data.db，已挂载 volume 持久化。
 
 注意事项：.env 中的 Jenkins / GitLab / Harbor 地址需使用容器可访问的 IP（如 host.docker.internal 或宿主机 IP），不能写 127.0.0.1。
 
@@ -370,11 +376,23 @@ HARBOR_PASSWORD=your_password
 ADMIN_USER=admin
 ADMIN_PASSWORD=
 
+# 数据库（必填: sqlite 或 mysql）
+DB_DRIVER=sqlite
+# SQLite:
+# DB_PATH=config/data/data.db
+# MySQL:
+# DB_HOST=127.0.0.1
+# DB_PORT=3306
+# DB_NAME=devops_glue
+# DB_USER=root
+# DB_PASS=
+
 # App
 APP_ENV=production
 APP_DEBUG=false
 BUILD_TIMEOUT=300
 LOG_PATH=/applogs/
+API_BASE_URL=http://127.0.0.1:8080
 手动映射配置 (config/settings.php)
 
 每个 Job 可配置以下字段。仅 job_name 必填，其他均可省略由系统自动推导。
@@ -464,10 +482,13 @@ curl -X OPTIONS "http://URL/api/main/jobs/list" -H "Origin: http://example.com" 
 |   |   AppConfig.php			# 配置访问器
 |   |   container.php			# DI 容器定义
 |   |   routes.php				# 路由定义
-|   |   settings.php			# 主配置 + 映射表
+|   |   settings.php			# 主配置 + 数据库配置
 |   |
-|   \---data					# 数据库目录
+|   \---data					# 数据库目录（SQLite）
 |           data.db				# SQLite 数据库（自动创建，.gitignore 排除）
+|
++---docker-compose				# Docker 编排
+|       docker-compose.yml		# PHP + MySQL 8.4（含健康检查）
 
 +---public						# Web 根目录
 |   |   .htaccess				# URL 重写
@@ -485,7 +506,7 @@ curl -X OPTIONS "http://URL/api/main/jobs/list" -H "Origin: http://example.com" 
 |   |       MainController.php
 |   |
 |   \---Service					# 业务逻辑
-|       |   Database.php		
+|       |   Database.php			# SQLite / MySQL 双驱动
 |       |   GitService.php
 |       |   HarborService.php
 |       |   JenkinsService.php
@@ -566,8 +587,8 @@ php
 十四、更新日志
 
 版本	日期	变更内容
-v2.3.0	2026-07-10	增加 GitLab CI 双通道 + Build 统一构建模块 + SQLite 持久化 + 管理 UI
-	v2.3.1	2026-07-12	scan-sync 公共端点；BUILD_MODE 三种配置模式；输出格式统一 raw/json/xml；Harbor 扫描回写优化
+v2.3.1	2026-07-15	MySQL/SQLite 双驱动；DB_DRIVER 必填；CI 表 ci_ 前缀；Docker 集成 MySQL 8.4
+v2.3.0	2026-07-10	GitLab CI 双通道 + Build 统一模块 + SQLite 持久化 + 管理 UI
 v2.2.0	2026-05-06	架构升级：Git 平台改为 ProviderRegistry 注册表模式，支持自定义平台接入。新增 Gitea 平台适配器。
 v2.1.2	2026-05-04	新增首页支持健康检查、 GitHub 平台接入；健康检查端点 /api/health；Swagger UI 文档，结构化文件日志；Docker 部署支持；
 v2.1.1	2026-03-05	Slim 4 重构。新增 Main 模块（平台接入、多方映射）,多版本支持；输出格式切换（raw/json/xml）；Harbor 扫描集成（Trivy 离线）和扫描报告获取；

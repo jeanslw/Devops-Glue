@@ -84,6 +84,18 @@ return [
         'password' => env('ADMIN_PASSWORD', ''),
     ],
 
+    // ==================== 数据库 ====================
+    // driver: sqlite | mysql
+    'db' => [
+        'driver'   => env('DB_DRIVER', ''),  // 必须: sqlite | mysql
+        'path'     => env('DB_PATH', __DIR__ . '/data/data.db'),
+        'host'     => env('DB_HOST', '127.0.0.1'),
+        'port'     => env('DB_PORT', '3306'),
+        'database' => env('DB_NAME', 'devops_glue'),
+        'username' => env('DB_USER', 'root'),
+        'password' => env('DB_PASS', ''),
+    ],
+
     // ==================== App ====================
     'app' => [
         'env'           => env('APP_ENV', 'production'),
