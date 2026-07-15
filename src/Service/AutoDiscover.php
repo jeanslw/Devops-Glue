@@ -56,17 +56,11 @@ class AutoDiscover
     {
         $saved = 0;
         $maps  = $this->config->getJobGitMap();
-        // dedup key: "job_name|build_provider" — 同仓库可被 Jenkins 和 GitLab CI 同时管理
-        $existingKeys = [];
-        foreach ($maps as $m) {
-            $existingKeys[] = ($m['job_name'] ?? '') . '|' . ($m['build_provider'] ?? 'jenkins');
-        }
+        $names = array_column($maps, 'job_name');
         foreach ($discovered as $item) {
             $e = $item['entry'];
-            $key = ($e['job_name'] ?? '') . '|' . ($e['build_provider'] ?? 'jenkins');
-            if (in_array($key, $existingKeys)) continue;
+            if (in_array($e['job_name'], $names)) continue;
             $maps[] = $e;
-            $existingKeys[] = $key;
             $saved++;
         }
         if ($saved > 0) $this->config->saveJobGitMap($maps);
@@ -82,8 +76,7 @@ class AutoDiscover
             foreach ($this->jenkins->getAllJobs() as $jobName) {
                 $remotes  = $this->jenkins->getGitRemotes($jobName);
                 $remote   = $remotes[0] ?? '';
-                $dedupKey = $remote ? ('jenkins|' . $remote) : '';
-                if ($remote && in_array($dedupKey, $existingRemotes)) continue;
+                if ($remote && in_array($remote, $existingRemotes)) continue;
                 $platform = $this->detectPlatform($remote);
 
                 $found[] = ['entry' => [
@@ -96,7 +89,7 @@ class AutoDiscover
                     'web_url'        => '',
                     'harbor_repository' => '',
                 ], 'source' => 'jenkins'];
-                if ($remote) $existingRemotes[] = $dedupKey;
+                if ($remote) $existingRemotes[] = $remote;
             }
         } catch (\Exception $e) {
             $this->logger?->warning('AutoDiscover Jenkins 扫描失败', ['error' => $e->getMessage()]);
@@ -134,8 +127,7 @@ class AutoDiscover
                     $path = $p['path_with_namespace'] ?? '';
                     $pid  = $p['id'] ?? 0;
                     $remote = $p['http_url_to_repo'] ?? '';
-                    $dedupKey = $remote ? ('gitlab_ci|' . $remote) : '';
-                    if ($remote && in_array($dedupKey, $existingRemotes)) continue;
+                    if ($remote && in_array($remote, $existingRemotes)) continue;
                     // 检查是否真的在用 CI：有 pipeline 记录才加入
                     if ($pid && !$this->hasPipelines($client, $base, $pid)) continue;
                     $found[] = ['entry' => [
@@ -148,7 +140,7 @@ class AutoDiscover
                         'web_url'        => $p['web_url'] ?? '',
                         'harbor_repository' => '',
                     ], 'source' => 'gitlab_ci'];
-                    if ($remote) $existingRemotes[] = $dedupKey;
+                    if ($remote) $existingRemotes[] = $remote;
                 }
                 $page++;
             }
@@ -165,14 +157,7 @@ class AutoDiscover
      */
     private function existingRemotes(): array
     {
-        // key: "provider|remote" — 同一个 git 仓库可被 Jenkins 和 GitLab CI 同时管理
-        $keys = [];
-        foreach ($this->config->getJobGitMap() as $m) {
-            $provider = $m['build_provider'] ?? 'jenkins';
-            $remote = $m['git_remote'] ?? '';
-            if ($remote) $keys[] = $provider . '|' . $remote;
-        }
-        return $keys;
+        return array_filter(array_column($this->config->getJobGitMap(), 'git_remote'));
     }
 
     private function detectPlatform(string $remote): string
