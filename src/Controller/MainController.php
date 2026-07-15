@@ -43,8 +43,8 @@ class MainController extends BaseController
      */
     public function mapList(Request $request, Response $response): Response
     {
-        $cacheKey = 'map_list';
         $buildMode = $_ENV['BUILD_MODE'] ?? 'both';
+        $cacheKey = 'map_list_' . $buildMode;
 
         // 有缓存且未过期，直接返回（gitlab_ci 模式跳过缓存，避免 Jenkins 旧数据）
         if ($buildMode !== 'gitlab_ci') {

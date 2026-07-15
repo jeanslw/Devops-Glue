@@ -15,7 +15,7 @@ $app->get('/admin', function ($request, $response) {
     return $response->withHeader('Content-Type', 'text/html; charset=utf-8');
 });
 
-$app->group('/api', function (RouteCollectorProxy $api) {
+$app->group('/api', function (RouteCollectorProxy $api) use ($app) {
 
     // 健康检查
     $api->map(['GET'], '/health', [MainController::class, 'health']);
