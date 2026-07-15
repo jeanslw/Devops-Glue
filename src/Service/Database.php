@@ -128,8 +128,8 @@ class Database
         $NOW      = self::sqlNow();
         $ENGINE   = $isMySQL ? ' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4' : '';
 
-        // job_git_map
-        $pdo->exec("CREATE TABLE IF NOT EXISTS job_git_map (
+        // ci_job_git_map
+        $pdo->exec("CREATE TABLE IF NOT EXISTS ci_job_git_map (
             job_name {$TEXT_PK},
             git_platform TEXT,
             build_provider {$VARCHAR} DEFAULT 'jenkins',
@@ -141,16 +141,16 @@ class Database
             api_version TEXT,
             status {$VARCHAR} DEFAULT 'active'
         ){$ENGINE}");
-        try { $pdo->exec("ALTER TABLE job_git_map ADD COLUMN status {$VARCHAR} DEFAULT 'active'"); } catch (\Exception $e) {}
+        try { $pdo->exec("ALTER TABLE ci_job_git_map ADD COLUMN status {$VARCHAR} DEFAULT 'active'"); } catch (\Exception $e) {}
 
-        // platform_versions
-        $pdo->exec("CREATE TABLE IF NOT EXISTS platform_versions (
+        // ci_platform_versions
+        $pdo->exec("CREATE TABLE IF NOT EXISTS ci_platform_versions (
             platform {$TEXT_PK},
             version TEXT NOT NULL
         ){$ENGINE}");
 
-        // pipeline_tags
-        $pdo->exec("CREATE TABLE IF NOT EXISTS pipeline_tags (
+        // ci_pipeline_tags
+        $pdo->exec("CREATE TABLE IF NOT EXISTS ci_pipeline_tags (
             project {$VCHAR255},
             pipeline_iid INTEGER NOT NULL,
             tag {$VARCHAR} NOT NULL,
@@ -158,7 +158,7 @@ class Database
             created_at TEXT DEFAULT ({$NOW}),
             PRIMARY KEY (project, pipeline_iid)
         ){$ENGINE}");
-        try { $pdo->exec("ALTER TABLE pipeline_tags ADD COLUMN harbor_repository TEXT"); } catch (\Exception $e) {}
+        try { $pdo->exec("ALTER TABLE ci_pipeline_tags ADD COLUMN harbor_repository TEXT"); } catch (\Exception $e) {}
 
         // cache
         if ($isMySQL) {
@@ -219,8 +219,8 @@ class Database
 
         $isMySQL = self::$driver === 'mysql';
         $sql = $isMySQL
-            ? "INSERT IGNORE INTO job_git_map (job_name,git_platform,build_provider,git_remote,project_id,web_url,current_path,harbor_repository,api_version) VALUES (?,?,?,?,?,?,?,?,?)"
-            : "INSERT OR IGNORE INTO job_git_map (job_name,git_platform,build_provider,git_remote,project_id,web_url,current_path,harbor_repository,api_version) VALUES (?,?,?,?,?,?,?,?,?)";
+            ? "INSERT IGNORE INTO ci_job_git_map (job_name,git_platform,build_provider,git_remote,project_id,web_url,current_path,harbor_repository,api_version) VALUES (?,?,?,?,?,?,?,?,?)"
+            : "INSERT OR IGNORE INTO ci_job_git_map (job_name,git_platform,build_provider,git_remote,project_id,web_url,current_path,harbor_repository,api_version) VALUES (?,?,?,?,?,?,?,?,?)";
 
         $stmt = $pdo->prepare($sql);
         foreach ($data as $row) {
@@ -244,8 +244,8 @@ class Database
 
         $isMySQL = self::$driver === 'mysql';
         $sql = $isMySQL
-            ? "REPLACE INTO platform_versions (platform,version) VALUES (?,?)"
-            : "INSERT OR REPLACE INTO platform_versions (platform,version) VALUES (?,?)";
+            ? "REPLACE INTO ci_platform_versions (platform,version) VALUES (?,?)"
+            : "INSERT OR REPLACE INTO ci_platform_versions (platform,version) VALUES (?,?)";
 
         $stmt = $pdo->prepare($sql);
         foreach ($data as $platform => $ver) {
@@ -264,8 +264,8 @@ class Database
 
         $isMySQL = self::$driver === 'mysql';
         $sql = $isMySQL
-            ? "REPLACE INTO pipeline_tags (project,pipeline_iid,tag) VALUES (?,?,?)"
-            : "INSERT OR REPLACE INTO pipeline_tags (project,pipeline_iid,tag) VALUES (?,?,?)";
+            ? "REPLACE INTO ci_pipeline_tags (project,pipeline_iid,tag) VALUES (?,?,?)"
+            : "INSERT OR REPLACE INTO ci_pipeline_tags (project,pipeline_iid,tag) VALUES (?,?,?)";
 
         $stmt = $pdo->prepare($sql);
         foreach ($data as $project => $tags) {

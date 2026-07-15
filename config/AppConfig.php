@@ -78,14 +78,14 @@ class AppConfig
     public function getJobGitMap(): array
     {
         $pdo = \App\Service\Database::getPdo();
-        return $pdo->query("SELECT * FROM job_git_map ORDER BY job_name")->fetchAll();
+        return $pdo->query("SELECT * FROM ci_job_git_map ORDER BY job_name")->fetchAll();
     }
 
     public function saveJobGitMap(array $data): void
     {
         $pdo = \App\Service\Database::getPdo();
-        $pdo->exec("DELETE FROM job_git_map");
-        $stmt = $pdo->prepare("INSERT INTO job_git_map (job_name,git_platform,build_provider,git_remote,project_id,web_url,current_path,harbor_repository,api_version,status) VALUES (?,?,?,?,?,?,?,?,?,?)");
+        $pdo->exec("DELETE FROM ci_job_git_map");
+        $stmt = $pdo->prepare("INSERT INTO ci_job_git_map (job_name,git_platform,build_provider,git_remote,project_id,web_url,current_path,harbor_repository,api_version,status) VALUES (?,?,?,?,?,?,?,?,?,?)");
         foreach ($data as $row) {
             if (empty($row['job_name'])) continue;
             $stmt->execute([
@@ -254,7 +254,7 @@ class AppConfig
         // SQLite 覆盖默认
         try {
             $pdo = \App\Service\Database::getPdo();
-            $rows = $pdo->query("SELECT platform, version FROM platform_versions")->fetchAll();
+            $rows = $pdo->query("SELECT platform, version FROM ci_platform_versions")->fetchAll();
             foreach ($rows as $r) {
                 if (isset($result[$r['platform']])) {
                     $result[$r['platform']] = ['value' => $r['version'], 'source' => 'json'];
@@ -281,8 +281,8 @@ class AppConfig
     public function savePlatformApiVersions(array $data): void
     {
         $pdo = \App\Service\Database::getPdo();
-        $pdo->exec("DELETE FROM platform_versions");
-        $stmt = $pdo->prepare("INSERT INTO platform_versions (platform, version) VALUES (?, ?)");
+        $pdo->exec("DELETE FROM ci_platform_versions");
+        $stmt = $pdo->prepare("INSERT INTO ci_platform_versions (platform, version) VALUES (?, ?)");
         foreach ($data as $name => $ver) {
             $default = self::$DEFAULT_API_VERSIONS[$name] ?? null;
             if ($ver !== $default && $ver !== '' && $ver !== null) {

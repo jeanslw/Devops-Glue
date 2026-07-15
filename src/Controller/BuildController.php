@@ -391,7 +391,7 @@ class BuildController extends BaseController
     {
         try {
             $pdo = \App\Service\Database::getPdo();
-            $rows = $pdo->query("SELECT project, pipeline_iid, tag, harbor_repository, created_at FROM pipeline_tags ORDER BY created_at DESC")->fetchAll();
+            $rows = $pdo->query("SELECT project, pipeline_iid, tag, harbor_repository, created_at FROM ci_pipeline_tags ORDER BY created_at DESC")->fetchAll();
             $result = [];
             foreach ($rows as $r) {
                 $result[$r['project']][(string) $r['pipeline_iid']] = [
@@ -409,7 +409,7 @@ class BuildController extends BaseController
     {
         try {
             $pdo = \App\Service\Database::getPdo();
-            $sql   = \App\Service\Database::sqlUpsert('pipeline_tags', 'project, pipeline_iid, tag, harbor_repository', '?, ?, ?, ?');
+            $sql   = \App\Service\Database::sqlUpsert('ci_pipeline_tags', 'project, pipeline_iid, tag, harbor_repository', '?, ?, ?, ?');
             $stmt = $pdo->prepare($sql);
             $stmt->execute([$path, $pipelineIid, $tag, $harborRepo]);
         } catch (\Exception $e) {

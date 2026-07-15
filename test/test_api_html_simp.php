@@ -9,7 +9,7 @@
 $baseUrl = $argv[1] ?? getenv('TEST_BASE_URL') ?: 'http://localhost:8080';
 $baseUrl = rtrim($baseUrl, '/');
 
-$testJobs       = ['static', 'php/myapp', 'java/registry'];
+$testJobs       = ['static', 'php/devops-glue', 'java/registry'];
 $harborProject  = 'mycode';
 $harborRepo     = 'diagnosis-runtime';
 
