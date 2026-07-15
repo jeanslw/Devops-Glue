@@ -129,7 +129,7 @@ class AutoDiscover
                     $remote = $p['http_url_to_repo'] ?? '';
                     if ($remote && in_array($remote, $existingRemotes)) continue;
                     // 检查是否真的在用 CI：有 pipeline 记录才加入
-                    if ($pid && !$this->hasPipelines($client, $pid)) continue;
+                    if ($pid && !$this->hasPipelines($client, $base, $pid)) continue;
                     $found[] = ['entry' => [
                         'job_name'       => $path,
                         'build_provider' => 'gitlab_ci',
@@ -167,10 +167,10 @@ class AutoDiscover
         catch (\Exception $e) { return $this->config->getDefaultGitPlatform(); }
     }
 
-    private function hasPipelines(Client $client, int $projectId): bool
+    private function hasPipelines(Client $client, string $base, int $projectId): bool
     {
         try {
-            $resp = $client->get("/api/v4/projects/{$projectId}/pipelines?per_page=1");
+            $resp = $client->get("{$base}/api/v4/projects/{$projectId}/pipelines?per_page=1");
             $data = json_decode($resp->getBody(), true);
             return is_array($data) && !empty($data);
         } catch (\Exception $e) {
