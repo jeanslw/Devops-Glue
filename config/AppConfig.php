@@ -50,12 +50,6 @@ class AppConfig
         return $this->config['app']['env'] ?? 'production';
     }
 
-    // 数据库配置
-    public function getDbConfig(): array
-    {
-        return $this->config['db'] ?? ['driver' => 'sqlite'];
-    }
-
     // 日志路径
     public function getLogPath(): string
     {
