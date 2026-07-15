@@ -17,10 +17,9 @@ services:
     ports:
       - "8080:80"
     restart: unless-stopped
-    networks:
-      - devops-net
     depends_on:
-      - mysql
+      mysql:
+        condition: service_healthy
 
   mysql:
     image: mysql:8.4
@@ -30,16 +29,13 @@ services:
       MYSQL_DATABASE: ${DB_NAME:-devops_glue}
     volumes:
       - mysql-data:/var/lib/mysql
-    ports:
-      - "3307:3306"
     restart: unless-stopped
-    networks:
-      - devops-net
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
-
-networks:
-  devops-net:
-    driver: bridge
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
 volumes:
   mysql-data:
