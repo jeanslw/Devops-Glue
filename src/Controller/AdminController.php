@@ -124,8 +124,8 @@ class AdminController extends BaseController
 
             // 更新密码
             $hash = password_hash($newPass, PASSWORD_BCRYPT);
-            $pdo->prepare("INSERT INTO admin_users (username, password_hash, updated_at) VALUES (?, ?, datetime('now','localtime')) ON CONFLICT(username) DO UPDATE SET password_hash=excluded.password_hash, updated_at=excluded.updated_at")
-                ->execute([$username, $hash]);
+            $sql = \App\Service\Database::sqlUpsert('admin_users', 'username, password_hash, updated_at', '?, ?, ' . \App\Service\Database::sqlNow());
+            \App\Service\Database::getPdo()->prepare($sql)->execute([$username, $hash]);
 
             return $this->output($response, ['success' => true, 'message' => '密码已更新，请重新登录'], $request);
         } catch (\Exception $e) {

@@ -409,7 +409,8 @@ class BuildController extends BaseController
     {
         try {
             $pdo = \App\Service\Database::getPdo();
-            $stmt = $pdo->prepare("INSERT OR REPLACE INTO pipeline_tags (project, pipeline_iid, tag, harbor_repository) VALUES (?, ?, ?, ?)");
+            $sql   = \App\Service\Database::sqlUpsert('pipeline_tags', 'project, pipeline_iid, tag, harbor_repository', '?, ?, ?, ?');
+            $stmt = $pdo->prepare($sql);
             $stmt->execute([$path, $pipelineIid, $tag, $harborRepo]);
         } catch (\Exception $e) {
             // 静默失败
