@@ -412,6 +412,12 @@ class BuildController extends BaseController
             $sql   = \App\Service\Database::sqlUpsert('ci_pipeline_tags', 'project, pipeline_iid, tag, harbor_repository', '?, ?, ?, ?');
             $stmt = $pdo->prepare($sql);
             $stmt->execute([$path, $pipelineIid, $tag, $harborRepo]);
+
+            // 回填 job_git_map 的 harbor_repository（如果为空）
+            if (!empty($harborRepo)) {
+                $pdo->prepare("UPDATE ci_job_git_map SET harbor_repository=? WHERE (job_name=? OR current_path=?) AND (harbor_repository IS NULL OR harbor_repository='')")
+                    ->execute([$harborRepo, $path, $path]);
+            }
         } catch (\Exception $e) {
             // 静默失败
         }
