@@ -90,6 +90,7 @@ return [
         'debug'         => env('APP_DEBUG') === 'true',
         'build_timeout' => (int) env('BUILD_TIMEOUT', '300'),
         'log_path'      => env('LOG_PATH', '/data/logs/ci-platform/'),
+        'api_base_url'  => env('API_BASE_URL', ''),
     ],
 
     /*

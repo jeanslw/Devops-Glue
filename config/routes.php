@@ -51,7 +51,7 @@ $app->group('/api', function (RouteCollectorProxy $api) {
     });
 
     // OpenAPI 规范 —— 需登录
-    $api->get('/openapi.json', function ($request, $response) use ($checkAuth) {
+    $api->get('/openapi.json', function ($request, $response) use ($checkAuth, $app) {
         if (!$checkAuth($request)) {
             $response->getBody()->write(json_encode(['code' => 401, 'message' => '请先登录 API 文档']));
             return $response->withStatus(401)->withHeader('Content-Type', 'application/json');
@@ -67,8 +67,9 @@ $app->group('/api', function (RouteCollectorProxy $api) {
         $isDefault = ($uri->getScheme() === 'http'  && $port === 80)
                   || ($uri->getScheme() === 'https' && $port === 443);
 
-        // 优先使用 .env 显式地址，未设则自动推导
-        $apiBaseUrl = $_ENV['API_BASE_URL'] ?? '';
+        // 优先使用配置的 API_BASE_URL，未设则自动推导
+        $config = $app->getContainer()->get(\App\Config\AppConfig::class);
+        $apiBaseUrl = $config->getApiBaseUrl();
         if (empty($apiBaseUrl)) {
             $apiBaseUrl = $uri->getScheme() . '://' . $uri->getHost()
                         . (($port && !$isDefault) ? ':' . $port : '');

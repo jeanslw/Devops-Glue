@@ -56,6 +56,12 @@ class AppConfig
         return $this->config['app']['log_path'] ?? '';
     }
 
+    // API 外部访问地址（用于 Swagger UI / OpenAPI，不设返回空字符串由调用方自动推导）
+    public function getApiBaseUrl(): string
+    {
+        return $this->config['app']['api_base_url'] ?? '';
+    }
+
     // CORS 配置
     public function getCorsConfig(): array
     {
