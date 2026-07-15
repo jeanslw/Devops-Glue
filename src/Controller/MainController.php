@@ -76,12 +76,12 @@ class MainController extends BaseController
 
         $grouped = [];
         foreach ($maps as $map) {
-            $key = $map['current_path'] ?? '';
+            $key = $map['job_name'] ?? '';
             if (empty($key)) {
-                $key = $this->extractProjectPath($map['git_remote'] ?? '');
+                $key = $map['current_path'] ?? '';
             }
             if (empty($key)) {
-                $key = $map['job_name'];
+                $key = $this->extractProjectPath($map['git_remote'] ?? '');
             }
 
             if (!isset($grouped[$key])) {
