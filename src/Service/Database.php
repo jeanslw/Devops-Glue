@@ -17,7 +17,10 @@ class Database
 
     private static function defaultConfig(): array
     {
-        $driver = strtolower($_ENV['DB_DRIVER'] ?? 'sqlite');
+        $driver = strtolower($_ENV['DB_DRIVER'] ?? '');
+        if (!in_array($driver, ['sqlite', 'mysql'])) {
+            throw new \RuntimeException('DB_DRIVER 必须设为 sqlite 或 mysql，当前: ' . ($driver ?: '未设置'));
+        }
         return [
             'driver'   => $driver,
             'path'     => $_ENV['DB_PATH'] ?? __DIR__ . '/../../config/data/data.db',
