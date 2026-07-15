@@ -7,18 +7,14 @@ services:
     env_file:
       - ../config/.env
     volumes:
-      - ../config/.env:/app/.env:ro
+      - ../config/.env:/app/config/.env:ro
       # 运行时配置热更新
       - ../config/docker/nginx.conf:/etc/nginx/sites-available/default:ro
       - ../config/docker/php-fpm.conf:/usr/local/etc/php-fpm.d/zz-custom.conf:ro
       - ../config/docker/supervisord.conf:/etc/supervisor/conf.d/supervisord.conf:ro
       # 持久化数据
-      - glue-data:/app/var
-      - glue-logs:/data/logs/ci-platform
+      - ../config/data:/app/config/data
+      - ../applog:/data/logs/ci-platform
     ports:
       - "8080:80"
     restart: unless-stopped
-
-volumes:
-  glue-data:
-  glue-logs:

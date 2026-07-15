@@ -48,8 +48,14 @@ COPY config/docker/php-fpm.conf /usr/local/etc/php-fpm.d/zz-custom.conf
 COPY config/docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 RUN rm -f /etc/nginx/sites-enabled/default \
-    && ln -sf /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
+    && ln -sf /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default \
+    && mkdir -p /app/config/data /data/logs/ci-platform \
+    && chmod -R 777 /app/config/data /data/logs/ci-platform \
+    && echo '#!/bin/bash' > /entrypoint.sh \
+    && echo 'chmod -R 777 /app/config/data /data/logs/ci-platform 2>/dev/null || true' >> /entrypoint.sh \
+    && echo 'exec /usr/bin/supervisord -n -c /etc/supervisor/conf.d/supervisord.conf' >> /entrypoint.sh \
+    && chmod +x /entrypoint.sh
 
 EXPOSE 80
 
-CMD ["/usr/bin/supervisord", "-n", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+CMD ["/entrypoint.sh"]

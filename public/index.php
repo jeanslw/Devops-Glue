@@ -53,16 +53,47 @@ $app->addRoutingMiddleware();
 
 // CORS 中间件（最后添加 = 最先执行，确保在路由之前拦截 OPTIONS）
 $app->add(\App\Middleware\CorsMiddleware::class);
-$errorMiddleware = $app->addErrorMiddleware(true, true, true);
+$appEnv = $_ENV['APP_ENV'] ?? 'production';
+$appDebug = ($_ENV['APP_DEBUG'] ?? 'false') === 'true';
+$errorMiddleware = $app->addErrorMiddleware($appDebug, true, true);
 
-// 自定义 404
+// ── 判断是否 API 请求 ──
+$isApiRequest = function ($request): bool {
+    $path = $request->getUri()->getPath();
+    return str_starts_with($path, '/api') || str_contains($request->getHeaderLine('Accept'), 'application/json');
+};
+
+// ── 通用错误 → API 请求返回 JSON，否则 HTML ──
+$errorMiddleware->setDefaultErrorHandler(function ($request, $exception, $displayErrorDetails) use ($isApiRequest) {
+    $response = new \Slim\Psr7\Response();
+    if ($isApiRequest($request)) {
+        $payload = ['code' => 500, 'message' => '服务器内部错误'];
+        if ($displayErrorDetails) {
+            $payload['error'] = $exception->getMessage();
+            $payload['file']  = $exception->getFile() . ':' . $exception->getLine();
+            $payload['trace'] = explode("\n", $exception->getTraceAsString());
+        }
+        $response->getBody()->write(json_encode($payload, JSON_UNESCAPED_UNICODE));
+        return $response->withStatus(500)->withHeader('Content-Type', 'application/json; charset=utf-8');
+    }
+    $html = '<!doctype html><html lang="zh"><head><meta charset="utf-8"><title>服务器错误</title></head><body style="font-family:sans-serif;padding:40px;">';
+    $html .= '<h1>⚠️ 500 服务器错误</h1>';
+    if ($displayErrorDetails) {
+        $html .= '<p><b>' . htmlspecialchars($exception->getMessage()) . '</b></p>';
+        $html .= '<pre>' . htmlspecialchars($exception->getFile() . ':' . $exception->getLine()) . '</pre>';
+        $html .= '<pre>' . htmlspecialchars($exception->getTraceAsString()) . '</pre>';
+    }
+    $html .= '</body></html>';
+    $response->getBody()->write($html);
+    return $response->withStatus(500)->withHeader('Content-Type', 'text/html; charset=utf-8');
+});
+
+// ── 自定义 404 ──
 $errorMiddleware->setErrorHandler(
     \Slim\Exception\HttpNotFoundException::class,
-    function ($request, $exception, $displayErrorDetails) {
+    function ($request, $exception, $displayErrorDetails) use ($isApiRequest) {
         $response = new \Slim\Psr7\Response();
-        $path = $request->getUri()->getPath();
-        $acceptHeader = $request->getHeaderLine('Accept');
-        if (str_starts_with($path, '/api') || str_contains($acceptHeader, 'application/json')) {
+        if ($isApiRequest($request)) {
             $payload = json_encode(['code' => 404, 'message' => 'API 路由不存在', 'data' => null]);
             $response->getBody()->write($payload);
             return $response->withStatus(404)->withHeader('Content-Type', 'application/json; charset=utf-8');
