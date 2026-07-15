@@ -66,8 +66,16 @@ $app->group('/api', function (RouteCollectorProxy $api) {
         $port = $uri->getPort();
         $isDefault = ($uri->getScheme() === 'http'  && $port === 80)
                   || ($uri->getScheme() === 'https' && $port === 443);
+
+        // 优先使用 .env 显式地址，未设则自动推导
+        $apiBaseUrl = $_ENV['API_BASE_URL'] ?? '';
+        if (empty($apiBaseUrl)) {
+            $apiBaseUrl = $uri->getScheme() . '://' . $uri->getHost()
+                        . (($port && !$isDefault) ? ':' . $port : '');
+        }
+
         $spec['servers'] = [[
-            'url'         => $uri->getScheme() . '://' . $uri->getHost() . (($port && !$isDefault) ? ':' . $port : ''),
+            'url'         => $apiBaseUrl,
             'description' => '当前环境',
         ]];
 
