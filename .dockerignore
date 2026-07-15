@@ -13,6 +13,5 @@ test
 *.md
 LICENSE
 docker-compose/
-config/docker/
 system_info.png
 system_running.png
