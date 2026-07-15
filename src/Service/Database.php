@@ -121,25 +121,26 @@ class Database
         $isMySQL = self::$driver === 'mysql';
 
         // 字段类型映射
-        $PK      = $isMySQL ? 'INT AUTO_INCREMENT PRIMARY KEY' : 'INTEGER PRIMARY KEY AUTOINCREMENT';
-        $TEXT_PK = $isMySQL ? 'VARCHAR(255) PRIMARY KEY'      : 'TEXT PRIMARY KEY';
-        $NOW     = self::sqlNow();
-        $ENGINE  = $isMySQL ? ' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4' : '';
+        $PK       = $isMySQL ? 'INT AUTO_INCREMENT PRIMARY KEY' : 'INTEGER PRIMARY KEY AUTOINCREMENT';
+        $TEXT_PK  = $isMySQL ? 'VARCHAR(255) PRIMARY KEY'      : 'TEXT PRIMARY KEY';
+        $VARCHAR  = $isMySQL ? 'VARCHAR(255)'                   : 'TEXT';  // 有 DEFAULT 的列不能用 TEXT
+        $NOW      = self::sqlNow();
+        $ENGINE   = $isMySQL ? ' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4' : '';
 
         // job_git_map
         $pdo->exec("CREATE TABLE IF NOT EXISTS job_git_map (
             job_name {$TEXT_PK},
             git_platform TEXT,
-            build_provider TEXT DEFAULT 'jenkins',
+            build_provider {$VARCHAR} DEFAULT 'jenkins',
             git_remote TEXT,
             project_id INTEGER,
             web_url TEXT,
             current_path TEXT,
             harbor_repository TEXT,
             api_version TEXT,
-            status TEXT DEFAULT 'active'
+            status {$VARCHAR} DEFAULT 'active'
         ){$ENGINE}");
-        try { $pdo->exec("ALTER TABLE job_git_map ADD COLUMN status TEXT DEFAULT 'active'"); } catch (\Exception $e) {}
+        try { $pdo->exec("ALTER TABLE job_git_map ADD COLUMN status {$VARCHAR} DEFAULT 'active'"); } catch (\Exception $e) {}
 
         // platform_versions
         $pdo->exec("CREATE TABLE IF NOT EXISTS platform_versions (
