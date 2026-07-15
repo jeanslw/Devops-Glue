@@ -9,13 +9,43 @@ services:
       - ../config/.env
     volumes:
       - ../config/.env:/app/config/.env:ro
-      # 运行时配置热更新
       - ../config/docker/nginx.conf:/etc/nginx/sites-available/default:ro
       - ../config/docker/php-fpm.conf:/usr/local/etc/php-fpm.d/zz-custom.conf:ro
       - ../config/docker/supervisord.conf:/etc/supervisor/conf.d/supervisord.conf:ro
-      # 持久化数据
       - ../config/data:/app/config/data
       - ../applog:/data/logs/ci-platform
     ports:
       - "8080:80"
     restart: unless-stopped
+    networks:
+      - devops-net
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  mysql:
+    image: mysql:8.4
+    container_name: devops-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASS:-root123}
+      MYSQL_DATABASE: ${DB_NAME:-devops_glue}
+    volumes:
+      - mysql-data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    restart: unless-stopped
+    networks:
+      - devops-net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+
+networks:
+  devops-net:
+    driver: bridge
+
+volumes:
+  mysql-data:
