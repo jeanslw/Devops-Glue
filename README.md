@@ -31,23 +31,23 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 自定义 Git 平台：实现 GitProviderInterface + 在 settings.php 中注册即可接入
 
 # 快速部署
-	## 1. 克隆仓库
+	# 1. 克隆仓库
 	```bash
 	git clone https://github.com/jeanslw/Devops-Glue.git
 	cd Devops-Glue
-	## 2. 安装依赖
+	# 2. 安装依赖
 
 	composer install
-	## 3. 配置环境变量
+	# 3. 配置环境变量
 
 	cp .env.example .env
 	编辑 .env 文件，填入实际服务地址和凭证。
 
-	## 4. 配置 Web 服务器
+	# 4. 配置 Web 服务器
 	将 public/ 目录设为 Web 根目录，配置 URL 重写。
 	```
 
-	## 5. 验证部署
+	# 5. 验证部署
 	```bash
 	curl http://your-domain.com/api/main/jobs/list
 
@@ -56,7 +56,7 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 	cd docker-compose
 	docker compose up -d
 	```
-	# 访问
+# 访问
 	curl http://localhost:8080/api/health
 	浏览器打开 http://localhost:8080/api/docs 查看 API 文档。
 
@@ -108,7 +108,7 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 
 	日志级别：production → info，其他环境 → debug。
 
-#一、健康检查
+# 一、健康检查
 	URL: /api/health
 
 	方法: GET
@@ -140,7 +140,7 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 
 	["java/registry", "php/myapp", "static"]
 
-	## 2.2 Job / Git / Harbor 三方映射（按项目分组）
+	# 2.1 Job / Git / Harbor 三方映射（按项目分组）
 	URL: /api/main/map/list
 
 	方法: GET / POST
@@ -169,7 +169,7 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 	  }
 	}
 	```
-	## 2.3 已接入的 Git 平台列表（静态配置）
+	# 2.2 已接入的 Git 平台列表（静态配置）
 	URL: /api/main/git/platforms
 
 	方法: GET / POST
@@ -201,7 +201,7 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 	  }
 	}
 	```
-## 2.4 平台接入检测（动态扫描）
+	# 2.3 平台接入检测（动态扫描）
 	URL: /api/main/git/discovery
 
 	方法: GET / POST
@@ -220,43 +220,43 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 # 三、Build 模块 (/api/build) — v2.3.0
 	统一 Jenkins 和 GitLab CI 的构建/Pipeline 入口。旧 /api/jenkins/* 路由已废弃。
 
-	## 3.1 触发构建
+	# 3.1 触发构建
 	URL: POST /api/build/{project}/trigger
 	参数: GET Query String 或 POST JSON body（参数名取决于 Jenkins/GitLab CI 配置）
 	输出: {"build_provider":"...","project_id":"...","success":true,...}
 
-	## 3.2 构建参数/CI 变量
+	# 3.2 构建参数/CI 变量
 	URL: /api/build/{project}/variables
 	输出: {"branches":["main","master"],"zone":["test","prd"]}（默认 raw 格式）
 
-	## 3.3 Pipeline 列表
+	# 3.3 Pipeline 列表
 	URL: /api/build/{project}/pipelines?list=id|build|time
 	?list=id → [10,9,8]
 	?list=build → ["#10","#9","#8"]
 	?list=time → ["#10 [date]","#9 [date]"]
 
-	## 3.4 Pipeline 详情 + Jobs
+	# 3.4 Pipeline 详情 + Jobs
 	URL: /api/build/{project}/pipelines/{id}
 	输出: {"build_provider":"...","pipeline_id":4,"jobs":[{id,name,stage,status}]}
 
-	## 3.5 构建日志（统一入口）
+	# 3.5 构建日志（统一入口）
 	URL: /api/build/{project}/logs/{id}
 
-	## 3.6 重试失败的 Pipeline（仅 GitLab CI）
+	# 3.6 重试失败的 Pipeline（仅 GitLab CI）
 	URL: POST /api/build/{project}/pipelines/{id}/retry
 
-	## 3.7 取消运行中的 Pipeline（仅 GitLab CI）
+	# 3.7 取消运行中的 Pipeline（仅 GitLab CI）
 	URL: POST /api/build/{project}/pipelines/{id}/cancel
 
-	## 3.8 Harbor 扫描同步
+	# 3.8 Harbor 扫描同步
 	URL: POST /api/build/{project}/scan-sync
 	参数: {"tag":"v3.0.0"} 不传则取 Harbor 最新 tag
 
-	## 3.9 Pipeline → Tag 映射
+	# 3.9 Pipeline → Tag 映射
 	URL: /api/build/{project}/tag?pipeline=10
 
-	# 四、Git 模块 (/api/git)
-	4.1 查询 Job 对应的 Git 分支列表
+# 四、Git 模块 (/api/git)
+	查询 Job 对应的 Git 分支列表
 	URL: /api/git/{group}/{project}/branches
 
 	方法: GET / POST
@@ -266,21 +266,21 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 	说明: 支持 GitLab、Gitee、GitHub 三种平台，自动根据 Job 在映射配置中关联的 Git 仓库查询。
 
 # 五、Harbor 模块 (/api/harbor)
-	## 5.1 获取项目列表
+	# 5.1 获取项目列表
 	URL: /api/harbor/projects
 
 	方法: GET / POST
 
 	输出: ["library","mycode","toolkit"]
 
-	## 5.2 获取仓库列表
+	# 5.2 获取仓库列表
 	URL: /api/harbor/{project}/repositories
 
 	方法: GET / POST
 
 	输出: ["diagnosis-runtime","nginx"]
 
-	## 5.3 获取 Tag 列表
+	# 5.3 获取 Tag 列表
 	URL: /api/harbor/{project}/repositories/{repository}/tags
 
 	方法: GET / POST
@@ -289,7 +289,7 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 
 	输出: ["v1.0.0","v1.0.1"]
 
-	## 5.4 触发镜像扫描
+	# 5.4 触发镜像扫描
 	URL: /api/harbor/{project}/repositories/{repository}/tags/{tag}/scan
 
 	方法: POST
@@ -298,7 +298,7 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 
 	说明: 支持 Harbor v1（1.10.x）和 v2（2.x）两种 API 版本，自动检测。
 
-	## 5.5 获取扫描报告
+	# 5.5 获取扫描报告
 	URL: /api/harbor/{project}/repositories/{repository}/tags/{tag}/scan
 
 	方法: GET
@@ -312,7 +312,7 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 
 	说明: Web 管理界面，需登录（账号密码在 .env 中配置 ADMIN_USER / ADMIN_PASSWORD）。
 
-	## 五大功能：
+	# 五大功能：
 	- 服务监测 — Jenkins / Git 平台 / Harbor 连通性 + 版本号实时检测
 	- 映射管理 — job_git_map 可视化增删改查，数据存储在 SQLite
 	- 项目拓扑 — Build → Git 仓库 → Harbor 镜像 链路可视化
@@ -346,42 +346,42 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 	503	服务不可用（Harbor 扫描器未启用等）
 
 # 九、配置说明
-	##环境变量 (.env)
+	#环境变量 (.env)
 ```php
-	## Jenkins
+	# Jenkins
 	JENKINS_BASE_URL=http://URL
 	JENKINS_USER=admin
 	JENKINS_TOKEN=your_token
 
-	## GitLab
+	# GitLab
 	GITLAB_BASE_URL=http://URL
 	GITLAB_TOKEN=your_token
 
-	## GitHub
+	# GitHub
 	GITHUB_BASE_URL=https://api.github.com
 	GITHUB_TOKEN=your_token
 
-	## Gitee
+	# Gitee
 	GITEE_BASE_URL=https://gitee.com/api/v5
 	GITEE_TOKEN=your_token
 
-	## Gitea
+	# Gitea
 	GITEA_BASE_URL=http://your-gitea
 	GITEA_TOKEN=your_token
 
-	## Git 默认平台（URL 无法识别时回退，自建 GitLab/Gitea 必填）
+	# Git 默认平台（URL 无法识别时回退，自建 GitLab/Gitea 必填）
 	DEFAULT_GIT_PLATFORM=gitlab
 
-	##Harbor
+	# Harbor
 	HARBOR_BASE_URL=http://URL
 	HARBOR_USER=admin
 	HARBOR_PASSWORD=your_password
 
-	## 管理后台登录
+	# 管理后台登录
 	ADMIN_USER=admin
 	ADMIN_PASSWORD=
 
-	## 数据库（必填: sqlite 或 mysql）
+	# 数据库（必填: sqlite 或 mysql）
 	DB_DRIVER=sqlite
 	SQLite:
 	DB_PATH=config/data/data.db
@@ -392,7 +392,7 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 	DB_USER=root
 	DB_PASS=
 
-	## App
+	# App配置
 	APP_ENV=production
 	APP_DEBUG=false
 	BUILD_TIMEOUT=300
@@ -414,9 +414,9 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 	| `harbor_repository` | | 关联的 Harbor 仓库，格式 `"project/repository"`，仅用于映射展示 |
 	| `api_version` | | **纯元数据**，不影响 API 路由（路由由各 Service 内部硬编码），仅用于映射输出展示 |
 
-
+	```php
 	'job_git_map' => [
-		// 自建 GitLab（URL 不含平台关键词 → 必须指定 git_platform）
+		// 自建 GitLab（URL 不含平台关键词，须指定 git_platform）
 		[
 			'job_name'          => 'java/registry',
 			'git_platform'      => 'gitlab',   // ← 自建实例必须
@@ -430,8 +430,9 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 			'harbor_repository' => 'mycode/static-app',
 		],
 	],
+	```
 	CORS 配置 (config/settings.php)
-
+	```php
 	'cors' => [
 		'allowed_origins' => ['*'],   // 允许的域名，* 表示全部
 		'allowed_methods' => ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
@@ -478,7 +479,7 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 	```
 
 # 十一、项目结构
-```bash
+	```bash
 	+---config						# 服务端配置
 	|   |   .env.example			# 环境变量模板
 	|   |   AppConfig.php			# 配置访问器
