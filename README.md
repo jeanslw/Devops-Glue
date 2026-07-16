@@ -1,7 +1,7 @@
 Devops-Glue API 文档 v2.3.1
 
 # 概述
-Devops-Glue 是一套为小企业提供的 DevOps 工具链集成接口，基于 Slim 4 框架实现 Jenkins + Gitlab CI双通道、GitLab/Gitee/GitHub/Gitea、Harbor 等工具的一键集成与数据互通。
+Devops-Glue 是一套为小企业提供的 DevOps 工具链集成接口，基于 Slim4 框架实现 Jenkins + Gitlab CI双通道、GitLab/Gitee/GitHub/Gitea、Harbor 等工具的一键集成与数据互通。
 
 # 环境要求
 框架: Slim 4
@@ -12,7 +12,7 @@ PHP 版本: 8.0+
 
 PHP 扩展: pdo_sqlite, pdo_mysql, php-cli, php-mbstring, php-xml, php-curl, php-zip
 
-数据库: SQLite（默认）或 MySQL 8.0+（DB_DRIVER=mysql）
+数据库: SQLite（默认）或 MySQL 8.0+
 
 支持服务:
 
@@ -34,6 +34,8 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 	# 1. 克隆仓库
 	```bash
 	git clone https://github.com/jeanslw/Devops-Glue.git
+	或
+	git clone https://gitee.com/jeanslw/devops_glue.git
 	cd Devops-Glue
 	
 	# 2. 安装依赖
@@ -588,17 +590,18 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 	   - config/AppConfig.php（getXxxConfig + getDefaultApiVersion + getGitPlatformsConfig）
 	   - config/settings.php + settings.example.php（配置段）
 	   - config/.env.example（环境变量声明）
-	   - readme.md（文档）
 
 # 十三、更新日志
 
-版本	日期	变更内容
-v2.3.1	2026-07-15	MySQL/SQLite 双驱动；DB_DRIVER 必填；Docker 集成 MySQL 8.4
-v2.3.0	2026-07-10	GitLab CI 双通道 + Build 统一模块 + SQLite 持久化 + 管理 UI
-v2.2.0	2026-05-06	架构升级：Git 平台改为 ProviderRegistry 注册表模式，支持自定义平台接入。新增 Gitea 平台适配器。
-v2.1.2	2026-05-04	新增首页支持健康检查、 GitHub 平台接入；健康检查端点 /api/health；Swagger UI 文档，结构化文件日志；Docker 部署支持；
-v2.1.1	2026-03-05	Slim 4 重构。新增 Main 模块（平台接入、多方映射）,多版本支持；输出格式切换（raw/json/xml）；Harbor 扫描集成（Trivy 离线）和扫描报告获取；
-v1.1	2021-11-01	增加 Harbor 查询功能
-v1.0	2018-09-28	初始版本，Jenkins、Git 与 Rundeck 三方集成
+	- 版本		日期		变更内容
+	- v2.3.1	2026-07-15	MySQL/SQLite 双驱动，DB_DRIVER 必填；Docker 集成 MySQL 8.4。
+	- v2.3.0	2026-07-10	GitLab CI 双通道 + Build 统一模块 + SQLite 持久化 + 管理 UI。
+	- v2.2.0	2026-05-06	架构升级：Git 平台改为 ProviderRegistry 注册表模式，支持自定义平台接入。新增 Gitea 平台适配器。
+	- v2.1.2	2026-05-04	新增首页支持健康检查、 GitHub 平台接入；健康检查端点 /api/health；Swagger UI 文档，结构化文件日志；Docker 部署支持；
+	- v2.1.1	2026-03-05	Slim4 重构。新增 Main 模块（平台接入、多方映射）,多版本支持；输出格式切换（raw/json/xml）；Harbor 扫描集成和扫描报告获取。
+	- v1.1.0	2021-11-01	增加 Harbor 查询功能
+	- v1.0.0	2018-09-28	初始版本，Jenkins、Git 与 Rundeck 三方集成。
 
-# 十四、如有建议可在 GitHub 仓库提 issue ，或联系EMAIL:jeanslw@qq.com
+# 十四、联系作者
+	如有建议可在仓库提 issue ，或联系E-mail:jeanslw@qq.com
+	
