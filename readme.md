@@ -378,14 +378,14 @@ ADMIN_PASSWORD=
 
 # 数据库（必填: sqlite 或 mysql）
 DB_DRIVER=sqlite
-# SQLite:
-# DB_PATH=config/data/data.db
-# MySQL:
-# DB_HOST=127.0.0.1
-# DB_PORT=3306
-# DB_NAME=devops_glue
-# DB_USER=root
-# DB_PASS=
+SQLite:
+DB_PATH=config/data/data.db
+MySQL:
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_NAME=devops_glue
+DB_USER=root
+DB_PASS=
 
 # App
 APP_ENV=production
