@@ -346,8 +346,8 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 	503	服务不可用（Harbor 扫描器未启用等）
 
 # 九、配置说明
-	#环境变量 (.env)
-```php
+	环境变量 (.env)
+	```php
 	# Jenkins
 	JENKINS_BASE_URL=http://URL
 	JENKINS_USER=admin
@@ -398,13 +398,13 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 	BUILD_TIMEOUT=300
 	LOG_PATH=/applogs/
 	API_BASE_URL=http://127.0.0.1:8080
+	```
 	手动映射配置 (config/settings.php)
-
 	每个 Job 可配置以下字段。仅 job_name 必填，其他均可省略由系统自动推导。
 
 	| 字段 | 必填 | 说明 |
 	|------|:--:|------|
-	| `job_name` | ✅ | Jenkins Job 或 GitLab CI 项目完整路径，如 `"java/registry"` |
+	| `job_name` | ✅  | Jenkins Job 或 GitLab CI 项目完整路径，如 `"java/registry"` |
 	| `build_provider` | | CI 系统选择：`jenkins`（默认） / `gitlab_ci`。不填默认 jenkins |
 	| `git_platform` | | 自建实例**强烈建议**填写。不填则系统自动检测 URL 关键词；但自建 GitLab/Gitea 的域名通常不含平台关键词，检测会失败并回退到 `DEFAULT_GIT_PLATFORM`。可选值：`gitlab` `gitee` `github` `gitea` 或自定义平台名 |
 	| `git_remote` | | 不填则从 Jenkins Job 的 SCM 配置自动获取 |
@@ -437,7 +437,8 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 		'allowed_origins' => ['*'],   // 允许的域名，* 表示全部
 		'allowed_methods' => ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
 		'allowed_headers' => ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
-	]```
+	]
+	```
 # 十、快速测试命令
 	```bash
 	# 健康检查
@@ -543,7 +544,7 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 
 系统支持通过配置接入任意 Git 平台，无需修改源码。
 
-	## 1. 编写 Provider 类
+	# 1. 编写 Provider 类
 	在 src/Service/Git/ 目录下创建适配器类，实现 GitProviderInterface 接口：
 
 	```php
@@ -557,7 +558,7 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 		public function getBranches(string $repository): array { /* API 调用逻辑 */ }
 	}
 	```
-	## 2. 在 config/settings.php 中注册
+	# 2. 在 config/settings.php 中注册
 
 	```php
 	'git' => [
@@ -577,11 +578,11 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 		],
 	],
 	```
-	## 3. 无需修改任何系统源码，系统启动时自动发现并注册。
+	# 3. 无需修改任何系统源码，系统启动时自动发现并注册。
 
 	注意：自定义平台不支持 .env 独立环境变量配置（如 BITBUCKET_TOKEN），令牌需写入 settings.php 或自行扩展 AppConfig。
 
-	## 4. 内置平台（GitLab/Gitee/GitHub/Gitea）如需新增，需要修改以下文件：
+	# 4. 内置平台（GitLab/Gitee/GitHub/Gitea）如需新增，需要修改以下文件：
 	   - src/Service/Git/XxxService.php（适配器类）
 	   - config/container.php（ProviderRegistry 注册闭包）
 	   - config/AppConfig.php（getXxxConfig + getDefaultApiVersion + getGitPlatformsConfig）
