@@ -35,78 +35,77 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 	```bash
 	git clone https://github.com/jeanslw/Devops-Glue.git
 	cd Devops-Glue
+	
 	# 2. 安装依赖
-
 	composer install
-	# 3. 配置环境变量
-
-	cp .env.example .env
+	
+	# 3. 配置环境变量cp .env.example .env
 	编辑 .env 文件，填入实际服务地址和凭证。
 
 	# 4. 配置 Web 服务器
 	将 public/ 目录设为 Web 根目录，配置 URL 重写。
-	```
 
 	# 5. 验证部署
-	```bash
 	curl http://your-domain.com/api/main/jobs/list
 
-	Docker 部署
+	# 6. Docker-compose 部署:
 
 	cd docker-compose
-	docker compose up -d
+	docker compose up -d --build
 	```
-# 访问
+	> [!IMPORTANT]  注意事项：Jenkins / GitLab / Harbor 地址需devops-glue容器可访问的URL
+	>  .env 配置项: DB_DRIVER
+	>  MySQL 模式：DB_DRIVER=mysql,容器自动启动 MySQL 8.4 并建库。
+	>  SQLite 模式：DB_DRIVER=sqllite,数据文件在 config/data/data.db，已挂载 volume 持久化。
+	>  .env 配置项: BUILD_MODE (jenkins/gitlabci/both)
+	>  jenkins:构建模式为jenkins，gitlabc：构建模式为gitlabci，both：构建模式两者共存模式
+	
+# 接口访问
 	curl http://localhost:8080/api/health
 	浏览器打开 http://localhost:8080/api/docs 查看 API 文档。
 
-	MySQL 模式：.env 中设置 DB_DRIVER=mysql，容器自动启动 MySQL 8.4 并建库。
-	SQLite 模式：默认，数据文件在 config/data/data.db，已挂载 volume 持久化。
+	- 公共约定
+		HTTP 方法
+		所有接口均支持 GET 和 POST 方法（除 build_trigger 仅 POST，扫描触发仅 POST）
 
-	[^1]:注意事项：.env 中的 Jenkins / GitLab / Harbor 地址需使用容器可访问的 IP（如 host.docker.internal 或宿主机 IP），不能写 127.0.0.1。
+	- 输出格式
+		大部分接口返回字符型数组（如 ["item1","item2"]）
 
-	公共约定
-	HTTP 方法
-	所有接口均支持 GET 和 POST 方法（除 build_trigger 仅 POST，扫描触发仅 POST）
+		映射/平台接口（/api/main/map/list、/api/main/git/platforms、/api/main/git/discovery）返回 JSON 对象
 
-	输出格式
-	大部分接口返回字符型数组（如 ["item1","item2"]）
+		构建触发（/api/jenkins/.../build_trigger）返回 JSON 对象
 
-	映射/平台接口（/api/main/map/list、/api/main/git/platforms、/api/main/git/discovery）返回 JSON 对象
+		控制台日志（/api/jenkins/.../console）返回 text/plain
 
-	构建触发（/api/jenkins/.../build_trigger）返回 JSON 对象
+		健康检查（/api/health）返回 JSON 对象
 
-	控制台日志（/api/jenkins/.../console）返回 text/plain
+	- 格式切换
+		所有接口支持通过 ?format= 参数切换输出格式：
 
-	健康检查（/api/health）返回 JSON 对象
+		参数	输出示例		Content-Type
+		不带参数（默认 raw）	["java/registry","static"]
+		?format=json			{"data":["java/registry","static"]}
+		?format=xml				<?xml...><root><item>java/registry</item></root><application/xml
 
-	格式切换
-	所有接口支持通过 ?format= 参数切换输出格式：
+	- 统一错误格式：
+		{
+		  "code": 400,
+		  "message": "错误描述"
+		}
 
-	参数	输出示例		Content-Type
-	不带参数（默认 raw）	["java/registry","static"]
-	?format=json			{"data":["java/registry","static"]}
-	?format=xml				<?xml...><root><item>java/registry</item></root><application/xml
+	- CORS 支持
+		所有接口默认允许跨域访问（Access-Control-Allow-Origin: *），浏览器可直接调用。
 
-	统一错误格式：
-	{
-	  "code": 400,
-	  "message": "错误描述"
-	}
+		如需限制来源，在 config/settings.php 的 cors 段中配置：
+		```php
+		'cors' => [
+			'allowed_origins' => ['https://your-frontend.com'],
+		],
+		```
+	- 日志
+		日志写入 LOG_PATH 指定的目录（默认 /applogs/），JSON 格式，按天滚动。
 
-	CORS 支持
-	所有接口默认允许跨域访问（Access-Control-Allow-Origin: *），浏览器可直接调用。
-
-	如需限制来源，在 config/settings.php 的 cors 段中配置：
-
-	'cors' => [
-		'allowed_origins' => ['https://your-frontend.com'],
-	],
-
-	日志
-	日志写入 LOG_PATH 指定的目录（默认 /applogs/），JSON 格式，按天滚动。
-
-	日志级别：production → info，其他环境 → debug。
+		日志级别：production → info，其他环境 → debug。
 
 # 一、健康检查
 	URL: /api/health
@@ -231,9 +230,9 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 
 	# 3.3 Pipeline 列表
 	URL: /api/build/{project}/pipelines?list=id|build|time
-	?list=id → [10,9,8]
-	?list=build → ["#10","#9","#8"]
-	?list=time → ["#10 [date]","#9 [date]"]
+	?list=id → [10,9,8]，包含所有构建
+	?list=build → ["#10","#9","#8"]，所有成功构建
+	?list=time → ["#10 [date]","#9 [date]"]，所有成功构建
 
 	# 3.4 Pipeline 详情 + Jobs
 	URL: /api/build/{project}/pipelines/{id}
@@ -254,6 +253,7 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 
 	# 3.9 Pipeline → Tag 映射
 	URL: /api/build/{project}/tag?pipeline=10
+	 pipeline iid和 tag 关联映射
 
 # 四、Git 模块 (/api/git)
 	查询 Job 对应的 Git 分支列表
@@ -542,7 +542,7 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 	```
 # 十二、自定义 Git 平台接入
 
-系统支持通过配置接入任意 Git 平台，无需修改源码。
+	系统支持通过配置接入任意 Git 平台，无需修改源码。
 
 	# 1. 编写 Provider 类
 	在 src/Service/Git/ 目录下创建适配器类，实现 GitProviderInterface 接口：
@@ -580,7 +580,7 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 	```
 	# 3. 无需修改任何系统源码，系统启动时自动发现并注册。
 
-	注意：自定义平台不支持 .env 独立环境变量配置（如 BITBUCKET_TOKEN），令牌需写入 settings.php 或自行扩展 AppConfig。
+	> [!NOTE] 注意：自定义平台不支持 .env 独立环境变量配置（如 BITBUCKET_TOKEN），令牌需写入 settings.php 或自行扩展 AppConfig。
 
 	# 4. 内置平台（GitLab/Gitee/GitHub/Gitea）如需新增，需要修改以下文件：
 	   - src/Service/Git/XxxService.php（适配器类）
