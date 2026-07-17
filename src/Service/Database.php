@@ -186,8 +186,6 @@ class Database
         try { $pdo->exec("CREATE INDEX IF NOT EXISTS idx_pipeline_tags_project ON ci_pipeline_tags(project)"); } catch (\Exception $e) {}
         try { $pdo->exec("CREATE INDEX IF NOT EXISTS idx_pipeline_tags_created ON ci_pipeline_tags(created_at)"); } catch (\Exception $e) {}
         try { $pdo->exec("CREATE INDEX IF NOT EXISTS idx_job_git_map_current_path ON ci_job_git_map(current_path)"); } catch (\Exception $e) {}
-        try { $pdo->exec("CREATE INDEX IF NOT EXISTS idx_deploy_logs_project ON deploy_logs(project)"); } catch (\Exception $e) {}
-        try { $pdo->exec("CREATE INDEX IF NOT EXISTS idx_deploy_logs_created ON deploy_logs(created_at)"); } catch (\Exception $e) {}
 
         // 一次性 JSON 迁移（仅 SQLite）
         if (!$isMySQL) {
