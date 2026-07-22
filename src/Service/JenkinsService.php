@@ -257,8 +257,8 @@ class JenkinsService
         preg_match('#/(\d+)/?$#', $location, $matches);
         $queueId = $matches[1] ?? null;
         return [
-            'queueId'  => $queueId,
-            'queueUrl' => $location ?: ($this->baseUrl . '/queue/item/' . $queueId),
+            'queue_id'  => $queueId,
+            'queue_url' => $location ?: ($this->baseUrl . '/queue/item/' . $queueId),
         ];
     }
 
@@ -307,26 +307,46 @@ class JenkinsService
     }
 
     /**
-     * 批量获取构建 ID + 时间 + 状态（一次 API 调用）
+     * 批量获取构建 ID + 时间 + 状态 + git ref/sha（一次 API 调用）
      */
     public function getBuildTimestamps(string $jobPath): array
     {
         try {
             $jobUrl = $this->getJobUrl($jobPath);
-            $resp = $this->client->get("{$jobUrl}/api/json?tree=builds[number,timestamp,result]");
+            $resp = $this->client->get("{$jobUrl}/api/json?tree=builds[number,timestamp,result,actions[lastBuiltRevision[branch[name,SHA1]]]]");
             $data = json_decode($resp->getBody(), true);
             $map = [];
             foreach ($data['builds'] ?? [] as $b) {
                 $ts = (int) ($b['timestamp'] ?? 0);
+                $rev = $this->extractRevision($b['actions'] ?? []);
                 $map[(int) $b['number']] = [
                     'time'   => $ts > 0 ? date('Y-m-d H:i:s', (int) ($ts / 1000)) : '',
-                    'status' => strtolower($b['result'] ?? 'unknown'),
+                    'status' => strtolower(($b['result'] ?? null) ?: 'unknown'),
+                    'ref'    => $rev['ref'] ?? '',
+                    'sha'    => $rev['sha'] ?? '',
                 ];
             }
             return $map;
         } catch (\Exception $e) {
             return [];
         }
+    }
+
+    /** 从 build actions 中提取 git revision 信息 */
+    private function extractRevision(array $actions): array
+    {
+        foreach ($actions as $action) {
+            $branches = $action['lastBuiltRevision']['branch'] ?? null;
+            if (!$branches) continue;
+            foreach ($branches as $branch) {
+                $name = $branch['name'] ?? '';
+                $sha  = $branch['SHA1'] ?? '';
+                if ($name && $sha) {
+                    return ['ref' => $name, 'sha' => $sha];
+                }
+            }
+        }
+        return ['ref' => '', 'sha' => ''];
     }
 
     public function getConsoleOutput(string $jobPath, int $buildId): string

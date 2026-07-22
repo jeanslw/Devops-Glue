@@ -110,7 +110,7 @@ class MainController extends BaseController
             $pdo = \App\Service\Database::getPdo();
             $sql = \App\Service\Database::sqlUpsert('cache', 'cache_key, value, expires_at', '?, ?, ?');
             $stmt = $pdo->prepare($sql);
-            $stmt->execute(['map_list', json_encode($grouped, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), time() + 30]);
+            $stmt->execute([$cacheKey, json_encode($grouped, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), time() + 30]);
         } catch (\Exception $e) {
             // 缓存写入失败不影响响应
         }
@@ -155,7 +155,7 @@ class MainController extends BaseController
         ];
     } else {
                 $exampleRemote = '';
-                foreach ($maps as $map) {
+                foreach ($this->config->getJobGitMap() as $map) {
                     if (($map['git_platform'] ?? '') === $name && !empty($map['git_remote'])) {
                         $exampleRemote = $map['git_remote'];
                         break;
@@ -223,18 +223,14 @@ class MainController extends BaseController
                 $reachable = false;
                 if ($apiUrl) {
                     try {
-                        $ch = curl_init($apiUrl);
-                        curl_setopt_array($ch, [
-                            CURLOPT_NOBODY           => true,
-                            CURLOPT_RETURNTRANSFER   => true,
-                            CURLOPT_TIMEOUT          => 3,
-                            CURLOPT_CONNECTTIMEOUT   => 2,
-                            CURLOPT_DNS_CACHE_TIMEOUT => 10,
+                        $client = new \GuzzleHttp\Client([
+                            'timeout'         => 3,
+                            'connect_timeout' => 2,
+                            'http_errors'     => false,
                         ]);
-                        curl_exec($ch);
-                        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                        $resp = $client->head($apiUrl);
+                        $httpCode = $resp->getStatusCode();
                         $reachable = $httpCode > 0 && $httpCode < 500;
-                        curl_close($ch);
                     } catch (\Exception $e) {
                         $reachable = false;
                     }

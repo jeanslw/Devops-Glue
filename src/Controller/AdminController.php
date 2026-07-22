@@ -81,7 +81,15 @@ class AdminController extends BaseController
         }
 
         if ($authed) {
-            $token = base64_encode($user . ':' . $pass);  // 用原始密码，不用 hash
+            $token = bin2hex(random_bytes(32));
+            // 持久化 token，24h 过期
+            try {
+                $pdo = \App\Service\Database::getPdo();
+                $sql = \App\Service\Database::sqlUpsert('cache', 'cache_key, value, expires_at', '?, ?, ?');
+                $pdo->prepare($sql)->execute(['admin_token_' . $token, $user, time() + 86400]);
+            } catch (\Exception $e) {
+                // cache 不可用时仍返回 token（降级）
+            }
             return $this->output($response, ['token' => $token], $request);
         }
         return $this->jsonError($response, '账号或密码错误', 401);
@@ -126,6 +134,11 @@ class AdminController extends BaseController
             $hash = password_hash($newPass, PASSWORD_BCRYPT);
             $sql = \App\Service\Database::sqlUpsert('admin_users', 'username, password_hash, updated_at', '?, ?, ' . \App\Service\Database::sqlNow());
             \App\Service\Database::getPdo()->prepare($sql)->execute([$username, $hash]);
+
+            // 密码变更后清除所有旧 token
+            try {
+                \App\Service\Database::getPdo()->exec("DELETE FROM cache WHERE cache_key LIKE 'admin_token_%'");
+            } catch (\Exception $e) {}
 
             return $this->output($response, ['success' => true, 'message' => '密码已更新，请重新登录'], $request);
         } catch (\Exception $e) {
@@ -226,21 +239,19 @@ class AdminController extends BaseController
         }
 
         $maps = $this->config->getJobGitMap();
-        $newMaps = [];
         $found = false;
         foreach ($maps as $item) {
             if (($item['job_name'] ?? '') === $jobName) {
                 $found = true;
-                continue;
+                break;
             }
-            $newMaps[] = $item;
         }
 
         if (!$found) {
             return $this->jsonError($response, "映射 '{$jobName}' 不存在", 404);
         }
 
-        $this->config->saveJobGitMap($newMaps);
+        $this->config->deleteJobGitMap($jobName);
         return $this->output($response, ['success' => true], $request);
     }
 
@@ -287,22 +298,12 @@ class AdminController extends BaseController
         }
         $token = $m[1];
 
-        // 尝试 env 密码（token 用原始密码生成）
-        if (!empty($cred['password'])) {
-            $expected = base64_encode($cred['user'] . ':' . $cred['password']);
-            if (hash_equals($expected, $token)) return null;
-        }
-
-        // 尝试 DB 密码验证
+        // 验证 cache 中的随机 token
         try {
             $pdo = \App\Service\Database::getPdo();
-            $row = $pdo->prepare("SELECT password_hash FROM admin_users WHERE username = ?");
-            $row->execute([$cred['user']]);
-            $dbUser = $row->fetch();
-            if ($dbUser) {
-                $expected = base64_encode($cred['user'] . ':' . $dbUser['password_hash']);
-                if (hash_equals($expected, $token)) return null;
-            }
+            $row = $pdo->prepare("SELECT value FROM cache WHERE cache_key = ? AND expires_at > ?");
+            $row->execute(['admin_token_' . $token, time()]);
+            if ($row->fetch()) return null;
         } catch (\Exception $e) {
             // DB 不可用降级
         }

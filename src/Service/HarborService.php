@@ -48,6 +48,18 @@ class HarborService
             return $this->apiVersion;
         }
 
+        // 从缓存读取（1h TTL），避免每次请求都探测
+        try {
+            $pdo = \App\Service\Database::getPdo();
+            $row = $pdo->prepare("SELECT value FROM cache WHERE cache_key = 'harbor_api_version' AND expires_at > ?");
+            $row->execute([time()]);
+            $cached = $row->fetch();
+            if ($cached) {
+                $this->apiVersion = $cached['value'];
+                return $this->apiVersion;
+            }
+        } catch (\Exception $e) {}
+
         // 直接用 v2 项目列表端点探测，比 HEAD systeminfo 更可靠
         try {
             $this->client->get('/api/v2.0/projects', [
@@ -80,6 +92,12 @@ class HarborService
                 ]);
             }
         }
+        // 缓存探测结果（1h TTL），避免后续请求重复 API 调用
+        try {
+            $pdo = \App\Service\Database::getPdo();
+            $sql = \App\Service\Database::sqlUpsert('cache', 'cache_key, value, expires_at', '?, ?, ?');
+            $pdo->prepare($sql)->execute(['harbor_api_version', $this->apiVersion, time() + 3600]);
+        } catch (\Exception $e) {}
         return $this->apiVersion;
     }
 

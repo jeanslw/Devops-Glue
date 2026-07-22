@@ -78,11 +78,15 @@ class AppConfig
     public function saveJobGitMap(array $data): void
     {
         $pdo = \App\Service\Database::getPdo();
-        $pdo->exec("DELETE FROM ci_job_git_map");
-        $stmt = $pdo->prepare("INSERT INTO ci_job_git_map (job_name,git_platform,build_provider,git_remote,project_id,web_url,current_path,harbor_repository,api_version,status) VALUES (?,?,?,?,?,?,?,?,?,?)");
+        $cols = 'job_name,git_platform,build_provider,git_remote,project_id,web_url,current_path,harbor_repository,api_version,status';
+        $upsertSql = \App\Service\Database::sqlUpsert('ci_job_git_map', $cols, '?,?,?,?,?,?,?,?,?,?');
+        $upsertStmt = $pdo->prepare($upsertSql);
+
+        $incomingNames = [];
         foreach ($data as $row) {
             if (empty($row['job_name'])) continue;
-            $stmt->execute([
+            $incomingNames[] = $row['job_name'];
+            $upsertStmt->execute([
                 $row['job_name'],
                 $row['git_platform'] ?? null,
                 $row['build_provider'] ?? 'jenkins',
@@ -95,6 +99,21 @@ class AppConfig
                 $row['status'] ?? 'active',
             ]);
         }
+
+        // 删除 DB 中存在但传入数据里已移除的行（不再全表删除）
+        if (!empty($incomingNames)) {
+            $placeholders = implode(',', array_fill(0, count($incomingNames), '?'));
+            $pdo->prepare("DELETE FROM ci_job_git_map WHERE job_name NOT IN ({$placeholders})")->execute($incomingNames);
+        } else {
+            $pdo->exec("DELETE FROM ci_job_git_map");
+        }
+    }
+
+    /** 单条删除映射 */
+    public function deleteJobGitMap(string $jobName): void
+    {
+        $pdo = \App\Service\Database::getPdo();
+        $pdo->prepare("DELETE FROM ci_job_git_map WHERE job_name = ?")->execute([$jobName]);
     }
 
     // Harbor

@@ -184,8 +184,8 @@ addRow('Build', 'Pipeline #4 详情', "$baseUrl/api/build/tools/runner-ci/pipeli
 $res = apiCall("$baseUrl/api/build/tools/runner-ci/logs/27");
 addRow('Build', 'GitLab CI 日志(统一)', "$baseUrl/api/build/tools/runner-ci/logs/27", $res);
 
-$res = apiCall("$baseUrl/api/build/php/myapp/logs/25");
-addRow('Build', 'Jenkins 日志(统一)', "$baseUrl/api/build/php/myapp/logs/25", $res);
+$res = apiCall("$baseUrl/api/build/php/devops-glue/logs/25");
+addRow('Build', 'Jenkins 日志(统一)', "$baseUrl/api/build/php/devops-glue/logs/25", $res);
 
 $res = apiCall("$baseUrl/api/git/tools/runner-ci/branches");
 addRow('Build', 'GitLab CI 分支', "$baseUrl/api/git/tools/runner-ci/branches", $res);

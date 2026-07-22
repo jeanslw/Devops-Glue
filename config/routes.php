@@ -30,8 +30,19 @@ $app->group('/api', function (RouteCollectorProxy $api) use ($app) {
             $header = $request->getHeaderLine('Authorization');
             if (preg_match('/^Bearer\s+(.+)$/i', $header, $m)) $token = $m[1];
         }
+        if (empty($token)) return false;
+
+        // 验证 cache 中的随机 token（与 AdminController 一致）
+        try {
+            $pdo = \App\Service\Database::getPdo();
+            $row = $pdo->prepare("SELECT value FROM cache WHERE cache_key = ? AND expires_at > ?");
+            $row->execute(['admin_token_' . $token, time()]);
+            if ($row->fetch()) return true;
+        } catch (\Exception $e) {}
+
+        // 兼容旧版 base64 token
         $expected = base64_encode($user . ':' . $pass);
-        return $token && hash_equals($expected, $token);
+        return hash_equals($expected, $token);
     };
 
     // API 文档 (Swagger UI) —— 需登录
