@@ -275,14 +275,28 @@ class BuildController extends BaseController
         }
         [$harborProject, $harborRepoName] = $parts;
 
+        // 获取 Harbor 当前所有 tag（用于校验和兜底取最新）
+        $harborTags = null;  // null=未请求, array=tag列表, ['error'=>...]=Harbor不可达
+        if ($this->harbor) {
+            $harborTags = $this->harbor->getTags($harborProject, $harborRepoName);
+        }
+
         // tag 不传则取 Harbor 最新
-        if (!$tag && $this->harbor) {
-            $tags = $this->harbor->getTags($harborProject, $harborRepoName);
-            if (!empty($tags)) $tag = $tags[0];
+        if (!$tag && is_array($harborTags) && !isset($harborTags['error']) && !empty($harborTags)) {
+            $tag = $harborTags[0];
         }
         if (!$tag) {
             return $this->jsonError($response, '缺少 tag 参数且 Harbor 无可用 tag', 400);
         }
+
+        // 校验 tag 在 Harbor 中确实存在（防止写入已删除的 tag）
+        if ($this->harbor && is_array($harborTags) && !isset($harborTags['error'])) {
+            // Harbor 可达：严格校验 tag 是否存在
+            if (!in_array($tag, $harborTags)) {
+                return $this->jsonError($response, "Tag '{$tag}' 在 Harbor 仓库 '{$harborRepo}' 中不存在或已被删除", 400);
+            }
+        }
+        // Harbor 不可达时降级放行：CI 刚 push 完 tag，大概率存在；读取侧 cleanupStaleTags 兜底清理
 
         // 3. 尝试获取 pipeline info（仅用于 commit status）
         $sha  = '';
@@ -399,14 +413,68 @@ class BuildController extends BaseController
                     'harbor' => $r['harbor_repository'] ?? '',
                 ];
             }
+            // 清理 Harbor 中已不存在的 tag 记录
+            $this->cleanupStaleTags($result);
             return $result;
         } catch (\Exception $e) {
             return [];
         }
     }
 
+    /**
+     * 按 harbor_repository 检查已有 tag 是否仍存在于 Harbor，删除已过期的记录
+     * 如果 Harbor 不可达则跳过清理（避免误删有效数据）
+     */
+    private function cleanupStaleTags(array &$tagGroups): void
+    {
+        if (!$this->harbor) return;
+
+        $repoCache = [];  // harbor_repo => [tag1, tag2, ...] 或 null（Harbor不可达）
+        $staleKeys = [];  // [['project' => ..., 'pipeline_iid' => ...], ...]
+
+        foreach ($tagGroups as $project => $entries) {
+            foreach ($entries as $pipelineIid => $info) {
+                $harborRepo = $info['harbor'] ?? '';
+                $tag        = $info['tag'] ?? '';
+                if (empty($harborRepo) || empty($tag)) continue;
+
+                // 按仓库缓存 Harbor tag 列表，避免重复请求
+                if (!array_key_exists($harborRepo, $repoCache)) {
+                    $parts = explode('/', $harborRepo, 2);
+                    if (count($parts) === 2) {
+                        $tags = $this->harbor->getTags($parts[0], $parts[1]);
+                        // Harbor 不可达时置 null，跳过该仓库的清理
+                        $repoCache[$harborRepo] = isset($tags['error']) ? null : $tags;
+                    } else {
+                        $repoCache[$harborRepo] = [];
+                    }
+                }
+
+                $validTags = $repoCache[$harborRepo];
+                // null 表示 Harbor 不可达，跳过检查
+                if ($validTags !== null && !in_array($tag, $validTags)) {
+                    $staleKeys[] = ['project' => $project, 'pipeline_iid' => (int) $pipelineIid];
+                }
+            }
+        }
+
+        if (!empty($staleKeys)) {
+            try {
+                $pdo  = \App\Service\Database::getPdo();
+                $stmt = $pdo->prepare("DELETE FROM ci_pipeline_tags WHERE project = ? AND pipeline_iid = ?");
+                foreach ($staleKeys as $key) {
+                    $stmt->execute([$key['project'], $key['pipeline_iid']]);
+                    unset($tagGroups[$key['project']][(string) $key['pipeline_iid']]);
+                }
+            } catch (\Exception $e) {}
+        }
+    }
+
     private function recordPipelineTag(string $path, int $pipelineIid, string $tag, string $harborRepo = ''): void
     {
+        // 基础输入校验
+        if (empty($path) || $pipelineIid <= 0 || empty($tag)) return;
+        if (mb_strlen($tag) > 255 || mb_strlen($path) > 255) return;
         try {
             $pdo = \App\Service\Database::getPdo();
             $sql   = \App\Service\Database::sqlUpsert('ci_pipeline_tags', 'project, pipeline_iid, tag, harbor_repository', '?, ?, ?, ?');

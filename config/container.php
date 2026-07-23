@@ -303,8 +303,9 @@ return [
                 $harbor['username'] ?? 'admin',
                 $harbor['password'] ?? '',
             ],
-            'headers'  => ['Accept' => 'application/json'],
-            'timeout'  => 15,
+            'headers'         => ['Accept' => 'application/json'],
+            'connect_timeout' => 5,   // TCP 握手超时，防止 hang
+            'timeout'         => 15,  // 整个请求超时
         ]);
     },
 

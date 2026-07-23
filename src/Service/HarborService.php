@@ -102,37 +102,78 @@ class HarborService
     }
 
     /**
-     * 统一请求，成功返回数据数组，失败返回 ['error' => ...]
+     * 统一请求，带重试：4xx 不重试，5xx/网络错误最多重试 2 次
      */
     private function request(string $method, string $uri, array $options = []): array
     {
-        try {
-            $res = $this->client->request($method, $uri, array_merge($options, ['http_errors' => true]));
-            $body = $res->getBody()->getContents();
-            if (empty($body)) {
-                // 某些操作（如触发扫描）成功时返回空响应，不报错
-                return ['status' => 'ok'];
+        $maxRetries = 2;
+        $lastException = null;
+
+        for ($attempt = 0; $attempt <= $maxRetries; $attempt++) {
+            try {
+                $res = $this->client->request($method, $uri, array_merge($options, ['http_errors' => true]));
+                $body = $res->getBody()->getContents();
+                if (empty($body)) {
+                    return ['status' => 'ok'];
+                }
+                $data = json_decode($body, true);
+                if (!is_array($data)) {
+                    return ['error' => 'Harbor返回数据格式异常'];
+                }
+                // 成功返回：记录重试日志（如有）
+                if ($attempt > 0) {
+                    $this->logger?->info('Harbor 请求重试成功', [
+                        'method' => $method,
+                        'uri'    => $uri,
+                        'attempt' => $attempt + 1,
+                    ]);
+                }
+                return $data;
+            } catch (ClientException $e) {
+                $code = $e->getResponse()?->getStatusCode();
+                // 4xx 不重试（权限/不存在等问题重试无意义）
+                if ($code && $code < 500) {
+                    $msg = $code === 404 ? "资源不存在(404)" : "Harbor服务响应异常(HTTP {$code})";
+                    $this->logger?->warning('Harbor 请求失败', [
+                        'method'    => $method,
+                        'uri'       => $uri,
+                        'http_code' => $code,
+                        'message'   => $msg,
+                    ]);
+                    return ['error' => $msg, 'http_code' => $code];
+                }
+                // 5xx: 记录并继续重试
+                $lastException = $e;
+                $this->logger?->warning('Harbor 服务端错误，准备重试', [
+                    'method'    => $method,
+                    'uri'       => $uri,
+                    'http_code' => $code,
+                    'attempt'   => $attempt + 1,
+                ]);
+            } catch (\Throwable $e) {
+                // 网络错误（连接超时、DNS 解析失败等），重试
+                $lastException = $e;
+                $this->logger?->warning('Harbor 网络异常，准备重试', [
+                    'method'  => $method,
+                    'uri'     => $uri,
+                    'error'   => $e->getMessage(),
+                    'attempt' => $attempt + 1,
+                ]);
             }
-            $data = json_decode($body, true);
-            return is_array($data) ? $data : ['error' => 'Harbor返回数据格式异常'];
-        } catch (ClientException $e) {
-            $code = $e->getResponse()?->getStatusCode();
-            $msg = $code === 404 ? "资源不存在(404)" : "Harbor服务响应异常(HTTP {$code})";
-            $this->logger?->warning('Harbor 请求失败', [
-                'method'    => $method,
-                'uri'       => $uri,
-                'http_code' => $code,
-                'message'   => $msg,
-            ]);
-            return ['error' => $msg];
-        } catch (\Throwable $e) {
-            $this->logger?->error('Harbor 请求异常', [
-                'method' => $method,
-                'uri'    => $uri,
-                'error'  => $e->getMessage(),
-            ]);
-            return ['error' => "Harbor请求失败: " . $e->getMessage()];
+
+            if ($attempt < $maxRetries) {
+                // 指数退避: 200ms → 400ms
+                usleep(($attempt + 1) * 200000);
+            }
         }
+
+        // 所有重试耗尽
+        $this->logger?->error('Harbor 请求重试耗尽', [
+            'method' => $method,
+            'uri'    => $uri,
+            'error'  => $lastException?->getMessage() ?? 'unknown',
+        ]);
+        return ['error' => "Harbor请求失败(已重试{$maxRetries}次): " . ($lastException?->getMessage() ?? 'unknown')];
     }
 
     /**
