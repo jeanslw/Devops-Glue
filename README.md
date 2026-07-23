@@ -1,6 +1,19 @@
 Devops-Glue API 文档 v2.3.1
 
 # 概述
+
+> ❌ GitLab + K8s 全套？太重，养不起  
+> ❌ Jenkins 裸奔？8 年前的 UI，配到崩溃  
+> ❌ Gitee + Jenkins + Harbor 三头对不上？多窗口来回切，Tag 全靠人肉对齐  
+>
+> ✅ 一套 API，4 个 Git 平台 + 2 条 CI 通道 + Harbor → 一个面板全搞定  
+> ✅ SQLite 零配置启动，MySQL 也可切换  
+> ✅ 10 年运维老兵的实战结晶，v2.3.1 持续打磨  
+> ✅ 从 CI 构建到 CD 部署，全流程覆盖  
+> ✅ 开源免费，GitHub/Gitee 双更新  
+>
+> **不是大厂的遥控器，是小团队的瑞士军刀。**
+
 Devops-Glue 是一套为小企业提供的 DevOps 工具链集成接口，基于 Slim4 框架实现 Jenkins + Gitlab CI双通道、GitLab/Gitee/GitHub/Gitea、Harbor 等工具的一键集成与数据互通。
 
 # 环境要求
