@@ -25,7 +25,7 @@ PHP 版本: 8.0+
 
 PHP 扩展: pdo_sqlite, pdo_mysql, php-cli, php-mbstring, php-xml, php-curl, php-zip
 
-数据库: SQLite（默认）或 MySQL 8.0+
+数据库: SQLite（默认）或 MySQL 8.0+ / MariaDB 10.4+
 
 支持服务:
 
@@ -69,9 +69,10 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 	docker compose up -d --build
 	```
 	> [!IMPORTANT]  注意事项：Jenkins / GitLab / Harbor 地址需devops-glue容器可访问的URL
-	>  .env 配置项: DB_DRIVER
-	>  MySQL 模式：DB_DRIVER=mysql,容器自动启动 MySQL 8.4 并建库。
-	>  SQLite 模式：DB_DRIVER=sqllite,数据文件在 config/data/data.db，已挂载 volume 持久化。
+>  .env 配置项: DB_DRIVER
+>  MySQL 模式：DB_DRIVER=mysql，容器自动启动 MySQL 8.4 并建库。也支持 MariaDB 10.4+，语法完全兼容。
+>  SQLite 模式：DB_DRIVER=sqlite，数据文件在 config/data/data.db，已挂载 volume 持久化。
+>  如需和 CD Service（cd_service）部署在同一台机器，SQLite 模式必须共享卷，让两边进程访问同一个 .db 文件。推荐生产环境使用 MySQL/MariaDB。
 	>  .env 配置项: BUILD_MODE (jenkins/gitlabci/both)
 	>  jenkins:构建模式为jenkins，gitlabc：构建模式为gitlabci，both：构建模式两者共存模式
 	
@@ -398,14 +399,15 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 
 	# 数据库（必填: sqlite 或 mysql）
 	DB_DRIVER=sqlite
-	SQLite:
+	# SQLite：和 CD Service 指向同一个 .db 文件
 	DB_PATH=config/data/data.db
-	MySQL:
-	DB_HOST=127.0.0.1
-	DB_PORT=3306
-	DB_NAME=devops_glue
-	DB_USER=root
-	DB_PASS=
+	# MySQL / MariaDB（推荐）：和 CD Service 共用同一个库
+	# DB_DRIVER=mysql
+	# DB_HOST=127.0.0.1
+	# DB_PORT=3306
+	# DB_NAME=devops_glue
+	# DB_USER=root
+	# DB_PASS=
 
 	# App配置
 	APP_ENV=production
@@ -607,7 +609,7 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 # 十三、更新日志
 
 	- 版本		日期		变更内容
-	- v2.3.1	2026-07-15	MySQL/SQLite 双驱动，DB_DRIVER 必填；Docker 集成 MySQL 8.4。
+	- v2.3.1	2026-07-15	校验tag入库规则,增加用户文档说明,MySQL/SQLite 双驱动，DB_DRIVER 必填；优化Docker， 集成 MySQL 8.4。
 	- v2.3.0	2026-07-10	GitLab CI 双通道 + Build 统一模块 + SQLite 持久化 + 管理 UI。
 	- v2.2.0	2026-05-06	架构升级：Git 平台改为 ProviderRegistry 注册表模式，支持自定义平台接入。新增 Gitea 平台适配器。
 	- v2.1.2	2026-05-04	新增首页支持健康检查、 GitHub 平台接入；健康检查端点 /api/health；Swagger UI 文档，结构化文件日志；Docker 部署支持；

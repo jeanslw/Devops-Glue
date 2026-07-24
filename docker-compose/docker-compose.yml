@@ -1,3 +1,6 @@
+# Devops-Glue API — 推荐 MySQL / MariaDB
+# 已内置 MySQL 8.4 容器，和 cd_service 共用 devops_glue 库
+
 services:
   devops-glue:
     build:
@@ -12,7 +15,7 @@ services:
       - ../config/docker/nginx.conf:/etc/nginx/sites-available/default:ro
       - ../config/docker/php-fpm.conf:/usr/local/etc/php-fpm.d/zz-custom.conf:ro
       - ../config/docker/supervisord.conf:/etc/supervisor/conf.d/supervisord.conf:ro
-      - ../config/data:/app/config/data
+      #- ../config/data:/app/config/data
       - ../applog:/data/logs/ci-platform
     ports:
       - "8080:80"
@@ -39,3 +42,11 @@ services:
 
 volumes:
   mysql-data:
+
+# ── SQLite 模式（可选，单机运行）：注释掉 depends_on 和 mysql 服务，.env 中切换到 sqlite ──
+# depends_on:
+#   mysql:
+#     condition: service_healthy
+# mysql:
+#   image: mysql:8.4
+#   ...
