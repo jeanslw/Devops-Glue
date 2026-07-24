@@ -22,14 +22,15 @@ class Database
             throw new \RuntimeException('DB_DRIVER 必须设为 sqlite 或 mysql，当前: ' . ($driver ?: '未设置'));
         }
         return [
-            'driver'   => $driver,
-            'path'     => $_ENV['DB_PATH'] ?? __DIR__ . '/../../config/data/data.db',
-            'host'     => $_ENV['DB_HOST'] ?? '127.0.0.1',
-            'port'     => $_ENV['DB_PORT'] ?? '3306',
-            'database' => $_ENV['DB_NAME'] ?? 'devops_glue',
-            'username' => $_ENV['DB_USER'] ?? 'root',
-            'password' => $_ENV['DB_PASS'] ?? '',
-            'charset'  => 'utf8mb4',
+            'driver'       => $driver,
+            'path'         => $_ENV['DB_PATH'] ?? __DIR__ . '/../../config/data/data.db',
+            'host'         => $_ENV['DB_HOST'] ?? '127.0.0.1',
+            'port'         => $_ENV['DB_PORT'] ?? '3306',
+            'database'     => $_ENV['DB_NAME'] ?? 'devops_glue',
+            'username'     => $_ENV['DB_USER'] ?? 'root',
+            'password'     => $_ENV['DB_PASS'] ?? '',
+            'charset'      => 'utf8mb4',
+            'auto_migrate' => ($_ENV['DB_AUTO_MIGRATE'] ?? 'true') !== 'false',
         ];
     }
 
@@ -48,7 +49,9 @@ class Database
 
             self::$pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
             self::$pdo->setAttribute(\PDO::ATTR_DEFAULT_FETCH_MODE, \PDO::FETCH_ASSOC);
-            self::ensureTables();
+            if (self::$config['auto_migrate'] ?? true) {
+                self::ensureTables();
+            }
             self::seedAdmin();
         }
         return self::$pdo;
@@ -127,6 +130,8 @@ class Database
         $VCHAR255 = $isMySQL ? 'VARCHAR(255) NOT NULL'          : 'TEXT NOT NULL';  // 复合主键中的列
         $NOW      = self::sqlNow();
         $ENGINE   = $isMySQL ? ' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4' : '';
+        // 时间戳列：MySQL < 8.0.13 不允许 TEXT/BLOB 设置 DEFAULT，必须用 DATETIME
+        $TS_TYPE  = $isMySQL ? 'DATETIME' : 'TEXT';
 
         // ci_job_git_map
         $pdo->exec("CREATE TABLE IF NOT EXISTS ci_job_git_map (
@@ -155,7 +160,7 @@ class Database
             pipeline_iid INTEGER NOT NULL,
             tag {$VARCHAR} NOT NULL,
             harbor_repository TEXT,
-            created_at TEXT DEFAULT ({$NOW}),
+            created_at {$TS_TYPE} DEFAULT ({$NOW}),
             PRIMARY KEY (project, pipeline_iid)
         ){$ENGINE}");
         try { $pdo->exec("ALTER TABLE ci_pipeline_tags ADD COLUMN harbor_repository TEXT"); } catch (\Exception $e) {}
@@ -164,7 +169,7 @@ class Database
         if ($isMySQL) {
             $pdo->exec("CREATE TABLE IF NOT EXISTS cache (
                 cache_key VARCHAR(255) PRIMARY KEY,
-                value MEDIUMTEXT NOT NULL,
+                `value` MEDIUMTEXT NOT NULL,
                 expires_at INTEGER
             ){$ENGINE}");
         } else {
@@ -179,7 +184,7 @@ class Database
         $pdo->exec("CREATE TABLE IF NOT EXISTS admin_users (
             username {$TEXT_PK},
             password_hash TEXT NOT NULL,
-            updated_at TEXT DEFAULT ({$NOW})
+            updated_at {$TS_TYPE} DEFAULT ({$NOW})
         ){$ENGINE}");
 
         // ── 索引 ──
