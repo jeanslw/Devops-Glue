@@ -113,7 +113,7 @@ CALL `_add_column`('ci_pipeline_tags', 'harbor_repository', 'TEXT');
 CALL `_add_column`('ci_pipeline_tags', 'status',            'VARCHAR(255) DEFAULT \'\'');
 
 CALL `_add_index`('ci_pipeline_tags',   'idx_pipeline_tags_project',     '(`project`)');
-CALL `_add_index`('ci_pipeline_tags',   'idx_pipeline_tags_created',     '(`created_at`(19))');
+CALL `_add_index`('ci_pipeline_tags',   'idx_pipeline_tags_created',     '(`created_at`)');
 CALL `_add_index`('ci_job_git_map',     'idx_job_git_map_current_path',  '(`current_path`(255))');
 CALL `_add_index`('ci_security_checks', 'idx_security_checks_project',  '(`project`(64), `check_type`(64))');
 CALL `_add_index`('ci_security_checks', 'idx_security_checks_sha',       '(`sha`)');
