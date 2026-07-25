@@ -153,23 +153,11 @@ async function loadMonitor() {
         }
 
         // Harbor
-        const hOk = chk.harbor === true;
+        const hOkRaw = chk.harbor;
+        const hOk = hOkRaw === true;
         const hVer = chk.harbor_version || '';
-        const hComps = chk.harbor_components; // {core, jobservice, registry}
-        let hLabel = hOk===true?'正常':hOk===null?'未配置':'不可达';
-        let hTitle = '';
-        // 组件级诊断：列出挂掉的子组件
-        if (!hOk && hComps && typeof hComps === 'object') {
-            const down = [];
-            if (hComps.core === false)       down.push('Core');
-            if (hComps.jobservice === false) down.push('Jobservice');
-            if (hComps.registry === false)   down.push('Registry');
-            if (down.length) {
-                hLabel = '部分组件不可用';
-                hTitle = '异常组件: ' + down.join(' / ');
-            }
-        }
-        setSvc('icon-harbor', 'name-harbor', 'stat-harbor', 'dot-harbor', hOk, hVer, hLabel, hTitle);
+        const hLabel = hOk?'正常':hOkRaw===null?'未配置':'不可达';
+        setSvc('icon-harbor', 'name-harbor', 'stat-harbor', 'dot-harbor', hOk, hVer, hLabel, '');
 
     } catch(e) {
         const msg = e.name === 'AbortError' ? '超时' : '无法连接';
