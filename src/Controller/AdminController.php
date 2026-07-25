@@ -34,6 +34,7 @@ class AdminController extends BaseController
             });
             $found = array_values($found);
             $saved = $this->autoDiscover->saveDiscovered($found);
+            if ($saved > 0) $this->invalidateTopologyCache();
             return $this->output($response, [
                 'found' => count($found),
                 'saved' => $saved,
@@ -241,6 +242,7 @@ class AdminController extends BaseController
         );
         $search  = trim($params['search'] ?? '');
         $platform = trim($params['platform'] ?? '');
+        $provider = trim($params['provider'] ?? '');
         $page    = max(1, (int)($params['page'] ?? 1));
         $perPage = max(1, min(100, (int)($params['per_page'] ?? 20)));
 
@@ -261,6 +263,9 @@ class AdminController extends BaseController
         }
         if ($platform !== '') {
             $filtered = array_filter($filtered, fn($m) => ($m['git_platform'] ?? '') === $platform);
+        }
+        if ($provider !== '') {
+            $filtered = array_filter($filtered, fn($m) => ($m['build_provider'] ?? 'jenkins') === $provider);
         }
 
         // 重置索引
@@ -308,6 +313,7 @@ class AdminController extends BaseController
         $entry = $this->buildEntry($body);
         $maps[] = $entry;
         $this->config->saveJobGitMap($maps);
+        $this->invalidateTopologyCache();
 
         return $this->output($response, ['success' => true, 'entry' => $entry], $request);
     }
@@ -341,6 +347,7 @@ class AdminController extends BaseController
         }
 
         $this->config->saveJobGitMap($maps);
+        $this->invalidateTopologyCache();
         return $this->output($response, ['success' => true, 'entry' => $maps[$i] ?? null], $request);
     }
 
@@ -370,6 +377,7 @@ class AdminController extends BaseController
         }
 
         $this->config->deleteJobGitMap($jobName);
+        $this->invalidateTopologyCache();
         return $this->output($response, ['success' => true], $request);
     }
 
@@ -465,6 +473,25 @@ class AdminController extends BaseController
 
         try {
             $this->config->setBuildMode($mode);
+
+            // 切到单 provider 模式时，将对方 provider 的 active 记录降为 pending
+            // 杜绝切模式后对方记录仍处于启用状态，避免意外参与构建或干扰自动发现
+            if ($mode === 'jenkins' || $mode === 'gitlab_ci') {
+                $otherProvider = ($mode === 'jenkins') ? 'gitlab_ci' : 'jenkins';
+                $maps = $this->config->getJobGitMap();
+                $changed = false;
+                foreach ($maps as &$m) {
+                    if (($m['build_provider'] ?? 'jenkins') === $otherProvider && ($m['status'] ?? 'active') !== 'pending') {
+                        $m['status'] = 'pending';
+                        $changed = true;
+                    }
+                }
+                if ($changed) {
+                    $this->config->saveJobGitMap($maps);
+                    $this->invalidateTopologyCache();
+                }
+            }
+
             return $this->output($response, ['success' => true, 'mode' => $mode], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, '保存失败: ' . $e->getMessage(), 500);
@@ -527,5 +554,21 @@ class AdminController extends BaseController
             $entry['job_name'] = '';
         }
         return $entry;
+    }
+
+    /**
+     * 清除拓扑图缓存，确保 mapList 返回最新数据
+     */
+    private function invalidateTopologyCache(): void
+    {
+        try {
+            $pdo = \App\Service\Database::getPdo();
+            $modes = ['jenkins', 'gitlab_ci', 'both'];
+            foreach ($modes as $mode) {
+                $pdo->prepare("DELETE FROM cache WHERE cache_key = ?")->execute(['map_list_' . $mode]);
+            }
+        } catch (\Exception $e) {
+            // 缓存清理失败不影响主流程
+        }
     }
 }

@@ -28,8 +28,12 @@ function doLogout() {
     document.getElementById('app-page').style.display = 'none';
 }
 
+let _discovering = false;
 async function doDiscover() {
+    if (_discovering) { toast('⏳ 扫描进行中，请稍候…', true); return; }
     if (!confirm('将自动扫描 Jenkins/GitLab CI 项目并导入映射表，已有项目不会重复。确定？')) return;
+    _discovering = true;
+    toast('⏳ 正在扫描，请稍候…', true);
     try {
         const res = await fetch('/api/admin/discover', { method:'POST', headers: authHeaders() });
         if (handle401(res)) return;
@@ -41,6 +45,7 @@ async function doDiscover() {
             toast(data.message || '扫描失败', false);
         }
     } catch(e) { toast('网络错误: ' + e.message, false); }
+    finally { _discovering = false; }
 }
 
 async function doLogin() {
@@ -196,18 +201,26 @@ async function loadMaps() {
     try {
         const search = document.getElementById('map-search')?.value?.trim() || '';
         const platform = document.getElementById('map-platform-filter')?.value || '';
+        const provider = document.getElementById('map-provider-filter')?.value || '';
         const params = new URLSearchParams();
         if (search) params.set('search', search);
         if (platform) params.set('platform', platform);
+        if (provider) params.set('provider', provider);
         params.set('page', mapPage);
         params.set('per_page', mapPerPage);
         const url = MAP_API + '?' + params.toString();
         const res = await fetch(url, { headers: authHeaders() });
         if (handle401(res)) return;
         const data = await res.json();
-        const maps = data.maps || [];
+        let maps = data.maps || [];
         const total = data.total || 0;
         const totalPages = data.total_pages || 1;
+
+        // 前端去重：同一 remote 有 active 记录时，隐藏其他非 active 的（与自动发现逻辑一致）
+        const activeRemotes = new Set();
+        maps.forEach(m => { if ((m.status || 'active') === 'active' && m.git_remote) activeRemotes.add(m.git_remote); });
+        maps = maps.filter(m => (m.status || 'active') === 'active' || !activeRemotes.has(m.git_remote));
+
         platforms = data.platforms || [];
 
         // 更新平台下拉（新增/编辑表单和筛选栏）
@@ -244,8 +257,18 @@ async function loadMaps() {
                     <td>${plat !== '—' ? `<span class="badge ${badgeCls}">${esc(plat)}</span>` : '—'}</td>
                     <td class="mono">${esc(m.git_remote || '—')}</td>
                     <td>${esc(m.harbor_repository || '—')}</td>
-                    <td>${(m.status||'active')==='disabled'?'<span class="badge" style="background:#fef2f2;color:#dc2626;">禁用</span>':'<span class="badge" style="background:#f0fdf4;color:#16a34a;">启用</span>'}</td>
+                    <td>${statusBadge(m.status)}</td>
                     <td style="white-space:nowrap">
+                        ${(function(){
+                            if ((m.status||'active')==='active') return `<span style="color:#16a34a;font-size:13px;">✅ 启用</span>`;
+                            // provider 与当前模式不匹配，禁止启用
+                            if (currentBuildMode!=='both' && bp!==currentBuildMode) {
+                                const curLabel = currentBuildMode==='jenkins'?'Jenkins':'GitLab CI';
+                                const itemLabel = bp==='gitlab_ci'?'GitLab CI':'Jenkins';
+                                return `<button class="btn btn-sm" disabled title="当前配置模式为 ${curLabel}，无法启用 ${itemLabel} 项目" style="cursor:not-allowed;opacity:0.4;">🔒 启用</button>`;
+                            }
+                            return `<button class="btn btn-sm btn-activate" onclick='activateMap("${escJs(m.job_name)}", ${js(m)})'>启用</button>`;
+                        })()}
                         <button class="btn btn-sm btn-edit" onclick='editMap(${js(m)})'>✏️ 编辑</button>
                         <button class="btn btn-sm btn-del" onclick='deleteMap("${escJs(m.job_name)}")'>🗑 删除</button>
                         <a href="/api/build/${esc(encodeURI(m.job_name))}/pipelines?list=id" target="_blank" style="color:#4f46e5;font-size:12px;margin-left:6px;">📋</a>
@@ -754,13 +777,51 @@ async function submitForm(e) {
 
 function editMap(item) { showForm(item); }
 
+function statusBadge(s) {
+    s = s || 'active';
+    if (s === 'pending') return '<span class="badge" style="background:#fef3c7;color:#d97706;">待启用</span>';
+    if (s === 'disabled') return '<span class="badge" style="background:#fef2f2;color:#dc2626;">禁用</span>';
+    return '<span class="badge" style="background:#f0fdf4;color:#16a34a;">启用</span>';
+}
+
+async function activateMap(jobName, item) {
+    // 防御：provider 与当前配置模式不匹配时直接拒绝
+    const bp = item.build_provider || 'jenkins';
+    if (currentBuildMode !== 'both' && bp !== currentBuildMode) {
+        const curLabel = currentBuildMode === 'jenkins' ? 'Jenkins' : 'GitLab CI';
+        const itemLabel = bp === 'gitlab_ci' ? 'GitLab CI' : 'Jenkins';
+        toast(`当前配置模式为 ${curLabel}，无法启用 ${itemLabel} 项目`, false);
+        return;
+    }
+    if (!confirm('确定启用 "' + jobName + '" 吗？\n\n启用后，同仓库的另一条映射将立即隐藏，且下次自动发现时也会被过滤。')) return;
+    try {
+        item._original_job_name = jobName;
+        item.status = 'active';
+        // 清理 null 值，避免提交异常
+        Object.keys(item).forEach(k => { if (item[k] === '' || item[k] === null) item[k] = null; });
+        const res = await fetch(MAP_API, {
+            method: 'PUT',
+            headers: Object.assign({'Content-Type':'application/json'}, authHeaders()),
+            body: JSON.stringify(item)
+        });
+        if (handle401(res)) return;
+        const data = await res.json();
+        if (res.ok) {
+            toast('已启用 ' + jobName, true);
+            loadMaps();
+        } else {
+            toast(data.message || '启用失败', false);
+        }
+    } catch(e) { toast('网络错误: ' + e.message, false); }
+}
+
 async function deleteMap(jobName) {
     if (!confirm('确定删除映射 "' + jobName + '" 吗？')) return;
     try {
         const res = await fetch(MAP_API + '?job_name=' + encodeURI(jobName), { method:'DELETE', headers:authHeaders() });
         if (handle401(res)) return;
         const data = await res.json();
-        if (res.ok) { toast('已删除 ' + jobName, true); loadMaps(); }
+        if (res.ok) { toast('已删除 ' + jobName, true); hideForm(); loadMaps(); }
         else { toast(data.message || '删除失败', false); }
     } catch(e) { toast('网络错误: ' + e.message, false); }
 }

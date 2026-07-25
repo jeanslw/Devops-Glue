@@ -112,63 +112,6 @@
             <!-- ═══ 映射管理 Tab ═══ -->
             <div id="tab-mapping" style="display:none;">
 
-                <!-- 表单面板 -->
-                <div class="form-panel" id="form-panel">
-                    <h3 id="form-title">新增映射</h3>
-                    <form id="map-form" onsubmit="submitForm(event)">
-                        <input type="hidden" id="original-name">
-                        <div class="form-grid">
-                            <div>
-                                <label><span class="req">*</span> Job 名称</label>
-                                <input id="f-job_name" placeholder="例: java/registry" required>
-                            </div>
-                            <div>
-                                <label>Git 平台</label>
-                                <select id="f-git_platform"></select>
-                            </div>
-                            <div>
-                                <label>Build 系统</label>
-                                <select id="f-build_provider">
-                                    <option value="">— 请选择 —</option>
-                                    <option value="jenkins">jenkins</option>
-                                    <option value="gitlab_ci">gitlab_ci</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label>状态</label>
-                                <select id="f-status">
-                                    <option value="active">启用</option>
-                                    <option value="disabled">禁用</option>
-                                </select>
-                            </div>
-                            <div class="full">
-                                <label>Git Remote URL</label>
-                                <input id="f-git_remote" placeholder="例: http://git.company.com/project.git">
-                            </div>
-                            <div>
-                                <label>Project ID</label>
-                                <input id="f-project_id" placeholder="数字或空">
-                            </div>
-                            <div class="full">
-                                <label>Web URL</label>
-                                <input id="f-web_url" placeholder="项目主页链接">
-                            </div>
-                            <div>
-                                <label>项目路径</label>
-                                <input id="f-current_path" placeholder="例: group/project">
-                            </div>
-                            <div>
-                                <label>Harbor 仓库</label>
-                                <input id="f-harbor_repository" placeholder="例: project/repo">
-                            </div>
-                        </div>
-                        <div class="form-actions">
-                            <button type="submit" class="btn btn-save">💾 保存</button>
-                            <button type="button" class="btn btn-cancel" onclick="hideForm()">取消</button>
-                        </div>
-                    </form>
-                </div>
-
                 <!-- 工具栏 -->
                 <div class="toolbar">
                     <h3>映射配置</h3>
@@ -186,8 +129,13 @@
                 <div id="table-view">
                     <!-- 筛选栏 -->
                     <div class="filter-bar" style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;align-items:center;">
-                        <input id="map-search" type="text" placeholder="搜索 Job/仓库/Remote…" style="flex:1;min-width:200px;padding:7px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" oninput="onFilterChange()">
-                        <select id="map-platform-filter" onchange="onFilterChange()" style="padding:7px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;min-width:130px;">
+                        <input id="map-search" type="text" placeholder="搜索 Job/仓库/Remote…" style="flex:0 1 300px;min-width:160px;padding:7px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" oninput="onFilterChange()">
+                        <select id="map-provider-filter" onchange="onFilterChange()" style="padding:7px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;min-width:110px;">
+                            <option value="">全部构建源</option>
+                            <option value="jenkins">⚡ Jenkins</option>
+                            <option value="gitlab_ci">🐺 GitLab CI</option>
+                        </select>
+                        <select id="map-platform-filter" onchange="onFilterChange()" style="padding:7px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;min-width:110px;">
                             <option value="">全部平台</option>
                         </select>
                     </div>
@@ -207,6 +155,64 @@
                         <div id="empty-msg" style="display:none;text-align:center;padding:40px;color:#9ca3af;">
                             暂无映射配置，点击上方按钮新增
                         </div>
+                    </div>
+
+                    <!-- 表单面板（新增/编辑时在列表下方展开） -->
+                    <div class="form-panel" id="form-panel">
+                        <h3 id="form-title">新增映射</h3>
+                        <form id="map-form" onsubmit="submitForm(event)">
+                            <input type="hidden" id="original-name">
+                            <div class="form-grid">
+                                <div>
+                                    <label><span class="req">*</span> Job 名称</label>
+                                    <input id="f-job_name" placeholder="例: java/registry" required>
+                                </div>
+                                <div>
+                                    <label>Git 平台</label>
+                                    <select id="f-git_platform"></select>
+                                </div>
+                                <div>
+                                    <label>Build 系统</label>
+                                    <select id="f-build_provider">
+                                        <option value="">— 请选择 —</option>
+                                        <option value="jenkins">jenkins</option>
+                                        <option value="gitlab_ci">gitlab_ci</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label>状态</label>
+                                    <select id="f-status">
+                                        <option value="pending">待启用</option>
+                                        <option value="active">启用</option>
+                                        <option value="disabled">禁用</option>
+                                    </select>
+                                </div>
+                                <div class="full">
+                                    <label>Git Remote URL</label>
+                                    <input id="f-git_remote" placeholder="例: http://git.company.com/project.git">
+                                </div>
+                                <div>
+                                    <label>Project ID</label>
+                                    <input id="f-project_id" placeholder="数字或空">
+                                </div>
+                                <div class="full">
+                                    <label>Web URL</label>
+                                    <input id="f-web_url" placeholder="项目主页链接">
+                                </div>
+                                <div>
+                                    <label>项目路径</label>
+                                    <input id="f-current_path" placeholder="例: group/project">
+                                </div>
+                                <div>
+                                    <label>Harbor 仓库</label>
+                                    <input id="f-harbor_repository" placeholder="例: project/repo">
+                                </div>
+                            </div>
+                            <div class="form-actions">
+                                <button type="submit" class="btn btn-save">💾 保存</button>
+                                <button type="button" class="btn btn-cancel" onclick="hideForm()">取消</button>
+                            </div>
+                        </form>
                     </div>
                 </div>
 

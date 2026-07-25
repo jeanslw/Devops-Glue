@@ -25,13 +25,32 @@ class AutoDiscover
     public function discover(): array
     {
         $buildMode = $this->mapping->buildMode();
-        $existingRemotes = $this->existingRemotes();
+
+        // ⚠️ 关键安全约束：按当前构建模式严格隔离，Jenkins 和 GitLab CI 映射绝不允许互相干扰
+        // - jenkins 模式：只参考 build_provider=jenkins 的已有记录去重
+        // - gitlab_ci 模式：只参考 build_provider=gitlab_ci 的已有记录去重
+        // - both 模式：两类都纳入去重（同一 remote 只挂一个 provider，避免重复）
+        $activeRemotes = [];
+        $existingNames = [];
+        foreach ($this->config->getJobGitMap() as $m) {
+            $bp = $m['build_provider'] ?? 'jenkins';
+
+            // 单 provider 模式：排斥对方 provider 的记录，杜绝交叉污染
+            if ($buildMode !== 'both' && $bp !== $buildMode) continue;
+
+            if (!empty($m['job_name'])) $existingNames[] = $m['job_name'];
+            if (empty($m['git_remote'])) continue;
+            if (($m['status'] ?? 'active') === 'active') {
+                $activeRemotes[] = $m['git_remote'];
+            }
+        }
+
         $errors    = [];
         $found     = [];
 
         if (in_array($buildMode, ['jenkins', 'both'])) {
             try {
-                $found = array_merge($found, $this->scanJenkins($existingRemotes));
+                $found = array_merge($found, $this->scanJenkins($activeRemotes, $existingNames));
             } catch (\Exception $e) {
                 $errors[] = 'Jenkins: ' . $e->getMessage();
             }
@@ -39,7 +58,7 @@ class AutoDiscover
 
         if (in_array($buildMode, ['gitlab_ci', 'both'])) {
             try {
-                $found = array_merge($found, $this->scanGitlabCi($existingRemotes));
+                $found = array_merge($found, $this->scanGitlabCi($activeRemotes, $existingNames));
             } catch (\Exception $e) {
                 $errors[] = 'GitLab CI: ' . $e->getMessage();
             }
@@ -55,11 +74,22 @@ class AutoDiscover
     public function saveDiscovered(array $discovered): int
     {
         $saved = 0;
+        $buildMode = $this->mapping->buildMode();
         $maps  = $this->config->getJobGitMap();
-        $names = array_column($maps, 'job_name');
+
+        // 同样按模式隔离：只收集当前模式相关 provider 的 job_name，防止跨 provider 误判重复
+        $names = [];
+        foreach ($maps as $m) {
+            $bp = $m['build_provider'] ?? 'jenkins';
+            if ($buildMode !== 'both' && $bp !== $buildMode) continue;
+            if (!empty($m['job_name'])) $names[] = $m['job_name'];
+        }
+
         foreach ($discovered as $item) {
             $e = $item['entry'];
             if (in_array($e['job_name'], $names)) continue;
+            // 新发现全部设为 pending，用户手动启用后才变 active
+            $e['status'] = 'pending';
             $maps[] = $e;
             $saved++;
         }
@@ -69,15 +99,21 @@ class AutoDiscover
 
     // ── Jenkins ──
 
-    private function scanJenkins(array &$existingRemotes): array
+    private function scanJenkins(array $activeRemotes, array $existingNames): array
     {
         $found = [];
+        $seen  = [];  // 仅本 provider 内去重，不污染 activeRemotes
         try {
             foreach ($this->jenkins->getAllJobs() as $jobName) {
                 $remotes  = $this->jenkins->getGitRemotes($jobName);
                 $remote   = $remotes[0] ?? '';
-                if ($remote && in_array($remote, $existingRemotes)) continue;
+                // 该 remote 已被当前模式的已有 active 记录映射，跳过（跨 provider 仅 both 模式生效）
+                if ($remote && in_array($remote, $activeRemotes)) continue;
+                // 本 provider 内同一 remote 不重复显示
+                if ($remote && in_array($remote, $seen)) continue;
+                if (in_array($jobName, $existingNames)) continue;
                 $platform = $this->detectPlatform($remote);
+                if ($remote) $seen[] = $remote;
 
                 $found[] = ['entry' => [
                     'job_name'       => $jobName,
@@ -89,7 +125,6 @@ class AutoDiscover
                     'web_url'        => '',
                     'harbor_repository' => '',
                 ], 'source' => 'jenkins'];
-                if ($remote) $existingRemotes[] = $remote;
             }
         } catch (\Exception $e) {
             $this->logger?->warning('AutoDiscover Jenkins 扫描失败', ['error' => $e->getMessage()]);
@@ -99,7 +134,7 @@ class AutoDiscover
 
     // ── GitLab CI ──
 
-    private function scanGitlabCi(array &$existingRemotes): array
+    private function scanGitlabCi(array $activeRemotes, array $existingNames): array
     {
         $found = [];
         $glCfg = $this->config->getGitlabConfig();
@@ -118,6 +153,7 @@ class AutoDiscover
                 throw new \RuntimeException('GitLab Token 无效，请检查 GITLAB_TOKEN');
             }
             $page = 1;
+            $seen = [];  // 仅本 provider 内去重，不污染 activeRemotes
             while ($page <= 10) {
                 $resp = $client->get("{$base}/api/v4/projects?per_page=100&page={$page}&membership=true&order_by=last_activity_at");
                 $data = json_decode($resp->getBody(), true);
@@ -127,9 +163,13 @@ class AutoDiscover
                     $path = $p['path_with_namespace'] ?? '';
                     $pid  = $p['id'] ?? 0;
                     $remote = $p['http_url_to_repo'] ?? '';
-                    if ($remote && in_array($remote, $existingRemotes)) continue;
-                    // 检查是否真的在用 CI：有 pipeline 记录才加入
-                    if ($pid && !$this->hasPipelines($client, $base, $pid)) continue;
+                    // 该 remote 已被当前模式的已有 active 记录映射，跳过
+                    if ($remote && in_array($remote, $activeRemotes)) continue;
+                    // 本 provider 内同一 remote 不重复显示
+                    if ($remote && in_array($remote, $seen)) continue;
+                    if (in_array($path, $existingNames)) continue;
+                    if ($remote) $seen[] = $remote;
+
                     $found[] = ['entry' => [
                         'job_name'       => $path,
                         'build_provider' => 'gitlab_ci',
@@ -140,7 +180,6 @@ class AutoDiscover
                         'web_url'        => $p['web_url'] ?? '',
                         'harbor_repository' => '',
                     ], 'source' => 'gitlab_ci'];
-                    if ($remote) $existingRemotes[] = $remote;
                 }
                 $page++;
             }
@@ -152,30 +191,11 @@ class AutoDiscover
 
     // ── helpers ──
 
-    /**
-     * 已存在的 git_remote 集合（去重依据：同一 git 仓库只保留一条映射）
-     */
-    private function existingRemotes(): array
-    {
-        return array_filter(array_column($this->config->getJobGitMap(), 'git_remote'));
-    }
-
     private function detectPlatform(string $remote): string
     {
         if (empty($remote)) return $this->config->getDefaultGitPlatform();
         try { return $this->gitRegistry->detect($remote); }
         catch (\Exception $e) { return $this->config->getDefaultGitPlatform(); }
-    }
-
-    private function hasPipelines(Client $client, string $base, int $projectId): bool
-    {
-        try {
-            $resp = $client->get("{$base}/api/v4/projects/{$projectId}/pipelines?per_page=1");
-            $data = json_decode($resp->getBody(), true);
-            return is_array($data) && !empty($data);
-        } catch (\Exception $e) {
-            return false;
-        }
     }
 
     private function extractPath(string $remote, string $jobName): string
