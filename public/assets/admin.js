@@ -197,6 +197,25 @@ function onFilterChange() {
     mapDebounceTimer = setTimeout(() => { mapPage = 1; loadMaps(); }, 300);
 }
 
+/** 归一化 Git remote URL 为纯路径（org/repo），与后端 AutoDiscover::normalizeRemote 一致 */
+function normalizeRemote(r) {
+    r = (r || '').trim();
+    if (!r) return '';
+    // 去掉协议前缀
+    r = r.replace(/^(https?|ssh|git):\/\//i, '');
+    // git@host:path → host/path
+    const m = r.match(/^git@([^:]+):(.+)/);
+    if (m) r = m[1] + '/' + m[2];
+    // 去尾部 .git 和末尾斜杠
+    r = r.replace(/\.git$/i, '');
+    r = r.replace(/\/$/, '');
+    // 提取路径部分（去掉 host），统一小写
+    const slashPos = r.indexOf('/');
+    if (slashPos !== -1) r = r.substring(slashPos + 1).toLowerCase();
+    else r = r.toLowerCase();
+    return r;
+}
+
 async function loadMaps() {
     try {
         const search = document.getElementById('map-search')?.value?.trim() || '';
@@ -216,10 +235,15 @@ async function loadMaps() {
         const total = data.total || 0;
         const totalPages = data.total_pages || 1;
 
-        // 前端去重：同一 remote 有 active 记录时，隐藏其他非 active 的（与自动发现逻辑一致）
+        // 前端去重：归一化 remote 后比对，同一仓库有 active 记录时隐藏其他非 active（与后端逻辑一致）
         const activeRemotes = new Set();
-        maps.forEach(m => { if ((m.status || 'active') === 'active' && m.git_remote) activeRemotes.add(m.git_remote); });
-        maps = maps.filter(m => (m.status || 'active') === 'active' || !activeRemotes.has(m.git_remote));
+        maps.forEach(m => {
+            if ((m.status || 'active') === 'active' && m.git_remote) {
+                const nk = normalizeRemote(m.git_remote);
+                if (nk) activeRemotes.add(nk);
+            }
+        });
+        maps = maps.filter(m => (m.status || 'active') === 'active' || !activeRemotes.has(normalizeRemote(m.git_remote)));
 
         platforms = data.platforms || [];
 
