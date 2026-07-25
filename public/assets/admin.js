@@ -827,7 +827,7 @@ async function loadSecurityChecks() {
             document.getElementById('sec-tbody').innerHTML = checks.map(c => {
                 const icon = STATE_ICONS[c.state] || '❓';
                 const label = STATE_LABELS[c.state] || c.state || '—';
-                const cls = c.state === 'success' ? 'ok' : c.state === 'failure' ? 'err' : 'off';
+                const cls = c.state === 'success' ? 'ok' : c.state === 'failed' ? 'err' : 'off';
                 const shaShort = (c.sha || '').substring(0, 8);
                 const time = (c.created_at || '').replace('T',' ').substring(0, 19);
                 return `<tr>
