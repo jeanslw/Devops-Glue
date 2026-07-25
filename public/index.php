@@ -5,8 +5,23 @@ use Dotenv\Dotenv;
 
 require __DIR__ . '/../vendor/autoload.php';
 
+// ── 环境变量：三层加载（后加载的覆盖前面的）──
+// 1. 基础配置（.env，gitignored，放真实密码）
 $dotenv = Dotenv::createImmutable(__DIR__ . '/../config');
 $dotenv->load();
+
+// 2. 环境特定覆盖（.env.production / .env.staging，可选提交）
+$appEnv = $_ENV['APP_ENV'] ?? 'production';
+$envFile = __DIR__ . '/../config/.env.' . $appEnv;
+if ($appEnv !== 'production' && file_exists($envFile)) {
+    Dotenv::createUnsafeImmutable(__DIR__ . '/../config', '.env.' . $appEnv)->load();
+}
+
+// 3. 本地覆盖（.env.local，gitignored，开发者个人配置）
+$localFile = __DIR__ . '/../config/.env.local';
+if (file_exists($localFile)) {
+    Dotenv::createUnsafeImmutable(__DIR__ . '/../config', '.env.local')->load();
+}
 
 // 静态文件直出（PHP 内置服务器用）
 $requestUri = $_SERVER['REQUEST_URI'] ?? '';
@@ -53,7 +68,6 @@ $app->addRoutingMiddleware();
 
 // CORS 中间件（最后添加 = 最先执行，确保在路由之前拦截 OPTIONS）
 $app->add(\App\Middleware\CorsMiddleware::class);
-$appEnv = $_ENV['APP_ENV'] ?? 'production';
 $appDebug = ($_ENV['APP_DEBUG'] ?? 'false') === 'true';
 $errorMiddleware = $app->addErrorMiddleware($appDebug, true, true);
 

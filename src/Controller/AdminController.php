@@ -46,6 +46,77 @@ class AdminController extends BaseController
     }
 
     /**
+     * GET /api/admin/security_checks — 安全扫描结果列表（支持筛选/分页）
+     */
+    public function securityChecksList(Request $request, Response $response): Response
+    {
+        if ($err = $this->authCheck($request, $response)) return $err;
+
+        $params = array_merge(
+            $request->getQueryParams(),
+            $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? []
+        );
+        $project   = trim($params['project'] ?? '');
+        $checkType = trim($params['check_type'] ?? '');
+        $state     = trim($params['state'] ?? '');
+        $page      = max(1, (int)($params['page'] ?? 1));
+        $perPage   = max(1, min(100, (int)($params['per_page'] ?? 20)));
+
+        try {
+            $pdo = \App\Service\Database::getPdo();
+
+            $where = [];
+            $bind  = [];
+            if ($project !== '') {
+                $where[] = 'project LIKE ?';
+                $bind[]  = "%{$project}%";
+            }
+            if ($checkType !== '') {
+                $where[] = 'check_type = ?';
+                $bind[]  = $checkType;
+            }
+            if ($state !== '') {
+                $where[] = 'state = ?';
+                $bind[]  = $state;
+            }
+            $whereClause = $where ? 'WHERE ' . implode(' AND ', $where) : '';
+
+            // 总数
+            $countStmt = $pdo->prepare("SELECT count(*) FROM ci_security_checks {$whereClause}");
+            $countStmt->execute($bind);
+            $total = (int)$countStmt->fetchColumn();
+
+            $totalPages = max(1, (int)ceil($total / $perPage));
+            $page = min($page, $totalPages);
+            $offset = ($page - 1) * $perPage;
+
+            // 分页查询
+            $rows = $pdo->prepare(
+                "SELECT * FROM ci_security_checks {$whereClause} ORDER BY created_at DESC LIMIT {$perPage} OFFSET {$offset}"
+            );
+            $rows->execute($bind);
+            $checks = $rows->fetchAll();
+
+            // 可选筛选值
+            $types = $pdo->query("SELECT DISTINCT check_type FROM ci_security_checks ORDER BY check_type")->fetchAll(\PDO::FETCH_COLUMN);
+
+            return $this->output($response, [
+                'checks'      => $checks,
+                'total'       => $total,
+                'page'        => $page,
+                'per_page'    => $perPage,
+                'total_pages' => $totalPages,
+                'filter_opts' => [
+                    'check_types' => $types,
+                    'states'      => ['success', 'failure', 'pending', 'error'],
+                ],
+            ], $request);
+        } catch (\Exception $e) {
+            return $this->jsonError($response, '查询失败: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
      * POST /api/admin/login — 登录获取 token
      */
     public function login(Request $request, Response $response): Response
@@ -149,19 +220,57 @@ class AdminController extends BaseController
     // ────────────────────────── CRUD ──────────────────────────
 
     /**
-     * GET /api/admin/job_git_map — 列出所有映射
+     * GET /api/admin/job_git_map — 列出所有映射（支持搜索/筛选/分页）
      */
     public function jobGitMapList(Request $request, Response $response): Response
     {
         if ($err = $this->authCheck($request, $response)) return $err;
 
-        $maps = $this->config->getJobGitMap();
-        $platforms = $this->config->getGitPlatformsConfig();
-        $platformNames = array_map(fn($p) => $p['name'], $platforms);
+        $params = array_merge(
+            $request->getQueryParams(),
+            $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? []
+        );
+        $search  = trim($params['search'] ?? '');
+        $platform = trim($params['platform'] ?? '');
+        $page    = max(1, (int)($params['page'] ?? 1));
+        $perPage = max(1, min(100, (int)($params['per_page'] ?? 20)));
+
+        $allMaps = $this->config->getJobGitMap();
+        $gitPlatforms = $this->config->getGitPlatformsConfig();
+        $platformNames = array_map(fn($p) => $p['name'], $gitPlatforms);
+
+        // 筛选
+        $filtered = $allMaps;
+        if ($search !== '') {
+            $s = mb_strtolower($search);
+            $filtered = array_filter($filtered, function ($m) use ($s) {
+                foreach (['job_name','git_remote','current_path','harbor_repository'] as $f) {
+                    if (mb_strpos(mb_strtolower($m[$f] ?? ''), $s) !== false) return true;
+                }
+                return false;
+            });
+        }
+        if ($platform !== '') {
+            $filtered = array_filter($filtered, fn($m) => ($m['git_platform'] ?? '') === $platform);
+        }
+
+        // 重置索引
+        $filtered = array_values($filtered);
+        $total = count($filtered);
+        $totalPages = max(1, (int)ceil($total / $perPage));
+        $page = min($page, $totalPages);
+
+        // 分页切片
+        $offset = ($page - 1) * $perPage;
+        $pagedMaps = array_slice($filtered, $offset, $perPage);
 
         return $this->output($response, [
-            'maps'      => $maps,
-            'platforms' => $platformNames,
+            'maps'        => $pagedMaps,
+            'platforms'   => $platformNames,
+            'total'       => $total,
+            'page'        => $page,
+            'per_page'    => $perPage,
+            'total_pages' => $totalPages,
         ], $request);
     }
 
@@ -258,12 +367,22 @@ class AdminController extends BaseController
     // ──────────────────────── 平台 API 版本 ────────────────────────
 
     /**
-     * GET /api/admin/platform_versions — 获取所有平台 API 版本
+     * GET /api/admin/platform_versions — 获取所有平台 API 版本及配置状态
      */
     public function platformVersionsList(Request $request, Response $response): Response
     {
         if ($err = $this->authCheck($request, $response)) return $err;
         $versions = $this->config->getPlatformApiVersionsWithSource();
+
+        // 附加配置状态
+        $gitPlatforms = $this->config->getGitPlatformsConfig();
+        $configuredGit = array_column($gitPlatforms, 'name');
+
+        foreach ($versions as $name => &$info) {
+            $info['configured'] = in_array($name, $configuredGit) || $name === 'harbor';
+        }
+        unset($info);
+
         return $this->output($response, ['versions' => $versions], $request);
     }
 
@@ -282,6 +401,65 @@ class AdminController extends BaseController
 
         $this->config->savePlatformApiVersions($versions);
         return $this->output($response, ['success' => true, 'versions' => $this->config->getPlatformApiVersions()], $request);
+    }
+
+    // ──────────────────────── 构建系统模式 ────────────────────────
+
+    /**
+     * GET /api/admin/build_mode — 获取构建模式及可用状态
+     */
+    public function getBuildMode(Request $request, Response $response): Response
+    {
+        if ($err = $this->authCheck($request, $response)) return $err;
+        $mode = $this->config->getBuildMode();
+
+        // 检查实际可用性（由配置决定，不是模式）
+        $jenkinsCfg = $this->config->getJenkinsConfig();
+        $hasJenkins = !empty($jenkinsCfg['url']);
+        $hasGitlab = $this->config->isPlatformConfigured('gitlab');
+        $glCfg = $hasGitlab ? $this->config->getGitlabConfig() : [];
+        $hasGitlabCi = $hasGitlab && !empty($glCfg['base_url']) && !empty($glCfg['token']);
+
+        return $this->output($response, [
+            'mode'          => $mode,
+            'source'        => $this->config->getBuildModeSource(),
+            'has_jenkins'   => $hasJenkins,
+            'has_gitlab_ci' => $hasGitlabCi,
+        ], $request);
+    }
+
+    /**
+     * PUT /api/admin/build_mode — 更新构建模式
+     */
+    public function updateBuildMode(Request $request, Response $response): Response
+    {
+        if ($err = $this->authCheck($request, $response)) return $err;
+        $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
+        $mode = trim($body['mode'] ?? '');
+        if (!in_array($mode, ['jenkins', 'gitlab_ci', 'both'])) {
+            return $this->jsonError($response, 'mode 必须为 jenkins / gitlab_ci / both', 400);
+        }
+
+        // 拒绝不可用的 Provider
+        $jenkinsCfg = $this->config->getJenkinsConfig();
+        $hasJenkins = !empty($jenkinsCfg['url']);
+        $hasGitlab = $this->config->isPlatformConfigured('gitlab');
+        $glCfg = $hasGitlab ? $this->config->getGitlabConfig() : [];
+        $hasGitlabCi = $hasGitlab && !empty($glCfg['base_url']) && !empty($glCfg['token']);
+
+        if (($mode === 'jenkins' || $mode === 'both') && !$hasJenkins) {
+            return $this->jsonError($response, 'Jenkins 不可用（未配置 url），请先检查配置文件', 400);
+        }
+        if (($mode === 'gitlab_ci' || $mode === 'both') && !$hasGitlabCi) {
+            return $this->jsonError($response, 'GitLab CI 不可用（未配置 base_url / token），请先检查配置文件', 400);
+        }
+
+        try {
+            $this->config->setBuildMode($mode);
+            return $this->output($response, ['success' => true, 'mode' => $mode], $request);
+        } catch (\Exception $e) {
+            return $this->jsonError($response, '保存失败: ' . $e->getMessage(), 500);
+        }
     }
 
     // ────────────────────────── helpers ──────────────────────────

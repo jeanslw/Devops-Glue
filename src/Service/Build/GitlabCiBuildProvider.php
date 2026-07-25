@@ -173,6 +173,21 @@ class GitlabCiBuildProvider implements BuildProviderInterface
         }
     }
 
+    public function getBranches(string $projectId): array
+    {
+        $encoded = urlencode($projectId);
+        $url = "{$this->baseUrl}/api/v4/projects/{$encoded}/repository/branches?per_page=100";
+        try {
+            $resp = $this->http->get($url);
+            $data = json_decode($resp->getBody(), true);
+            if (!is_array($data)) return [];
+            return array_map(fn($b) => $b['name'] ?? '', $data);
+        } catch (\Exception $e) {
+            $this->logger?->warning('GitLab 分支查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
+            return [];
+        }
+    }
+
     public function setCommitStatus(string $projectId, string $sha, string $state, string $name, string $description, string $targetUrl = ''): array
     {
         $encoded = urlencode($projectId);

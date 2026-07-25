@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS `ci_pipeline_tags` (
     `pipeline_iid`      INT NOT NULL,
     `tag`               VARCHAR(255) NOT NULL,
     `harbor_repository` TEXT,
+    `status`            VARCHAR(255) DEFAULT '',
     `created_at`        DATETIME DEFAULT (NOW()),
     PRIMARY KEY (`project`, `pipeline_iid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -44,14 +45,78 @@ CREATE TABLE IF NOT EXISTS `cache` (
     `expires_at` INT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- ── 5. admin_users（管理员账号）──
+-- ── 5. ci_app_settings（应用运行时配置）──
+CREATE TABLE IF NOT EXISTS `ci_app_settings` (
+    `setting_key` VARCHAR(255) PRIMARY KEY,
+    `value`       MEDIUMTEXT NOT NULL,
+    `updated_at`  DATETIME DEFAULT (NOW())
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ── 6. admin_users（管理员账号）──
 CREATE TABLE IF NOT EXISTS `admin_users` (
     `username`      VARCHAR(255) PRIMARY KEY,
     `password_hash` TEXT NOT NULL,
     `updated_at`    DATETIME DEFAULT (NOW())
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- ── 7. ci_security_checks（安全扫描审计）──
+CREATE TABLE IF NOT EXISTS `ci_security_checks` (
+    `id`            INT AUTO_INCREMENT PRIMARY KEY,
+    `project`       VARCHAR(255) NOT NULL,
+    `sha`           VARCHAR(255) NOT NULL,
+    `check_type`    VARCHAR(255) NOT NULL,
+    `state`         VARCHAR(255) NOT NULL,
+    `context`       VARCHAR(255) NOT NULL,
+    `description`   TEXT,
+    `tag`           VARCHAR(255) DEFAULT '',
+    `created_at`    DATETIME DEFAULT (NOW())
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- ── 索引 ──
-CREATE INDEX IF NOT EXISTS `idx_pipeline_tags_project`   ON `ci_pipeline_tags`(`project`);
-CREATE INDEX IF NOT EXISTS `idx_pipeline_tags_created`    ON `ci_pipeline_tags`(`created_at`);
-CREATE INDEX IF NOT EXISTS `idx_job_git_map_current_path` ON `ci_job_git_map`(`current_path`);
+-- 注：首次建库和迁移都通过下方 _add_index 过程处理（兼容 DATETIME / TEXT 两种列类型）
+-- 这里不放裸 CREATE INDEX，避免重复执行时报 1061（重复键名）
+
+-- =============================================================
+-- 迁移（已有数据库增量更新，重复执行安全）
+-- =============================================================
+DELIMITER //
+
+CREATE PROCEDURE IF NOT EXISTS `_add_column`(
+    IN `tbl` VARCHAR(64), IN `col` VARCHAR(64), IN `def` TEXT
+)
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = `tbl` AND COLUMN_NAME = `col`
+    ) THEN
+        SET @s = CONCAT('ALTER TABLE `', `tbl`, '` ADD COLUMN `', `col`, '` ', `def`);
+        PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+    END IF;
+END//
+
+CREATE PROCEDURE IF NOT EXISTS `_add_index`(
+    IN `tbl` VARCHAR(64), IN `idx` VARCHAR(64), IN `def` TEXT
+)
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.STATISTICS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = `tbl` AND INDEX_NAME = `idx`
+    ) THEN
+        SET @s = CONCAT('CREATE INDEX `', `idx`, '` ON `', `tbl`, '` ', `def`);
+        PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+    END IF;
+END//
+
+DELIMITER ;
+
+CALL `_add_column`('ci_pipeline_tags', 'harbor_repository', 'TEXT');
+CALL `_add_column`('ci_pipeline_tags', 'status',            'VARCHAR(255) DEFAULT \'\'');
+
+CALL `_add_index`('ci_pipeline_tags',   'idx_pipeline_tags_project',     '(`project`)');
+CALL `_add_index`('ci_pipeline_tags',   'idx_pipeline_tags_created',     '(`created_at`(19))');
+CALL `_add_index`('ci_job_git_map',     'idx_job_git_map_current_path',  '(`current_path`(255))');
+CALL `_add_index`('ci_security_checks', 'idx_security_checks_project',  '(`project`(64), `check_type`(64))');
+CALL `_add_index`('ci_security_checks', 'idx_security_checks_sha',       '(`sha`)');
+
+DROP PROCEDURE IF EXISTS `_add_column`;
+DROP PROCEDURE IF EXISTS `_add_index`;

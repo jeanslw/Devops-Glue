@@ -48,7 +48,6 @@ class GithubService implements GitProviderInterface
 
     public function getBranches(string $repository): array
     {
-        // repository 格式: owner/repo (与 GitLab/Gitee 保持统一)
         $parts = explode('/', $repository, 2);
         $owner = $parts[0] ?? '';
         $repo  = $parts[1] ?? '';
@@ -56,38 +55,60 @@ class GithubService implements GitProviderInterface
             $this->logger?->warning('GitHub 仓库路径解析失败', ['repository' => $repository]);
             return [];
         }
+        return $this->paginatedList("/repos/{$owner}/{$repo}/branches", 'name');
+    }
 
-        $branches = [];
+    public function getTags(string $repository): array
+    {
+        $parts = explode('/', $repository, 2);
+        $owner = $parts[0] ?? '';
+        $repo  = $parts[1] ?? '';
+        if (empty($owner) || empty($repo)) {
+            $this->logger?->warning('GitHub 仓库路径解析失败', ['repository' => $repository]);
+            return [];
+        }
+        return $this->paginatedList("/repos/{$owner}/{$repo}/tags", 'name');
+    }
+
+    public function setCommitStatus(string $repository, string $sha, string $state, string $context, string $description, string $targetUrl = ''): array
+    {
+        $parts = explode('/', $repository, 2);
+        $owner = $parts[0] ?? '';
+        $repo  = $parts[1] ?? '';
+        if (empty($owner) || empty($repo)) {
+            return ['success' => false, 'message' => '仓库路径格式错误'];
+        }
+        $body = [
+            'state'       => $state,
+            'description' => $description,
+            'context'     => $context,
+        ];
+        if ($targetUrl) $body['target_url'] = $targetUrl;
+
+        $result = $this->request('POST', "/repos/{$owner}/{$repo}/statuses/{$sha}", ['json' => $body]);
+        $ok = !isset($result['error']);
+        return ['success' => $ok, 'message' => $ok ? 'status 已回写' : ($result['error'] ?? '回写失败')];
+    }
+
+    /** 通用分页列表获取 */
+    private function paginatedList(string $path, string $key): array
+    {
+        $all = [];
         $page = 1;
-
         do {
-            $data = $this->request(
-                'GET',
-                "/repos/{$owner}/{$repo}/branches?per_page=" . self::PER_PAGE . "&page={$page}"
-            );
-
-            if (isset($data['error']) || !is_array($data) || empty($data)) {
-                break;
-            }
-
-            foreach ($data as $branch) {
-                if (!empty($branch['name'])) {
-                    $branches[] = $branch['name'];
-                }
-            }
-
+            $fullPath = "{$path}?per_page=" . self::PER_PAGE . "&page={$page}";
+            $data = $this->request('GET', $fullPath);
+            if (isset($data['error']) || !is_array($data) || empty($data)) break;
+            $all = array_merge($all, array_column($data, $key));
             $page++;
         } while (count($data) === self::PER_PAGE && $page <= self::MAX_PAGES);
 
         if ($page > self::MAX_PAGES) {
-            $this->logger?->warning('GitHub 分支查询达到最大分页上限', [
-                'repository' => $repository,
-                'max_pages'  => self::MAX_PAGES,
-                'branches'   => count($branches),
+            $this->logger?->warning('GitHub 列表达到最大分页上限', [
+                'path' => $path, 'max_pages' => self::MAX_PAGES, 'total' => count($all),
             ]);
         }
-
-        return $branches;
+        return $all;
     }
 
     public function getProjectMeta(string $owner, string $repo): ?array

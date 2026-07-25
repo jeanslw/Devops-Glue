@@ -76,10 +76,6 @@ class JenkinsBuildProvider implements BuildProviderInterface
 
     public function trigger(string $projectId, string $ref, array $variables = []): array
     {
-        $inputParams = $variables;
-        if (!empty($ref) && empty($inputParams)) {
-            $inputParams['branches'] = $ref;
-        }
         // 1. 校验 Job 是否存在
         try {
             $resolved = $this->jenkins->resolvePath($projectId);
@@ -91,13 +87,14 @@ class JenkinsBuildProvider implements BuildProviderInterface
             return ['success' => false, 'message' => "Jenkins 不可达: " . $e->getMessage()];
         }
 
-        // 2. 获取 Jenkins 参数定义
+        // 2. 获取参数定义
         try {
-            $allParams = $this->jenkins->getParameters($fullName, null);
+            $allParams = $this->jenkins->getParameterDefinitions($fullName);
         } catch (\Exception $e) {
             return ['success' => false, 'message' => '获取构建参数失败: ' . $e->getMessage()];
         }
 
+        // 无参数 → 直接触发
         if (empty($allParams)) {
             try {
                 $result = $this->jenkins->triggerBuild($fullName, []);
@@ -107,49 +104,21 @@ class JenkinsBuildProvider implements BuildProviderInterface
             }
         }
 
-        // 2. 找到分支参数（按关键词匹配第一个含 branch 的，否则第一个参数）
+        // 3. 参数校验：调用方必须在 variables 里显式传参数名和值
+        if (empty($variables)) {
+            return ['success' => false, 'message' => '缺少构建参数，可用参数: ' . implode(', ', array_keys($allParams))];
+        }
+
         $paramNames = array_keys($allParams);
-        $branchKey = null;
-        foreach ($paramNames as $name) {
-            if (stripos($name, 'branch') !== false) { $branchKey = $name; break; }
-        }
-        if (!$branchKey) $branchKey = $paramNames[0];
-
-        // 3. 分支选项为空时从 Git 补齐
-        $branchOptions = $allParams[$branchKey] ?? [];
-        if (empty($branchOptions) && $this->git) {
-            try {
-                $gitBranches = $this->git->getBranchesForJob($fullName);
-                if (!empty($gitBranches)) { $branchOptions = $gitBranches; $allParams[$branchKey] = $gitBranches; }
-            } catch (\Exception $e) {}
-        }
-
-        // 4. 验证传入参数
-        if (empty($inputParams)) {
-            return ['success' => false, 'message' => '缺少参数，可用参数: ' . implode(', ', $paramNames)];
-        }
-        $buildParams = [];
-        foreach ($inputParams as $key => $value) {
-            $matchedKey = $this->matchParamKey($key, $paramNames);
-            if (!$matchedKey) {
-                return ['success' => false, 'message' => "Jenkins Job '{$projectId}' 没有参数 '{$key}'，可用参数: " . implode(', ', $paramNames)];
+        foreach ($variables as $key => $value) {
+            if (!in_array($key, $paramNames, true)) {
+                return ['success' => false, 'message' => "Jenkins Job 没有参数 '{$key}'，可用参数: " . implode(', ', $paramNames)];
             }
-            $options = $allParams[$matchedKey] ?? [];
-            // 分支参数用 Git 补全后的选项
-            if ($matchedKey === $branchKey && !empty($branchOptions)) $options = $branchOptions;
-            if (!empty($options)) {
-                $actual = $this->matchBranchValue($value, $options);
-                if ($actual === null) {
-                    return ['success' => false, 'message' => "无效的值 '{$value}'（参数 '{$matchedKey}'），可用值: " . implode(', ', array_slice($options, 0, 10))];
-                }
-                $value = $actual;
-            }
-            $buildParams[$matchedKey] = $value;
         }
 
-        // 5. 触发
+        // 4. 触发
         try {
-            $result = $this->jenkins->triggerBuild($fullName, $buildParams);
+            $result = $this->jenkins->triggerBuild($fullName, $variables);
             return [
                 'success'   => true,
                 'queue_id'  => $result['queue_id'] ?? '',
@@ -160,26 +129,6 @@ class JenkinsBuildProvider implements BuildProviderInterface
             $this->logger?->error('Jenkins trigger 失败', ['project' => $projectId, 'error' => $e->getMessage()]);
             return ['success' => false, 'message' => '触发失败: ' . $e->getMessage()];
         }
-    }
-
-    /** 匹配参数 key：输入值可能是别名（branches→branch_param），用相似度匹配 */
-    private function matchParamKey(string $input, array $paramNames): ?string
-    {
-        if (in_array($input, $paramNames)) return $input;
-        foreach ($paramNames as $name) {
-            if (stripos($name, $input) !== false || stripos($input, $name) !== false) return $name;
-        }
-        return null;
-    }
-
-    /** 处理 origin/ 前缀匹配 */
-    private function matchBranchValue(string $input, array $options): ?string
-    {
-        if (in_array($input, $options)) return $input;
-        $allOrigin = true;
-        foreach ($options as $opt) { if (strpos($opt, 'origin/') !== 0) { $allOrigin = false; break; } }
-        if ($allOrigin && in_array('origin/' . $input, $options)) return 'origin/' . $input;
-        return null;
     }
 
     public function retry(string $projectId, int $pipelineId): array
@@ -195,19 +144,29 @@ class JenkinsBuildProvider implements BuildProviderInterface
     public function getVariables(string $projectId): array
     {
         try {
-            $params = $this->jenkins->getParameters($projectId);
+            $paramDefs = $this->jenkins->getParameterDefinitions($projectId);
             $result = [];
-            foreach ($params as $key => $options) {
-                $opts = is_array($options) ? $options : [];
-                // 分支参数为空时从 Git 补齐
-                if (empty($opts) && stripos($key, 'branch') !== false && $this->git) {
-                    try { $opts = $this->git->getBranchesForJob($projectId); } catch (\Exception $e) {}
-                }
-                $result[] = ['key' => $key, 'value' => '', 'options' => $opts, 'type' => 'choice'];
+            foreach ($paramDefs as $key => $def) {
+                $class = $def['_class'] ?? '';
+                $type  = str_contains($class, 'GitParameterDefinition') ? 'git' : 'choice';
+                $result[] = ['key' => $key, 'type' => $type];
             }
             return $result;
         } catch (\Exception $e) {
             $this->logger?->error('Jenkins parameters 查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
+            return [];
+        }
+    }
+
+    public function getBranches(string $projectId): array
+    {
+        if (!$this->git) {
+            return [];
+        }
+        try {
+            return $this->git->getBranchesForJob($projectId);
+        } catch (\Exception $e) {
+            $this->logger?->warning('Git 分支查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
             return [];
         }
     }

@@ -3,6 +3,8 @@ namespace App\Config;
 
 class AppConfig
 {
+    public const APP_VERSION = '2.3.2';
+
     private array $config;
 
     public function __construct(array $config)
@@ -302,6 +304,59 @@ class AppConfig
                 $stmt->execute([$name, $ver]);
             }
         }
+    }
+
+    // ─── 构建系统模式（数据库为唯一来源） ───
+
+    /**
+     * 获取构建模式。
+     * 逻辑：DB ci_app_settings 表 → 返回。若 DB 无记录（首次运行），从 .env 取种子值写入 DB，然后返回。
+     * 此后 DB 为唯一真相来源，.env 不再参与运行时决策。
+     */
+    public function getBuildMode(): string
+    {
+        try {
+            $pdo = \App\Service\Database::getPdo();
+            $row = $pdo->query("SELECT value FROM ci_app_settings WHERE setting_key = 'build_mode'")->fetch();
+            if ($row && in_array($row['value'], ['jenkins', 'gitlab_ci', 'both'])) {
+                return $row['value'];
+            }
+            // DB 无记录 → 首次运行，以 .env 为种子写入 DB
+            $envMode = $_ENV['BUILD_MODE'] ?? 'both';
+            $this->setBuildMode($envMode);
+            return $envMode;
+        } catch (\Exception $e) {
+            // DB 彻底不可用时的最后兜底
+            return $_ENV['BUILD_MODE'] ?? 'both';
+        }
+    }
+
+    /**
+     * 获取当前构建模式的来源：'database' | 'env'
+     */
+    public function getBuildModeSource(): string
+    {
+        try {
+            $pdo = \App\Service\Database::getPdo();
+            $row = $pdo->query("SELECT value FROM ci_app_settings WHERE setting_key = 'build_mode'")->fetch();
+            if ($row && in_array($row['value'], ['jenkins', 'gitlab_ci', 'both'])) {
+                return 'database';
+            }
+        } catch (\Exception $e) {}
+        return 'env';
+    }
+
+    /**
+     * 设置构建模式（写入 app_settings 表）
+     */
+    public function setBuildMode(string $mode): void
+    {
+        if (!in_array($mode, ['jenkins', 'gitlab_ci', 'both'])) {
+            throw new \InvalidArgumentException("Invalid build mode: {$mode}");
+        }
+        $pdo = \App\Service\Database::getPdo();
+        $sql = \App\Service\Database::sqlUpsert('ci_app_settings', 'setting_key, value, updated_at', '?, ?, ' . \App\Service\Database::sqlNow());
+        $pdo->prepare($sql)->execute(['build_mode', $mode]);
     }
 
     // 私有：获取平台默认 API 版本

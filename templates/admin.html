@@ -41,8 +41,8 @@
             <div class="menu-item" data-tab="mapping" onclick="switchTab('mapping')">
                 <span class="menu-icon">📋</span> 映射管理
             </div>
-            <div class="menu-item" data-tab="topology" onclick="switchTab('topology')">
-                <span class="menu-icon">🗺️</span> 项目拓扑
+            <div class="menu-item" data-tab="security" onclick="switchTab('security')">
+                <span class="menu-icon">🛡️</span> 安全扫描
             </div>
             <div class="menu-item" data-tab="versions" onclick="switchTab('versions')">
                 <span class="menu-icon">🔧</span> 对接版本
@@ -64,6 +64,19 @@
 
             <!-- ═══ 服务监测 Tab ═══ -->
             <div id="tab-monitor">
+                <!-- 数据概览通栏 -->
+                <div class="section-banner"><span>📊 数据概览</span></div>
+                <!-- 统计卡片 -->
+                <div class="stats-row" style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+                    <div class="stat-card"><div class="stat-num" id="stat-total">—</div><div class="stat-label">总映射数</div></div>
+                    <div class="stat-card"><div class="stat-num" id="stat-active">—</div><div class="stat-label">活跃项目</div></div>
+                    <div class="stat-card"><div class="stat-num" id="stat-platforms">—</div><div class="stat-label">Git 平台</div></div>
+                    <div class="stat-card"><div class="stat-num" id="stat-repos">—</div><div class="stat-label">镜像仓库</div></div>
+                </div>
+
+                <!-- 服务监测通栏 -->
+                <div class="section-banner"><span>📡 服务监测</span></div>
+
                 <div class="monitor-grid" id="monitor-grid">
                     <div class="monitor-card" id="card-jenkins">
                         <h4><span class="dot dot-load" id="dot-jenkins"></span> Jenkins</h4>
@@ -159,25 +172,55 @@
                 <!-- 工具栏 -->
                 <div class="toolbar">
                     <h3>映射配置</h3>
-                    <button class="btn btn-pri" onclick="showForm()">＋ 新增映射</button>
-                    <button class="btn btn-cancel" onclick="doDiscover()">🔍 自动发现</button>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <div class="view-toggle" id="view-toggle">
+                            <button class="btn btn-sm active" data-view="table" onclick="switchMapView('table')">📋 表格</button>
+                            <button class="btn btn-sm" data-view="topology" onclick="switchMapView('topology')">🗺️ 拓扑图</button>
+                        </div>
+                        <button class="btn btn-pri" onclick="showForm()">＋ 新增映射</button>
+                        <button class="btn btn-discover" onclick="doDiscover()">🔍 自动发现</button>
+                    </div>
                 </div>
 
-                <!-- 表格 -->
-                <div class="card">
-                    <div id="loading-map" style="text-align:center;padding:40px;color:#9ca3af;">加载中…</div>
-                    <div id="table-wrap" style="display:none;overflow-x:auto;">
-                        <table>
-                            <thead>
-                                <tr><th>Job 名称</th><th>构建源</th><th>Git 平台</th><th>Git Remote</th><th>Harbor 仓库</th><th>状态</th><th>操作</th></tr>
-                            </thead>
-                            <tbody id="map-tbody"></tbody>
-                        </table>
+                <!-- 表格视图 -->
+                <div id="table-view">
+                    <!-- 筛选栏 -->
+                    <div class="filter-bar" style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;align-items:center;">
+                        <input id="map-search" type="text" placeholder="搜索 Job/仓库/Remote…" style="flex:1;min-width:200px;padding:7px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" oninput="onFilterChange()">
+                        <select id="map-platform-filter" onchange="onFilterChange()" style="padding:7px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;min-width:130px;">
+                            <option value="">全部平台</option>
+                        </select>
                     </div>
-                    <div id="empty-msg" style="display:none;text-align:center;padding:40px;color:#9ca3af;">
-                        暂无映射配置，点击上方按钮新增
+
+                    <div class="card">
+                        <div id="loading-map" style="text-align:center;padding:40px;color:#9ca3af;">加载中…</div>
+                        <div id="table-wrap" style="display:none;overflow-x:auto;">
+                            <table>
+                                <thead>
+                                    <tr><th>Job 名称</th><th>构建源</th><th>Git 平台</th><th>Git Remote</th><th>Harbor 仓库</th><th>状态</th><th>操作</th></tr>
+                                </thead>
+                                <tbody id="map-tbody"></tbody>
+                            </table>
+                            <!-- 分页 -->
+                            <div id="map-pagination" style="display:flex;justify-content:center;align-items:center;gap:8px;padding:12px 0;font-size:13px;"></div>
+                        </div>
+                        <div id="empty-msg" style="display:none;text-align:center;padding:40px;color:#9ca3af;">
+                            暂无映射配置，点击上方按钮新增
+                        </div>
                     </div>
                 </div>
+
+                <!-- 拓扑视图 -->
+                <div id="topo-view" style="display:none;">
+                    <div id="topo-loading" style="text-align:center;padding:60px;color:#9ca3af;">加载中…</div>
+                    <div id="topo-grid" style="display:none;"></div>
+                    <div id="topo-pagination" style="display:none;justify-content:center;align-items:center;gap:8px;padding:12px 0;font-size:13px;"></div>
+                    <div id="topo-empty" style="display:none;text-align:center;padding:60px;color:#9ca3af;">
+                        <p style="font-size:15px;">暂无映射数据</p>
+                        <p style="font-size:13px;margin-top:6px;">请先通过「表格」视图新增或自动发现映射关系</p>
+                    </div>
+                </div>
+
             </div>
 
             <!-- ═══ API 版本 Tab ═══ -->
@@ -202,13 +245,37 @@
                 </div>
             </div>
 
-            <!-- ═══ 项目拓扑 Tab ═══ -->
-            <div id="tab-topology" style="display:none;">
-                <div id="topo-loading" style="text-align:center;padding:60px;color:#9ca3af;">加载中…</div>
-                <div id="topo-grid" style="display:none;"></div>
-                <div id="topo-empty" style="display:none;text-align:center;padding:60px;color:#9ca3af;">
-                    <p style="font-size:15px;">暂无映射数据</p>
-                    <p style="font-size:13px;margin-top:6px;">在「映射管理」中配置 job_git_map 后，这里会自动展示项目拓扑关系</p>
+            <!-- ═══ 安全扫描 Tab ═══ -->
+            <div id="tab-security" style="display:none;">
+                <div class="toolbar"><h3>🛡️ 安全扫描结果</h3></div>
+
+                <!-- 筛选栏 -->
+                <div class="filter-bar" style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;align-items:center;">
+                    <input id="sec-search-project" type="text" placeholder="搜索项目…" style="flex:1;min-width:180px;padding:7px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" oninput="secOnFilterChange()">
+                    <select id="sec-filter-type" onchange="secOnFilterChange()" style="padding:7px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;min-width:120px;">
+                        <option value="">全部类型</option>
+                    </select>
+                    <select id="sec-filter-state" onchange="secOnFilterChange()" style="padding:7px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;min-width:120px;">
+                        <option value="">全部状态</option>
+                        <option value="success">✅ 通过</option>
+                        <option value="failure">❌ 失败</option>
+                        <option value="error">⚠️ 错误</option>
+                        <option value="pending">⏳ 待处理</option>
+                    </select>
+                </div>
+
+                <div class="card">
+                    <div id="sec-loading" style="text-align:center;padding:40px;color:#9ca3af;">加载中…</div>
+                    <div id="sec-table-wrap" style="display:none;overflow-x:auto;">
+                        <table>
+                            <thead>
+                                <tr><th>时间</th><th>项目</th><th>类型</th><th>状态</th><th>标签</th><th>描述</th><th>Commit SHA</th></tr>
+                            </thead>
+                            <tbody id="sec-tbody"></tbody>
+                        </table>
+                        <div id="sec-pagination" style="display:flex;justify-content:center;align-items:center;gap:8px;padding:12px 0;font-size:13px;"></div>
+                    </div>
+                    <div id="sec-empty" style="display:none;text-align:center;padding:40px;color:#9ca3af;">暂无扫描记录</div>
                 </div>
             </div>
 
@@ -216,12 +283,27 @@
             <div id="tab-mode" style="display:none;">
                 <div class="toolbar"><h3>🔧 配置模式</h3></div>
                 <div class="monitor-card">
-                    <div id="mode-display" style="text-align:center;padding:30px 0;font-size:15px;line-height:2.2;">
+                    <div id="mode-display" style="text-align:center;padding:24px 0 8px;font-size:15px;line-height:2.2;">
                         加载中…
                     </div>
+                    <div id="mode-config" style="display:none;border-top:1px solid #e5e7eb;padding:16px 24px 4px;margin-top:12px;">
+                        <div style="display:flex;align-items:center;gap:12px;justify-content:center;flex-wrap:wrap;">
+                            <label style="font-size:13px;font-weight:600;color:#374151;">构建系统模式：</label>
+                            <select id="build-mode-select" style="width:auto;min-width:170px;" onchange="onBuildModeChange()">
+                                <option value="jenkins">⚡ Jenkins</option>
+                                <option value="gitlab_ci">🐺 GitLab CI</option>
+                                <option value="both">⚡ Jenkins + 🐺 GitLab CI</option>
+                            </select>
+                            <span id="build-mode-status" style="font-size:12px;color:#16a34a;display:none;">✅ 已保存</span>
+                        </div>
+                        <p style="text-align:center;font-size:11px;color:#9ca3af;margin-top:8px;">
+                            修改后即时生效。不可用的选项会在下拉中禁用。
+                        </p>
+                    </div>
                 </div>
-                </div>
-			       <!-- ═══ 修改密码 Tab ═══ -->
+            </div>
+
+            <!-- ═══ 修改密码 Tab ═══ -->
             <div id="tab-password" style="display:none;">
                 <div class="toolbar"><h3>🔑 修改密码</h3></div>
                 <div class="card" style="max-width:500px;">
@@ -242,7 +324,6 @@
                         <span id="pwd-msg" style="margin-left:12px;font-size:13px;"></span>
                     </form>
                 </div>
-            </div>
             </div>
 
         </div><!-- /content -->

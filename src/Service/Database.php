@@ -160,10 +160,12 @@ class Database
             pipeline_iid INTEGER NOT NULL,
             tag {$VARCHAR} NOT NULL,
             harbor_repository TEXT,
+            status {$VARCHAR} DEFAULT '',
             created_at {$TS_TYPE} DEFAULT ({$NOW}),
             PRIMARY KEY (project, pipeline_iid)
         ){$ENGINE}");
         try { $pdo->exec("ALTER TABLE ci_pipeline_tags ADD COLUMN harbor_repository TEXT"); } catch (\Exception $e) {}
+        try { $pdo->exec("ALTER TABLE ci_pipeline_tags ADD COLUMN status {$VARCHAR} DEFAULT ''"); } catch (\Exception $e) {}
 
         // cache
         if ($isMySQL) {
@@ -187,10 +189,54 @@ class Database
             updated_at {$TS_TYPE} DEFAULT ({$NOW})
         ){$ENGINE}");
 
+        // ci_app_settings（应用运行时配置，与缓存分离）
+        if ($isMySQL) {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS ci_app_settings (
+                setting_key VARCHAR(255) PRIMARY KEY,
+                `value` MEDIUMTEXT NOT NULL,
+                updated_at {$TS_TYPE} DEFAULT ({$NOW})
+            ){$ENGINE}");
+        } else {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS ci_app_settings (
+                setting_key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at {$TS_TYPE} DEFAULT ({$NOW})
+            )");
+        }
+
+        // 迁移：将 cache 表中可能残留的 build_mode 移至 ci_app_settings
+        try {
+            $old = $pdo->query("SELECT value FROM cache WHERE cache_key = 'build_mode'")->fetch();
+            if ($old && in_array($old['value'], ['jenkins', 'gitlab_ci', 'both'])) {
+                $exists = $pdo->query("SELECT 1 FROM ci_app_settings WHERE setting_key = 'build_mode'")->fetch();
+                if (!$exists) {
+                    $sql = self::sqlUpsert('ci_app_settings', 'setting_key, value, updated_at', '?, ?, ' . self::sqlNow());
+                    $pdo->prepare($sql)->execute(['build_mode', $old['value']]);
+                }
+                $pdo->exec("DELETE FROM cache WHERE cache_key = 'build_mode'");
+            }
+        } catch (\Exception $e) {}
+
+        // ci_security_checks（安全扫描审计记录）
+        $pdo->exec("CREATE TABLE IF NOT EXISTS ci_security_checks (
+            id {$PK},
+            project {$VARCHAR} NOT NULL,
+            sha {$VARCHAR} NOT NULL,
+            check_type {$VARCHAR} NOT NULL,
+            state {$VARCHAR} NOT NULL,
+            context {$VARCHAR} NOT NULL,
+            description TEXT,
+            tag {$VARCHAR} DEFAULT '',
+            created_at {$TS_TYPE} DEFAULT ({$NOW})
+        ){$ENGINE}");
+        try { $pdo->exec("ALTER TABLE ci_security_checks ADD COLUMN tag {$VARCHAR} DEFAULT ''"); } catch (\Exception $e) {}
+
         // ── 索引 ──
         try { $pdo->exec("CREATE INDEX IF NOT EXISTS idx_pipeline_tags_project ON ci_pipeline_tags(project)"); } catch (\Exception $e) {}
         try { $pdo->exec("CREATE INDEX IF NOT EXISTS idx_pipeline_tags_created ON ci_pipeline_tags(created_at)"); } catch (\Exception $e) {}
         try { $pdo->exec("CREATE INDEX IF NOT EXISTS idx_job_git_map_current_path ON ci_job_git_map(current_path)"); } catch (\Exception $e) {}
+        try { $pdo->exec("CREATE INDEX IF NOT EXISTS idx_security_checks_project ON ci_security_checks(project, check_type)"); } catch (\Exception $e) {}
+        try { $pdo->exec("CREATE INDEX IF NOT EXISTS idx_security_checks_sha ON ci_security_checks(sha)"); } catch (\Exception $e) {}
 
         // 一次性 JSON 迁移（仅 SQLite）
         if (!$isMySQL) {

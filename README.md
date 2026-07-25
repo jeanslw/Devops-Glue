@@ -1,4 +1,4 @@
-Devops-Glue API 文档 v2.3.1
+Devops-Glue API 文档 v2.3.2
 
 # 概述
 
@@ -8,13 +8,15 @@ Devops-Glue API 文档 v2.3.1
 >
 > ✅ 一套 API，4 个 Git 平台 + 2 条 CI 通道 + Harbor → 一个面板全搞定  
 > ✅ SQLite 零配置启动，MySQL 也可切换  
-> ✅ 10 年运维老兵的实战结晶，v2.3.1 持续打磨  
+> ✅ 10 年运维老兵的实战结晶，v2.3.2 持续打磨  
 > ✅ 从 CI 构建到 CD 部署，全流程覆盖  
 > ✅ 开源免费，GitHub/Gitee 双更新  
 >
 > **不是大厂的遥控器，是小团队的瑞士军刀。**
 
 Devops-Glue 是一套为小企业提供的 DevOps 工具链集成接口，基于 Slim4 框架实现 Jenkins + Gitlab CI双通道、GitLab/Gitee/GitHub/Gitea、Harbor 等工具的一键集成与数据互通。
+
+支持多平台 Git Commit Status 回写、安全扫描（SAST/密钥扫描/依赖漏洞）审计追踪、构建模式运行时切换。
 
 # 环境要求
 框架: Slim 4
@@ -54,8 +56,17 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 	# 2. 安装依赖
 	composer install
 	
-	# 3. 配置环境变量cp .env.example .env
+	# 3. 配置环境变量
+	cp config/.env.example config/.env
 	编辑 .env 文件，填入实际服务地址和凭证。
+
+# 3.1 多环境部署（可选）
+	系统支持通过 APP_ENV 区分环境（production / staging / development）：
+	- .env：基础配置（放真实密码，gitignored）
+	- .env.staging：staging 环境覆盖（APP_DEBUG=true 等）
+	- .env.local：本地覆盖（gitignored，个人开发调整）
+	加载优先级：.env.local > .env.{APP_ENV} > .env
+	默认 APP_ENV=production 时不需要额外文件。详见技术文档 docs/technical-guide.md。
 
 	# 4. 配置 Web 服务器
 	将 public/ 目录设为 Web 根目录，配置 URL 重写。
@@ -89,9 +100,9 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 
 		映射/平台接口（/api/main/map/list、/api/main/git/platforms、/api/main/git/discovery）返回 JSON 对象
 
-		构建触发（/api/jenkins/.../build_trigger）返回 JSON 对象
+		构建触发（/api/build/.../trigger）返回 JSON 对象
 
-		控制台日志（/api/jenkins/.../console）返回 text/plain
+		控制台日志（/api/build/.../logs/{id}）返回 text/plain
 
 		健康检查（/api/health）返回 JSON 对象
 
@@ -237,39 +248,52 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 
 	# 3.1 触发构建
 	URL: POST /api/build/{project}/trigger
-	参数: GET Query String 或 POST JSON body（参数名取决于 Jenkins/GitLab CI 配置）
+	参数: POST JSON body，格式 {"variables":{"参数名":"值",...}}
+	说明: 参数名需与 Jenkins Job 定义的参数名完全一致（不再自动映射）。先调 variables 看参数名，再传参触发。GET Query String 兼容旧版调用。
 	输出: {"build_provider":"...","project_id":"...","success":true,...}
 
 	# 3.2 构建参数/CI 变量
 	URL: /api/build/{project}/variables
-	输出: {"branches":["main","master"],"zone":["test","prd"]}（默认 raw 格式）
+	输出: {"branches":["main","master"],"zone":["test","prd"]} — Jenkins 参数名直出，不做重写
 
-	# 3.3 Pipeline 列表
+	# 3.3 Git 分支列表
+	URL: /api/build/{project}/branches
+	输出: ["main","v2.3.0","master"] — 纯字符串数组，可直接用作 Rundeck Remote URL
+
+	# 3.4 Pipeline 列表
 	URL: /api/build/{project}/pipelines?list=id|build|time
 	?list=id → [10,9,8]，包含所有构建
 	?list=build → ["#10","#9","#8"]，所有成功构建
 	?list=time → ["#10 [date]","#9 [date]"]，所有成功构建
 
-	# 3.4 Pipeline 详情 + Jobs
+	# 3.5 Pipeline 详情 + Jobs
 	URL: /api/build/{project}/pipelines/{id}
 	输出: {"build_provider":"...","pipeline_id":4,"jobs":[{id,name,stage,status}]}
 
-	# 3.5 构建日志（统一入口）
+	# 3.6 构建日志（统一入口）
 	URL: /api/build/{project}/logs/{id}
 
-	# 3.6 重试失败的 Pipeline（仅 GitLab CI）
+	# 3.7 重试失败的 Pipeline（仅 GitLab CI）
 	URL: POST /api/build/{project}/pipelines/{id}/retry
 
-	# 3.7 取消运行中的 Pipeline（仅 GitLab CI）
+	# 3.8 取消运行中的 Pipeline（仅 GitLab CI）
 	URL: POST /api/build/{project}/pipelines/{id}/cancel
 
-	# 3.8 Harbor 扫描同步
+	# 3.9 Harbor 扫描同步
 	URL: POST /api/build/{project}/scan-sync
 	参数: {"tag":"v3.0.0"} 不传则取 Harbor 最新 tag
 
-	# 3.9 Pipeline → Tag 映射
+	# 3.10 Pipeline → Tag 映射
 	URL: /api/build/{project}/tag?pipeline=10
 	 pipeline iid和 tag 关联映射
+
+	# 3.11 Commit Status 回写（安全扫描/CI 检查）
+	URL: POST /api/build/{project}/commit-status
+	参数: JSON body，sha / state / context / description 必填，target_url / check_type / tag 可选
+	输出: { project, sha, state, context, description, check_type, git_platform, commit_status }
+	说明: 将安全扫描（SAST、密钥扫描、依赖漏洞、IaC 审计等）结果以 commit status 形式回写到 Git 平台。
+	      所有 Git Provider（GitLab/GitHub/Gitee/Gitea）均支持，不依赖 CI 系统。
+	      同时写入 ci_pipeline_tags 和 ci_security_checks 表做审计追踪。
 
 # 四、Git 模块 (/api/git)
 	查询 Job 对应的 Git 分支列表
@@ -328,10 +352,12 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 
 	说明: Web 管理界面，需登录（账号密码在 .env 中配置 ADMIN_USER / ADMIN_PASSWORD）。
 
-	# 五大功能：
+	# 功能：
+	- 数据概览 — 映射数、活跃数、Git 平台数、Harbor 仓库数 统计卡片
 	- 服务监测 — Jenkins / Git 平台 / Harbor 连通性 + 版本号实时检测
-	- 映射管理 — job_git_map 可视化增删改查，数据存储在 SQLite
-	- 项目拓扑 — Build → Git 仓库 → Harbor 镜像 链路可视化
+	- 映射管理 — job_git_map 可视化增删改查，支持搜索筛选分页
+	- 安全扫描 — ci_security_checks 审计记录查看，支持筛选和分页
+	- 配置模式 — 构建模式（jenkins/gitlab_ci/both）在线切换，即时生效
 	- 对接版本 — 各平台 API 版本号在线配置
 	- 修改密码 — 管理员在线修改登录密码
 
@@ -408,13 +434,15 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 	# DB_NAME=devops_glue
 	# DB_USER=root
 	# DB_PASS=
+	# DB_AUTO_MIGRATE=true  # 自动建表，false 则手动执行 database/ 下脚本
 
 	# App配置
-	APP_ENV=production
+	APP_ENV=production        # production / staging / development
 	APP_DEBUG=false
+	BUILD_MODE=both           # jenkins / gitlab_ci / both（首次启动种子值，之后在管理后台切换并持久化到 ci_app_settings）
 	BUILD_TIMEOUT=300
 	LOG_PATH=/applogs/
-	API_BASE_URL=http://127.0.0.1:8080
+	API_BASE_URL=http://127.0.0.1:8080  # Swagger / OpenAPI 外部访问地址
 	```
 	手动映射配置 (config/settings.php)
 	每个 Job 可配置以下字段。仅 job_name 必填，其他均可省略由系统自动推导。
@@ -461,12 +489,14 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 	# 健康检查
 	curl "http://URL/api/health"
 
-	# 触发构建（单参数）
-	curl -X POST "http://URL/api/jenkins/static/master/build_trigger"
-	说明：如果使用jenkins中Git Parameter参数化构建，一定要在Job配置的Git仓库配置项 Branch Specifier:origin/(.*)或者Git Parameter配置选项 Default Value:origin/(.*)
+	# 触发构建（POST JSON，参数名需与 variables 返回一致）
+	curl -X POST "http://URL/api/build/static/trigger" -H "Content-Type: application/json" -d '{"variables":{"branches":"master"}}'
 
-	# 触发构建（双参数）
-	curl -X POST "http://URL/api/jenkins/php/myapp/main/test/build_trigger"
+	# 查询 Job 参数（看有哪些参数名）
+	curl "http://URL/api/build/static/variables"
+
+	# 查询 Git 分支列表
+	curl "http://URL/api/build/static/branches"
 
 	# 查询三方映射
 	curl "http://URL/api/main/map/list"
@@ -476,9 +506,6 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 
 	# 查询平台接入检测
 	curl "http://URL/api/main/git/discovery"
-
-	# 查询 Job 参数
-	curl "http://URL/api/jenkins/java/registry/parameters"
 
 	# Harbor 项目列表
 	curl "http://URL/api/harbor/projects"
@@ -499,8 +526,11 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 # 十一、项目结构
 	```bash
 	+---config						# 服务端配置
-	|   |   .env.example			# 环境变量模板
-	|   |   AppConfig.php			# 配置访问器
+	|   |   .env.example			# 环境变量模板（提交 Git）
+	|   |   .env.production			# 生产环境覆盖（可选）
+	|   |   .env.staging			# staging 环境覆盖（可选）
+	|   |   .env.local				# 本地覆盖（gitignored）
+	|   |   AppConfig.php			# 配置访问器（build_mode 等运行时配置持久化）
 	|   |   container.php			# DI 容器定义
 	|   |   routes.php				# 路由定义
 	|   |   settings.php			# 主配置 + 数据库配置
@@ -550,11 +580,12 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 	|               ProviderRegistry.php
 	|
 	+---templates
-	|       404.html				# Swagger UI
+	|       404.html				# 404 页面
 	|       admin.html				# 管理页面
 	|       index.html				# 首页
 	|       openapi.json			# OpenAPI 3.0 规范
 	|       swagger.html			# Swagger UI
+	|
 	|-------------------
 	```
 # 十二、自定义 Git 平台接入
@@ -608,7 +639,8 @@ Harbor v1.10.1 / v2.x（自动探测 API 版本）
 
 # 十三、更新日志
 
-	- 版本		日期		变更内容
+- 版本		日期		变更内容
+	- v2.3.2	2026-07-25	多环境配置支持；构建模式运行时切换 + 后端校验；安全扫描 Commit Status 回写 + ci_security_checks 审计表；Bug 修复（安全扫描图标、ci_pipeline_tags COUNT 查询、Git 分页缺失）
 	- v2.3.1	2026-07-15	校验tag入库规则,增加用户文档说明,MySQL/SQLite 双驱动，DB_DRIVER 必填；优化Docker， 集成 MySQL 8.4。
 	- v2.3.0	2026-07-10	GitLab CI 双通道 + Build 统一模块 + SQLite 持久化 + 管理 UI。
 	- v2.2.0	2026-05-06	架构升级：Git 平台改为 ProviderRegistry 注册表模式，支持自定义平台接入。新增 Gitea 平台适配器。

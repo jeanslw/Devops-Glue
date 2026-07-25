@@ -13,13 +13,35 @@ $testJobs       = ['static', 'php/devops-glue', 'java/registry'];
 $harborProject  = 'mycode';
 $harborRepo     = 'diagnosis-runtime';
 
-function apiCall($url, $method = 'GET') {
+// ══════════════════════════════════════════════════════════
+// 触发构建参数 — key 需跟 Jenkins Job 参数名完全一致
+// 先跑 variables 确认参数名，再改这里；设为 null 跳过触发
+// ══════════════════════════════════════════════════════════
+$triggerParams = [
+    'java/registry'   => ['branches' => 'master'],
+    'php/devops-glue' => ['branches' => 'main'],
+    'static'          => ['branches' => 'master'],
+];
+
+function apiCall($url, $method = 'GET', $body = null, $headers = []) {
     $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 20);
-    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
-    if ($method === 'POST') curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt_array($ch, [
+        CURLOPT_URL            => $url,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => 20,
+        CURLOPT_CONNECTTIMEOUT => 10,
+    ]);
+    if ($method === 'POST') {
+        curl_setopt($ch, CURLOPT_POST, true);
+    } elseif ($method !== 'GET') {
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
+    }
+    if ($body !== null) {
+        $json = is_array($body) ? json_encode($body, JSON_UNESCAPED_UNICODE) : $body;
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $json);
+        $headers = array_merge($headers, ['Content-Type: application/json']);
+    }
+    if (!empty($headers)) curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $error    = curl_error($ch);
@@ -100,6 +122,9 @@ foreach ($testJobs as $job) {
     $res = apiCall("$baseUrl/api/build/$job/variables");
     addRow('Build', "$job 参数", "$baseUrl/api/build/$job/variables", $res);
 
+    $res = apiCall("$baseUrl/api/build/$job/branches");
+    addRow('Build', "$job 分支", "$baseUrl/api/build/$job/branches", $res);
+
     $res = apiCall("$baseUrl/api/build/$job/pipelines?list=id");
     addRow('Build', "$job 构建ID", "$baseUrl/api/build/$job/pipelines?list=id", $res);
 
@@ -128,23 +153,21 @@ $res = apiCall("$baseUrl/api/harbor/projects");
 addRow('Harbor', '项目列表', "$baseUrl/api/harbor/projects", $res);
 
 // ====== Admin 模块 ======
-$loginRes = apiCall("$baseUrl/api/admin/login", 'POST');
+$loginRes = apiCall("$baseUrl/api/admin/login", 'POST', ['user' => 'admin', 'password' => 'admin123']);
 $loginData = json_decode($loginRes['body'], true);
 $token = $loginData['token'] ?? '';
 addRow('Admin', '登录 (POST)', "$baseUrl/api/admin/login", $loginRes);
 
 if ($token) {
-    $res = apiCall("$baseUrl/api/admin/job_git_map");
-    // Need to add auth header... curl doesn't support that in our simple apiCall
-    $ch = curl_init("$baseUrl/api/admin/job_git_map");
-    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 10, CURLOPT_HTTPHEADER => ["Authorization: Bearer $token"]]);
-    $body = curl_exec($ch); $code = curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
-    addRow('Admin', '映射列表(认证)', "$baseUrl/api/admin/job_git_map", ['code' => $code, 'body' => $body, 'error' => '']);
+    $authHeader = ["Authorization: Bearer $token"];
+    $res = apiCall("$baseUrl/api/admin/job_git_map", 'GET', null, $authHeader);
+    addRow('Admin', '映射列表(认证)', "$baseUrl/api/admin/job_git_map", $res);
 
-    $ch = curl_init("$baseUrl/api/admin/platform_versions");
-    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 10, CURLOPT_HTTPHEADER => ["Authorization: Bearer $token"]]);
-    $body = curl_exec($ch); $code = curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
-    addRow('Admin', '对接版本(认证)', "$baseUrl/api/admin/platform_versions", ['code' => $code, 'body' => $body, 'error' => '']);
+    $res = apiCall("$baseUrl/api/admin/platform_versions", 'GET', null, $authHeader);
+    addRow('Admin', '对接版本(认证)', "$baseUrl/api/admin/platform_versions", $res);
+
+    $res = apiCall("$baseUrl/api/admin/security_checks", 'GET', null, $authHeader);
+    addRow('Admin', '安全扫描(认证)', "$baseUrl/api/admin/security_checks", $res);
 }
 
 // ====== Build 模块（GitLab CI + Jenkins 统一入口）======
@@ -210,28 +233,18 @@ if (!empty($tags) && is_array($tags)) {
     addRow('Harbor', '扫描测试', '—', ['code' => 0, 'body' => '无可用tag', 'error' => '']);
 }
 
-// ====== 构建触发（默认开启） ======
+// ====== 构建触发（参数名需与 variables 返回一致） ======
 foreach ($testJobs as $job) {
-    $varsRes = apiCall("$baseUrl/api/build/$job/variables");
-    $params = json_decode($varsRes['body'], true);
-    if (!$params || $varsRes['code'] != 200) {
-        addRow('Trigger', "$job 参数获取失败", '', ['code' => 500, 'body' => '', 'error' => '']);
+    $params = $triggerParams[$job] ?? null;
+    if ($params === null) {
+        addRow('Trigger', "$job 跳过", "未配置 triggerParams['$job']", ['code' => 0, 'body' => '跳过', 'error' => '']);
         continue;
     }
-
-    $branchKey = null;
-    foreach ($params as $name => $choices) {
-        if (stripos($name, 'branch') !== false) { $branchKey = $name; break; }
-    }
-    if (!$branchKey) $branchKey = array_keys($params)[0] ?? null;
-    if (!$branchKey) { addRow('Trigger', "$job 无法识别参数", '', ['code' => 400, 'body' => '', 'error' => '']); continue; }
-
-    $branchValue = is_array($params[$branchKey]) ? reset($params[$branchKey]) : '';
-    if (empty($branchValue)) { addRow('Trigger', "$job 无可用分支值", '', ['code' => 400, 'body' => '', 'error' => '']); continue; }
-
-    $url = "$baseUrl/api/build/$job/trigger?$branchKey=$branchValue";
-    $res = apiCall($url, 'POST');
-    addRow('Trigger', "$job 触发", $url, $res);
+    $url  = "$baseUrl/api/build/$job/trigger";
+    $body = ['variables' => $params];
+    $res  = apiCall($url, 'POST', $body);
+    $label = "$job 触发 " . json_encode($params, JSON_UNESCAPED_UNICODE);
+    addRow('Trigger', $label, $url, $res);
 }
 
 // ====== 生成 HTML 报告 ======

@@ -190,17 +190,17 @@ return [
         $registry = new BuildProviderRegistry();
         $registry->setLogger($logger);
 
-        $buildMode = $_ENV['BUILD_MODE'] ?? 'both';
-
-        // Jenkins
-        if (in_array($buildMode, ['jenkins', 'both'])) {
+        // 始终注册已配置的 Provider（BUILD_MODE 仅影响展示/偏好，不再限制注册）
+        // 这样 UI 切换模式时无需重启即可生效
+        $jenkinsCfg = $config->getJenkinsConfig();
+        if (!empty($jenkinsCfg['url'])) {
             $registry->register('jenkins', function () use ($c, $logger) {
                 return new JenkinsBuildProvider($c->get(JenkinsService::class), $c->get(GitService::class), $logger);
             });
         }
 
         // GitLab CI
-        if (in_array($buildMode, ['gitlab_ci', 'both']) && $config->isPlatformConfigured('gitlab')) {
+        if ($config->isPlatformConfigured('gitlab')) {
             $glCfg = $config->getGitlabConfig();
             if (!empty($glCfg['base_url']) && !empty($glCfg['token'])) {
                 $registry->register('gitlab_ci', function () use ($glCfg, $logger) {
@@ -282,7 +282,8 @@ return [
             $c->get(BuildProviderRegistry::class),
             $c->get(AppConfig::class),
             $c->get(MappingManager::class),
-            $c->get(HarborService::class)
+            $c->get(HarborService::class),
+            $c->get(ProviderRegistry::class)
         );
     },
 

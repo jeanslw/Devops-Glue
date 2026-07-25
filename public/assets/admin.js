@@ -36,7 +36,7 @@ async function doDiscover() {
         const data = await res.json();
         if (res.ok) {
             toast(`发现 ${data.found} 项，新增 ${data.saved} 项`, true);
-            loadMaps();
+            if (currentMapView === 'topology') loadTopology(); else loadMaps();
         } else {
             toast(data.message || '扫描失败', false);
         }
@@ -76,12 +76,12 @@ document.addEventListener('keydown', function(e) {
 function switchTab(name) {
     document.querySelectorAll('.sidebar .menu-item').forEach(el => el.classList.remove('active'));
     document.querySelector(`[data-tab="${name}"]`).classList.add('active');
-    ['monitor','mapping','topology','versions','mode','password'].forEach(t => {
+    ['monitor','mapping','security','versions','mode','password'].forEach(t => {
         document.getElementById('tab-' + t).style.display = name === t ? 'block' : 'none';
     });
     if (name === 'monitor') loadMonitor();
-    if (name === 'mapping') loadMaps();
-    if (name === 'topology') loadTopology();
+    if (name === 'mapping') { if (currentMapView === 'topology') loadTopology(); else loadMaps(); }
+    if (name === 'security') loadSecurityChecks();
     if (name === 'versions') loadVersions();
     if (name === 'mode') loadSettings();
 }
@@ -98,13 +98,17 @@ function toast(msg, ok) {
 async function loadMonitor() {
     const now = new Date().toLocaleString('zh-CN');
 
-    function setSvc(iconId, nameId, statId, dotId, ok, ver, label) {
+    function setSvc(iconId, nameId, statId, dotId, ok, ver, label, title) {
         const icon = document.getElementById(iconId);
         const name = document.getElementById(nameId);
         const stat = document.getElementById(statId);
         const dot  = document.getElementById(dotId);
         if (icon) icon.textContent = ok === true ? '✅' : ok === null ? '⚪' : '❌';
-        if (stat) { stat.textContent = label; stat.className = 'svc-stat ' + (ok===true?'ok':ok===null?'off':'err'); }
+        if (stat) {
+            stat.textContent = label;
+            stat.className = 'svc-stat ' + (ok===true?'ok':ok===null?'off':'err');
+            if (title) stat.title = title; else stat.removeAttribute('title');
+        }
         if (dot)  { dot.className = 'dot ' + (ok===true?'dot-ok':ok===null?'dot-off':'dot-err'); }
         if (name && ver) name.innerHTML = (name.dataset.base || name.textContent) + ' <span class="svc-ver">' + ver + '</span>';
     }
@@ -113,6 +117,13 @@ async function loadMonitor() {
         const res = await fetch(HEALTH_API);
         const data = await res.json();
         const chk = data.checks || {};
+        const st  = data.stats || {};
+
+        // 统计卡片
+        document.getElementById('stat-total').textContent = st.total_maps ?? '—';
+        document.getElementById('stat-active').textContent = st.active_maps ?? '—';
+        document.getElementById('stat-platforms').textContent = st.git_platforms ?? '—';
+        document.getElementById('stat-repos').textContent = st.harbor_repos ?? '—';
 
         // Jenkins
         const jOk = chk.jenkins === true;
@@ -144,7 +155,21 @@ async function loadMonitor() {
         // Harbor
         const hOk = chk.harbor === true;
         const hVer = chk.harbor_version || '';
-        setSvc('icon-harbor', 'name-harbor', 'stat-harbor', 'dot-harbor', hOk, hVer, hOk===true?'正常':hOk===null?'未配置':'不可达');
+        const hComps = chk.harbor_components; // {core, jobservice, registry}
+        let hLabel = hOk===true?'正常':hOk===null?'未配置':'不可达';
+        let hTitle = '';
+        // 组件级诊断：列出挂掉的子组件
+        if (!hOk && hComps && typeof hComps === 'object') {
+            const down = [];
+            if (hComps.core === false)       down.push('Core');
+            if (hComps.jobservice === false) down.push('Jobservice');
+            if (hComps.registry === false)   down.push('Registry');
+            if (down.length) {
+                hLabel = '部分组件不可用';
+                hTitle = '异常组件: ' + down.join(' / ');
+            }
+        }
+        setSvc('icon-harbor', 'name-harbor', 'stat-harbor', 'dot-harbor', hOk, hVer, hLabel, hTitle);
 
     } catch(e) {
         const msg = e.name === 'AbortError' ? '超时' : '无法连接';
@@ -156,24 +181,64 @@ async function loadMonitor() {
 }
 
 // ═══════════ 映射管理 ═══════════
+let mapPage = 1, mapPerPage = 20;
+let mapDebounceTimer = null;
+let currentMapView = 'table';  // 'table' | 'topology'
+
+function switchMapView(view) {
+    currentMapView = view;
+    // 更新按钮状态
+    document.querySelectorAll('#view-toggle button').forEach(b => b.classList.remove('active'));
+    document.querySelector(`#view-toggle [data-view="${view}"]`).classList.add('active');
+    // 切换视图
+    document.getElementById('table-view').style.display = view === 'table' ? 'block' : 'none';
+    document.getElementById('topo-view').style.display = view === 'topology' ? 'block' : 'none';
+    // 隐藏表单面板（新增/编辑在表格视图中）
+    if (view === 'topology') hideForm();
+    // 加载数据
+    if (view === 'topology') loadTopology(); else loadMaps();
+}
+
+function onFilterChange() {
+    clearTimeout(mapDebounceTimer);
+    mapDebounceTimer = setTimeout(() => { mapPage = 1; loadMaps(); }, 300);
+}
+
 async function loadMaps() {
     try {
-        const res = await fetch(MAP_API, { headers: authHeaders() });
+        const search = document.getElementById('map-search')?.value?.trim() || '';
+        const platform = document.getElementById('map-platform-filter')?.value || '';
+        const params = new URLSearchParams();
+        if (search) params.set('search', search);
+        if (platform) params.set('platform', platform);
+        params.set('page', mapPage);
+        params.set('per_page', mapPerPage);
+        const url = MAP_API + '?' + params.toString();
+        const res = await fetch(url, { headers: authHeaders() });
         if (handle401(res)) return;
         const data = await res.json();
         const maps = data.maps || [];
+        const total = data.total || 0;
+        const totalPages = data.total_pages || 1;
         platforms = data.platforms || [];
 
-        const sel = document.getElementById('f-git_platform');
-        sel.innerHTML = '<option value="">— 自动检测（IP 地址需手动选）—</option>';
-        platforms.forEach(p => { sel.innerHTML += `<option value="${p}">${p}</option>`; });
+        // 更新平台下拉（新增/编辑表单和筛选栏）
+        [{sel:document.getElementById('f-git_platform'),opt:'— 自动检测（IP 地址需手动选）—'},
+         {sel:document.getElementById('map-platform-filter'),opt:'全部平台'}].forEach(o => {
+            if (!o.sel) return;
+            const cur = o.sel.value;
+            o.sel.innerHTML = `<option value="">${o.opt}</option>`;
+            platforms.forEach(p => { o.sel.innerHTML += `<option value="${p}">${p}</option>`; });
+            if (platforms.includes(cur)) o.sel.value = cur;
+        });
 
         const tbody = document.getElementById('map-tbody');
         const empty = document.getElementById('empty-msg');
         const tableWrap = document.getElementById('table-wrap');
+        const pagination = document.getElementById('map-pagination');
         document.getElementById('loading-map').style.display = 'none';
 
-        if (maps.length === 0) {
+        if (maps.length === 0 && total === 0) {
             empty.style.display = 'block';
             tableWrap.style.display = 'none';
         } else {
@@ -199,6 +264,15 @@ async function loadMaps() {
                     </td>
                 </tr>`;
             }).join('');
+
+            // 分页
+            let pagHtml = `<span style="color:#6b7280;">共 ${total} 条</span>`;
+            pagHtml += `<button class="btn btn-sm" onclick="mapPage=1;loadMaps()" ${mapPage<=1?'disabled':''}>« 首页</button>`;
+            pagHtml += `<button class="btn btn-sm" onclick="mapPage=Math.max(1,mapPage-1);loadMaps()" ${mapPage<=1?'disabled':''}>‹ 上一页</button>`;
+            pagHtml += `<span style="color:#374151;font-weight:600;">${mapPage} / ${totalPages}</span>`;
+            pagHtml += `<button class="btn btn-sm" onclick="mapPage=Math.min(totalPages,mapPage+1);loadMaps()" ${mapPage>=totalPages?'disabled':''}>下一页 ›</button>`;
+            pagHtml += `<button class="btn btn-sm" onclick="mapPage=totalPages;loadMaps()" ${mapPage>=totalPages?'disabled':''}>末页 »</button>`;
+            pagination.innerHTML = pagHtml;
         }
     } catch(e) {
         document.getElementById('loading-map').textContent = '加载失败: ' + e.message;
@@ -206,15 +280,21 @@ async function loadMaps() {
 }
 
 // ═══════════ 项目拓扑 ═══════════
+let topoEntries = [];   // 已加载的拓扑数据
+let topoPage    = 1;    // 当前页
+const TOPO_PER_PAGE = 10;
+
 async function loadTopology() {
     const loading = document.getElementById('topo-loading');
     const grid    = document.getElementById('topo-grid');
     const empty   = document.getElementById('topo-empty');
+    const pagination = document.getElementById('topo-pagination');
 
     loading.style.display = 'block';
     loading.innerHTML = '<p style="font-size:15px;">⏳ 正在从 Jenkins 拉取 Job 列表…</p><p style="font-size:12px;color:#9ca3af;margin-top:4px;">首次加载稍慢，后续 30 秒内有缓存</p>';
     grid.style.display = 'none';
     empty.style.display = 'none';
+    pagination.style.display = 'none';
 
     try {
         const res = await fetch(MAP_LIST_API);
@@ -227,23 +307,39 @@ async function loadTopology() {
         }
 
         const projects = data.data || data;
-        const entries = Array.isArray(projects) ? projects : Object.entries(projects).map(([k,v]) => ({project:k, ...v}));
+        topoEntries = Array.isArray(projects) ? projects : Object.entries(projects).map(([k,v]) => ({project:k, ...v}));
+        topoPage = 1;
 
-        if (entries.length === 0) {
+        if (topoEntries.length === 0) {
             loading.style.display = 'none';
             empty.style.display = 'block';
             return;
         }
 
-        // 过期缓存标记
-        let staleNote = '';
-        if (data._stale) {
-            staleNote = '<div style="text-align:center;margin-bottom:12px;padding:8px;background:#fef3c7;border-radius:8px;font-size:12px;color:#92400e;">⚠️ Jenkins 暂时不可达，显示的是最近一次缓存数据</div>';
-        }
+        renderTopology();
 
-        loading.style.display = 'none';
-        grid.style.display = 'block';
-        grid.innerHTML = staleNote + entries.map((p, i) => {
+    } catch(e) {
+        loading.innerHTML = '<p style="color:#dc2626;">⚠️ 网络请求失败</p><p style="font-size:13px;color:#9ca3af;margin-top:6px;">请确认服务正常运行：' + esc(e.message) + '</p>';
+    }
+}
+
+function renderTopology() {
+    const loading = document.getElementById('topo-loading');
+    const grid    = document.getElementById('topo-grid');
+    const empty   = document.getElementById('topo-empty');
+    const pagination = document.getElementById('topo-pagination');
+
+    loading.style.display = 'none';
+    grid.style.display = 'block';
+    empty.style.display = 'none';
+
+    const total = topoEntries.length;
+    const totalPages = Math.max(1, Math.ceil(total / TOPO_PER_PAGE));
+    if (topoPage > totalPages) topoPage = totalPages;
+    const offset = (topoPage - 1) * TOPO_PER_PAGE;
+    const slice  = topoEntries.slice(offset, offset + TOPO_PER_PAGE);
+
+    grid.innerHTML = slice.map((p) => {
             const platform = p.git_platform || '—';
             const source   = p.platform_source || '';
             const method   = p.detection_method || '';
@@ -304,8 +400,18 @@ async function loadTopology() {
             </div>`;
         }).join('');
 
-    } catch(e) {
-        loading.innerHTML = '<p style="color:#dc2626;">⚠️ 网络请求失败</p><p style="font-size:13px;color:#9ca3af;margin-top:6px;">请确认服务正常运行：' + esc(e.message) + '</p>';
+    // 分页控件
+    if (totalPages <= 1) {
+        pagination.style.display = 'none';
+    } else {
+        pagination.style.display = 'flex';
+        let pagHtml = `<span style="color:#6b7280;">共 ${total} 个项目</span>`;
+        pagHtml += `<button class="btn btn-sm" onclick="topoPage=1;renderTopology()" ${topoPage<=1?'disabled':''}>« 首页</button>`;
+        pagHtml += `<button class="btn btn-sm" onclick="topoPage=Math.max(1,topoPage-1);renderTopology()" ${topoPage<=1?'disabled':''}>‹ 上一页</button>`;
+        pagHtml += `<span style="color:#374151;font-weight:600;">${topoPage} / ${totalPages}</span>`;
+        pagHtml += `<button class="btn btn-sm" onclick="topoPage=Math.min(totalPages,topoPage+1);renderTopology()" ${topoPage>=totalPages?'disabled':''}>下一页 ›</button>`;
+        pagHtml += `<button class="btn btn-sm" onclick="topoPage=totalPages;renderTopology()" ${topoPage>=totalPages?'disabled':''}>末页 »</button>`;
+        pagination.innerHTML = pagHtml;
     }
 }
 
@@ -409,37 +515,157 @@ async function saveVersions() {
     } catch(e) { toast('网络错误: ' + e.message, false); }
 }
 
-// ── 基本设置 ──
+// ── 构建模式配置 ──
+let currentBuildMode = 'both';
+
 async function loadSettings() {
     const display = document.getElementById('mode-display');
+    const configPanel = document.getElementById('mode-config');
+    const sel = document.getElementById('build-mode-select');
+    const statusEl = document.getElementById('build-mode-status');
     try {
-        // 公开端点，不调 CI 系统
-        const res = await fetch('/api/build/config-mode');
+        const res = await fetch('/api/admin/build_mode', { headers: authHeaders() });
+        if (res.status === 401) { display.innerHTML = '<span style="color:#9ca3af;">请先登录</span>'; return; }
         const data = await res.json();
+        const mode = data.mode || 'both';
         const hasJenkins = data.has_jenkins;
-        const hasGitlab  = data.has_gitlab_ci;
+        const hasGitlab = data.has_gitlab_ci;
+        const source = data.source || 'env';
+        currentBuildMode = mode;
 
-        let mode = '', diagram = '';
+        // 来源标识
+        const srcLabel = source === 'database'
+            ? '<span class="badge" style="background:#f0fdf4;color:#16a34a;font-size:11px;margin-left:6px;" title="模式已持久化到数据库（ci_app_settings）">✓ 持久化</span>'
+            : '<span class="badge" style="background:#fefce8;color:#ca8a04;font-size:11px;margin-left:6px;" title="数据库不可用，降级使用 .env 环境变量（重启后可能丢失）">⚠️ 临时</span>';
+
+        // 下拉选项状态
+        sel.value = mode;
+        sel.querySelectorAll('option').forEach(opt => {
+            if (opt.value === 'jenkins') opt.disabled = !hasJenkins;
+            if (opt.value === 'gitlab_ci') opt.disabled = !hasGitlab;
+        });
+        configPanel.style.display = 'block';
+        statusEl.style.display = 'none';
+
+        // 状态图（流程卡片式）
+        let modeBadge = '', flow = '';
+        const buildCi = (mode === 'gitlab_ci') ? '🐺 GitLab CI' : '⚡ Jenkins';
+        const buildColor = (mode === 'gitlab_ci') ? '#c81e1e' : '#d97706';
+        const buildBg = (mode === 'gitlab_ci') ? '#fce4ec' : '#fff8e1';
+        const buildBorder = (mode === 'gitlab_ci') ? '#e91e63' : '#f59e0b';
+
+        const node = (icon, label, bg, border, color, fontSize) =>
+            '<div style="background:' + bg + ';border:2px solid ' + border + ';border-radius:10px;padding:14px 20px;text-align:center;min-width:110px;">'
+            + '<div style="font-size:' + (fontSize || 24) + 'px;line-height:1;">' + icon + '</div>'
+            + '<div style="margin-top:6px;font-size:13px;font-weight:600;color:' + color + ';">' + label + '</div>'
+            + '</div>';
+        const arrow = '<div style="color:#9ca3af;font-size:22px;line-height:1;">→</div>';
+        const split = '<div style="color:#9ca3af;font-size:22px;line-height:1;">/</div>';
+
         if (hasJenkins && hasGitlab) {
-            mode = '<span class="badge" style="background:#dbeafe;color:#1d4ed8;font-size:13px;">共存模式</span>';
-            diagram = '<div style="border:3px solid #e91e63;">🐺 Git 项目</div>'
-				+ '<div style="font-size:15px;">⬇</div>'
-                + '<div style="display:flex;justify-content:center;gap:20px;margin:8px 0;">'
-                + '<div style="border:2px solid #f59e0b;border-radius:8px;padding:8px 16px;">⚡ Jenkins</div>'
-                + '<div style="border:2px solid #e91e63;border-radius:8px;padding:8px 16px;">🐺 GitLab CI</div>'
-                + '</div>'
-                + '<div style="font-size:15px;">⬇</div>'
-                + '<div style="border:2px solid #22c55e;border-radius:8px;padding:8px 16px;">🐳 Harbor</div>';
+            if (mode === 'both') {
+                modeBadge = '<span class="badge" style="background:#dbeafe;color:#1d4ed8;font-size:13px;">⚡ Jenkins + 🐺 GitLab CI 共存</span>';
+                flow = '<div style="margin-top:14px;display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;">'
+                    + node('🌿', 'Git 仓库', '#f3f4f6', '#d1d5db', '#374151', 22)
+                    + arrow
+                    + node('⚡', 'Jenkins', '#fff8e1', '#f59e0b', '#d97706', 24)
+                    + split
+                    + node('🐺', 'GitLab CI', '#fce4ec', '#e91e63', '#c81e1e', 24)
+                    + arrow
+                    + node('🐳', 'Harbor', '#ecfeff', '#0891b2', '#0e7490', 24)
+                    + '</div>';
+            } else {
+                modeBadge = '<span class="badge" style="background:' + buildBg + ';color:' + buildColor + ';font-size:13px;">' + buildCi + ' 模式</span>';
+                const icon = (mode === 'gitlab_ci') ? '🐺' : '⚡';
+                const name = (mode === 'gitlab_ci') ? 'GitLab CI' : 'Jenkins';
+                flow = '<div style="margin-top:14px;display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;">'
+                    + node('🌿', 'Git 仓库', '#f3f4f6', '#d1d5db', '#374151', 22)
+                    + arrow
+                    + node(icon, name, buildBg, buildBorder, buildColor, 24)
+                    + arrow
+                    + node('🐳', 'Harbor', '#ecfeff', '#0891b2', '#0e7490', 24)
+                    + '</div>';
+            }
         } else if (hasGitlab) {
-            mode = '<span class="badge" style="background:#fce4ec;color:#c81e1e;font-size:13px;">GitLab CI 模式</span>';
-            diagram = '<div style="font-size:13px;"><b>Git项目</b> → 🐺 <b>GitLab CI</b> → 🐳 <b>Harbor</b></div>';
+            modeBadge = '<span class="badge" style="background:#fce4ec;color:#c81e1e;font-size:13px;">🐺 GitLab CI 模式</span>';
+            flow = '<div style="margin-top:14px;display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;">'
+                + node('🌿', 'Git 仓库', '#f3f4f6', '#d1d5db', '#374151', 22)
+                + arrow
+                + node('🐺', 'GitLab CI', '#fce4ec', '#e91e63', '#c81e1e', 24)
+                + arrow
+                + node('🐳', 'Harbor', '#ecfeff', '#0891b2', '#0e7490', 24)
+                + '</div>';
+            sel.querySelectorAll('option').forEach(opt => {
+                if (opt.value === 'jenkins' || opt.value === 'both') opt.disabled = true;
+            });
         } else {
-            mode = '<span class="badge" style="background:#fff8e1;color:#d97706;font-size:13px;">Jenkins 模式</span>';
-            diagram = '<div style="font-size:13px;"><b>Git项目</b> → ⚡ <b>Jenkins</b> → 🐳 <b>Harbor</b></div>';
+            modeBadge = '<span class="badge" style="background:#fff8e1;color:#d97706;font-size:13px;">⚡ Jenkins 模式</span>';
+            flow = '<div style="margin-top:14px;display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;">'
+                + node('🌿', 'Git 仓库', '#f3f4f6', '#d1d5db', '#374151', 22)
+                + arrow
+                + node('⚡', 'Jenkins', '#fff8e1', '#f59e0b', '#d97706', 24)
+                + arrow
+                + node('🐳', 'Harbor', '#ecfeff', '#0891b2', '#0e7490', 24)
+                + '</div>';
+            sel.querySelectorAll('option').forEach(opt => {
+                if (opt.value === 'gitlab_ci' || opt.value === 'both') opt.disabled = true;
+            });
         }
-        display.innerHTML = '<div style="margin-bottom:10px;">' + mode + '</div>' + diagram;
+        display.innerHTML = '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
+            + modeBadge + srcLabel
+            + '</div>'
+            + flow;
+
     } catch(e) {
         display.innerHTML = '<span style="color:#9ca3af;">无法检测（请先登录）</span>';
+    }
+}
+
+async function onBuildModeChange() {
+    const sel = document.getElementById('build-mode-select');
+    const newMode = sel.value;
+    const oldMode = currentBuildMode;
+
+    // 先回退选择，待确认后再正式切换
+    sel.value = oldMode;
+
+    const modeLabels = {
+        'jenkins': '⚡ Jenkins（仅使用 Jenkins 构建）',
+        'gitlab_ci': '🐺 GitLab CI（仅使用 GitLab CI 构建）',
+        'both': '⚡ Jenkins + 🐺 GitLab CI（双通道共存）'
+    };
+
+    if (!confirm('确定要将构建模式切换为「' + (modeLabels[newMode] || newMode) + '」吗？\n\n此操作会立即生效，影响后续所有构建任务。')) {
+        return;
+    }
+
+    // 用户确认，正式切换
+    sel.value = newMode;
+
+    const statusEl = document.getElementById('build-mode-status');
+    statusEl.style.display = 'none';
+    try {
+        const res = await fetch('/api/admin/build_mode', {
+            method: 'PUT',
+            headers: Object.assign({'Content-Type':'application/json'}, authHeaders()),
+            body: JSON.stringify({mode: newMode})
+        });
+        if (handle401(res)) { sel.value = oldMode; currentBuildMode = oldMode; return; }
+        if (res.ok) {
+            currentBuildMode = newMode;
+            statusEl.style.display = 'inline';
+            setTimeout(() => statusEl.style.display = 'none', 2000);
+            loadSettings();
+        } else {
+            const data = await res.json();
+            toast(data.message || '保存失败', false);
+            sel.value = oldMode;
+            currentBuildMode = oldMode;
+        }
+    } catch(e) {
+        toast('网络错误: ' + e.message, false);
+        sel.value = oldMode;
+        currentBuildMode = oldMode;
     }
 }
 
@@ -473,6 +699,7 @@ async function changePassword(e) {
 
 // ── 表单 ──
 function showForm(editData) {
+    if (currentMapView !== 'table') switchMapView('table');
     const panel = document.getElementById('form-panel');
     panel.classList.add('show');
     if (editData) {
@@ -548,6 +775,83 @@ async function deleteMap(jobName) {
         if (res.ok) { toast('已删除 ' + jobName, true); loadMaps(); }
         else { toast(data.message || '删除失败', false); }
     } catch(e) { toast('网络错误: ' + e.message, false); }
+}
+
+// ═══════════ 安全扫描 ═══════════
+const SEC_API = '/api/admin/security_checks';
+let secPage = 1, secDebounce = null;
+const STATE_ICONS = {success:'✅',failed:'❌',error:'⚠️',pending:'⏳'};
+const STATE_LABELS = {success:'通过',failed:'失败',error:'错误',pending:'待处理'};
+
+function secOnFilterChange() {
+    clearTimeout(secDebounce);
+    secDebounce = setTimeout(() => { secPage = 1; loadSecurityChecks(); }, 300);
+}
+
+async function loadSecurityChecks() {
+    try {
+        const project = document.getElementById('sec-search-project')?.value?.trim() || '';
+        const checkType = document.getElementById('sec-filter-type')?.value || '';
+        const state = document.getElementById('sec-filter-state')?.value || '';
+        const params = new URLSearchParams();
+        if (project) params.set('project', project);
+        if (checkType) params.set('check_type', checkType);
+        if (state) params.set('state', state);
+        params.set('page', secPage);
+        params.set('per_page', '20');
+        const url = SEC_API + '?' + params.toString();
+        const res = await fetch(url, { headers: authHeaders() });
+        if (handle401(res)) return;
+        const data = await res.json();
+        const checks = data.checks || [];
+        const total = data.total || 0;
+        const totalPages = data.total_pages || 1;
+
+        // 更新类型下拉（合并现有选项）
+        if (data.filter_opts?.check_types) {
+            const sel = document.getElementById('sec-filter-type');
+            const cur = sel.value;
+            sel.innerHTML = '<option value="">全部类型</option>';
+            data.filter_opts.check_types.forEach(t => { sel.innerHTML += `<option value="${esc(t)}">${esc(t)}</option>`; });
+            if (data.filter_opts.check_types.includes(cur)) sel.value = cur;
+        }
+
+        document.getElementById('sec-loading').style.display = 'none';
+        const tw = document.getElementById('sec-table-wrap');
+        const em = document.getElementById('sec-empty');
+
+        if (checks.length === 0) {
+            tw.style.display = 'none'; em.style.display = 'block';
+        } else {
+            em.style.display = 'none'; tw.style.display = 'block';
+            document.getElementById('sec-tbody').innerHTML = checks.map(c => {
+                const icon = STATE_ICONS[c.state] || '❓';
+                const label = STATE_LABELS[c.state] || c.state || '—';
+                const cls = c.state === 'success' ? 'ok' : c.state === 'failure' ? 'err' : 'off';
+                const shaShort = (c.sha || '').substring(0, 8);
+                const time = (c.created_at || '').replace('T',' ').substring(0, 19);
+                return `<tr>
+                    <td style="font-size:12px;white-space:nowrap;color:#6b7280;">${esc(time)}</td>
+                    <td><strong>${esc(c.project)}</strong></td>
+                    <td><span class="badge badge-default">${esc(c.check_type || '—')}</span></td>
+                    <td><span class="svc-stat ${cls}">${icon} ${label}</span></td>
+                    <td>${esc(c.tag || '—')}</td>
+                    <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(c.description||'')}">${esc(c.description || '—')}</td>
+                    <td><code style="font-size:11px;color:#6b7280;" title="${esc(c.sha||'')}">${esc(shaShort)}</code></td>
+                </tr>`;
+            }).join('');
+
+            let pag = `<span style="color:#6b7280;">共 ${total} 条</span>`;
+            pag += `<button class="btn btn-sm" onclick="secPage=1;loadSecurityChecks()" ${secPage<=1?'disabled':''}>« 首页</button>`;
+            pag += `<button class="btn btn-sm" onclick="secPage=Math.max(1,secPage-1);loadSecurityChecks()" ${secPage<=1?'disabled':''}>‹ 上一页</button>`;
+            pag += `<span style="color:#374151;font-weight:600;">${secPage} / ${totalPages}</span>`;
+            pag += `<button class="btn btn-sm" onclick="secPage=Math.min(totalPages,secPage+1);loadSecurityChecks()" ${secPage>=totalPages?'disabled':''}>下一页 ›</button>`;
+            pag += `<button class="btn btn-sm" onclick="secPage=totalPages;loadSecurityChecks()" ${secPage>=totalPages?'disabled':''}>末页 »</button>`;
+            document.getElementById('sec-pagination').innerHTML = pag;
+        }
+    } catch(e) {
+        document.getElementById('sec-loading').textContent = '加载失败: ' + e.message;
+    }
 }
 
 // ═══════════ Helpers ═══════════

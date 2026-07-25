@@ -18,7 +18,7 @@ class JenkinsService
             'auth'    => [$config['user'], $config['token']],
             'headers' => ['Content-Type' => 'application/json'],
             'cookies' => true,   // 启用 Cookie 存储（用于 CSRF crumb）
-            'timeout' => 5, 'connect_timeout' => 3,
+            'timeout' => 30, 'connect_timeout' => 10,
         ]);
     }
 
@@ -154,15 +154,20 @@ class JenkinsService
         return $this->getBuildParameters($jobPath, $buildId);
     }
 
-    private function getCurrentParameters(string $jobPath): array
+    /**
+     * 获取 Job 参数定义，返回 name => [choices, _class] 映射
+     * @return array<string, array{choices: array, _class: string}>
+     */
+    public function getParameterDefinitions(string $jobPath): array
     {
         $jobUrl = $this->getJobUrl($jobPath);
-        $resp = $this->client->get("{$jobUrl}/api/json?tree=property[parameterDefinitions[*]]");
+        $resp = $this->client->get("{$jobUrl}/api/json?tree=property[parameterDefinitions[name,choices,choiceListMetadata,value,defaultValue,_class]]");
         $data = json_decode($resp->getBody(), true);
         $params = [];
         foreach ($data['property'] ?? [] as $prop) {
             foreach ($prop['parameterDefinitions'] ?? [] as $def) {
                 $name = $def['name'] ?? '';
+                $class = $def['_class'] ?? '';
                 $choices = [];
                 if (isset($def['choices']) && is_array($def['choices'])) {
                     $choices = $def['choices'];
@@ -174,11 +179,16 @@ class JenkinsService
                     $choices = [$def['defaultValue']];
                 }
                 if (!empty($name)) {
-                    $params[$name] = array_values($choices);
+                    $params[$name] = ['choices' => array_values($choices), '_class' => $class];
                 }
             }
         }
         return $params;
+    }
+
+    private function getCurrentParameters(string $jobPath): array
+    {
+        return $this->getParameterDefinitions($jobPath);
     }
 
     private function getLatestBuildParametersList(string $jobPath): array

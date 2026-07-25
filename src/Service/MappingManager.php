@@ -9,29 +9,27 @@ use App\Config\AppConfig;
 class MappingManager
 {
     private AppConfig $config;
-    private string $buildMode;
 
     public function __construct(AppConfig $config)
     {
-        $this->config    = $config;
-        $this->buildMode = $_ENV['BUILD_MODE'] ?? 'both';
+        $this->config = $config;
     }
 
-    /** 当前全局 BUILD_MODE */
+    /** 当前全局 BUILD_MODE（数据库为唯一来源） */
     public function buildMode(): string
     {
-        return $this->buildMode;
+        return $this->config->getBuildMode();
     }
 
     /** 是否注册了某类 Provider */
     public function hasJenkins(): bool
     {
-        return in_array($this->buildMode, ['jenkins', 'both']);
+        return in_array($this->config->getBuildMode(), ['jenkins', 'both']);
     }
 
     public function hasGitlabCi(): bool
     {
-        return in_array($this->buildMode, ['gitlab_ci', 'both']);
+        return in_array($this->config->getBuildMode(), ['gitlab_ci', 'both']);
     }
 
     // ── 全量查询（过滤禁用 + 模式筛选） ──
@@ -42,9 +40,10 @@ class MappingManager
         $maps = $this->config->getJobGitMap();
         $maps = array_filter($maps, fn($m) => ($m['status'] ?? 'active') === 'active');
 
-        if ($this->buildMode === 'gitlab_ci') {
+        $mode = $this->config->getBuildMode();
+        if ($mode === 'gitlab_ci') {
             $maps = array_filter($maps, fn($m) => ($m['build_provider'] ?? 'jenkins') === 'gitlab_ci');
-        } elseif ($this->buildMode === 'jenkins') {
+        } elseif ($mode === 'jenkins') {
             $maps = array_filter($maps, fn($m) => ($m['build_provider'] ?? 'jenkins') !== 'gitlab_ci');
         }
         return array_values($maps);

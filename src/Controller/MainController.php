@@ -43,7 +43,7 @@ class MainController extends BaseController
      */
     public function mapList(Request $request, Response $response): Response
     {
-        $buildMode = $_ENV['BUILD_MODE'] ?? 'both';
+        $buildMode = $this->config->getBuildMode();
         $cacheKey = 'map_list_' . $buildMode;
 
         // 有缓存且未过期，直接返回（gitlab_ci 模式跳过缓存，避免 Jenkins 旧数据）
@@ -188,11 +188,20 @@ class MainController extends BaseController
             'harbor_version'  => null,
         ];
 
-        $buildMode = $_ENV['BUILD_MODE'] ?? 'both';
+        $buildMode = $this->config->getBuildMode();
         if ($buildMode !== 'gitlab_ci') {
             try {
-                $this->jenkins->getAllJobs();
+                // 健康检查用独立短超时 Client，避免 Jenkins 宕机时卡住
+                $jk = $this->config->getJenkinsConfig();
+                $probe = new \GuzzleHttp\Client([
+                    'timeout'         => 5,
+                    'connect_timeout' => 3,
+                    'auth'            => [$jk['user'], $jk['token']],
+                    'http_errors'     => false,
+                ]);
+                $probe->get(rtrim($jk['url'], '/') . '/api/json');
                 $checks['jenkins'] = true;
+                // 版本号沿用 JenkinsService 缓存（短超时探测连通性即可）
                 $checks['jenkins_version'] = $this->jenkins->getVersion();
             } catch (\Exception $e) {
                 $checks['jenkins'] = false;
@@ -253,11 +262,37 @@ class MainController extends BaseController
                     'connect_timeout' => 3,
                     'http_errors' => false,
                 ]);
-                $resp = $qClient->get('/api/v2.0/projects');
-                $checks['harbor'] = $resp->getStatusCode() < 500;
+                // 多组件检查：每个端点独立判断，任一 true=false 则整体不健康
+                // 注意 404 不算失败（低版本 Harbor 缺少部分端点，如 v2.0 无 jobservice/ping）
+                $components = [
+                    'core'       => '/api/v2.0/projects',
+                    'jobservice' => '/api/v2.0/jobservice/ping',
+                    'registry'   => '/api/v2.0/registries',
+                ];
+                $componentResults = [];
+                foreach ($components as $name => $path) {
+                    try {
+                        $resp = $qClient->get($path);
+                        $code = $resp->getStatusCode();
+                        if ($code === 404) {
+                            // 该 Harbor 版本不支持此端点（如 v2.0 无 /jobservice/ping），跳过不判为失败
+                            $componentResults[$name] = true;
+                        } elseif ($code >= 200 && $code < 500) {
+                            $componentResults[$name] = true;
+                        } else {
+                            $componentResults[$name] = false;
+                        }
+                    } catch (\Throwable $e) {
+                        $componentResults[$name] = false;
+                    }
+                }
+                $checks['harbor'] = !in_array(false, $componentResults, true);
                 $checks['harbor_version'] = 'v2';
+                $checks['harbor_components'] = $componentResults;
             } catch (\Exception $e) {
                 $checks['harbor'] = false;
+                $checks['harbor_version'] = 'v2';
+                $checks['harbor_components'] = null;
             }
         } else {
             $checks['harbor'] = null;
@@ -267,11 +302,26 @@ class MainController extends BaseController
         $allOk = $checks['jenkins'] && $gitOk && ($checks['harbor'] === true || $checks['harbor'] === null);
         $status = $allOk ? 'ok' : 'degraded';
 
+        // 统计卡片数据
+        $stats = ['total_maps' => 0, 'active_maps' => 0, 'git_platforms' => 0, 'harbor_repos' => 0];
+        try {
+            $pdo = \App\Service\Database::getPdo();
+            $stats['total_maps'] = (int)$pdo->query("SELECT count(*) FROM ci_job_git_map")->fetchColumn();
+            $stats['active_maps'] = (int)$pdo->query("SELECT count(*) FROM ci_job_git_map WHERE status = 'active'")->fetchColumn();
+            $stats['git_platforms'] = (int)$pdo->query("SELECT count(DISTINCT git_platform) FROM ci_job_git_map WHERE git_platform IS NOT NULL AND git_platform != ''")->fetchColumn();
+            $stats['harbor_repos'] = (int)$pdo->query("SELECT count(DISTINCT harbor_repository) FROM ci_job_git_map WHERE harbor_repository IS NOT NULL AND harbor_repository != ''")->fetchColumn();
+        } catch (\Exception $e) {}
+
         $data = [
-            'status'   => $status,
-            'checks'   => $checks,
-            'app_env'  => $this->config->getAppEnv(),
-            'time'     => date('Y-m-d H:i:s'),
+            'status'           => $status,
+            'checks'           => $checks,
+            'stats'            => $stats,
+            'build_mode'       => $this->config->getBuildMode(),
+            'build_mode_source'=> $this->config->getBuildModeSource(),
+            'db_driver'        => \App\Service\Database::driver(),
+            'app_version'      => AppConfig::APP_VERSION,
+            'app_env'          => $this->config->getAppEnv(),
+            'time'             => date('Y-m-d H:i:s'),
         ];
 
         $response->getBody()->write(json_encode($data));

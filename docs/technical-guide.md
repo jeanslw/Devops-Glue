@@ -1,0 +1,817 @@
+# Devops-Glue 技术细节文档 v2.3.2
+
+> 本文档面向开发者、运维人员和排查问题，覆盖全部业务逻辑、数据流、数据库表结构和常见故障。
+
+---
+
+## 目录
+
+1. [系统架构总览](#1-系统架构总览)
+2. [请求生命周期](#2-请求生命周期)
+3. [配置系统](#3-配置系统)
+4. [数据库设计](#4-数据库设计)
+5. [核心业务逻辑](#5-核心业务逻辑)
+   - [5.1 健康检查](#51-健康检查)
+   - [5.2 映射管理（job_git_map）](#52-映射管理)
+   - [5.3 构建系统双通道](#53-构建系统双通道)
+   - [5.4 扫描同步（scan-sync）](#54-扫描同步)
+   - [5.5 Commit Status 回写](#55-commit-status-回写)
+   - [5.6 安全扫描审计](#56-安全扫描审计)
+   - [5.7 平台版本管理](#57-平台版本管理)
+   - [5.8 构建模式切换](#58-构建模式切换)
+   - [5.9 认证与授权](#59-认证与授权)
+6. [关键数据流](#6-关键数据流)
+7. [常见故障排查](#7-常见故障排查)
+8. [附录：完整配置参考](#8-附录完整配置参考)
+
+---
+
+## 1. 系统架构总览
+
+```
+┌──────────────────────────────────────────────────────┐
+│                    HTTP 请求                          │
+└──────────┬───────────────────────────────────────────┘
+           ▼
+┌──────────────────────────────────────────────────────┐
+│  public/index.php (入口)                              │
+│  ├─ Dotenv 三层加载 (.env → .env.{ENV} → .env.local) │
+│  ├─ 静态文件直出                                       │
+│  ├─ Database::init() 自动建表 + 种子数据               │
+│  └─ Slim 4 App + DI 容器装配                          │
+└──────────┬───────────────────────────────────────────┘
+           ▼
+┌──────────────────────────────────────────────────────┐
+│  Middleware 层                                        │
+│  ├─ CorsMiddleware (CORS 跨域)                        │
+│  ├─ RoutingMiddleware (路由匹配)                       │
+│  └─ ErrorMiddleware (统一错误处理)                     │
+└──────────┬───────────────────────────────────────────┘
+           ▼
+┌──────────────────────────────────────────────────────┐
+│  Controller 层                                        │
+│  ├─ MainController   — 健康检查 / 映射列表 / 平台发现  │
+│  ├─ BuildController  — 构建触发 / Pipeline / 扫描 / CS│
+│  ├─ AdminController  — 管理 CRUD / 认证 / 模式切换    │
+│  ├─ GitController    — 分支查询                        │
+│  └─ HarborController — 镜像仓库查询 / 扫描             │
+└──────────┬───────────────────────────────────────────┘
+           ▼
+┌──────────────────────────────────────────────────────┐
+│  Service 层                                           │
+│  ├─ Database          — SQLite/MySQL 双驱动 + 迁移    │
+│  ├─ MappingManager    — 映射查询 / 统一筛选            │
+│  ├─ AppConfig         — 配置读取门面                   │
+│  ├─ HarborService     — Harbor API 封装 (v1/v2 探测)  │
+│  ├─ JenkinsService    — Jenkins API 封装              │
+│  ├─ GitlabCiBuildProvider — GitLab CI Build 适配器    │
+│  ├─ JenkinsBuildProvider  — Jenkins Build 适配器      │
+│  ├─ BuildProviderRegistry — Build Provider 注册表     │
+│  ├─ Git/ProviderRegistry   — Git Provider 注册表      │
+│  ├─ Git/GitlabService      — GitLab API 适配器        │
+│  ├─ Git/GithubService      — GitHub API 适配器        │
+│  ├─ Git/GiteeService       — Gitee API 适配器         │
+│  └─ Git/GiteaService       — Gitea API 适配器         │
+└──────────┬───────────────────────────────────────────┘
+           ▼
+┌──────────────────────────────────────────────────────┐
+│  外部系统                                             │
+│  ├─ Jenkins      (构建引擎)                           │
+│  ├─ GitLab CI    (构建引擎)                           │
+│  ├─ GitLab/GitHub/Gitee/Gitea (源码 + Commit Status)  │
+│  └─ Harbor       (镜像仓库 + 漏洞扫描)                │
+└──────────────────────────────────────────────────────┘
+```
+
+**框架：** Slim 4 + PHP-DI 7 + vlucas/phpdotenv 5.6 + GuzzleHTTP 7
+**数据库：** SQLite（默认） / MySQL 8.0+ / MariaDB 10.4+
+**PHP 最低：** 8.0+
+
+---
+
+## 2. 请求生命周期
+
+```
+1. public/index.php 加载 vendor/autoload.php
+2. Dotenv 三层加载环境变量（详见 §3）
+3. 静态文件直出（PHP 内置服务器用，生产由 Nginx/Apache 处理）
+4. Database::init() — 惰性初始化 PDO（不连接）
+5. DI 容器构建（config/container.php 定义所有服务工厂）
+6. Slim App 创建 + 路由注册（config/routes.php）
+7. 中间件注册（CORS → 路由 → 错误处理）
+8. 请求到达 → 路由匹配 → Controller 方法执行 → 响应返回
+```
+
+---
+
+## 3. 配置系统
+
+### 3.1 环境变量加载（三层覆盖）
+
+```
+加载顺序（后者覆盖前者）：
+1. config/.env          ← 基础配置（gitignored，放真实密码）
+2. config/.env.{ENV}    ← 环境覆盖（提交 Git，不放密码）
+3. config/.env.local    ← 本地覆盖（gitignored，个人调整）
+
+覆盖规则：
+- 第1层用 createImmutable().load()（安全加载，不覆盖已存在的环境变量）
+- 第2/3层用 createUnsafeImmutable().load()（允许覆盖）
+```
+
+**实际使用：**
+
+| APP_ENV | 加载文件 | 说明 |
+|---|---|---|
+| production | `.env` only | 默认行为，不需要 `.env.production` |
+| staging | `.env` → `.env.staging` → `.env.local` | `.env.staging` 通常只放 `APP_DEBUG=true` |
+| development | `.env` → `.env.development` → `.env.local` | 同上 |
+
+### 3.2 运行时配置持久化
+
+| 配置项 | 存储位置 | 优先级 |
+|---|---|---|
+| `build_mode` | `ci_app_settings` 表 | DB > `.env` (回退) |
+| `job_git_map` | `ci_job_git_map` 表 | DB 唯一来源 |
+| `platform_versions` | `ci_platform_versions` 表 | DB > JSON > 默认值 |
+| Admin Token | `cache` 表 (24h TTL) | DB 唯一来源 |
+| Harbor API 版本 | `cache` 表 (1h TTL) | 自动探测并缓存 |
+
+### 3.3 配置读取链路
+
+```
+Controller → AppConfig::getXxxConfig()
+    → settings.php[$section]
+        → $_ENV['XXX']  (由 Dotenv 注入)
+```
+
+`AppConfig` 是唯一门面，所有控制器/Service 通过它读配置，不直接访问 `$_ENV`。
+
+---
+
+## 4. 数据库设计
+
+### 4.1 表结构完整定义
+
+#### ci_job_git_map（核心映射表）
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `job_name` | TEXT/VARCHAR(255) PK | Jenkins Job 名或 GitLab CI 项目路径 |
+| `git_platform` | TEXT | gitlab/github/gitee/gitea 或自定义 |
+| `build_provider` | TEXT DEFAULT 'jenkins' | jenkins / gitlab_ci |
+| `git_remote` | TEXT | Git 远程仓库地址（http/ssh） |
+| `project_id` | INTEGER | Git 平台上的项目 ID（GitLab 可自动获取） |
+| `web_url` | TEXT | 项目主页链接 |
+| `current_path` | TEXT | Git 仓库路径（如 tools/registry） |
+| `harbor_repository` | TEXT | 关联 Harbor 仓库（格式 project/repo） |
+| `api_version` | TEXT | API 版本号（元数据，不影响实际调用） |
+| `status` | TEXT DEFAULT 'active' | active / disabled |
+
+**索引:** `idx_job_git_map_current_path` ON `(current_path)`
+
+#### ci_platform_versions（平台版本）
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `platform` | TEXT PK | 平台名（gitlab/github/gitee/gitea/harbor） |
+| `version` | TEXT NOT NULL | API 版本（v4/v3/v5/v1/v2） |
+
+**说明：** 仅存储用户自定义的非默认版本。查询时三层回退：DB → 默认 → 硬编码。
+
+#### ci_pipeline_tags（Pipeline ↔ Tag 映射）
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `project` | TEXT NOT NULL (PK) | 项目路径 |
+| `pipeline_iid` | INTEGER NOT NULL (PK) | Pipeline 内部编号 |
+| `tag` | TEXT NOT NULL | 镜像 Tag |
+| `harbor_repository` | TEXT | Harbor 仓库名（如 mycode/app） |
+| `status` | TEXT DEFAULT '' | 扫描状态（success/failed/pending/unknown） |
+| `created_at` | DATETIME/TEXT | 创建时间 |
+
+**索引:** `(project)`, `(created_at)`
+
+#### cache（通用 KV 缓存）
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `cache_key` | TEXT/VARCHAR(255) PK | 缓存键 |
+| `value` | TEXT/MEDIUMTEXT | JSON 序列化的值 |
+| `expires_at` | INTEGER | Unix 时间戳过期时间 |
+
+**现有缓存键：**
+- `admin_token_{token}` — 管理后台 Token（24h TTL）
+- `map_list_{mode}` — 映射列表缓存（30s TTL）
+- `harbor_api_version` — Harbor API 版本探测结果（1h TTL）
+
+#### ci_app_settings（应用运行时配置）
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `setting_key` | TEXT/VARCHAR(255) PK | 配置键 |
+| `value` | TEXT/MEDIUMTEXT | 配置值 |
+| `updated_at` | DATETIME/TEXT | 更新时间 |
+
+**现有设置：** `build_mode`（jenkins/gitlab_ci/both）
+
+#### admin_users（管理员账号）
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `username` | TEXT PK | 用户名 |
+| `password_hash` | TEXT NOT NULL | bcrypt hash |
+| `updated_at` | DATETIME/TEXT | 更新时间 |
+
+**初始化：** `seedAdmin()` 在 `admin_users` 表为空时，从 `.env` 的 `ADMIN_USER`/`ADMIN_PASSWORD` 创建。
+
+#### ci_security_checks（安全扫描审计）
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | INTEGER AUTO PK | 自增 ID |
+| `project` | TEXT NOT NULL | 项目路径 |
+| `sha` | TEXT NOT NULL | Commit SHA |
+| `check_type` | TEXT NOT NULL | 检查类型（sast/secret-scan/sca/iac-audit/harbor-scan） |
+| `state` | TEXT NOT NULL | 状态（success/failed/pending/error） |
+| `context` | TEXT NOT NULL | 检查名称（commit status context） |
+| `description` | TEXT | 简短描述 |
+| `tag` | TEXT DEFAULT '' | 关联的镜像 Tag |
+| `created_at` | DATETIME/TEXT | 记录时间 |
+
+**索引:** `(project, check_type)`, `(sha)`
+
+### 4.2 数据库同步规则
+
+⚠️ **重要：** 表结构变更必须同时更新三处：
+
+1. `src/Service/Database.php` → `ensureTables()` 方法
+2. `database/mysql_init.sql`
+3. `database/sqlite_init.sql`
+
+---
+
+## 5. 核心业务逻辑
+
+### 5.1 健康检查
+
+**路由：** `GET /api/health`
+**Controller：** `MainController::health()`
+
+**检查流程：**
+
+```
+1. Jenkins 检查（仅 jenkins/both 模式）
+   ├─ 调 getAllJobs() 验证连通性
+   └─ 调 getVersion() 获取版本号
+
+2. Git 平台检查
+   ├─ 从 job_git_map 收集实际使用的平台
+   ├─ 只检查已配置且实际使用的平台
+   └─ 对每个平台 API URL 发 HEAD 请求（3s 超时）
+       └─ HTTP 状态码 < 500 视为 reachable
+
+3. Harbor 检查（多组件）
+   ├─ core:       GET /api/v2.0/projects
+   ├─ jobservice: GET /api/v2.0/jobservice/ping（404 仍视为 OK）
+   └─ registry:   GET /api/v2.0/registries
+   └─ 任一组件 false → harbor: false
+
+4. 统计卡片
+   ├─ total_maps:    SELECT count(*) FROM ci_job_git_map
+   ├─ active_maps:   count WHERE status='active'
+   ├─ git_platforms: count(DISTINCT git_platform)
+   └─ harbor_repos:  count(DISTINCT harbor_repository)
+
+5. 汇总判断
+   └─ allOk = jenkins && git && harbor
+   └─ HTTP 200 (ok) / 503 (degraded)
+```
+
+**返回结构：**
+```json
+{
+  "status": "ok",
+  "checks": { "jenkins": true, "jenkins_version": "2.555.3", "git": [...], "harbor": true, "harbor_components": {...} },
+  "stats": { "total_maps": 4, "active_maps": 4, "git_platforms": 2, "harbor_repos": 4 },
+  "build_mode": "both", "build_mode_source": "database",
+  "db_driver": "mysql", "app_version": "2.3.2", "app_env": "production",
+  "time": "2026-07-25 12:00:00"
+}
+```
+
+---
+
+### 5.2 映射管理
+
+**核心表：** `ci_job_git_map`
+**管理接口：** `/api/admin/job_git_map`（GET/POST/PUT/DELETE）
+**公开接口：** `/api/main/map/list`（按 Git 仓库分组）
+
+#### 5.2.1 数据写入
+
+- **手动新增/编辑：** 管理后台 UI → AdminController CRUD
+- **自动发现：** `POST /api/admin/discover` → `AutoDiscover::discover()` 扫描 Jenkins 所有 Job，分析 SCM 配置提取 Git 仓库 URL → `saveDiscovered()` 写入 `ci_job_git_map`
+
+#### 5.2.2 数据读取与分组
+
+`MainController::mapList()` 的逻辑：
+
+1. 读 `ci_job_git_map` → 过滤 `status=active` → 按 `build_mode` 过滤
+2. 按 `job_name` 或 `current_path` 或 `git_remote` 提取 key 分组
+3. 每个分组包含：`git_platform`, `git_remote`, `project_id`, `web_url`, `harbor_repository`, `jobs`
+4. 写入 `cache` 表（30s TTL），减少重复请求开销
+5. `gitlab_ci` 模式下跳过缓存（避免 Jenkins 旧数据污染）
+
+#### 5.2.3 MappingManager 的角色
+
+所有业务层查询必须通过 `MappingManager`：
+- `activeMaps()` — 返回当前 `build_mode` 下所有活跃映射
+- `resolveProject(path)` — 根据项目路径解析出 `[provider, projectId]`
+- `usedGitPlatforms()` — 收集活跃映射中使用的 Git 平台
+- `activeJobNames()` — 返回活跃 Job 名列表
+
+#### 5.2.4 Git 平台自动检测
+
+当 `git_platform` 未显式填写时，系统按以下规则自动检测：
+
+1. 提取 `git_remote` URL 的域名
+2. 用各 `GitProvider::matchUrl()` 匹配（关键词：gitlab/github.com/gitee.com/...）
+3. 如果匹配失败 → 回退到 `DEFAULT_GIT_PLATFORM` 环境变量
+
+---
+
+### 5.3 构建系统双通道
+
+**模式：** jenkins / gitlab_ci / both
+**路由统一入口：** `/api/build/{path}/...`
+
+#### 5.3.1 项目解析
+
+所有 Build 操作的第一步是 `resolve(path)`：
+
+```
+MappingManager::resolveProject(path)
+├─ 遍历 ci_job_git_map，匹配 job_name 或 current_path
+├─ 返回 build_provider（jenkins/gitlab_ci）
+└─ 返回 projectId（jenkins=path, gitlab_ci=project_id 或 path）
+```
+
+#### 5.3.2 BuildProvider 接口
+
+```php
+interface BuildProviderInterface {
+    public function getName(): string;          // 'jenkins' 或 'gitlab_ci'
+    public function trigger(string $projectId, string $ref, array $variables): array;
+    public function getPipelines(string $projectId, int $limit = 20): array;
+    public function getJobs(string $projectId, int $pipelineId): array;
+    public function getJobTrace(string $projectId, int $jobId): string;
+    public function getVariables(string $projectId): array;
+    public function retry(string $projectId, int $pipelineId): array;
+    public function cancel(string $projectId, int $pipelineId): array;
+}
+```
+
+#### 5.3.3 触发构建 (trigger)
+
+**路由：** `POST /api/build/{path}/trigger`
+
+参数合并优先级：POST body 根级 > POST body `variables` 嵌套 > Query String
+如果只有 `ref` 没有其他参数，自动转为 `{branches: ref}`。
+
+#### 5.3.4 Pipeline 列表 (pipelines)
+
+**路由：** `GET /api/build/{path}/pipelines?list=id|build|time|success`
+
+`list` 参数说明：
+- `id` — 返回 `[10, 9, 8]` 所有 pipeline 编号
+- `success` — 同上，但只返回成功的
+- `build` — 返回 `["#10", "#9"]` 成功的 pipeline
+- `time` — 返回 `["#10 [2026-07-25]", "#9 [...]]"` 成功 + 时间
+- 不传 — 返回完整 JSON（含 build_provider, project_id, pipelines 数组）
+
+#### 5.3.5 可失败点
+
+| 问题 | 原因 | 表现 |
+|---|---|---|
+| `Build 系统 'xxx' 未配置` | build_mode 与 Provider 实际可用性不一致 | 400 |
+| 项目解析失败 | `ci_job_git_map` 中无此项目映射 | 回退到 path 本身作为 projectId |
+| Jenkins 504 超时 | `BUILD_TIMEOUT` 过小或网络慢 | 500 |
+
+---
+
+### 5.4 扫描同步（scan-sync）
+
+**路由：** `POST /api/build/{path}/scan-sync`
+**方法：** `BuildController::scanSync()`
+
+**业务流程：**
+
+```
+1. 查 ci_job_git_map 获取 harbor_repository + build_provider + git_platform
+2. 解析 harbor_repository（格式 project/repo）
+3. 从 Harbor 获取 tag 列表
+   ├─ body 有 tag → 校验是否在列表中
+   └─ body 无 tag → 取列表第一个（最新）
+4. 尝试获取最新 pipeline 的 SHA 和 IID（失败不影响主流程）
+5. Harbor 扫描报告获取
+   ├─ Harbor 不可达 → state=pending
+   ├─ 扫描未启用 → state=pending
+   ├─ 有漏洞 → state=failed, 记录漏洞数量
+   └─ 无漏洞 → state=success
+6. Commit Status 回写（通过 Git Provider，不依赖 CI 系统）
+   └─ context='harbor-scan', description='#10 → v1.0 · 3 vulns'
+7. 记录到 ci_pipeline_tags（project + pipeline_iid + tag + status）
+```
+
+**⚠️ 关键限制：**
+- 必须已配置 `harbor_repository`（否则 400）
+- `tag` 必须在 Harbor 中实际存在（严格校验，Harbor 不可达时降级放行）
+- `harbor_repository` 格式必须为 `project/repo`（以 `/` 分隔的两段）
+
+---
+
+### 5.5 Commit Status 回写
+
+**路由：** `POST /api/build/{path}/commit-status`
+**方法：** `BuildController::commitStatus()`
+
+**适用场景：** CI pipeline 中任意安全扫描步骤，如 Gitleaks 密钥扫描、Trivy/Snyk 依赖漏洞、SonarQube SAST。
+
+**必填参数：**
+
+| 参数 | 说明 |
+|---|---|
+| `sha` | Commit SHA（40 位 hex） |
+| `state` | pending / success / failed / error |
+| `context` | 检查名称，如 "secret-scan"、"sast" |
+| `description` | 简短描述 |
+
+**可选参数：**
+
+| 参数 | 说明 |
+|---|---|
+| `target_url` | 详情链接（如 SonarQube 报告地址） |
+| `check_type` | 审计分类标签，默认等于 context |
+| `tag` | 关联的镜像 tag |
+
+**执行流程：**
+
+```
+1. 参数校验（sha/state/context/description 必填，state 合法性检查）
+2. 查 ci_job_git_map 获取 git_platform
+   └─ 未配置 → 400 "未配置 git_platform，无法回写"
+3. Git Provider 匹配
+   └─ 未注册 → 400 "Git 平台 xxx 未配置或不可用"
+4. 调用 GitProvider::setCommitStatus(sha, state, context, description, target_url)
+   ├─ GitLab: POST /api/v4/projects/{id}/statuses/{sha}
+   ├─ GitHub: POST /repos/{owner}/{repo}/statuses/{sha}
+   ├─ Gitee:  POST /api/v5/repos/{owner}/{repo}/statuses/{sha}
+   └─ Gitea:  POST /api/v1/repos/{owner}/{repo}/statuses/{sha}
+5. 记录到 ci_pipeline_tags（有 tag 时）
+6. 写入 ci_security_checks 审计表（UPSERT，按 project+sha+check_type 唯一）
+7. 返回结果（含 git_platform, commit_status 子对象）
+```
+
+**COMMIT STATUS 回写不依赖 CI 系统**，只依赖 Git 平台配置。Jenkins 项目也能通过此端点回写 commit status。
+
+---
+
+### 5.6 安全扫描审计
+
+**路由：** `GET /api/admin/security_checks?project=&check_type=&state=&page=1&per_page=20`
+**方法：** `AdminController::securityChecksList()`
+
+**数据来源：** `ci_security_checks` 表（由 commit-status 和 scan-sync 写入）
+
+**筛选参数：**
+- `project` — 模糊匹配（LIKE %...%）
+- `check_type` — 精确匹配
+- `state` — 精确匹配（success/failed/pending/error）
+- `page` / `per_page` — 分页
+
+**返回：**
+```json
+{
+  "checks": [...],
+  "total": 50,
+  "page": 1,
+  "per_page": 20,
+  "total_pages": 3,
+  "filter_opts": {
+    "check_types": ["harbor-scan", "sast", "secret-scan"],
+    "states": ["success", "failure", "pending", "error"]
+  }
+}
+```
+
+**⚠️ 注意：** 前端 `STATE_ICONS` 使用 `failed` 而非 `failure`（GitHub Commit Status API 规范），因为后端 `validStates` 和数据库实际存储的值是 `failed`。
+
+---
+
+### 5.7 平台版本管理
+
+**路由：** `GET/PUT /api/admin/platform_versions`
+**方法：** `AdminController::platformVersionsList()` / `platformVersionsUpdate()`
+
+**读取优先级（三层回退）：**
+1. `ci_platform_versions` 表（用户自定义）
+2. `platform_versions.json`（JSON 文件，已废弃但兼容）
+3. 各 Provider 硬编码默认值（如 GitLab=v4, Gitee=v5, GitHub=v3）
+
+**返回额外字段：** `configured` — 表示该平台的 `base_url` 是否已配置（非空）
+
+---
+
+### 5.8 构建模式切换
+
+**路由：** `GET /api/admin/build_mode` + `PUT /api/admin/build_mode`
+**方法：** `AdminController::getBuildMode()` / `updateBuildMode()`
+
+**存储：** `ci_app_settings` 表，key=`build_mode`，value ∈ {jenkins, gitlab_ci, both}
+
+**读取逻辑（AppConfig::getBuildMode()）：**
+```
+1. 读 ci_app_settings WHERE setting_key='build_mode'
+2. 有值 → 返回，source='database'
+3. 无值 → 读 .env BUILD_MODE 种子写入 DB → 返回，source='env'
+4. DB 异常 → 降级到 .env，source='env'
+```
+
+**写入校验（前后端一致）：**
+- `mode` 必须是 jenkins / gitlab_ci / both
+- 设 `jenkins` 或 `both` → 要求 JENKINS_BASE_URL 已配（否则 400）
+- 设 `gitlab_ci` 或 `both` → 要求 GITLAB_BASE_URL + GITLAB_TOKEN 已配（否则 400）
+
+**DI 容器行为（container.php）：**
+- 不再根据 `BUILD_MODE` 判断是否注册 Provider
+- Jenkins / GitLab CI 各自检查配置非空就注册
+- 实际路由分发由 `MappingManager::activeMaps()` 根据 DB 中的 `build_mode` 过滤
+
+**影响范围：** 模式切换只影响映射列表过滤和健康检查中的 Jenkins 检测。
+
+---
+
+### 5.9 认证与授权
+
+#### 5.9.1 登录
+
+**路由：** `POST /api/admin/login`
+**方法：** `AdminController::login()`
+
+**验证优先级：**
+1. 查 `admin_users` 表，`password_verify()` 验证 bcrypt hash
+2. 降级：比对 `.env` 的 `ADMIN_USER`/`ADMIN_PASSWORD`（要求密码非空）
+3. 认证成功 → 生成 64 位 hex token → 写入 `cache` 表（`admin_token_{token}`，24h TTL）
+
+#### 5.9.2 Token 验证
+
+**方法：** `AdminController::authCheck()`
+
+```
+1. 从 Authorization: Bearer xxx 提取 token
+2. 查 cache 表验证 token（key=admin_token_{token}, expires_at > now）
+3. 如果 DB 不可用且 .env ADMIN_PASSWORD 为空 → 放行（首次启动无密码场景）
+4. 如果 DB 不可用且 admin_users 表为空 → 放行
+5. 其他 → 401
+```
+
+**密码修改时：** `DELETE FROM cache WHERE cache_key LIKE 'admin_token_%'` — 清除所有旧 token，强制重新登录。
+
+#### 5.9.3 文档页面认证
+
+**Swagger UI (`/api/docs`) 和 OpenAPI JSON (`/api/openapi.json`)：**
+- 使用 routes.php 闭包中的 `$checkAuth`，独立于 `AdminController::authCheck`
+- 如果 `.env` 中 `ADMIN_PASSWORD` 为空 → 直接放行
+- 否则验证 token（支持 Bearer 或 Query String `?token=`）
+
+---
+
+## 6. 关键数据流
+
+### 6.1 构建 → 扫描 → 回写 完整链路
+
+```
+CI Pipeline 触发
+    │
+    ├── 构建 Docker 镜像 → Push 到 Harbor
+    │
+    ├── 安全扫描步骤（Gitleaks / Trivy / SonarQube）
+    │   │
+    │   └── POST /api/build/{project}/commit-status
+    │       ├─ sha={SHA}, state=failed/success
+    │       ├─ context=secret-scan, check_type=secret-scan
+    │       ├─ → Git Provider setCommitStatus() 回写
+    │       └─ → ci_security_checks 表记录
+    │
+    └── Harbor 扫描同步
+        │
+        └── POST /api/build/{project}/scan-sync
+            ├─ 查 Harbor 扫描报告（漏洞数量）
+            ├─ → Git Provider setCommitStatus(context=harbor-scan)
+            └─ → ci_pipeline_tags 记录 tag→pipeline 映射
+```
+
+### 6.2 映射配置 → API 调用 链路
+
+```
+管理后台编辑映射
+    │
+    └── AdminController CRUD
+        └── AppConfig::saveJobGitMap()
+            └── ci_job_git_map 表全量写入
+
+API 调用（如 /api/build/project/tag）
+    │
+    └── BuildController → resolve(project)
+        └── MappingManager::resolveProject(project)
+            └── 遍历 ci_job_git_map 匹配 job_name/current_path
+                ├─ 返回 build_provider → BuildProviderRegistry::create()
+                └─ 返回 git_platform → GitProviderRegistry::create()
+```
+
+### 6.3 构建模式切换生效链路
+
+```
+管理后台: PUT /api/admin/build_mode {mode: "jenkins"}
+    │
+    └── AdminController::updateBuildMode()
+        ├─ 校验 Provider 可用性
+        └── AppConfig::setBuildMode("jenkins")
+            └── ci_app_settings UPSERT {key:"build_mode", value:"jenkins"}
+
+下一次 API 调用:
+    │
+    └── MappingManager::activeMaps()
+        └── AppConfig::getBuildMode() → "jenkins"
+            └── 只返回 build_provider != 'gitlab_ci' 的映射
+```
+
+---
+
+## 7. 常见故障排查
+
+### 7.1 数据库相关
+
+| 症状 | 可能原因 | 排查方法 |
+|---|---|---|
+| 启动报 `DB_DRIVER 必须设为 sqlite 或 mysql` | `.env` 未配或配置错误 | `echo $DB_DRIVER`，确认值正确 |
+| SQLite 报 `unable to open database` | 目录无写入权限 | `chmod 777 config/data/` |
+| MySQL 报 `Access denied` | 密码错误或用户权限不足 | `mysql -u root -p` 验证 |
+| 表不存在报错 | `DB_AUTO_MIGRATE=false` 且未手动建表 | 检查 `.env` 中 `DB_AUTO_MIGRATE` 值 |
+| `admin_users` 表有数据但登录失败 | 密码 hash 和内存不匹配 | 用管理后台修改密码，或删表行让 `seedAdmin` 重新创建 |
+
+### 7.2 外部服务连接
+
+| 症状 | 可能原因 | 排查方法 |
+|---|---|---|
+| Jenkins 健康检查返回 false | JENKINS_BASE_URL 不可达 | `curl $JENKINS_BASE_URL/api/json` |
+| Git 平台 reachable=false | base_url 不对或网络不通 | `curl -I $GITLAB_BASE_URL` |
+| Harbor 检查失败 | Harbor 服务未启动或 URL 不对 | 逐个检查 `/api/v2.0/projects` 等端点 |
+| Harbor 扫描 HTTP 503 | Harbor 扫描器未配置 | Harbor 管理后台检查扫描器 |
+| Git Provider `setCommitStatus` 返回 404 | `project_id` 错误或无权限 | 检查 Git 平台项目是否存在 |
+
+### 7.3 构建相关
+
+| 症状 | 可能原因 | 排查方法 |
+|---|---|---|
+| `Build 系统 'xxx' 未配置` | `build_mode` 与 Provider 可用性不一致 | `/api/admin/build_mode` 检查 has_jenkins/has_gitlab_ci |
+| 模式切换后构建行为不变 | `ci_job_git_map` 中 `build_provider` 字段未同步 | 检查每个映射项的 `build_provider` |
+| Pipeline 列表为空 | Jenkins/GitLab CI 中项目不存在或无 pipeline | 直接访问 CI 系统确认 |
+| scan-sync 报 `tag 在 Harbor 中不存在` | tag 已被清理或还没同步 | 确认 Harbor 中存在该 tag |
+
+### 7.4 映射配置
+
+| 症状 | 可能原因 | 排查方法 |
+|---|---|---|
+| 项目找不到对应映射 | `job_name` 或 `current_path` 不匹配 | `GET /api/admin/job_git_map` 查看全部映射 |
+| `git_platform` 自动检测失败 | URL 不含平台关键词 | 手动在映射中指定 `git_platform` |
+| mapping 修改后不生效 | 缓存（30s TTL）未过期 | 等待 30s 或重启服务，或切到 gitlab_ci 模式（跳过缓存） |
+
+### 7.5 认证相关
+
+| 症状 | 可能原因 | 排查方法 |
+|---|---|---|
+| 登录始终 401 | `admin_users` 表密码和 `.env` 不一致 | 删空 `admin_users` 表让系统重建，或用临时路由重置 |
+| Token 突然失效 | 服务重启、密码被修改或 24h 过期 | 重新登录 |
+| Swagger UI 无法访问 | 未登录 | 访问 `/api/docs` 会自动跳转登录页 |
+
+### 7.6 性能相关
+
+| 症状 | 可能原因 | 解决方法 |
+|---|---|---|
+| `/api/health` 响应慢（>3s） | 外部服务超时 | 降低 timeout 值（默认 3-5s），检查网络 |
+| 映射列表接口慢 | 缓存未命中 + DB 查询慢 | 确认 cache 表存在且有写入权限 |
+| Harbor 分页请求大量数据 | 项目/仓库/tag 数量多 | 分页上限已设（projects 1000, repos 1000, tags 2000），超限记录 warning 日志 |
+
+---
+
+## 8. 附录：完整配置参考
+
+### 8.1 所有环境变量
+
+```ini
+# ============ CI 系统 ============
+JENKINS_BASE_URL=http://your-jenkins:8080
+JENKINS_USER=admin
+JENKINS_TOKEN=your_token
+BUILD_MODE=both                    # jenkins / gitlab_ci / both（首次种子值）
+BUILD_TIMEOUT=300                  # 构建超时（秒）
+
+# ============ Git 平台 ============
+GITLAB_BASE_URL=http://your-gitlab
+GITLAB_TOKEN=your_token
+GITHUB_BASE_URL=https://api.github.com
+GITHUB_TOKEN=
+GITEE_BASE_URL=https://gitee.com/api/v5
+GITEE_TOKEN=
+GITEA_BASE_URL=https://your-gitea
+GITEA_TOKEN=
+DEFAULT_GIT_PLATFORM=gitlab        # URL 无法识别时的回退平台
+
+# ============ Harbor ============
+HARBOR_BASE_URL=http://your-harbor
+HARBOR_USER=admin
+HARBOR_PASSWORD=your_password
+
+# ============ 管理后台 ============
+ADMIN_USER=admin
+ADMIN_PASSWORD=                    # 首次启动创建，之后以 DB 为准
+
+# ============ 数据库 ============
+DB_DRIVER=mysql                    # sqlite 或 mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_NAME=devops_glue
+DB_USER=root
+DB_PASS=your_password
+DB_PATH=config/data/data.db        # 仅 SQLite
+DB_AUTO_MIGRATE=true               # 自动建表，false 需手动执行 database/ 下脚本
+
+# ============ 应用 ============
+APP_ENV=production                 # production / staging / development
+APP_DEBUG=false
+API_BASE_URL=http://127.0.0.1:8080 # Swagger / OpenAPI 外部地址
+LOG_PATH=/applogs/                 # 日志目录
+```
+
+### 8.2 完整路由表
+
+| 方法 | 路由 | 认证 | 说明 |
+|---|---|---|---|
+| GET | `/` | 否 | 首页 HTML |
+| GET | `/admin` | 否 | 管理页面 HTML |
+| GET | `/api/health` | 否 | 健康检查 |
+| GET | `/api/docs` | 是 | Swagger UI |
+| GET | `/api/openapi.json` | 是 | OpenAPI 3.0 规范 |
+| **Main** | | | |
+| GET/POST | `/api/main/jobs/list` | 否 | Job 列表 |
+| GET/POST | `/api/main/map/list` | 否 | 三方映射（30s 缓存） |
+| GET/POST | `/api/main/git/platforms` | 否 | Git 平台列表 |
+| GET/POST | `/api/main/git/discovery` | 否 | 平台接入检测 |
+| **Admin** | | | |
+| POST | `/api/admin/login` | 否 | 登录获取 Token |
+| PUT | `/api/admin/password` | Token | 修改密码 |
+| GET | `/api/admin/job_git_map` | Token | 映射列表（搜索/分页） |
+| POST | `/api/admin/job_git_map` | Token | 新增映射 |
+| PUT | `/api/admin/job_git_map` | Token | 更新映射 |
+| DELETE | `/api/admin/job_git_map` | Token | 删除映射 |
+| GET | `/api/admin/platform_versions` | Token | 平台版本列表 |
+| PUT | `/api/admin/platform_versions` | Token | 更新平台版本 |
+| POST | `/api/admin/discover` | Token | 自动发现项目 |
+| GET | `/api/admin/security_checks` | Token | 安全扫描列表（筛选/分页） |
+| GET | `/api/admin/build_mode` | Token | 获取构建模式 |
+| PUT | `/api/admin/build_mode` | Token | 更新构建模式 |
+| **Build** | | | |
+| GET/POST | `/api/build/jobs/list` | 否 | Job 列表（带 ci_provider） |
+| GET | `/api/build/config-mode` | 否 | 构建模式状态 |
+| GET/POST | `/api/build/{path}/pipelines` | 否 | Pipeline 列表 |
+| GET/POST | `/api/build/{path}/pipelines/{id}` | 否 | Pipeline 详情 + Jobs |
+| POST | `/api/build/{path}/pipelines/{id}/retry` | 否 | 重试 Pipeline（仅 GitLab CI） |
+| POST | `/api/build/{path}/pipelines/{id}/cancel` | 否 | 取消 Pipeline（仅 GitLab CI） |
+| GET/POST | `/api/build/{path}/logs/{id}` | 否 | 构建日志 |
+| GET/POST | `/api/build/{path}/trigger` | 否 | 触发构建 |
+| GET/POST | `/api/build/{path}/variables` | 否 | 构建参数 |
+| POST | `/api/build/{path}/scan-sync` | 否 | Harbor 扫描同步 |
+| POST | `/api/build/{path}/commit-status` | 否 | Commit Status 回写 |
+| GET/POST | `/api/build/{path}/tag` | 否 | Pipeline → Tag 查询 |
+| **Git** | | | |
+| GET/POST | `/api/git/{path}/branches` | 否 | 分支列表 |
+| **Harbor** | | | |
+| GET/POST | `/api/harbor/projects` | 否 | 项目列表 |
+| GET/POST | `/api/harbor/{project}/repositories` | 否 | 仓库列表 |
+| GET/POST | `/api/harbor/{project}/repositories/{repo}/tags` | 否 | Tag 列表 |
+| POST | `/api/harbor/{project}/repositories/{repo}/tags/{tag}/scan` | 否 | 触发扫描 |
+| GET | `/api/harbor/{project}/repositories/{repo}/tags/{tag}/scan` | 否 | 扫描报告 |
+
+### 8.3 数据库迁移检查清单
+
+新增/修改表结构时，必须同时更新以下文件：
+
+- [ ] `src/Service/Database.php` → `ensureTables()` 方法
+- [ ] `database/mysql_init.sql`
+- [ ] `database/sqlite_init.sql`
+
+---
+
+*文档版本：v2.3.2 | 最后更新：2026-07-25*

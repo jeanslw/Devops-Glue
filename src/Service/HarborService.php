@@ -177,93 +177,142 @@ class HarborService
     }
 
     /**
-     * 获取项目名称列表
+     * 通用分页获取：自动翻页直到数据不足 pageSize 或达到最大页数限制
+     *
+     * @param string   $path        请求路径
+     * @param int      $pageSize    每页数量
+     * @param int      $maxPages    最大页数（安全阀）
+     * @param callable $extract     提取回调: fn(array $page): array 返回该页的业务数据
+     * @param array    $extraQuery  额外的 query 参数（如 with_tag, project_id）
+     * @return array
+     */
+    private function paginatedGet(string $path, int $pageSize, int $maxPages, callable $extract, array $extraQuery = []): array
+    {
+        $all = [];
+        $page = 1;
+
+        do {
+            $query = array_merge(['page_size' => $pageSize, 'page' => $page], $extraQuery);
+            $data = $this->request('GET', $path, ['query' => $query]);
+
+            if (isset($data['error'])) {
+                return $page === 1 ? $data : $all; // 首页失败返回错误，后续页失败返回已收集数据
+            }
+
+            if (!is_array($data) || empty($data)) {
+                break;
+            }
+
+            $items = $extract($data);
+            $all = array_merge($all, $items);
+            $page++;
+
+            // 返回数量不足 pageSize 说明已是最后一页
+        } while (count($data) === $pageSize && $page <= $maxPages);
+
+        // 达到 maxPages 且最后一页满数据 → 再请求一次确认是否真的超限
+        if ($page > $maxPages && count($data) === $pageSize) {
+            $checkQuery = array_merge(['page_size' => $pageSize, 'page' => $maxPages + 1], $extraQuery);
+            $checkData = $this->request('GET', $path, ['query' => $checkQuery]);
+            if (is_array($checkData) && !empty($checkData) && !isset($checkData['error'])) {
+                $this->logger?->warning('Harbor 分页达到上限，存在未获取的数据', [
+                    'path'      => $path,
+                    'max_pages' => $maxPages,
+                    'total'     => count($all),
+                ]);
+            }
+        }
+
+        return array_values(array_unique($all));
+    }
+
+    /**
+     * 获取项目名称列表（自动翻页，上限 1000 个项目）
      */
     public function getProjects(): array
     {
         $version = $this->detectApiVersion();
         $path = ($version === 'v2') ? '/api/v2.0/projects' : '/api/projects';
-        $data = $this->request('GET', $path, ['query' => ['page_size' => 100]]);
-        if (isset($data['error'])) return $data;
-        return array_values(array_column($data, 'name'));
+        $pageSize = 100;
+        $maxPages = 10; // 最多 1000 个项目
+        return $this->paginatedGet($path, $pageSize, $maxPages, function ($page) {
+            return array_column($page, 'name');
+        });
     }
 
     /**
-     * 获取指定项目下的仓库名称列表（已去掉项目前缀）
+     * 获取指定项目下的仓库名称列表（已去掉项目前缀，自动翻页上限 1000 个）
      */
     public function getRepositories(string $project): array
     {
         $version = $this->detectApiVersion();
+        $pageSize = 100;
+        $maxPages = 10;
+
         if ($version === 'v2') {
             $encodedProject = rawurlencode($project);
             $path = "/api/v2.0/projects/{$encodedProject}/repositories";
-            $data = $this->request('GET', $path, ['query' => ['page_size' => 100]]);
-        } else {
-            // v1: 先根据项目名找到 project_id
-            $projectsData = $this->request('GET', '/api/projects', ['query' => ['name' => $project]]);
-            if (isset($projectsData['error'])) return $projectsData;
-            $projectId = null;
-            foreach ($projectsData as $p) {
-                if (($p['name'] ?? '') === $project) {
-                    $projectId = $p['project_id'] ?? null;
-                    break;
-                }
-            }
-            if (!$projectId) {
-                return ['error' => "项目 '{$project}' 不存在"];
-            }
-            $path = "/api/repositories";
-            $data = $this->request('GET', $path, ['query' => ['project_id' => $projectId, 'page_size' => 100]]);
+            return $this->paginatedGet($path, $pageSize, $maxPages, function ($page) use ($project) {
+                $prefix = $project . '/';
+                return array_map(function ($repo) use ($prefix) {
+                    $name = $repo['name'] ?? '';
+                    return str_starts_with($name, $prefix) ? substr($name, strlen($prefix)) : $name;
+                }, $page);
+            });
         }
 
-        if (isset($data['error'])) return $data;
-
-        // 去除仓库名前的 "project/" 前缀
-        $prefix = $project . '/';
-        $names = array_map(function ($repo) use ($prefix) {
-            $name = $repo['name'] ?? '';
-            if (str_starts_with($name, $prefix)) {
-                return substr($name, strlen($prefix));
+        // v1: 先根据项目名找到 project_id
+        $projectsData = $this->request('GET', '/api/projects', ['query' => ['name' => $project]]);
+        if (isset($projectsData['error'])) return $projectsData;
+        $projectId = null;
+        foreach ($projectsData as $p) {
+            if (($p['name'] ?? '') === $project) {
+                $projectId = $p['project_id'] ?? null;
+                break;
             }
-            return $name;
-        }, $data);
-
-        return array_values($names);
+        }
+        if (!$projectId) {
+            return ['error' => "项目 '{$project}' 不存在"];
+        }
+        return $this->paginatedGet('/api/repositories', $pageSize, $maxPages, function ($page) {
+            return array_column($page, 'name');
+        }, ['project_id' => $projectId]);
     }
 
     /**
-     * 获取指定仓库的 tag 列表
+     * 获取指定仓库的 tag 列表（自动翻页，上限 2000 个 tag）
      */
     public function getTags(string $project, string $repository): array
     {
         $version = $this->detectApiVersion();
+        $pageSize = 100;
+        $maxPages = 20; // 最多 2000 个 tag
 
         if ($version === 'v2') {
             $encodedProject = rawurlencode($project);
-            // Harbor v2 要求对仓库名双重编码（处理内部斜杠）
             $encodedRepo = rawurlencode(rawurlencode($repository));
             $path = "/api/v2.0/projects/{$encodedProject}/repositories/{$encodedRepo}/artifacts";
-            $data = $this->request('GET', $path, ['query' => ['page_size' => 100, 'with_tag' => 'true']]);
-            if (isset($data['error'])) return $data;
-
-            $tags = [];
-            foreach ($data as $artifact) {
-                foreach ($artifact['tags'] ?? [] as $tag) {
-                    if (!empty($tag['name'])) {
-                        $tags[] = $tag['name'];
+            $extraQuery = ['with_tag' => 'true'];
+            return $this->paginatedGet($path, $pageSize, $maxPages, function ($page) {
+                $tags = [];
+                foreach ($page as $artifact) {
+                    foreach ($artifact['tags'] ?? [] as $tag) {
+                        if (!empty($tag['name'])) {
+                            $tags[] = $tag['name'];
+                        }
                     }
                 }
-            }
-            return array_values(array_unique($tags));
-        } else {
-            // v1: 拼接完整仓库名，注意已修复分页
-            $fullRepoName = $project . '/' . $repository;
-            $encodedRepoName = rawurlencode($fullRepoName);
-            $path = "/api/repositories/{$encodedRepoName}/tags";
-            $data = $this->request('GET', $path);
-            if (isset($data['error'])) return $data;
-            return array_values(array_column($data, 'name'));
+                return array_unique($tags);
+            }, $extraQuery);
         }
+
+        // v1
+        $fullRepoName = $project . '/' . $repository;
+        $encodedRepoName = rawurlencode($fullRepoName);
+        $path = "/api/repositories/{$encodedRepoName}/tags";
+        return $this->paginatedGet($path, $pageSize, $maxPages, function ($page) {
+            return array_column($page, 'name');
+        });
     }
 
     public function scanArtifact(string $project, string $repository, string $tag): array

@@ -112,6 +112,9 @@ $app->group('/api', function (RouteCollectorProxy $api) use ($app) {
         $admin->map(['GET'], '/platform_versions', [AdminController::class, 'platformVersionsList']);
         $admin->map(['PUT'], '/platform_versions', [AdminController::class, 'platformVersionsUpdate']);
         $admin->map(['POST'], '/discover', [AdminController::class, 'discover']);
+        $admin->map(['GET'], '/security_checks', [AdminController::class, 'securityChecksList']);
+        $admin->map(['GET'], '/build_mode', [AdminController::class, 'getBuildMode']);
+        $admin->map(['PUT'], '/build_mode', [AdminController::class, 'updateBuildMode']);
     });
 
     $api->group('/build', function (RouteCollectorProxy $build) {
@@ -124,7 +127,9 @@ $app->group('/api', function (RouteCollectorProxy $api) use ($app) {
         $build->map(['GET', 'POST'], '/{path:.+}/logs/{id:\d+}', [BuildController::class, 'logs']);
         $build->map(['GET', 'POST'], '/{path:.+}/trigger', [BuildController::class, 'trigger']);
         $build->map(['GET', 'POST'], '/{path:.+}/variables', [BuildController::class, 'variables']);
+        $build->map(['GET', 'POST'], '/{path:.+}/branches', [BuildController::class, 'branches']);
         $build->map(['POST'], '/{path:.+}/scan-sync', [BuildController::class, 'scanSync']);
+        $build->map(['POST'], '/{path:.+}/commit-status', [BuildController::class, 'commitStatus']);
         $build->map(['GET', 'POST'], '/{path:.+}/tag', [BuildController::class, 'tagQuery']);
     });
 

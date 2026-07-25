@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS ci_pipeline_tags (
     pipeline_iid      INTEGER NOT NULL,
     tag               TEXT NOT NULL,
     harbor_repository TEXT,
+    status            TEXT DEFAULT '',
     created_at        TEXT DEFAULT (datetime('now','localtime')),
     PRIMARY KEY (project, pipeline_iid)
 );
@@ -43,14 +44,46 @@ CREATE TABLE IF NOT EXISTS cache (
     expires_at INTEGER
 );
 
--- ── 5. admin_users（管理员账号）──
+-- ── 5. ci_app_settings（应用运行时配置）──
+CREATE TABLE IF NOT EXISTS ci_app_settings (
+    setting_key TEXT PRIMARY KEY,
+    value       TEXT NOT NULL,
+    updated_at  TEXT DEFAULT (datetime('now','localtime'))
+);
+
+-- ── 6. admin_users（管理员账号）──
 CREATE TABLE IF NOT EXISTS admin_users (
     username      TEXT PRIMARY KEY,
     password_hash TEXT NOT NULL,
     updated_at    TEXT DEFAULT (datetime('now','localtime'))
 );
 
+-- ── 7. ci_security_checks（安全扫描审计）──
+CREATE TABLE IF NOT EXISTS ci_security_checks (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    project       TEXT NOT NULL,
+    sha           TEXT NOT NULL,
+    check_type    TEXT NOT NULL,
+    state         TEXT NOT NULL,
+    context       TEXT NOT NULL,
+    description   TEXT,
+    tag           TEXT DEFAULT '',
+    created_at    TEXT DEFAULT (datetime('now','localtime'))
+);
+
 -- ── 索引 ──
-CREATE INDEX IF NOT EXISTS idx_pipeline_tags_project   ON ci_pipeline_tags(project);
-CREATE INDEX IF NOT EXISTS idx_pipeline_tags_created    ON ci_pipeline_tags(created_at);
-CREATE INDEX IF NOT EXISTS idx_job_git_map_current_path ON ci_job_git_map(current_path);
+CREATE INDEX IF NOT EXISTS idx_pipeline_tags_project     ON ci_pipeline_tags(project);
+CREATE INDEX IF NOT EXISTS idx_pipeline_tags_created      ON ci_pipeline_tags(created_at);
+CREATE INDEX IF NOT EXISTS idx_job_git_map_current_path   ON ci_job_git_map(current_path);
+CREATE INDEX IF NOT EXISTS idx_security_checks_project    ON ci_security_checks(project, check_type);
+CREATE INDEX IF NOT EXISTS idx_security_checks_sha        ON ci_security_checks(sha);
+
+-- =============================================================
+-- 迁移（已有数据库增量更新；列已存在时会报错，可忽略）
+-- =============================================================
+-- 使用 INSERT OR IGNORE 模拟 ALTER TABLE IF NOT EXISTS
+-- 如果列已存在会静默忽略（实际执行仍会报错，但幂等运行下无影响）
+
+-- ci_pipeline_tags 增量列（可选，报错忽略）
+ALTER TABLE ci_pipeline_tags ADD COLUMN harbor_repository TEXT;
+ALTER TABLE ci_pipeline_tags ADD COLUMN status TEXT DEFAULT '';
