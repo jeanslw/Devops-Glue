@@ -1,0 +1,65 @@
+version: '1.0'
+name: pipeline-20260725
+displayName: pipeline-20260725
+triggers:
+  trigger: manual
+  push:
+    branches:
+      prefix:
+        - main
+stages:
+  - name: stage-668ce7c4
+    displayName: build
+    strategy: naturally
+    trigger: auto
+    executor:
+      - isblues
+    steps:
+      - step: build@docker
+        name: build_docker
+        displayName: 镜像构建
+        type: account
+        repository: https://gitee.com/jeanslw/devops_glue.git
+        username: jeanslw@126.com
+        password: blues1109
+        tag: ${GITEE_PIPELINE_BUILD_NUMBER}
+        dockerfile: ./Dockerfile
+        context: ''
+        artifacts: []
+        isCache: false
+        processorType:
+          - amd64
+        parameter: {}
+        notify: []
+        strategy:
+          retry: '0'
+  - name: stage-0c3c8657
+    displayName: push
+    strategy: naturally
+    trigger: auto
+    executor:
+      - isblues
+    steps:
+      - step: publish@general_artifacts
+        name: publish_general_artifacts
+        displayName: 上传制品
+        dependArtifact: BUILD_ARTIFACT
+        artifactName: output
+        notify: []
+        strategy:
+          retry: '0'
+  - name: stage-c7c57b60
+    displayName: 未命名
+    strategy: naturally
+    trigger: auto
+    executor: []
+    steps:
+      - step: publish@release_artifacts
+        name: publish_release_artifacts
+        displayName: 发布
+        dependArtifact: output
+        version: 2.3.2.0
+        autoIncrement: true
+        notify: []
+        strategy:
+          retry: '0'
