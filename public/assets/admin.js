@@ -291,7 +291,7 @@ async function loadMaps() {
                     <td>${statusBadge(m.status)}</td>
                     <td style="white-space:nowrap">
                         ${(function(){
-                            if ((m.status||'active')==='active') return `<span style="color:#16a34a;font-size:13px;">✅ 启用</span>`;
+                            if ((m.status||'active')==='active') return `<button class="btn btn-sm" disabled style="background:#dcfce7;color:#16a34a;border:1px solid #86efac;cursor:default;">✅ 启用</button>`;
                             return `<button class="btn btn-sm btn-activate" onclick='activateMap("${escJs(m.job_name)}", ${js(m)})'>启用</button>`;
                         })()}
                         <button class="btn btn-sm btn-edit" onclick='editMap(${js(m)})'>✏️ 编辑</button>
