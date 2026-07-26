@@ -113,13 +113,15 @@
             <div id="tab-mapping" style="display:none;">
 
                 <!-- 工具栏 -->
-                <div class="toolbar">
-                    <h3>映射配置</h3>
-                    <div style="display:flex;gap:8px;align-items:center;">
+                <div class="toolbar" style="justify-content:space-between;">
+                    <h3 style="flex:1;">映射配置</h3>
+                    <div style="flex:2;display:flex;justify-content:center;">
                         <div class="view-toggle" id="view-toggle">
-                            <button class="btn btn-sm active" data-view="table" onclick="switchMapView('table')">📋 表格</button>
-                            <button class="btn btn-sm" data-view="topology" onclick="switchMapView('topology')">🗺️ 拓扑图</button>
+                            <button class="btn active" data-view="table" onclick="switchMapView('table')">📋 表格</button>
+                            <button class="btn" data-view="topology" onclick="switchMapView('topology')">🗺️ 拓扑图</button>
                         </div>
+                    </div>
+                    <div style="flex:1;display:flex;gap:8px;justify-content:flex-end;">
                         <button class="btn btn-pri" onclick="showForm()">＋ 新增映射</button>
                         <button class="btn btn-discover" onclick="doDiscover()">🔍 自动发现</button>
                     </div>
