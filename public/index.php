@@ -29,7 +29,7 @@ $requestPath = parse_url($requestUri, PHP_URL_PATH);
 $staticFile = realpath(__DIR__ . $requestPath);
 if ($requestPath !== '/' && $staticFile && str_starts_with($staticFile, realpath(__DIR__)) && is_file($staticFile)) {
     $ext = strtolower(pathinfo($staticFile, PATHINFO_EXTENSION));
-    $mimeTypes = ['css' => 'text/css', 'js' => 'application/javascript', 'png' => 'image/png', 'html' => 'text/html', 'json' => 'application/json', 'svg' => 'image/svg+xml', 'woff' => 'font/woff', 'woff2' => 'font/woff2'];
+    $mimeTypes = ['css' => 'text/css', 'js' => 'application/javascript', 'png' => 'image/png', 'html' => 'text/html', 'json' => 'application/json', 'svg' => 'image/svg+xml', 'woff' => 'font/woff', 'woff2' => 'font/woff2', 'ico' => 'image/x-icon'];
     $mime = $mimeTypes[$ext] ?? mime_content_type($staticFile) ?: 'application/octet-stream';
     header('Content-Type: ' . $mime);
     readfile($staticFile);
