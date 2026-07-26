@@ -30,21 +30,21 @@ function doLogout() {
 
 let _discovering = false;
 async function doDiscover() {
-    if (_discovering) { toast('⏳ 扫描进行中，请稍候…', true); return; }
+    if (_discovering) { toast('⏳ 扫描进行中，请稍候…', true, true); return; }
     if (!confirm('将自动扫描 Jenkins/GitLab CI 项目并导入映射表，已有项目不会重复。确定？')) return;
     _discovering = true;
-    toast('⏳ 正在扫描，请稍候…', true);
+    toast('⏳ 正在扫描，请稍候…', true, true);
     try {
         const res = await fetch('/api/admin/discover', { method:'POST', headers: authHeaders() });
         if (handle401(res)) return;
         const data = await res.json();
         if (res.ok) {
-            toast(`发现 ${data.found} 项，新增 ${data.saved} 项`, true);
+            toast(`发现 ${data.found} 项，新增 ${data.saved} 项`, true, true);
             if (currentMapView === 'topology') loadTopology(); else loadMaps();
         } else {
-            toast(data.message || '扫描失败', false);
+            toast(data.message || '扫描失败', false, true);
         }
-    } catch(e) { toast('网络错误: ' + e.message, false); }
+    } catch(e) { toast('网络错误: ' + e.message, false, true); }
     finally { _discovering = false; }
 }
 
@@ -92,10 +92,10 @@ function switchTab(name) {
 }
 
 // ═══════════ Toast ═══════════
-function toast(msg, ok) {
+function toast(msg, ok, center) {
     const el = document.getElementById('toast');
     el.textContent = msg;
-    el.className = 'toast ' + (ok ? 'toast-ok' : 'toast-err') + ' show';
+    el.className = 'toast ' + (ok ? 'toast-ok' : 'toast-err') + ' show' + (center ? ' toast-center' : '');
     setTimeout(() => el.classList.remove('show'), 2500);
 }
 
@@ -319,6 +319,7 @@ async function loadMaps() {
 let topoEntries = [];   // 已加载的拓扑数据
 let topoPage    = 1;    // 当前页
 const TOPO_PER_PAGE = 10;
+let topoPlatformUrls = {};  // { jenkins_url, harbor_url } 从 /api/main/git/platforms 获取
 
 async function loadTopology() {
     const loading = document.getElementById('topo-loading');
@@ -327,36 +328,43 @@ async function loadTopology() {
     const pagination = document.getElementById('topo-pagination');
 
     loading.style.display = 'block';
-    loading.innerHTML = '<p style="font-size:15px;">⏳ 正在从 Jenkins 拉取 Job 列表…</p><p style="font-size:12px;color:#9ca3af;margin-top:4px;">首次加载稍慢，后续 30 秒内有缓存</p>';
-    grid.style.display = 'none';
-    empty.style.display = 'none';
-    pagination.style.display = 'none';
+    loading.innerHTML = '<p style="font-size:15px;">⏳ 正在加载…</p>';
 
     try {
         const res = await fetch(MAP_LIST_API);
         const data = await res.json();
-
-        // 服务端报错
-        if (data._error) {
-            loading.innerHTML = `<p style="color:#dc2626;">⚠️ ${esc(data._error)}</p><p style="font-size:13px;color:#9ca3af;margin-top:4px;">${esc(data._detail||'')}</p>`;
-            return;
-        }
-
-        const projects = data.data || data;
-        topoEntries = Array.isArray(projects) ? projects : Object.entries(projects).map(([k,v]) => ({project:k, ...v}));
-        topoPage = 1;
-
-        if (topoEntries.length === 0) {
-            loading.style.display = 'none';
-            empty.style.display = 'block';
-            return;
-        }
-
-        renderTopology();
-
+        // 平台 URL 已随 mapList 返回（搭 git_remote 的便车）
+        topoPlatformUrls = {
+            jenkins_url: (data.jenkins_url || '').replace(/\/+$/, ''),
+            harbor_url:  (data.harbor_url || '').replace(/\/+$/, ''),
+        };
+        processTopoData(data);
     } catch(e) {
         loading.innerHTML = '<p style="color:#dc2626;">⚠️ 网络请求失败</p><p style="font-size:13px;color:#9ca3af;margin-top:6px;">请确认服务正常运行：' + esc(e.message) + '</p>';
     }
+}
+
+function processTopoData(data) {
+    const loading = document.getElementById('topo-loading');
+    const empty   = document.getElementById('topo-empty');
+
+    // 服务端报错
+    if (data._error) {
+        loading.innerHTML = `<p style="color:#dc2626;">⚠️ ${esc(data._error)}</p><p style="font-size:13px;color:#9ca3af;margin-top:4px;">${esc(data._detail||'')}</p>`;
+        return;
+    }
+
+    const projects = data.projects || data.data || data;
+    topoEntries = Array.isArray(projects) ? projects : Object.entries(projects).map(([k,v]) => ({project:k, ...v}));
+    topoPage = 1;
+
+    if (topoEntries.length === 0) {
+        loading.style.display = 'none';
+        empty.style.display = 'block';
+        return;
+    }
+
+    renderTopology();
 }
 
 function renderTopology() {
@@ -384,26 +392,30 @@ function renderTopology() {
             else if (method === 'fallback') detectBadge = '<span class="badge" style="background:#fef2f2;color:#dc2626;">兜底识别</span>';
             else if (method === 'exact') detectBadge = '<span class="badge" style="background:#ecfdf5;color:#065f46;">自动识别</span>';
 
-            // Jenkins Jobs
-            const jobs = (p.jobs || []).map(j => `<span class="job-tag">${esc(j)}</span>`).join(' ') || '<span class="topo-empty-field">无关联 Job</span>';
-
             // Git
             const gitUrl = p.git_remote || '';
             const gitDisplay = gitUrl
                 ? `<a href="${esc(gitUrl)}" target="_blank" title="${esc(gitUrl)}">${esc(truncateUrl(gitUrl))}</a>`
                 : '<span class="topo-empty-field">未配置</span>';
 
-            // Harbor
+            // Harbor（链接到首页，因为具体仓库路径需要项目 ID，数据库里没有）
             const harbor = p.harbor_repository || '';
+            const harborUrl = topoPlatformUrls.harbor_url || '';
             const harborDisplay = harbor
-                ? `<span style="font-family:monospace;font-size:12px;">${esc(harbor)}</span>`
+                ? `<a href="${esc(harborUrl + '/harbor')}" target="_blank" title="打开 Harbor">${esc(harbor)}</a>`
                 : '<span class="topo-empty-field">未关联</span>';
 
             const build = p.build_provider || 'jenkins';
             const buildLabel = build === 'gitlab_ci' ? '🐺 GitLab CI' : '⚡ Jenkins';
             const buildIcon = build === 'gitlab_ci' ? '🐺' : '⚡';
-            const buildBg = build === 'gitlab_ci' ? '#fce4ec' : '#fff8e1';
-            const buildBorder = build === 'gitlab_ci' ? '#e91e63' : '#f59e0b';
+            const buildUrl = topoPlatformUrls.jenkins_url || '';
+            const projectPath = (p.project || p.current_path || '').replace(/\/+$/, '');
+            const jenkinsPath = projectPath
+                ? '/' + projectPath.split('/').map(s => 'job/' + encodeURIComponent(s)).join('/') + '/'
+                : '';
+            const buildDisplay = buildUrl
+                ? `<a href="${esc(buildUrl + jenkinsPath)}" target="_blank" title="打开 Jenkins 项目">${esc(p.project || p.current_path || '未命名')}</a>`
+                : `<span class="node-main">${esc(p.project || p.current_path || '未命名')}</span>`;
             const platformCls = platform !== '—' && platform.length > 0 ? 'badge-' + platform : 'badge-default';
             const buildBadgeCls = build === 'gitlab_ci' ? 'badge-gitlab' : 'badge-gitee';
 
@@ -417,10 +429,9 @@ function renderTopology() {
                     </div>
                 </div>
                 <div class="topo-flow">
-                    <div class="topo-node" style="background:${buildBg};border-left:3px solid ${buildBorder};">
+                    <div class="topo-node">
                         <div class="node-label">${buildIcon} 构建源</div>
-                        <div class="node-main" style="font-size:14px;font-weight:600;">${buildLabel}</div>
-                        <div class="topo-jobs">${jobs}</div>
+                        <div class="node-main">${buildDisplay}</div>
                     </div>
                     <div class="topo-arrow">→</div>
                     <div class="topo-node">

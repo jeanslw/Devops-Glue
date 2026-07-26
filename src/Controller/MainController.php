@@ -105,17 +105,25 @@ class MainController extends BaseController
             sort($item['jobs']);
         }
 
+        // 附加平台 URL，方便前端直接生成链接（搭 Git git_remote 的便车）
+        $harborRaw = $this->config->getHarborConfig()['url'] ?? '';
+        $result = [
+            'projects'    => $grouped,
+            'jenkins_url' => rtrim($this->config->getJenkinsConfig()['url'] ?? '', '/'),
+            'harbor_url'  => rtrim($harborRaw, '/'),
+        ];
+
         // 写入缓存（30s TTL）
         try {
             $pdo = \App\Service\Database::getPdo();
             $sql = \App\Service\Database::sqlUpsert('cache', 'cache_key, value, expires_at', '?, ?, ?');
             $stmt = $pdo->prepare($sql);
-            $stmt->execute([$cacheKey, json_encode($grouped, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), time() + 30]);
+            $stmt->execute([$cacheKey, json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), time() + 30]);
         } catch (\Exception $e) {
             // 缓存写入失败不影响响应
         }
 
-        return $this->output($response, $grouped, $request);
+        return $this->output($response, $result, $request);
     }
 
     /**
@@ -123,9 +131,12 @@ class MainController extends BaseController
      */
     public function gitPlatforms(Request $request, Response $response): Response
     {
+        $harborRaw = $this->config->getHarborConfig()['url'] ?? '';
         $data = [
             'git_platforms' => $this->config->getGitPlatformsConfig(),
             'harbor'        => $this->config->getHarborApiInfo(),
+            'harbor_url'    => rtrim($harborRaw, '/'),   // 用户可见 URL（不带 /api/v2.0）
+            'jenkins_url'   => rtrim($this->config->getJenkinsConfig()['url'] ?? '', '/'),
         ];
         return $this->output($response, $data, $request);
     }

@@ -177,6 +177,15 @@
         .toast.show { opacity:1; transform:translateX(0); }
         .toast-ok  { background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; }
         .toast-err { background:#fef2f2; color:#991b1b; border:1px solid #fecaca; }
+        /* Toast 居中变体 */
+        .toast.toast-center {
+            top:50%; left:50%; right:auto;
+            transform:translate(-50%,-50%) scale(0.92);
+        }
+        .toast.toast-center.show {
+            transform:translate(-50%,-50%) scale(1);
+        }
+        .toast.toast-center { pointer-events:none; }
 
         /* ── 登录页 ── */
         .login-wrap {
@@ -197,52 +206,85 @@
 
         /* ── 项目拓扑 ── */
         .topo-card {
-            background:#fff; border-radius:12px; padding:24px 28px;
-            box-shadow:0 1px 4px rgba(0,0,0,.06); border:1px solid #f3f4f6;
-            margin-bottom:16px;
+            background:#fff; border-radius:14px; padding:22px 28px;
+            box-shadow:0 4px 16px rgba(0,0,0,.06), 0 1px 3px rgba(0,0,0,.04);
+            border:1px solid #e5e7eb;
+            margin-bottom:18px;
         }
         .topo-header {
             display:flex; align-items:center; justify-content:space-between;
             margin-bottom:18px; flex-wrap:wrap; gap:8px;
+            padding-bottom:14px;
+            border-bottom:1px solid #f3f4f6;
         }
-        .topo-header .topo-project { font-size:15px; font-weight:700; }
+        .topo-header .topo-project { font-size:16px; font-weight:700; color:#1f2937; }
         .topo-header .topo-meta { display:flex; gap:8px; align-items:center; }
         .topo-flow {
-            display:flex; align-items:flex-start; gap:0;
-            flex-wrap:wrap;
+            display:grid;
+            grid-template-columns: 1fr 36px 1fr 36px 1fr;
+            align-items:stretch;
+            gap:0;
         }
         .topo-node {
-            flex:1; min-width:200px; background:#f8fafc; border-radius:10px;
-            padding:16px 20px; position:relative;
+            background:#eef2f7; border-radius:12px;
+            padding:18px 22px;
+            border:none;
+            box-shadow:0 2px 6px rgba(0,0,0,.05);
+            min-width:0;
+            display:flex; flex-direction:column;
+            transition:box-shadow .2s;
+        }
+        .topo-node:hover {
+            box-shadow:0 4px 12px rgba(15,23,42,.12);
         }
         .topo-arrow {
             display:flex; align-items:center; justify-content:center;
-            width:40px; flex-shrink:0; color:#9ca3af; font-size:20px;
+            color:#94a3b8; font-size:22px; font-weight:400;
+            min-width:36px;
         }
         .topo-node .node-label {
-            font-size:10px; text-transform:uppercase; letter-spacing:.8px;
-            color:#9ca3af; margin-bottom:8px; font-weight:600;
+            display:flex; align-items:center; gap:8px;
+            font-size:11px; text-transform:uppercase; letter-spacing:1px;
+            color:#6b7280; margin-bottom:12px; font-weight:700;
+        }
+        .topo-node .node-label::before {
+            content:''; display:inline-block; width:6px; height:6px;
+            background:#4f46e5; border-radius:50%;
+            box-shadow:0 0 0 3px rgba(79,70,229,.18);
         }
         .topo-node .node-icon { font-size:22px; margin-bottom:6px; }
         .topo-node .node-main {
-            font-size:14px; font-weight:600; color:#1f2937;
-            word-break:break-all; margin-bottom:4px;
+            font-size:15px; font-weight:700; color:#1f2937;
+            word-break:break-all; margin-bottom:6px;
+        }
+        .topo-node .node-main a {
+            color:#2563eb; text-decoration:underline;
+            text-underline-offset:3px; text-decoration-thickness:1.5px;
+        }
+        .topo-node .node-main a:hover {
+            color:#1e40af; text-decoration-thickness:2px;
         }
         .topo-node .node-sub {
-            font-size:12px; color:#6b7280;
+            font-size:15px; font-weight:700; color:#1f2937;
+            line-height:1.6;
         }
         .topo-node .node-sub a {
-            color:#4f46e5; text-decoration:none;
+            color:#2563eb; text-decoration:underline;
+            text-underline-offset:3px; text-decoration-thickness:1.5px;
+            font-weight:700;
         }
-        .topo-node .node-sub a:hover { text-decoration:underline; }
+        .topo-node .node-sub a:hover {
+            color:#1e40af; text-decoration-thickness:2px;
+        }
         .topo-jobs {
-            margin-top:14px; padding-top:12px;
+            margin-top:auto; padding-top:12px;
             border-top:1px dashed #e5e7eb;
         }
         .topo-jobs .job-tag {
-            display:inline-block; padding:2px 10px; border-radius:12px;
-            font-size:11px; font-weight:600; margin:2px 4px 2px 0;
+            display:inline-block; padding:3px 12px; border-radius:14px;
+            font-size:11px; font-weight:600; margin:3px 4px 3px 0;
             background:#eef2ff; color:#4f46e5;
+            border:1px solid #e0e7ff;
         }
         .topo-empty-field { color:#9ca3af; font-style:italic; }
 
@@ -255,6 +297,6 @@
             .content { padding:16px; }
             .monitor-grid { grid-template-columns:1fr; }
             .form-grid { grid-template-columns:1fr; }
-            .topo-flow { flex-direction:column; }
-            .topo-arrow { width:100%; transform:rotate(90deg); padding:4px 0; }
+            .topo-flow { grid-template-columns:1fr; gap:8px; }
+            .topo-arrow { transform:rotate(90deg); justify-self:center; padding:4px 0; }
         }
