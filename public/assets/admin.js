@@ -232,8 +232,6 @@ async function loadMaps() {
         if (handle401(res)) return;
         const data = await res.json();
         let maps = data.maps || [];
-        const total = data.total || 0;
-        const totalPages = data.total_pages || 1;
 
         // 前端去重：归一化 remote 后比对，同一仓库有 active 记录时隐藏其他非 active（与后端逻辑一致）
         const activeRemotes = new Set();
@@ -244,6 +242,15 @@ async function loadMaps() {
             }
         });
         maps = maps.filter(m => (m.status || 'active') === 'active' || !activeRemotes.has(normalizeRemote(m.git_remote)));
+
+        // 隐藏非 active 且 provider 不匹配当前模式的记录（无法操作，占地方无意义）
+        if (currentBuildMode !== 'both') {
+            maps = maps.filter(m => (m.status || 'active') === 'active' || (m.build_provider || 'jenkins') === currentBuildMode);
+        }
+
+        // 分页以过滤后的实际可见数量为准（API 返回的是原始数据库总数，前端 dedup/provider 过滤后不可见）
+        const displayTotal = maps.length;
+        const displayTotalPages = 1;
 
         platforms = data.platforms || [];
 
@@ -263,7 +270,7 @@ async function loadMaps() {
         const pagination = document.getElementById('map-pagination');
         document.getElementById('loading-map').style.display = 'none';
 
-        if (maps.length === 0 && total === 0) {
+        if (maps.length === 0) {
             empty.style.display = 'block';
             tableWrap.style.display = 'none';
         } else {
@@ -285,12 +292,6 @@ async function loadMaps() {
                     <td style="white-space:nowrap">
                         ${(function(){
                             if ((m.status||'active')==='active') return `<span style="color:#16a34a;font-size:13px;">✅ 启用</span>`;
-                            // provider 与当前模式不匹配，禁止启用
-                            if (currentBuildMode!=='both' && bp!==currentBuildMode) {
-                                const curLabel = currentBuildMode==='jenkins'?'Jenkins':'GitLab CI';
-                                const itemLabel = bp==='gitlab_ci'?'GitLab CI':'Jenkins';
-                                return `<button class="btn btn-sm" disabled title="当前配置模式为 ${curLabel}，无法启用 ${itemLabel} 项目" style="cursor:not-allowed;opacity:0.4;">🔒 启用</button>`;
-                            }
                             return `<button class="btn btn-sm btn-activate" onclick='activateMap("${escJs(m.job_name)}", ${js(m)})'>启用</button>`;
                         })()}
                         <button class="btn btn-sm btn-edit" onclick='editMap(${js(m)})'>✏️ 编辑</button>
@@ -301,12 +302,12 @@ async function loadMaps() {
             }).join('');
 
             // 分页
-            let pagHtml = `<span style="color:#6b7280;">共 ${total} 条</span>`;
+            let pagHtml = `<span style="color:#6b7280;">共 ${displayTotal} 条</span>`;
             pagHtml += `<button class="btn btn-sm" onclick="mapPage=1;loadMaps()" ${mapPage<=1?'disabled':''}>« 首页</button>`;
             pagHtml += `<button class="btn btn-sm" onclick="mapPage=Math.max(1,mapPage-1);loadMaps()" ${mapPage<=1?'disabled':''}>‹ 上一页</button>`;
-            pagHtml += `<span style="color:#374151;font-weight:600;">${mapPage} / ${totalPages}</span>`;
-            pagHtml += `<button class="btn btn-sm" onclick="mapPage=Math.min(totalPages,mapPage+1);loadMaps()" ${mapPage>=totalPages?'disabled':''}>下一页 ›</button>`;
-            pagHtml += `<button class="btn btn-sm" onclick="mapPage=totalPages;loadMaps()" ${mapPage>=totalPages?'disabled':''}>末页 »</button>`;
+            pagHtml += `<span style="color:#374151;font-weight:600;">${mapPage} / ${displayTotalPages}</span>`;
+            pagHtml += `<button class="btn btn-sm" onclick="mapPage=Math.min(displayTotalPages,mapPage+1);loadMaps()" ${mapPage>=displayTotalPages?'disabled':''}>下一页 ›</button>`;
+            pagHtml += `<button class="btn btn-sm" onclick="mapPage=displayTotalPages;loadMaps()" ${mapPage>=displayTotalPages?'disabled':''}>末页 »</button>`;
             pagination.innerHTML = pagHtml;
         }
     } catch(e) {
