@@ -291,7 +291,7 @@ async function loadMaps() {
                     <td>${statusBadge(m.status)}</td>
                     <td style="white-space:nowrap">
                         ${(function(){
-                            if ((m.status||'active')==='active') return `<button class="btn btn-sm" disabled style="background:#dcfce7;color:#16a34a;border:1px solid #86efac;cursor:default;">✅ 启用</button>`;
+                            if ((m.status||'active')==='active') return '';
                             return `<button class="btn btn-sm btn-activate" onclick='activateMap("${escJs(m.job_name)}", ${js(m)})'>启用</button>`;
                         })()}
                         <button class="btn btn-sm btn-edit" onclick='editMap(${js(m)})'>✏️ 编辑</button>
@@ -806,7 +806,7 @@ function statusBadge(s) {
     s = s || 'active';
     if (s === 'pending') return '<span class="badge" style="background:#fef3c7;color:#d97706;">待启用</span>';
     if (s === 'disabled') return '<span class="badge" style="background:#fef2f2;color:#dc2626;">禁用</span>';
-    return '<span class="badge" style="background:#f0fdf4;color:#16a34a;">启用</span>';
+    return '<button class="btn btn-sm" disabled style="background:#dcfce7;color:#16a34a;border:1px solid #86efac;cursor:default;">✅ 启用</button>';
 }
 
 async function activateMap(jobName, item) {
