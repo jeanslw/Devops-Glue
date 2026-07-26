@@ -292,7 +292,7 @@ async function loadMaps() {
                     <td style="white-space:nowrap">
                         ${(function(){
                             if ((m.status||'active')==='active') return '';
-                            return `<button class="btn btn-sm btn-activate" onclick='activateMap("${escJs(m.job_name)}", ${js(m)})'>启用</button>`;
+                            return `<button class="btn btn-sm btn-activate" title="启用后，同一仓库的其他构建源条目将被隐藏" onclick='activateMap("${escJs(m.job_name)}", ${js(m)})'>启用</button>`;
                         })()}
                         <button class="btn btn-sm btn-edit" onclick='editMap(${js(m)})'>✏️ 编辑</button>
                         <button class="btn btn-sm btn-del" onclick='deleteMap("${escJs(m.job_name)}")'>🗑 删除</button>
