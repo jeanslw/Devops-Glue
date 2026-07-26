@@ -118,10 +118,11 @@
         .btn-del:hover { background:#fecaca; }
 
         /* 视图切换按钮组 */
-        .view-toggle { display:flex; border:1.5px solid #d1d5db; border-radius:8px; overflow:hidden; }
-        .view-toggle .btn { border-radius:0; border:none; background:#fff; color:#6b7280; margin:0; }
-        .view-toggle .btn + .btn { border-left:1.5px solid #d1d5db; }
-        .view-toggle .btn.active { background:#4f46e5; color:#fff; }
+        .view-toggle { display:flex; border:2px solid #d1d5db; border-radius:10px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.06); }
+        .view-toggle .btn { border-radius:0; border:none; background:#fff; color:#6b7280; margin:0; padding:8px 22px; font-size:14px; font-weight:500; cursor:pointer; transition:all 0.2s; }
+        .view-toggle .btn:hover:not(.active) { background:#f3f4f6; color:#374151; }
+        .view-toggle .btn + .btn { border-left:2px solid #d1d5db; }
+        .view-toggle .btn.active { background:#4f46e5; color:#fff; font-weight:600; box-shadow:inset 0 1px 3px rgba(0,0,0,0.1); }
 
         .card {
 			background: #fff;
