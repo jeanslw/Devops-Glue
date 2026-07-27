@@ -1,24 +1,24 @@
 # Devops-Glue API v2.4.0
 
-> **不是大厂的遥控器，是小团队的瑞士军刀。**
+> **Not a big-company remote control — a Swiss Army knife for small teams.**
 
-Devops-Glue 是一套为小企业打造的 DevOps 工具链集成 API，基于 Slim4 框架实现。一套接口，统一管理 Jenkins + GitLab CI 双通道、GitLab / Gitee / GitHub / Gitea 多平台、Harbor 镜像仓库，从 CI 构建到 CD 部署全流程覆盖。支持中英双语界面，角色权限分级管理。
+Devops-Glue is a DevOps toolchain integration platform built on Slim4 for small teams. A unified API to manage Jenkins + GitLab CI dual-channel builds, GitLab / Gitee / GitHub / Gitea multi-platform code, and Harbor image registry — covering the full CI-to-CD workflow. Bilingual interface, role-based access control.
 
-![系统概览](system_info.png)
-![运行状态](system_running.png)
+![System Overview](system_info.png)
+![System Status](system_running.png)
 
-## 核心特性
+## Features
 
-- **国际化 (i18n)** — 中文 / English 双语界面，基于 `symfony/translation` 实现，`?lang=` 即时切换
-- **双链路构建** — Jenkins + GitLab CI 无缝切换或共存，统一 API 入口
-- **多平台统一接入** — GitLab · GitHub · Gitee · Gitea，自建与 SaaS 无差别对接
-- **全链路映射** — Pipeline/Job ↔ Git 仓库 ↔ Harbor 镜像，构建→代码→制品自动关联
-- **安全扫描审计** — SAST、密钥扫描、依赖漏洞等结果以 Commit Status 回写 Git 平台，可追溯可审计
-- **角色权限管理** — `super_admin` > `admin` > `deployer` > `viewer` 四级权限，根管理员不可删除
-- **可视化管理后台** — 服务监测、映射配置、安全扫描、用户管理，表单操作零配置上手
-- **零配置启动** — SQLite 默认零依赖，MySQL / MariaDB 一键切换
+- **i18n** — Chinese / English bilingual interface, `?lang=` instant switching via `symfony/translation`
+- **Dual Build Pipeline** — Jenkins + GitLab CI, switch or coexist, unified API
+- **Multi-Platform Git** — GitLab · GitHub · Gitee · Gitea, self-hosted or SaaS
+- **Full-Chain Mapping** — Job ↔ Git repo ↔ Harbor image, build→code→artifact auto-association
+- **Security Scan Audit** — SAST, secret scanning, dependency vulns written back via Commit Status
+- **Role-Based Access** — `super_admin` > `admin` > `deployer` > `viewer`, 4-tier RBAC
+- **Admin Dashboard** — service monitoring, mapping config, security scan, user management
+- **Zero-Config Startup** — SQLite by default, MySQL / MariaDB with one-line switch
 
-## 快速开始
+## Quick Start
 
 ```bash
 # 1. Clone
@@ -41,13 +41,13 @@ cd docker-compose && docker compose up -d --build
 curl http://localhost:8080/api/health
 ```
 
-Open `http://localhost:8080/admin` for the admin panel (credentials from `.env`).
+Visit `http://localhost:8080/admin` for the admin panel (credentials in `.env`).
 
-Open `http://localhost:8080/api/docs` for interactive API documentation (Swagger UI).
+Visit `http://localhost:8080/api/docs` for interactive API docs (Swagger UI).
 
-## 环境要求
+## Requirements
 
-| Requirement | Version |
+| Component | Version |
 |---|---|
 | PHP | 8.0+ |
 | Database | SQLite (default) / MySQL 8.0+ / MariaDB 10.4+ |
@@ -57,18 +57,18 @@ Open `http://localhost:8080/api/docs` for interactive API documentation (Swagger
 
 See [docs/ADMIN_MANUAL.md](docs/ADMIN_MANUAL.md) for full environment variable reference and CORS configuration.
 
-## 文档索引
+## Documentation
 
-| Document | Description |
-|---|---|
-| [docs/API.md](docs/API.md) | **API Reference** — endpoints, request/response formats, quick test commands |
-| [docs/ADMIN_MANUAL.md](docs/ADMIN_MANUAL.md) | **Admin Manual** — environment variables, mapping config, custom Git platform integration |
-| [docs/技术文档.md](docs/技术文档.md) | **技术细节文档（中文）** — 架构、请求生命周期、数据库设计、数据流、故障排查 |
-| [docs/technical-guide.md](docs/technical-guide.md) | **Technical Guide (English)** — architecture, request lifecycle, database design, data flows, troubleshooting |
-| [docs/用户说明.md](docs/用户说明.md) | **User Guide** — end-user instructions (Chinese) |
-| [docs/常见问题.md](docs/常见问题.md) | **常见问题 FAQ（中文）** — 部署、配置、构建、认证等常见问题 |
-| [docs/FAQ.md](docs/FAQ.md) | **FAQ (English)** — deployment, configuration, builds, auth, and more |
-| [docs/CHANGELOG.md](docs/CHANGELOG.md) | Release notes and version history |
+| Document | Language | Description |
+|---|---|---|
+| [docs/API.md](docs/API.md) | EN | API Reference — endpoints, request/response formats, quick tests |
+| [docs/ADMIN_MANUAL.md](docs/ADMIN_MANUAL.md) | EN | Admin Manual — env vars, mapping config, custom Git platform |
+| [docs/用户说明.md](docs/用户说明.md) | 中文 | User Guide — end-user instructions |
+| [docs/技术文档.md](docs/技术文档.md) | 中文 | Technical Guide — architecture, DB design, data flows, troubleshooting |
+| [docs/technical-guide.md](docs/technical-guide.md) | EN | Technical Guide — architecture, DB design, data flows, troubleshooting |
+| [docs/常见问题.md](docs/常见问题.md) | 中文 | FAQ — deployment, config, builds, auth, Harbor, etc. |
+| [docs/FAQ.md](docs/FAQ.md) | EN | FAQ — deployment, config, builds, auth, Harbor, etc. |
+| [docs/CHANGELOG.md](docs/CHANGELOG.md) | — | Release notes |
 
 ## Related Projects
 
@@ -78,8 +78,8 @@ See [docs/ADMIN_MANUAL.md](docs/ADMIN_MANUAL.md) for full environment variable r
 ## Project Structure
 
 ```
-config/         # Server-side configuration (.env, DI container, routes, settings)
-database/       # MySQL & SQLite initialization scripts
+config/         # Server config (.env, DI container, routes, settings)
+database/       # MySQL & SQLite init scripts
 docker-compose/ # Docker Compose (PHP + MySQL 8.4)
 public/         # Web root (index.php, static assets)
 src/            # Controllers & Services
