@@ -151,8 +151,8 @@
                         <input id="map-search" type="text" data-i18n-placeholder="map.search_placeholder" placeholder="搜索 Job/仓库/Remote…" style="flex:0 1 300px;min-width:160px;padding:7px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" oninput="onFilterChange()">
                         <select id="map-provider-filter" onchange="onFilterChange()" style="padding:7px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;min-width:110px;">
                             <option value="" data-i18n="map.all_build_sources">全部构建源</option>
-                            <option value="jenkins">⚡ Jenkins</option>
-                            <option value="gitlab_ci">🐺 GitLab CI</option>
+                            <option value="jenkins" data-i18n="build.mode_jenkins">⚡ Jenkins</option>
+                            <option value="gitlab_ci" data-i18n="build.mode_gitlab_ci">🐺 GitLab CI</option>
                         </select>
                         <select id="map-platform-filter" onchange="onFilterChange()" style="padding:7px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;min-width:110px;">
                             <option value="" data-i18n="map.all_platforms">全部平台</option>
@@ -194,8 +194,8 @@
                                     <label data-i18n="form.build_system">Build 系统</label>
                                     <select id="f-build_provider">
                                         <option value="" data-i18n="form.please_select">— 请选择 —</option>
-                                        <option value="jenkins">jenkins</option>
-                                        <option value="gitlab_ci">gitlab_ci</option>
+                                        <option value="jenkins" data-i18n="js.mode_jenkins_name">jenkins</option>
+                                        <option value="gitlab_ci" data-i18n="js.mode_gitlab_ci_name">gitlab_ci</option>
                                     </select>
                                 </div>
                                 <div>
@@ -212,11 +212,11 @@
                                 </div>
                                 <div>
                                     <label data-i18n="form.project_id">Project ID</label>
-                                    <input id="f-project_id" placeholder="数字或空">
+                                    <input id="f-project_id" data-i18n-placeholder="form.placeholder_project_id" placeholder="数字或空">
                                 </div>
                                 <div class="full">
                                     <label data-i18n="form.web_url">Web URL</label>
-                                    <input id="f-web_url" placeholder="项目主页链接">
+                                    <input id="f-web_url" data-i18n-placeholder="form.placeholder_web_url" placeholder="项目主页链接">
                                 </div>
                                 <div>
                                     <label data-i18n="form.project_path">项目路径</label>
@@ -294,7 +294,7 @@
                     <div id="sec-table-wrap" style="display:none;overflow-x:auto;">
                         <table>
                             <thead>
-                                <tr><th data-i18n="security.time">时间</th><th data-i18n="security.project">项目</th><th data-i18n="security.type">类型</th><th data-i18n="map.status">状态</th><th data-i18n="security.tag">标签</th><th data-i18n="security.description">描述</th><th>Commit SHA</th></tr>
+                                <tr><th data-i18n="security.time">时间</th><th data-i18n="security.project">项目</th><th data-i18n="security.type">类型</th><th data-i18n="map.status">状态</th><th data-i18n="security.tag">标签</th><th data-i18n="security.description">描述</th><th data-i18n="form.commit_sha">Commit SHA</th></tr>
                             </thead>
                             <tbody id="sec-tbody"></tbody>
                         </table>
@@ -340,11 +340,11 @@
                         <h4 id="user-form-title" data-i18n="user.add_user" style="margin-top:0;margin-bottom:14px;">＋ 新增用户</h4>
                         <div id="new-username-wrap" style="margin-bottom:10px;">
                             <label data-i18n="user.username">用户名</label>
-                            <input type="text" id="new-username" required placeholder="username" autocomplete="off">
+                            <input type="text" id="new-username" required data-i18n-placeholder="form.placeholder_username" placeholder="username" autocomplete="off">
                         </div>
                         <div style="margin-bottom:10px;">
                             <label id="new-password-label" data-i18n="user.password">密码</label>
-                            <input type="password" id="new-password" required placeholder="至少 6 位" autocomplete="new-password" minlength="6">
+                            <input type="password" id="new-password" required data-i18n-placeholder="form.placeholder_password" placeholder="至少 6 位" autocomplete="new-password" minlength="6">
                         </div>
                         <div style="margin-bottom:10px;">
                             <label data-i18n="user.role">角色</label>

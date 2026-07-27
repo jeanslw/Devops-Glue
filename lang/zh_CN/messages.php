@@ -88,6 +88,9 @@ return [
     'map.repo'                   => '代码仓库',
     'map.ci'                     => 'CI 系统',
 
+    // ── Git ──
+    'git.query_failed' => 'Git 查询失败',
+
     // ── 构建 ──
     'build.scan_failed'     => '扫描失败',
     'build.query_failed'    => '查询失败',
@@ -105,10 +108,20 @@ return [
     'build.mode_both'       => '⚡ Jenkins + 🐺 GitLab CI',
     'build.mode_hint'       => '修改后即时生效。不可用的选项会在下拉中禁用。',
     'build.mode_saved'      => '已保存',
+    'build.commit_status_missing_fields' => 'sha / state / context / description 均为必填',
+    'build.commit_status_invalid_state'  => "state 必须为: {states}",
+    'build.commit_status_no_git_platform' => "项目 '{path}' 未配置 git_platform，无法回写 commit status",
+    'build.git_platform_not_available' => "Git 平台 '{platform}' 未配置或不可用",
+    'build.no_harbor_repo'       => "项目 '{path}' 未配置 harbor_repository",
+    'build.harbor_repo_format_error' => "harbor_repository 格式错误: {repo}",
+    'build.no_tag_available'     => '缺少 tag 参数且 Harbor 无可用 tag',
+    'build.tag_not_found'        => "Tag '{tag}' 在 Harbor 仓库 '{repo}' 中不存在或已被删除",
 
     // ── Harbor ──
     'harbor.trigger_failed' => '触发扫描失败',
     'harbor.report_failed'  => '获取扫描报告失败',
+    'harbor.scan_not_enabled'        => '镜像扫描功能未启用，请联系管理员',
+    'harbor.scan_report_not_enabled' => '镜像扫描功能未启用，无法获取报告',
 
     // ── 平台版本 ──
     'platform.versions_empty' => 'versions 不能为空',
@@ -201,10 +214,15 @@ return [
     'form.placeholder_job_name'  => '例: java/registry',
     'form.placeholder_git_remote'=> '例: http://git.company.com/project.git',
     'form.placeholder_project_path' => '例: group/project',
+    'form.placeholder_project_id'    => '数字或空',
+    'form.placeholder_web_url'       => '项目主页链接',
     'form.placeholder_harbor'    => '例: project/repo',
+    'form.placeholder_username'  => 'username',
+    'form.placeholder_password'  => '至少 6 位',
     'form.placeholder_current_password' => '输入当前密码',
     'form.placeholder_new_password'     => '至少 6 位',
     'form.placeholder_confirm_password' => '再输入一次',
+    'form.commit_sha'            => 'Commit SHA',
 
     // ── 前端 JS 专用 ──
     'js.login_failed'           => '登录失败',
@@ -221,6 +239,7 @@ return [
     'js.already_added'          => '已新增',
     'js.already_deleted'        => '已删除',
     'js.activated'              => '已启用',
+    'js.username_required'      => '用户名不能为空',
     'js.password_mismatch'      => '两次密码不一致',
     'js.password_updated'       => '密码已更新，请重新登录',
     'js.delete_confirm'         => '确定删除映射',

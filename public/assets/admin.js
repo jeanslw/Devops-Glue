@@ -316,7 +316,7 @@ async function loadMaps() {
             tbody.innerHTML = maps.map(m => {
                 const plat = m.git_platform || '—';
                 const bp = m.build_provider || 'jenkins';
-                const bpLabel = bp === 'gitlab_ci' ? '🐺 GitLab CI' : '⚡ Jenkins';
+                const bpLabel = bp === 'gitlab_ci' ? __.t('build.mode_gitlab_ci') : __.t('build.mode_jenkins');
                 const bpBadge = bp === 'gitlab_ci' ? 'badge-gitlab' : 'badge-default';
                 const badgeCls = plat !== '—' && platforms.includes(plat) ? 'badge-' + plat : 'badge-default';
                 return `<tr>
@@ -443,7 +443,7 @@ function renderTopology() {
                 : '<span class="topo-empty-field">' + __.t('js.topo_not_linked') + '</span>';
 
             const build = p.build_provider || 'jenkins';
-            const buildLabel = build === 'gitlab_ci' ? '🐺 GitLab CI' : '⚡ Jenkins';
+            const buildLabel = build === 'gitlab_ci' ? __.t('build.mode_gitlab_ci') : __.t('build.mode_jenkins');
             const buildIcon = build === 'gitlab_ci' ? '🐺' : '⚡';
             const buildUrl = topoPlatformUrls.jenkins_url || '';
             const projectPath = (p.project || p.current_path || '').replace(/\/+$/, '');
@@ -861,8 +861,8 @@ async function activateMap(jobName, item) {
     // 防御：provider 与当前配置模式不匹配时直接拒绝
     const bp = item.build_provider || 'jenkins';
     if (currentBuildMode !== 'both' && bp !== currentBuildMode) {
-        const curLabel = currentBuildMode === 'jenkins' ? 'Jenkins' : 'GitLab CI';
-        const itemLabel = bp === 'gitlab_ci' ? 'GitLab CI' : 'Jenkins';
+        const curLabel = currentBuildMode === 'jenkins' ? __.t('js.mode_jenkins_name') : __.t('js.mode_gitlab_ci_name');
+        const itemLabel = bp === 'gitlab_ci' ? __.t('js.mode_gitlab_ci_name') : __.t('js.mode_jenkins_name');
         toast(__.t('js.cannot_activate_mode', {mode: curLabel, item: itemLabel}), false);
         return;
     }
@@ -1040,7 +1040,7 @@ function showUserForm() {
     document.getElementById('new-username').required = true;
     document.getElementById('new-password').value = '';
     document.getElementById('new-password').required = true;
-    document.getElementById('new-password').placeholder = '至少 6 位';
+    document.getElementById('new-password').placeholder = __.t('form.placeholder_password');
     document.getElementById('new-password-label').textContent = __.t('user.password');
     populateRoleSelect('deployer');
     document.getElementById('new-systems-wrap').style.display = 'block';
@@ -1105,7 +1105,7 @@ async function submitUserForm(e) {
     const msg = document.getElementById('user-msg');
 
     if (!isEdit && password.length < 6) { msg.textContent = __.t('auth.new_password_short'); msg.style.color = '#ef4444'; return; }
-    if (!isEdit && !username) { msg.textContent = 'Username required'; msg.style.color = '#ef4444'; return; }
+    if (!isEdit && !username) { msg.textContent = __.t('js.username_required'); msg.style.color = '#ef4444'; return; }
     if (isEdit && password && password.length < 6) { msg.textContent = __.t('auth.new_password_short'); msg.style.color = '#ef4444'; return; }
 
     try {
@@ -1126,7 +1126,7 @@ async function submitUserForm(e) {
             toast(isEdit ? __.t('user.updated') : __.t('user.created'), true);
             loadUsers();
         } else {
-            msg.textContent = data.message || 'Failed';
+            msg.textContent = data.message || __.t('common.failed');
             msg.style.color = '#ef4444';
         }
     } catch (e) {
@@ -1145,7 +1145,7 @@ async function deleteUser(username) {
             loadUsers();
         } else {
             const data = await res.json();
-            alert(data.message || 'Failed');
+            alert(data.message || __.t('common.failed'));
         }
     } catch (e) {
         alert(e.message);
