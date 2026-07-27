@@ -298,6 +298,7 @@ return [
     'user.new_password_optional' => '新密码（留空则不修改）',
     'user.cannot_create_admin' => 'CD 侧不允许创建管理员账号',
     'user.cannot_delete_admin' => '不允许删除管理员账号',
+    'user.cannot_delete_self' => '不能删除自己',
     'user.cannot_edit_admin'   => '不允许编辑管理员账号',
     'user.cannot_promote_admin' => '不能将用户提升为管理员',
     'user.nothing_to_update'   => '没有可更新的内容',
