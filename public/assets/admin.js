@@ -45,7 +45,7 @@ function doLogout() {
         var topUser = document.getElementById('top-user');
         if (topUser) topUser.textContent = '👤 ' + currentUserName;
     }
-    if (currentUserRole && currentUserRole !== 'admin') {
+    if (currentUserRole && !isAdminRole(currentUserRole)) {
         var userMenuItem = document.querySelector('[data-tab="users"]');
         if (userMenuItem) userMenuItem.style.display = 'none';
     }
@@ -93,7 +93,7 @@ async function doLogin() {
             // 非 admin 隐藏用户管理菜单
             var userMenuItem = document.querySelector('[data-tab="users"]');
             if (userMenuItem) {
-                userMenuItem.style.display = (currentUserRole === 'admin') ? '' : 'none';
+                userMenuItem.style.display = isAdminRole(currentUserRole) ? '' : 'none';
             }
             document.getElementById('login-page').style.display = 'none';
             document.getElementById('app-page').style.display = 'block';
@@ -977,8 +977,10 @@ async function loadSecurityChecks() {
 }
 
 // ═══════════ 用户管理 ═══════════
+function isAdminRole(role) { return role === 'admin' || role === 'super_admin'; }
+
 function roleLabel(user) {
-    if (user.is_root) return '👑 ' + __.t('user.role_super_admin');
+    if (user.role === 'super_admin') return '👑 ' + __.t('user.role_super_admin');
     return __.t('user.role_' + user.role) || user.role;
 }
 
@@ -990,7 +992,7 @@ async function loadUsers() {
         if (handle401(res)) return;
         const result = await res.json();
         const allUsers = Array.isArray(result) ? result : (result.data || []);
-        const users = currentUserRole === 'admin' ? allUsers : allUsers.filter(u => u.role !== 'admin');
+        const users = isAdminRole(currentUserRole) ? allUsers : allUsers.filter(u => !isAdminRole(u.role));
         const tbody = document.getElementById('user-tbody');
         if (!users.length) {
             tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#9ca3af;">' + __.t('user.no_users') + '</td></tr>';
@@ -998,11 +1000,11 @@ async function loadUsers() {
         }
         tbody.innerHTML = users.map(u => {
             const time = u.updated_at || '-';
+            const isSuperAdmin = u.role === 'super_admin';
             const isAdmin = u.role === 'admin';
-            const isRoot = u.is_root === true;
             const isSelf = u.username === currentUserName;
             let actions = '';
-            if (isRoot) {
+            if (isSuperAdmin) {
                 actions = `<span style="color:#9ca3af;font-size:12px;">${__.t('user.role_super_admin')}</span>`;
             } else if (isSelf) {
                 actions = `<span style="color:#9ca3af;font-size:12px;">${__.t('user.role_admin')}</span>`;
@@ -1068,7 +1070,7 @@ function populateRoleSelect(selected) {
     sel.innerHTML = '';
     sel.add(new Option(__.t('user.role_deployer'), 'deployer'));
     sel.add(new Option(__.t('user.role_viewer'), 'viewer'));
-    if (currentUserRole === 'admin') {
+    if (isAdminRole(currentUserRole)) {
         sel.add(new Option(__.t('user.role_admin'), 'admin'));
     }
     sel.value = selected;
@@ -1079,7 +1081,7 @@ function populateSystemsSelect(selected) {
     var sel = document.getElementById('new-systems');
     sel.innerHTML = '';
     sel.add(new Option(__.t('user.systems_cd'), 'cd'));
-    if (currentUserRole === 'admin') {
+    if (isAdminRole(currentUserRole)) {
         sel.add(new Option(__.t('user.systems_ci'), 'ci'));
         sel.add(new Option(__.t('user.systems_cd_ci'), 'cd,ci'));
     }

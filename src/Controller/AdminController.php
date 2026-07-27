@@ -539,10 +539,10 @@ class AdminController extends BaseController
 
         try {
             $pdo = \App\Service\Database::getPdo();
-            if ($this->currentRole === 'admin') {
+            if ($this->isAdminRole()) {
                 $rows = $pdo->query("SELECT username, role, systems, updated_at FROM admin_users ORDER BY username")->fetchAll();
             } else {
-                $rows = $pdo->query("SELECT username, role, systems, updated_at FROM admin_users WHERE role != 'admin' ORDER BY username")->fetchAll();
+                $rows = $pdo->query("SELECT username, role, systems, updated_at FROM admin_users WHERE role NOT IN ('admin', 'super_admin') ORDER BY username")->fetchAll();
             }
             $rootAdmin = $this->config->getRootAdminUser();
             foreach ($rows as &$row) {
@@ -573,20 +573,20 @@ class AdminController extends BaseController
             return $this->jsonError($response, 'auth.new_password_short', 400);
         }
 
-        // 只有根 admin 能创建 admin 角色
+        // 只有根 admin 能创建管理员角色（admin / super_admin）
         $rootAdmin = $this->config->getRootAdminUser();
-        if ($role === 'admin') {
+        if ($role === 'admin' || $role === 'super_admin') {
             if ($this->currentUser !== $rootAdmin) {
                 return $this->jsonError($response, 'user.cannot_create_admin', 403);
             }
-            // admin 创建的 admin 账号 system 至少含 cd
+            // 管理员账号 system 至少含 cd
             if (strpos($systems, 'cd') === false) {
                 $systems = $systems === '' ? 'cd' : $systems . ',cd';
             }
         }
 
-        // 非 admin 创建的账号不能包含 ci
-        if ($this->currentRole !== 'admin' && strpos($systems, 'ci') !== false) {
+        // 非管理员创建的账号不能包含 ci
+        if (!$this->isAdminRole() && strpos($systems, 'ci') !== false) {
             return $this->jsonError($response, 'user.cd_no_ci_access', 403);
         }
 
@@ -636,8 +636,8 @@ class AdminController extends BaseController
                 return $this->jsonError($response, 'user.not_found', 404);
             }
 
-            // 不能修改 admin
-            if ($target['role'] === 'admin') {
+            // 不能修改管理员账号
+            if ($this->isTargetAdmin($target['role'])) {
                 return $this->jsonError($response, 'user.cannot_edit_admin', 403);
             }
 
@@ -645,7 +645,7 @@ class AdminController extends BaseController
             $bind   = [];
 
             if ($role !== null) {
-                if ($role === 'admin') {
+                if ($role === 'admin' || $role === 'super_admin') {
                     return $this->jsonError($response, 'user.cannot_promote_admin', 403);
                 }
                 $fields[] = 'role = ?';
@@ -707,8 +707,8 @@ class AdminController extends BaseController
             if ($targetUser === $this->currentUser) {
                 return $this->jsonError($response, 'user.cannot_delete_self', 403);
             }
-            // 只有根 admin 可以删除其他 admin 用户
-            if ($target['role'] === 'admin' && $this->currentUser !== $rootAdmin) {
+            // 只有根 admin 可以删除其他管理员用户
+            if ($this->isTargetAdmin($target['role']) && $this->currentUser !== $rootAdmin) {
                 return $this->jsonError($response, 'user.cannot_delete_admin', 403);
             }
 
@@ -720,6 +720,22 @@ class AdminController extends BaseController
     }
 
     // ────────────────────────── helpers ──────────────────────────
+
+    /**
+     * 判断角色是否为管理员（admin 或 super_admin）
+     */
+    private function isAdminRole(): bool
+    {
+        return $this->currentRole === 'admin' || $this->currentRole === 'super_admin';
+    }
+
+    /**
+     * 判断目标用户是否为管理员角色
+     */
+    private function isTargetAdmin(string $role): bool
+    {
+        return $role === 'admin' || $role === 'super_admin';
+    }
 
     /**
      * 验证 Bearer token

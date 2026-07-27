@@ -260,10 +260,14 @@ class Database
             $pass = $_ENV['ADMIN_PASSWORD'] ?? '';
             if (!empty($pass)) {
                 $hash = password_hash($pass, PASSWORD_BCRYPT);
-                $pdo->prepare("INSERT INTO admin_users (username, password_hash, role, systems) VALUES (?, ?, 'admin', 'ci,cd')")
+                $pdo->prepare("INSERT INTO admin_users (username, password_hash, role, systems) VALUES (?, ?, 'super_admin', 'ci,cd')")
                     ->execute([$user, $hash]);
             }
         }
+        // 迁移：已有根管理员 role 从 'admin' 升级为 'super_admin'
+        $rootUser = $_ENV['ADMIN_USER'] ?? 'admin';
+        $pdo->prepare("UPDATE admin_users SET role = 'super_admin' WHERE username = ? AND role = 'admin'")
+            ->execute([$rootUser]);
     }
 
     // ── JSON 迁移（仅 SQLite 一次性）──
