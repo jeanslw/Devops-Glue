@@ -111,9 +111,11 @@ $app->group('/api', function (RouteCollectorProxy $api) use ($app) {
                         . (($port && !$isDefault) ? ':' . $port : '');
         }
 
+        $i18n  = $app->getContainer()->get(I18nService::class);
+        $locale = $i18n->detectLocale($request);
         $spec['servers'] = [[
             'url'         => $apiBaseUrl,
-            'description' => $app->getContainer()->get(I18nService::class)->trans('admin.current_env'),
+            'description' => $i18n->trans('admin.current_env', [], $locale),
         ]];
 
         $response->getBody()->write(json_encode($spec, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));

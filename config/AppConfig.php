@@ -64,6 +64,13 @@ class AppConfig
         return $this->config['app']['api_base_url'] ?? '';
     }
 
+    // 当前实例系统类型：ci / cd / both
+    public function getSystemType(): string
+    {
+        $type = $this->config['app']['system_type'] ?? 'ci';
+        return in_array($type, ['ci', 'cd', 'both']) ? $type : 'ci';
+    }
+
     // CORS 配置
     public function getCorsConfig(): array
     {

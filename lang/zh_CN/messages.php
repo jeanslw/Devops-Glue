@@ -39,6 +39,8 @@ return [
     'auth.new_password_short' => '新密码至少 6 位',
     'auth.please_enter_credentials' => '请输入账号和密码',
     'auth.no_cd_access'       => '该账号无 CD 系统权限',
+    'auth.no_ci_access'       => '该账号无 CI 系统权限',
+    'auth.no_system_access'   => '该账号无此系统权限',
     'auth.please_login_first' => '请先登录 API 文档',
     'auth.change_password'    => '修改密码',
     'auth.old_password'       => '旧密码',

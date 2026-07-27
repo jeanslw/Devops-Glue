@@ -38,6 +38,8 @@ return [
     'auth.new_password_short' => 'New password must be at least 6 characters',
     'auth.please_enter_credentials' => 'Please enter username and password',
     'auth.no_cd_access'       => 'This account has no CD access',
+    'auth.no_ci_access'       => 'This account has no CI access',
+    'auth.no_system_access'   => 'This account has no access to this system',
     'auth.please_login_first' => 'Please login to view API docs',
     'auth.change_password'    => 'Change Password',
     'auth.old_password'       => 'Old Password',

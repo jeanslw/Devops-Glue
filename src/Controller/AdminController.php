@@ -152,9 +152,21 @@ class AdminController extends BaseController
             $row->execute([$user]);
             $dbUser = $row->fetch();
             if ($dbUser && password_verify($pass, $dbUser['password_hash'])) {
-                // CD 侧：systems 必须包含 "cd"
-                if (strpos($dbUser['systems'], 'cd') === false) {
-                    return $this->jsonError($response, 'auth.no_cd_access', 403);
+                // 根据当前实例类型校验用户 systems 权限
+                $systemType = $this->config->getSystemType();
+                $systems = $dbUser['systems'] ?? '';
+                $allowed = false;
+                if ($systemType === 'ci') {
+                    $allowed = strpos($systems, 'ci') !== false;
+                } elseif ($systemType === 'cd') {
+                    $allowed = strpos($systems, 'cd') !== false;
+                } else { // both
+                    $allowed = strpos($systems, 'ci') !== false || strpos($systems, 'cd') !== false;
+                }
+                if (!$allowed) {
+                    $errKey = $systemType === 'ci' ? 'auth.no_ci_access'
+                        : ($systemType === 'cd' ? 'auth.no_cd_access' : 'auth.no_system_access');
+                    return $this->jsonError($response, $errKey, 403);
                 }
                 $loginRole = $dbUser['role'];
                 $authed = true;
