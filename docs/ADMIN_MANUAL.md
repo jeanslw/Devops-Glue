@@ -133,7 +133,7 @@ The system supports environment separation via `APP_ENV` (production / staging /
 
 Loading priority: `.env.local` > `.env.{APP_ENV}` > `.env`
 
-Default `APP_ENV=production` does not require additional files. See `docs/technical-guide.md` for details.
+Default `APP_ENV=production` does not require additional files. See `docs/technical-guide.md` (English) or `docs/技术文档.md` (Chinese) for details.
 
 ---
 
