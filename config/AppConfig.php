@@ -3,7 +3,7 @@ namespace App\Config;
 
 class AppConfig
 {
-    public const APP_VERSION = '2.3.2';
+    public const APP_VERSION = '2.4.0';
 
     private array $config;
 
