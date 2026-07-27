@@ -66,7 +66,10 @@ class BuildController extends BaseController
         [$provider, $projectId] = $this->resolve($path);
 
         if (!$this->registry->isRegistered($provider)) {
-            return $this->jsonError($response, "Build 系统 '{$provider}' 未配置（已注册: " . implode(', ', $this->registry->getRegisteredNames()) . "）", 400);
+            return $this->jsonError($response, $this->__('build.provider_not_configured_registered', [
+                '{provider}' => $provider,
+                '{registered}' => implode(', ', $this->registry->getRegisteredNames()),
+            ]), 400);
         }
 
         $p = $this->registry->create($provider);
@@ -114,7 +117,7 @@ class BuildController extends BaseController
         [$provider, $projectId] = $this->resolve($path);
 
         if (!$this->registry->isRegistered($provider)) {
-            return $this->jsonError($response, "Build 系统 '{$provider}' 未配置", 400);
+            return $this->jsonError($response, $this->__('build.provider_not_configured', ['{provider}' => $provider]), 400);
         }
 
         $p  = $this->registry->create($provider);
@@ -148,7 +151,7 @@ class BuildController extends BaseController
         [$provider, $projectId] = $this->resolve($path);
 
         if (!$this->registry->isRegistered($provider)) {
-            return $this->jsonError($response, "Build 系统 '{$provider}' 未配置", 400);
+            return $this->jsonError($response, $this->__('build.provider_not_configured', ['{provider}' => $provider]), 400);
         }
 
         $p     = $this->registry->create($provider);
@@ -165,7 +168,7 @@ class BuildController extends BaseController
         [$provider, $projectId] = $this->resolve($path);
 
         if (!$this->registry->isRegistered($provider)) {
-            return $this->jsonError($response, "Build 系统 '{$provider}' 未配置", 400);
+            return $this->jsonError($response, $this->__('build.provider_not_configured', ['{provider}' => $provider]), 400);
         }
 
         // POST JSON body 优先，GET query string 兜底（兼容旧版 Jenkins 调用方式）
@@ -196,7 +199,7 @@ class BuildController extends BaseController
         [$provider, $projectId] = $this->resolve($path);
 
         if (!$this->registry->isRegistered($provider)) {
-            return $this->jsonError($response, "Build 系统 '{$provider}' 未配置", 400);
+            return $this->jsonError($response, $this->__('build.provider_not_configured', ['{provider}' => $provider]), 400);
         }
 
         $p      = $this->registry->create($provider);
@@ -215,7 +218,7 @@ class BuildController extends BaseController
         [$provider, $projectId] = $this->resolve($path);
 
         if (!$this->registry->isRegistered($provider)) {
-            return $this->jsonError($response, "Build 系统 '{$provider}' 未配置", 400);
+            return $this->jsonError($response, $this->__('build.provider_not_configured', ['{provider}' => $provider]), 400);
         }
 
         $p      = $this->registry->create($provider);
@@ -233,7 +236,7 @@ class BuildController extends BaseController
         [$provider, $projectId] = $this->resolve($path);
 
         if (!$this->registry->isRegistered($provider)) {
-            return $this->jsonError($response, "Build 系统 '{$provider}' 未配置", 400);
+            return $this->jsonError($response, $this->__('build.provider_not_configured', ['{provider}' => $provider]), 400);
         }
 
         $p    = $this->registry->create($provider);
@@ -261,7 +264,7 @@ class BuildController extends BaseController
         [$provider, $projectId] = $this->resolve($path);
 
         if (!$this->registry->isRegistered($provider)) {
-            return $this->jsonError($response, "Build 系统 '{$provider}' 未配置", 400);
+            return $this->jsonError($response, $this->__('build.provider_not_configured', ['{provider}' => $provider]), 400);
         }
 
         $p        = $this->registry->create($provider);

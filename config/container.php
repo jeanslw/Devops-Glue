@@ -7,6 +7,7 @@ use App\Service\GitRemoteResolver;
 use App\Service\AutoDiscover;
 use App\Service\HarborService;
 use App\Service\MappingManager;
+use App\Service\I18nService;
 use App\Service\Git\ProviderRegistry;
 use App\Service\Git\GitProviderFactory;
 use App\Service\Build\BuildProviderRegistry;
@@ -52,6 +53,12 @@ return [
             $c->get(MappingManager::class),
             $c->get(Logger::class)
         );
+    },
+
+    // 国际化服务
+    I18nService::class => function (\Psr\Container\ContainerInterface $c) {
+        $langDir = __DIR__ . '/../lang';
+        return new I18nService($langDir, 'zh_CN');
     },
 
     // 日志服务
@@ -260,36 +267,44 @@ return [
 
     // Main 控制器
     MainController::class => function (\Psr\Container\ContainerInterface $c) {
-        return new \App\Controller\MainController(
+        $ctrl = new \App\Controller\MainController(
             $c->get(JenkinsService::class),
             $c->get(AppConfig::class),
             $c->get(MappingManager::class),
             $c->get(HarborService::class)
         );
+        $ctrl->setI18n($c->get(I18nService::class));
+        return $ctrl;
     },
 
     // Admin 控制器
     AdminController::class => function (\Psr\Container\ContainerInterface $c) {
-        return new AdminController(
+        $ctrl = new AdminController(
             $c->get(AppConfig::class),
             $c->get(AutoDiscover::class)
         );
+        $ctrl->setI18n($c->get(I18nService::class));
+        return $ctrl;
     },
 
     // Build 控制器
     BuildController::class => function (\Psr\Container\ContainerInterface $c) {
-        return new BuildController(
+        $ctrl = new BuildController(
             $c->get(BuildProviderRegistry::class),
             $c->get(AppConfig::class),
             $c->get(MappingManager::class),
             $c->get(HarborService::class),
             $c->get(ProviderRegistry::class)
         );
+        $ctrl->setI18n($c->get(I18nService::class));
+        return $ctrl;
     },
 
     // Git 控制器
     GitController::class => function (\Psr\Container\ContainerInterface $c) {
-        return new GitController($c->get(GitService::class));
+        $ctrl = new GitController($c->get(GitService::class));
+        $ctrl->setI18n($c->get(I18nService::class));
+        return $ctrl;
     },
 
     // ---------- Harbor 模块 ----------
@@ -321,6 +336,8 @@ return [
     },
 
     HarborController::class => function (\Psr\Container\ContainerInterface $c) {
-        return new HarborController($c->get(HarborService::class));
+        $ctrl = new HarborController($c->get(HarborService::class));
+        $ctrl->setI18n($c->get(I18nService::class));
+        return $ctrl;
     },
 ];

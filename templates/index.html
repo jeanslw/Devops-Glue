@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Devops-Glue</title>
+    <title data-i18n="index.title">Devops-Glue</title>
     <link rel="icon" href="/favicon.ico" type="image/x-icon">
     <style>
         * { margin:0; padding:0; box-sizing:border-box; }
@@ -20,9 +20,12 @@
         }
         .logo { display:flex; align-items:center; gap:10px; font-size:20px; font-weight:700; color:#fff; text-decoration:none; }
         .logo img { height:32px; width:auto; }
-        .nav-links { display:flex; gap:24px; }
+        .nav-links { display:flex; gap:24px; align-items:center; }
         .nav-links a { color:rgba(255,255,255,.85); text-decoration:none; font-size:14px; }
         .nav-links a:hover { color:#fff; }
+        .lang-switch { display:inline-flex; align-items:center; gap:4px; }
+        .lang-switch select { border:1px solid rgba(255,255,255,0.5); border-radius:6px; padding:4px 10px; font-size:13px; background:rgba(255,255,255,0.2); color:#fff; cursor:pointer; }
+        .lang-switch select option { color:#333; background:#fff; }
 
         .main { max-width:960px; margin:0 auto; padding:32px 20px; }
 
@@ -65,61 +68,70 @@
 <nav class="navbar">
     <a href="/" class="logo"><img src="/logo.png" alt="Logo">Devops-Glue</a>
     <div class="nav-links">
-        <a href="/admin">⚙️ 管理</a>
-        <a href="#" onclick="var t=sessionStorage.getItem('admin_token');location.href='/api/docs'+(t?'?token='+t:'')">📖 文档</a>
-        <a href="mailto:jeanslw@qq.com">💬 技术支持</a>
+        <span class="lang-switch" style="margin-right:8px;">
+            🌐 <select id="lang-select" onchange="__.switchTo(this.value)">
+                <option value="zh-CN">中文</option>
+                <option value="en">English</option>
+            </select>
+        </span>
+        <a href="/admin" data-i18n="index.admin">⚙️ 管理</a>
+        <a href="#" onclick="var t=sessionStorage.getItem('admin_token');location.href='/api/docs'+(t?'?token='+t:'')" data-i18n="index.docs">📖 文档</a>
+        <a href="mailto:jeanslw@qq.com" data-i18n="index.support">💬 技术支持</a>
     </div>
 </nav>
 
 <div class="main">
 
     <div class="hero">
-        <h1>Devops-Glue</h1>
-        <p>Jenkins · Git · Harbor 一站式 DevOps 工具链集成平台</p>
+        <h1 data-i18n="index.title">Devops-Glue</h1>
+        <p data-i18n="index.subtitle">Jenkins · Git · Harbor 一站式 DevOps 工具链集成平台</p>
     </div>
 
     <div class="features">
         <!-- 1 -->
         <div class="feat-card">
             <div class="feat-icon">⚡🐺</div>
-            <h4>双链路构建</h4>
-            <p>同时支持 Jenkins + GitLab CI，两种 CI 系统无缝切换或共存，统一 API 入口，构建触发、参数查询、日志查看完全一致。</p>
+            <h4 data-i18n="index.feat_dual_build_title">双链路构建</h4>
+            <p data-i18n="index.feat_dual_build_desc">同时支持 Jenkins + GitLab CI，两种 CI 系统无缝切换或共存，统一 API 入口，构建触发、参数查询、日志查看完全一致。</p>
         </div>
         <!-- 2 -->
         <div class="feat-card">
             <div class="feat-icon">🔗</div>
-            <h4>全链路映射</h4>
-            <p>Pipeline/Job ↔ Git 仓库 ↔ Harbor 镜像，构建→代码→制品完整链路自动关联，Pipeline → Tag 精准追溯。</p>
+            <h4 data-i18n="index.feat_full_trace_title">全链路映射</h4>
+            <p data-i18n="index.feat_full_trace_desc">Pipeline/Job ↔ Git 仓库 ↔ Harbor 镜像，构建→代码→制品完整链路自动关联，Pipeline → Tag 精准追溯。</p>
         </div>
         <!-- 3 -->
         <div class="feat-card">
             <div class="feat-icon">🌐</div>
-            <h4>多平台统一接入</h4>
-            <p>GitLab · GitHub · Gitee · Gitea 统一 API 接口，自建与 SaaS 无差别对接，支持自定义平台扩展。</p>
+            <h4 data-i18n="index.feat_multi_platform_title">多平台统一接入</h4>
+            <p data-i18n="index.feat_multi_platform_desc">GitLab · GitHub · Gitee · Gitea 统一 API 接口，自建与 SaaS 无差别对接，支持自定义平台扩展。</p>
         </div>
         <!-- 4 -->
         <div class="feat-card">
             <div class="feat-icon">🖥️</div>
-            <h4>可视化管理后台</h4>
-            <p>Web 管理界面，服务监测、项目拓扑、映射配置一目了然。无需改配置文件，表单操作即可完成所有配置，上手即用。</p>
+            <h4 data-i18n="index.feat_dashboard_title">可视化管理后台</h4>
+            <p data-i18n="index.feat_dashboard_desc">Web 管理界面，服务监测、项目拓扑、映射配置一目了然。无需改配置文件，表单操作即可完成所有配置，上手即用。</p>
         </div>
         <!-- 5 -->
         <div class="feat-card">
             <div class="feat-icon">📋</div>
-            <h4>分支与参数可视化</h4>
-            <p>Git 分支列表、Jenkins 构建参数直接透出，无需在各平台后台之间来回切换。</p>
+            <h4 data-i18n="index.feat_branch_viz_title">分支与参数可视化</h4>
+            <p data-i18n="index.feat_branch_viz_desc">Git 分支列表、Jenkins 构建参数直接透出，无需在各平台后台之间来回切换。</p>
         </div>
         <!-- 6 -->
         <div class="feat-card">
             <div class="feat-icon">📡</div>
-            <h4>服务健康自检</h4>
-            <p>实时检测 Jenkins · Git 平台 · Harbor 连通性与版本号，故障快速定位，状态一目了然。</p>
+            <h4 data-i18n="index.feat_health_title">服务健康自检</h4>
+            <p data-i18n="index.feat_health_desc">实时检测 Jenkins · Git 平台 · Harbor 连通性与版本号，故障快速定位，状态一目了然。</p>
         </div>
     </div>
 
 </div>
 
-<footer class="footer">&copy; 2026 Blues.Inc &nbsp;|&nbsp; Devops-Glue</footer>
+<footer class="footer" data-i18n="index.footer">&copy; 2026 Blues.Inc &nbsp;|&nbsp; Devops-Glue</footer>
+
+<script src="/assets/i18n.js"></script>
+<script>__.init();</script>
 
 </body>
 </html>

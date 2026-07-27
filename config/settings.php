@@ -91,6 +91,8 @@ return [
         'build_timeout' => (int) env('BUILD_TIMEOUT', '300'),
         'log_path'      => env('LOG_PATH', '/data/logs/ci-platform/'),
         'api_base_url'  => env('API_BASE_URL', ''),
+        // 当前实例类型：ci / cd / both（影响登录权限校验）
+        'system_type'   => env('SYSTEM_TYPE', 'ci'),
     ],
 
     /*

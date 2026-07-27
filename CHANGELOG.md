@@ -1,0 +1,40 @@
+# Changelog
+
+## v2.3.2 (2026-07-25)
+- Multi-environment config support (`APP_ENV` with `.env.{ENV}` overrides)
+- Build mode runtime switching with backend validation
+- Security scan commit status write-back + `ci_security_checks` audit table
+- Bug fixes: security scan icons, `ci_pipeline_tags` COUNT query, Git pagination
+
+## v2.3.1 (2026-07-15)
+- Tag validation and storage rules
+- MySQL / SQLite dual driver; `DB_DRIVER` required
+- Docker optimized with MySQL 8.4 integration
+
+## v2.3.0 (2026-07-10)
+- GitLab CI dual-channel + Build unified module
+- SQLite persistence + Admin web UI
+
+## v2.2.0 (2026-05-06)
+- ProviderRegistry pattern for Git platforms
+- Custom platform extension support
+- Gitea adapter added
+
+## v2.1.2 (2026-05-04)
+- Homepage health check dashboard
+- GitHub platform integration
+- `/api/health` endpoint
+- Swagger UI + structured file logging
+- Docker deployment support
+
+## v2.1.1 (2026-03-05)
+- Slim4 refactor
+- Main module (platform integration, multi-party mapping)
+- Output format switching (raw/json/xml)
+- Harbor scan integration and report retrieval
+
+## v1.1.0 (2021-11-01)
+- Harbor query features added
+
+## v1.0.0 (2018-09-28)
+- Initial release: Jenkins, Git, and Rundeck integration

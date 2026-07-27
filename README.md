@@ -1,654 +1,92 @@
-Devops-Glue API 文档 v2.3.2
+# Devops-Glue API v2.3.2
 
-# 概述
-
-> ❌ GitLab + K8s 全套？太重，养不起  
-> ❌ Jenkins 裸奔？8 年前的 UI，配到崩溃  
-> ❌ Gitee + Jenkins + Harbor 三头对不上？多窗口来回切，Tag 全靠人肉对齐  
->
-> ✅ 一套 API，4 个 Git 平台 + 2 条 CI 通道 + Harbor → 一个面板全搞定  
-> ✅ SQLite 零配置启动，MySQL 也可切换  
-> ✅ 10 年运维老兵的实战结晶，v2.3.2 持续打磨  
-> ✅ 从 CI 构建到 CD 部署，全流程覆盖  
-> ✅ 开源免费，GitHub/Gitee 双更新  
->
 > **不是大厂的遥控器，是小团队的瑞士军刀。**
 
-Devops-Glue 是一套为小企业提供的 DevOps 工具链集成接口，基于 Slim4 框架实现 Jenkins + Gitlab CI双通道、GitLab/Gitee/GitHub/Gitea、Harbor 等工具的一键集成与数据互通。
+Devops-Glue 是一套为小企业打造的 DevOps 工具链集成 API，基于 Slim4 框架实现。一套接口，统一管理 Jenkins + GitLab CI 双通道、GitLab / Gitee / GitHub / Gitea 多平台、Harbor 镜像仓库，从 CI 构建到 CD 部署全流程覆盖。
 
-支持多平台 Git Commit Status 回写、安全扫描（SAST/密钥扫描/依赖漏洞）审计追踪、构建模式运行时切换。
+![系统概览](system_info.png)
+![运行状态](system_running.png)
 
-# 环境要求
-框架: Slim 4
+## 核心特性
 
-依赖管理: Composer
+- **双链路构建** — Jenkins + GitLab CI 无缝切换或共存，统一 API 入口
+- **多平台统一接入** — GitLab · GitHub · Gitee · Gitea，自建与 SaaS 无差别对接
+- **全链路映射** — Pipeline/Job ↔ Git 仓库 ↔ Harbor 镜像，构建→代码→制品自动关联
+- **安全扫描审计** — SAST、密钥扫描、依赖漏洞等结果以 Commit Status 回写 Git 平台，可追溯可审计
+- **可视化管理后台** — 服务监测、映射配置、安全扫描、用户管理，表单操作零配置上手
+- **零配置启动** — SQLite 默认零依赖，MySQL / MariaDB 一键切换
 
-PHP 版本: 8.0+
+## 快速开始
 
-PHP 扩展: pdo_sqlite, pdo_mysql, php-cli, php-mbstring, php-xml, php-curl, php-zip
+```bash
+# 1. Clone
+git clone https://github.com/jeanslw/Devops-Glue.git
+cd Devops-Glue
 
-数据库: SQLite（默认）或 MySQL 8.0+ / MariaDB 10.4+
+# 2. Install dependencies
+composer install
 
-支持服务:
+# 3. Configure environment
+cp config/.env.example config/.env
+# Edit config/.env with your actual credentials
 
-Jenkins v2.60+（文档声明 v2.555.3为验证版本，API 从 2.0 即稳定可用）
+# 4. Start (PHP built-in server or Docker)
+php -S 0.0.0.0:8080 -t public/
+# OR
+cd docker-compose && docker compose up -d --build
 
-GitLab v9.0+（API v4，文档声明 v17.0为验证版本）
+# 5. Verify
+curl http://localhost:8080/api/health
+```
 
-Gitee API v5
+Open `http://localhost:8080/admin` for the admin panel (credentials from `.env`).
 
-GitHub API v3（通过 HTTP header 传递版本，2028年前有效）
+Open `http://localhost:8080/api/docs` for interactive API documentation (Swagger UI).
 
-Gitea API v1（自建 Git 平台，v2.2.0 新增）
+## 环境要求
 
-Harbor v1.10.1 / v2.x（自动探测 API 版本）
+| Requirement | Version |
+|---|---|
+| PHP | 8.0+ |
+| Database | SQLite (default) / MySQL 8.0+ / MariaDB 10.4+ |
+| Jenkins | v2.60+ |
+| GitLab | v9.0+ (API v4) |
+| Harbor | v1.10.1 / v2.x |
 
-自定义 Git 平台：实现 GitProviderInterface + 在 settings.php 中注册即可接入
+See [docs/ADMIN_MANUAL.md](docs/ADMIN_MANUAL.md) for full environment variable reference and CORS configuration.
 
-# 快速部署
-	# 1. 克隆仓库
-	```bash
-	git clone https://github.com/jeanslw/Devops-Glue.git
-	或
-	git clone https://gitee.com/jeanslw/devops_glue.git
-	cd Devops-Glue
-	
-	# 2. 安装依赖
-	composer install
-	
-	# 3. 配置环境变量
-	cp config/.env.example config/.env
-	编辑 .env 文件，填入实际服务地址和凭证。
+## 文档索引
 
-# 3.1 多环境部署（可选）
-	系统支持通过 APP_ENV 区分环境（production / staging / development）：
-	- .env：基础配置（放真实密码，gitignored）
-	- .env.staging：staging 环境覆盖（APP_DEBUG=true 等）
-	- .env.local：本地覆盖（gitignored，个人开发调整）
-	加载优先级：.env.local > .env.{APP_ENV} > .env
-	默认 APP_ENV=production 时不需要额外文件。详见技术文档 docs/technical-guide.md。
+| Document | Description |
+|---|---|
+| [docs/API.md](docs/API.md) | **API Reference** — endpoints, request/response formats, quick test commands |
+| [docs/ADMIN_MANUAL.md](docs/ADMIN_MANUAL.md) | **Admin Manual** — environment variables, mapping config, custom Git platform integration |
+| [docs/technical-guide.md](docs/technical-guide.md) | **Technical Guide** — architecture, request lifecycle, database design, data flows, troubleshooting |
+| [docs/用户说明.md](docs/用户说明.md) | **User Guide** — end-user instructions (Chinese) |
+| [CHANGELOG.md](CHANGELOG.md) | Release notes and version history |
 
-	# 4. 配置 Web 服务器
-	将 public/ 目录设为 Web 根目录，配置 URL 重写。
+## Related Projects
 
-	# 5. 验证部署
-	curl http://your-domain.com/api/main/jobs/list
+- **Devops-CD** — Continuous Deployment system (ArgoCD / FluxCD / Helm / Kubectl):  
+  https://github.com/jeanslw/Devops_CD
 
-	# 6. Docker-compose 部署:
+## Project Structure
 
-	cd docker-compose
-	docker compose up -d --build
-	```
-	> [!IMPORTANT]  注意事项：Jenkins / GitLab / Harbor 地址需devops-glue容器可访问的URL
->  .env 配置项: DB_DRIVER
->  MySQL 模式：DB_DRIVER=mysql，容器自动启动 MySQL 8.4 并建库。也支持 MariaDB 10.4+，语法完全兼容。
->  SQLite 模式：DB_DRIVER=sqlite，数据文件在 config/data/data.db，已挂载 volume 持久化。
->  如需和 CD Service（cd_service）部署在同一台机器，SQLite 模式必须共享卷，让两边进程访问同一个 .db 文件。推荐生产环境使用 MySQL/MariaDB。
-	>  .env 配置项: BUILD_MODE (jenkins/gitlabci/both)
-	>  jenkins:构建模式为jenkins，gitlabc：构建模式为gitlabci，both：构建模式两者共存模式
-	
-# 接口访问
-	curl http://localhost:8080/api/health
-	浏览器打开 http://localhost:8080/api/docs 查看 API 文档。
+```
+config/         # Server-side configuration (.env, DI container, routes, settings)
+database/       # MySQL & SQLite initialization scripts
+docker-compose/ # Docker Compose (PHP + MySQL 8.4)
+public/         # Web root (index.php, static assets)
+src/            # Controllers & Services
+templates/      # HTML templates (admin, swagger, openapi)
+docs/           # Documentation
+```
 
-	- 公共约定
-		HTTP 方法
-		所有接口均支持 GET 和 POST 方法（除 build_trigger 仅 POST，扫描触发仅 POST）
+## License
 
-	- 输出格式
-		大部分接口返回字符型数组（如 ["item1","item2"]）
+MIT
 
-		映射/平台接口（/api/main/map/list、/api/main/git/platforms、/api/main/git/discovery）返回 JSON 对象
+## Contact
 
-		构建触发（/api/build/.../trigger）返回 JSON 对象
-
-		控制台日志（/api/build/.../logs/{id}）返回 text/plain
-
-		健康检查（/api/health）返回 JSON 对象
-
-	- 格式切换
-		所有接口支持通过 ?format= 参数切换输出格式：
-
-		参数	输出示例		Content-Type
-		不带参数（默认 raw）	["java/registry","static"]
-		?format=json			{"data":["java/registry","static"]}
-		?format=xml				<?xml...><root><item>java/registry</item></root><application/xml
-
-	- 统一错误格式：
-		{
-		  "code": 400,
-		  "message": "错误描述"
-		}
-
-	- CORS 支持
-		所有接口默认允许跨域访问（Access-Control-Allow-Origin: *），浏览器可直接调用。
-
-		如需限制来源，在 config/settings.php 的 cors 段中配置：
-		```php
-		'cors' => [
-			'allowed_origins' => ['https://your-frontend.com'],
-		],
-		```
-	- 日志
-		日志写入 LOG_PATH 指定的目录（默认 /applogs/），JSON 格式，按天滚动。
-
-		日志级别：production → info，其他环境 → debug。
-
-# 一、健康检查
-	URL: /api/health
-
-	方法: GET
-
-	输出: JSON 对象
-	```json
-	{
-	  "status": "ok",
-	  "checks": {
-		"jenkins": true,
-		"git": [{"name": "gitlab", "reachable": true}],
-		"harbor": true
-	  },
-	  "app_env": "production",
-	  "time": "2026-07-05 12:00:00"
-	}
-	```
-	status: ok（正常）/ degraded（部分服务不可用）
-
-	HTTP 状态码: 200（ok）/ 503（degraded）
-
-# 二、Main 模块 (/api/main)
-
-	URL: /api/main/jobs/list
-
-	方法: GET / POST
-
-	输出: 字符串数组
-
-	["java/registry", "php/myapp", "static"]
-
-	# 2.1 Job / Git / Harbor 三方映射（按项目分组）
-	URL: /api/main/map/list
-
-	方法: GET / POST
-
-	输出: JSON 对象（键为 Git 仓库路径）
-
-	```json
-	{
-	  "tools/registry": {
-		"git_platform": "gitlab",
-		"git_remote": "http://URL/tools/registry.git",
-		"project_id": 2,
-		"web_url": "http://your-gitlab/group/project",
-		"current_path": "tools/registry",
-		"harbor_repository": "mycode/code-runtime",
-		"jobs": ["java/registry"]
-	  },
-	  "tools/myapp": {
-		"git_platform": "gitlab",
-		"git_remote": "http://URL/tools/myapp.git",
-		"project_id": 5,
-		"web_url": "http://your-gitlab/group/myapp",
-		"current_path": "tools/myapp",
-		"harbor_repository": "mycode/myapp",
-		"jobs": ["php/myapp"]
-	  }
-	}
-	```
-	# 2.2 已接入的 Git 平台列表（静态配置）
-	URL: /api/main/git/platforms
-
-	方法: GET / POST
-
-	输出: JSON 对象
-
-	```json
-	{
-	  "git_platforms": [
-		{
-		  "name": "gitlab",
-		  "api_base_url": "http://URL/api/v4",
-		  "api_version": "v4"
-		},
-		{
-		  "name": "github",
-		  "api_base_url": "https://api.github.com",
-		  "api_version": "v3"
-		},
-		{
-		  "name": "gitee",
-		  "api_base_url": "https://gitee.com/api/v5",
-		  "api_version": "v5"
-		}
-	  ],
-	  "harbor": {
-		"api_base_url": "http://URL/api/v2.0",
-		"api_version": "v2.0"
-	  }
-	}
-	```
-	# 2.3 平台接入检测（动态扫描）
-	URL: /api/main/git/discovery
-
-	方法: GET / POST
-
-	输出: JSON 对象
-
-	```json
-	{
-	  "configured": [
-		{"name": "gitlab", "api_base_url": "http://URL/api/v4"},
-		{"name": "gitee", "api_base_url": "https://gitee.com/api/v5"}
-	  ],
-	  "unconfigured": []
-	}
-	```
-# 三、Build 模块 (/api/build) — v2.3.0
-	统一 Jenkins 和 GitLab CI 的构建/Pipeline 入口。旧 /api/jenkins/* 路由已废弃。
-
-	# 3.1 触发构建
-	URL: POST /api/build/{project}/trigger
-	参数: POST JSON body，格式 {"variables":{"参数名":"值",...}}
-	说明: 参数名需与 Jenkins Job 定义的参数名完全一致（不再自动映射）。先调 variables 看参数名，再传参触发。GET Query String 兼容旧版调用。
-	输出: {"build_provider":"...","project_id":"...","success":true,...}
-
-	# 3.2 构建参数/CI 变量
-	URL: /api/build/{project}/variables
-	输出: {"branches":["main","master"],"zone":["test","prd"]} — Jenkins 参数名直出，不做重写
-
-	# 3.3 Git 分支列表
-	URL: /api/build/{project}/branches
-	输出: ["main","v2.3.0","master"] — 纯字符串数组，可直接用作 Rundeck Remote URL
-
-	# 3.4 Pipeline 列表
-	URL: /api/build/{project}/pipelines?list=id|build|time
-	?list=id → [10,9,8]，包含所有构建
-	?list=build → ["#10","#9","#8"]，所有成功构建
-	?list=time → ["#10 [date]","#9 [date]"]，所有成功构建
-
-	# 3.5 Pipeline 详情 + Jobs
-	URL: /api/build/{project}/pipelines/{id}
-	输出: {"build_provider":"...","pipeline_id":4,"jobs":[{id,name,stage,status}]}
-
-	# 3.6 构建日志（统一入口）
-	URL: /api/build/{project}/logs/{id}
-
-	# 3.7 重试失败的 Pipeline（仅 GitLab CI）
-	URL: POST /api/build/{project}/pipelines/{id}/retry
-
-	# 3.8 取消运行中的 Pipeline（仅 GitLab CI）
-	URL: POST /api/build/{project}/pipelines/{id}/cancel
-
-	# 3.9 Harbor 扫描同步
-	URL: POST /api/build/{project}/scan-sync
-	参数: {"tag":"v3.0.0"} 不传则取 Harbor 最新 tag
-
-	# 3.10 Pipeline → Tag 映射
-	URL: /api/build/{project}/tag?pipeline=10
-	 pipeline iid和 tag 关联映射
-
-	# 3.11 Commit Status 回写（安全扫描/CI 检查）
-	URL: POST /api/build/{project}/commit-status
-	参数: JSON body，sha / state / context / description 必填，target_url / check_type / tag 可选
-	输出: { project, sha, state, context, description, check_type, git_platform, commit_status }
-	说明: 将安全扫描（SAST、密钥扫描、依赖漏洞、IaC 审计等）结果以 commit status 形式回写到 Git 平台。
-	      所有 Git Provider（GitLab/GitHub/Gitee/Gitea）均支持，不依赖 CI 系统。
-	      同时写入 ci_pipeline_tags 和 ci_security_checks 表做审计追踪。
-
-# 四、Git 模块 (/api/git)
-	查询 Job 对应的 Git 分支列表
-	URL: /api/git/{group}/{project}/branches
-
-	方法: GET / POST
-
-	输出: ["master","devops","main"]
-
-	说明: 支持 GitLab、Gitee、GitHub 三种平台，自动根据 Job 在映射配置中关联的 Git 仓库查询。
-
-# 五、Harbor 模块 (/api/harbor)
-	# 5.1 获取项目列表
-	URL: /api/harbor/projects
-
-	方法: GET / POST
-
-	输出: ["library","mycode","toolkit"]
-
-	# 5.2 获取仓库列表
-	URL: /api/harbor/{project}/repositories
-
-	方法: GET / POST
-
-	输出: ["diagnosis-runtime","nginx"]
-
-	# 5.3 获取 Tag 列表
-	URL: /api/harbor/{project}/repositories/{repository}/tags
-
-	方法: GET / POST
-
-	注意: 仓库名如含 / 需双重编码（%2F）
-
-	输出: ["v1.0.0","v1.0.1"]
-
-	# 5.4 触发镜像扫描
-	URL: /api/harbor/{project}/repositories/{repository}/tags/{tag}/scan
-
-	方法: POST
-
-	输出: {"status":"ok"} 或 {"code":503,"message":"镜像扫描功能未启用，请联系管理员"}
-
-	说明: 支持 Harbor v1（1.10.x）和 v2（2.x）两种 API 版本，自动检测。
-
-	# 5.5 获取扫描报告
-	URL: /api/harbor/{project}/repositories/{repository}/tags/{tag}/scan
-
-	方法: GET
-
-	输出: 漏洞报告 JSON 数组，或空数组（无漏洞）
-
-	说明: Harbor v2 返回 application/vnd.security.vulnerability.report 格式的漏洞数据。
- 
-# 六、管理后台（v2.3.0 新增）
-	URL: /admin
-
-	说明: Web 管理界面，需登录（账号密码在 .env 中配置 ADMIN_USER / ADMIN_PASSWORD）。
-
-	# 功能：
-	- 数据概览 — 映射数、活跃数、Git 平台数、Harbor 仓库数 统计卡片
-	- 服务监测 — Jenkins / Git 平台 / Harbor 连通性 + 版本号实时检测
-	- 映射管理 — job_git_map 可视化增删改查，支持搜索筛选分页
-	- 安全扫描 — ci_security_checks 审计记录查看，支持筛选和分页
-	- 配置模式 — 构建模式（jenkins/gitlab_ci/both）在线切换，即时生效
-	- 对接版本 — 各平台 API 版本号在线配置
-	- 修改密码 — 管理员在线修改登录密码
-
-# 七、API 文档（Swagger UI）
-	URL: /api/docs
-
-	方法: GET
-
-	认证: 需登录（与 /admin 共用账号密码）
-
-	说明: 浏览器打开后输入管理后台账号登录即可浏览全部接口，支持在线 Try it out 交互式调试。
-
-# 八、错误处理
-	所有错误响应统一格式：
-
-	```json
-	{
-	  "code": 400,
-	  "message": "错误描述"
-	}
-	```
-	状态码	说明
-	200	成功
-	204	CORS 预检成功
-	400	参数错误（值不合法、个数不匹配等）
-	404	资源不存在（Job 未找到、路由不存在）
-	500	服务端错误（Jenkins/Harbor 连接失败等）
-	503	服务不可用（Harbor 扫描器未启用等）
-
-# 九、配置说明
-	环境变量 (.env)
-	```php
-	# Jenkins
-	JENKINS_BASE_URL=http://URL
-	JENKINS_USER=admin
-	JENKINS_TOKEN=your_token
-
-	# GitLab
-	GITLAB_BASE_URL=http://URL
-	GITLAB_TOKEN=your_token
-
-	# GitHub
-	GITHUB_BASE_URL=https://api.github.com
-	GITHUB_TOKEN=your_token
-
-	# Gitee
-	GITEE_BASE_URL=https://gitee.com/api/v5
-	GITEE_TOKEN=your_token
-
-	# Gitea
-	GITEA_BASE_URL=http://your-gitea
-	GITEA_TOKEN=your_token
-
-	# Git 默认平台（URL 无法识别时回退，自建 GitLab/Gitea 必填）
-	DEFAULT_GIT_PLATFORM=gitlab
-
-	# Harbor
-	HARBOR_BASE_URL=http://URL
-	HARBOR_USER=admin
-	HARBOR_PASSWORD=your_password
-
-	# 管理后台登录
-	ADMIN_USER=admin
-	ADMIN_PASSWORD=
-
-	# 数据库（必填: sqlite 或 mysql）
-	DB_DRIVER=sqlite
-	# SQLite：和 CD Service 指向同一个 .db 文件
-	DB_PATH=config/data/data.db
-	# MySQL / MariaDB（推荐）：和 CD Service 共用同一个库
-	# DB_DRIVER=mysql
-	# DB_HOST=127.0.0.1
-	# DB_PORT=3306
-	# DB_NAME=devops_glue
-	# DB_USER=root
-	# DB_PASS=
-	# DB_AUTO_MIGRATE=true  # 自动建表，false 则手动执行 database/ 下脚本
-
-	# App配置
-	APP_ENV=production        # production / staging / development
-	APP_DEBUG=false
-	BUILD_MODE=both           # jenkins / gitlab_ci / both（首次启动种子值，之后在管理后台切换并持久化到 ci_app_settings）
-	BUILD_TIMEOUT=300
-	LOG_PATH=/applogs/
-	API_BASE_URL=http://127.0.0.1:8080  # Swagger / OpenAPI 外部访问地址
-	```
-	手动映射配置 (config/settings.php)
-	每个 Job 可配置以下字段。仅 job_name 必填，其他均可省略由系统自动推导。
-
-	| 字段 | 必填 | 说明 |
-	|------|:--:|------|
-	| `job_name` | ✅  | Jenkins Job 或 GitLab CI 项目完整路径，如 `"java/registry"` |
-	| `build_provider` | | CI 系统选择：`jenkins`（默认） / `gitlab_ci`。不填默认 jenkins |
-	| `git_platform` | | 自建实例**强烈建议**填写。不填则系统自动检测 URL 关键词；但自建 GitLab/Gitea 的域名通常不含平台关键词，检测会失败并回退到 `DEFAULT_GIT_PLATFORM`。可选值：`gitlab` `gitee` `github` `gitea` 或自定义平台名 |
-	| `git_remote` | | 不填则从 Jenkins Job 的 SCM 配置自动获取 |
-	| `project_id` | | GitLab：不填自动通过 API 查询；GitHub/Gitee：如已知可填写 |
-	| `web_url` | | 项目主页链接，仅用于映射展示 |
-	| `current_path` | | 项目路径，不填从 `git_remote` 自动推导 |
-	| `harbor_repository` | | 关联的 Harbor 仓库，格式 `"project/repository"`，仅用于映射展示 |
-	| `api_version` | | **纯元数据**，不影响 API 路由（路由由各 Service 内部硬编码），仅用于映射输出展示 |
-
-	```php
-	'job_git_map' => [
-		// 自建 GitLab（URL 不含平台关键词，须指定 git_platform）
-		[
-			'job_name'          => 'java/registry',
-			'git_platform'      => 'gitlab',   // ← 自建实例必须
-			'git_remote'        => 'http://git.mycompany.com/tools/registry.git',
-			'project_id'        => 2,
-			'harbor_repository' => 'mycode/code-runtime',
-		],
-		// SaaS Gitee（URL 含 gitee.com → 自动检测，可不填 git_platform）
-		[
-			'job_name'          => 'static',
-			'harbor_repository' => 'mycode/static-app',
-		],
-	],
-	```
-	CORS 配置 (config/settings.php)
-	```php
-	'cors' => [
-		'allowed_origins' => ['*'],   // 允许的域名，* 表示全部
-		'allowed_methods' => ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-		'allowed_headers' => ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
-	]
-	```
-# 十、快速测试命令
-	```bash
-	# 健康检查
-	curl "http://URL/api/health"
-
-	# 触发构建（POST JSON，参数名需与 variables 返回一致）
-	curl -X POST "http://URL/api/build/static/trigger" -H "Content-Type: application/json" -d '{"variables":{"branches":"master"}}'
-
-	# 查询 Job 参数（看有哪些参数名）
-	curl "http://URL/api/build/static/variables"
-
-	# 查询 Git 分支列表
-	curl "http://URL/api/build/static/branches"
-
-	# 查询三方映射
-	curl "http://URL/api/main/map/list"
-
-	# 查询已接入的 Git 平台
-	curl "http://URL/api/main/git/platforms"
-
-	# 查询平台接入检测
-	curl "http://URL/api/main/git/discovery"
-
-	# Harbor 项目列表
-	curl "http://URL/api/harbor/projects"
-
-	# Harbor Tag 列表
-	curl "http://URL/api/harbor/mycode/repositories/diagnosis-runtime/tags"
-
-	# 触发 Harbor 扫描
-	curl -X POST "http://URL/api/harbor/mycode/repositories/diagnosis-runtime/tags/v1.0.0/scan"
-
-	# 获取 Harbor 扫描报告
-	curl "http://URL/api/harbor/mycode/repositories/diagnosis-runtime/tags/v1.0.0/scan"
-
-	# CORS 预检测试
-	curl -X OPTIONS "http://URL/api/main/jobs/list" -H "Origin: http://example.com" -v
-	```
-
-# 十一、项目结构
-	```bash
-	+---config						# 服务端配置
-	|   |   .env.example			# 环境变量模板（提交 Git）
-	|   |   .env.production			# 生产环境覆盖（可选）
-	|   |   .env.staging			# staging 环境覆盖（可选）
-	|   |   .env.local				# 本地覆盖（gitignored）
-	|   |   AppConfig.php			# 配置访问器（build_mode 等运行时配置持久化）
-	|   |   container.php			# DI 容器定义
-	|   |   routes.php				# 路由定义
-	|   |   settings.php			# 主配置 + 数据库配置
-	|   |
-	|   \---data					# 数据库目录（SQLite）
-	|           data.db				# SQLite 数据库（自动创建，.gitignore 排除）
-	|
-	+---docker-compose				# Docker 编排
-	|       docker-compose.yml		# PHP + MySQL 8.4（含健康检查）
-
-	+---public						# Web 根目录
-	|   |   .htaccess				# URL 重写
-	|   |   index.php				# 应用入口
-	|   |
-	|   \---assets					#静态资源目录
-	|
-	+---src
-	|   +---Controller				# 控制器
-	|   |       AdminController.php
-	|   |       BaseController.php
-	|   |       BuildController.php
-	|   |       GitController.php
-	|   |       HarborController.php
-	|   |       MainController.php
-	|   |
-	|   \---Service					# 业务逻辑
-	|       |   Database.php			# SQLite / MySQL 双驱动
-	|       |   GitService.php
-	|       |   HarborService.php
-	|       |   JenkinsService.php
-	|       |   Logger.php
-	|       |   GitRemoteResolver.php   # Git 远程地址解析
-	|       |
-	|       +---Build				#构建相关逻辑（v2.3.0引入）
-	|       |       BuildProviderInterface.php
-	|       |       BuildProviderRegistry.php
-	|       |       GitlabCiBuildProvider.php
-	|       |       JenkinsBuildProvider.php
-	|       |
-	|       \---Git					# Git 平台适配器（GitLab/Gitee/GitHub/Gitea + 自定义）
-	|               GiteaService.php
-	|               GiteeService.php
-	|               GithubService.php
-	|               GitlabService.php
-	|               GitProviderFactory.php
-	|               GitProviderInterface.php
-	|               ProviderRegistry.php
-	|
-	+---templates
-	|       404.html				# 404 页面
-	|       admin.html				# 管理页面
-	|       index.html				# 首页
-	|       openapi.json			# OpenAPI 3.0 规范
-	|       swagger.html			# Swagger UI
-	|
-	|-------------------
-	```
-# 十二、自定义 Git 平台接入
-
-	系统支持通过配置接入任意 Git 平台，无需修改源码。
-
-	# 1. 编写 Provider 类
-	在 src/Service/Git/ 目录下创建适配器类，实现 GitProviderInterface 接口：
-
-	```php
-	namespace App\Service\Git;
-
-	class BitbucketService implements GitProviderInterface
-	{
-		public function getName(): string { return 'bitbucket'; }
-		public function matchUrl(string $url): bool { return str_contains($url, 'bitbucket'); }
-		public function getApiVersion(): string { return 'v2'; }
-		public function getBranches(string $repository): array { /* API 调用逻辑 */ }
-	}
-	```
-	# 2. 在 config/settings.php 中注册
-
-	```php
-	'git' => [
-		'custom_providers' => [
-			[
-				'class'  => 'App\\Service\\Git\\BitbucketService',
-				'config' => [
-					'name'         => 'bitbucket',
-					'base_url'     => 'https://api.bitbucket.org/2.0',
-					'token'        => env('BITBUCKET_TOKEN', ''),
-					'api_version'  => 'v2',
-					'matcher'      => function (string $url): bool {
-						return str_contains($url, 'bitbucket');
-					},
-				],
-			],
-		],
-	],
-	```
-	# 3. 无需修改任何系统源码，系统启动时自动发现并注册。
-
-	> [!NOTE] 注意：自定义平台不支持 .env 独立环境变量配置（如 BITBUCKET_TOKEN），令牌需写入 settings.php 或自行扩展 AppConfig。
-
-	# 4. 内置平台（GitLab/Gitee/GitHub/Gitea）如需新增，需要修改以下文件：
-	   - src/Service/Git/XxxService.php（适配器类）
-	   - config/container.php（ProviderRegistry 注册闭包）
-	   - config/AppConfig.php（getXxxConfig + getDefaultApiVersion + getGitPlatformsConfig）
-	   - config/settings.php + settings.example.php（配置段）
-	   - config/.env.example（环境变量声明）
-
-# 十三、更新日志
-
-- 版本		日期		变更内容
-	- v2.3.2	2026-07-25	多环境配置支持；构建模式运行时切换 + 后端校验；安全扫描 Commit Status 回写 + ci_security_checks 审计表；Bug 修复（安全扫描图标、ci_pipeline_tags COUNT 查询、Git 分页缺失）
-	- v2.3.1	2026-07-15	校验tag入库规则,增加用户文档说明,MySQL/SQLite 双驱动，DB_DRIVER 必填；优化Docker， 集成 MySQL 8.4。
-	- v2.3.0	2026-07-10	GitLab CI 双通道 + Build 统一模块 + SQLite 持久化 + 管理 UI。
-	- v2.2.0	2026-05-06	架构升级：Git 平台改为 ProviderRegistry 注册表模式，支持自定义平台接入。新增 Gitea 平台适配器。
-	- v2.1.2	2026-05-04	新增首页支持健康检查、 GitHub 平台接入；健康检查端点 /api/health；Swagger UI 文档，结构化文件日志；Docker 部署支持；
-	- v2.1.1	2026-03-05	Slim4 重构。新增 Main 模块（平台接入、多方映射）,多版本支持；输出格式切换（raw/json/xml）；Harbor 扫描集成和扫描报告获取。
-	- v1.1.0	2021-11-01	增加 Harbor 查询功能
-	- v1.0.0	2018-09-28	初始版本，Jenkins、Git 与 Rundeck 三方集成。
-
-# 十四、联系作者
-	如有建议可在仓库提 issue ，或联系E-mail:jeanslw@qq.com
-	
+- Issues & PRs: [GitHub Issues](https://github.com/jeanslw/Devops-Glue/issues)
+- Email: jeanslw@qq.com

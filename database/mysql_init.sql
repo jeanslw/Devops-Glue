@@ -56,6 +56,8 @@ CREATE TABLE IF NOT EXISTS `ci_app_settings` (
 CREATE TABLE IF NOT EXISTS `admin_users` (
     `username`      VARCHAR(255) PRIMARY KEY,
     `password_hash` TEXT NOT NULL,
+    `role`          VARCHAR(32) NOT NULL DEFAULT 'admin',
+    `systems`       VARCHAR(128) NOT NULL DEFAULT 'ci,cd',
     `updated_at`    DATETIME DEFAULT (NOW())
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

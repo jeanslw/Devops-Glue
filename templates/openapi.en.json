@@ -1,0 +1,1045 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Devops-Glue API",
+    "version": "2.3.2",
+    "description": "DevOps toolchain integration API — unified interface for Jenkins / GitLab CI, GitLab / Gitee / GitHub / Gitea, and Harbor.",
+    "contact": {
+      "email": "jeanslw@qq.com"
+    }
+  },
+  "servers": [
+    {
+      "url": "",
+      "description": "Current Environment"
+    }
+  ],
+  "tags": [
+    { "name": "Health", "description": "Health Check" },
+    { "name": "Main", "description": "Overview, Mapping & Platform Discovery" },
+    { "name": "Build", "description": "Build / Pipeline (Jenkins + GitLab CI)" },
+    { "name": "Git", "description": "Code Repository Branches" },
+    { "name": "Harbor", "description": "Image Registry & Security Scan" },
+    { "name": "Admin", "description": "Admin Panel (Bearer Token required)" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Obtain token via POST /api/admin/login"
+      }
+    },
+    "parameters": {
+      "format": {
+        "name": "format",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "enum": ["raw", "json", "xml"],
+          "default": "raw"
+        },
+        "description": "Response format"
+      }
+    },
+    "responses": {
+      "400": {
+        "description": "Bad Request",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "401": {
+        "description": "Unauthorized or invalid token",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "404": {
+        "description": "Resource not found",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "500": {
+        "description": "Server error",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "integer", "example": 400 },
+          "message": { "type": "string", "example": "Error description" }
+        }
+      },
+      "HealthResult": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["ok", "degraded"], "example": "ok" },
+          "checks": {
+            "type": "object",
+            "properties": {
+              "jenkins": { "type": "boolean", "nullable": true, "description": "true=reachable, false=unreachable, null=gitlab_ci mode" },
+              "jenkins_version": { "type": "string", "nullable": true, "example": "2.555.3" },
+              "git": {
+                "type": "array", "nullable": true,
+                "description": "null means no Git platform configured",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": { "type": "string", "example": "gitlab" },
+                    "api_version": { "type": "string", "example": "v4" },
+                    "reachable": { "type": "boolean" }
+                  }
+                }
+              },
+              "harbor": { "type": "boolean", "nullable": true },
+              "harbor_version": { "type": "string", "nullable": true, "example": "v2" },
+              "harbor_components": {
+                "type": "object",
+                "nullable": true,
+                "description": "Harbor sub-component health (core/jobservice/registry; any false makes overall harbor false)",
+                "properties": {
+                  "core":       { "type": "boolean", "example": true,  "description": "Harbor Core API gateway" },
+                  "jobservice": { "type": "boolean", "example": false, "description": "Async tasks / image scan service" },
+                  "registry":   { "type": "boolean", "example": true,  "description": "Image registry management (depends on registryctl)" }
+                }
+              }
+            }
+          },
+          "app_env": { "type": "string", "example": "production" },
+          "time": { "type": "string", "example": "2026-07-25 12:00:00" }
+        }
+      },
+      "JobGitMapEntry": {
+        "type": "object",
+        "required": ["job_name"],
+        "properties": {
+          "job_name": { "type": "string", "description": "Jenkins Job full path / GitLab CI project path", "example": "php/myapp" },
+          "git_platform": { "type": "string", "description": "Git platform identifier", "example": "gitlab" },
+          "build_provider": { "type": "string", "enum": ["jenkins", "gitlab_ci"], "default": "jenkins" },
+          "git_remote": { "type": "string", "description": "Git repository remote URL", "example": "http://git.company.com/project.git" },
+          "project_id": { "type": "integer", "nullable": true, "description": "Git project ID", "example": 5 },
+          "web_url": { "type": "string", "description": "Project homepage", "example": "http://git.company.com/project" },
+          "current_path": { "type": "string", "description": "Project path (URL slug)", "example": "tools/registry" },
+          "harbor_repository": { "type": "string", "description": "Associated Harbor repository", "example": "mycode/myapp" },
+          "api_version": { "type": "string", "description": "Platform API version (metadata only)" },
+          "status": { "type": "string", "enum": ["active", "inactive"], "default": "active" }
+        }
+      },
+      "MapGroupedResult": {
+        "type": "object",
+        "description": "Mapping relationships grouped by project path",
+        "additionalProperties": {
+          "type": "object",
+          "properties": {
+            "git_platform": { "type": "string", "example": "gitlab" },
+            "build_provider": { "type": "string", "enum": ["jenkins", "gitlab_ci"] },
+            "git_remote": { "type": "string" },
+            "project_id": { "type": "integer", "nullable": true },
+            "web_url": { "type": "string" },
+            "harbor_repository": { "type": "string" },
+            "platform_source": { "type": "string", "enum": ["auto", "manual"] },
+            "detection_method": { "type": "string", "enum": ["exact", "fallback", "manual"] },
+            "jobs": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      },
+      "PipelineItem": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "example": 52 },
+          "iid": { "type": "integer", "example": 52 },
+          "sha": { "type": "string", "example": "abc123def456" },
+          "ref": { "type": "string", "example": "main" },
+          "status": { "type": "string", "example": "success" },
+          "created_at": { "type": "string", "example": "2026-07-25T10:00:00Z" },
+          "web_url": { "type": "string", "example": "http://jenkins/job/myapp/52" }
+        }
+      },
+      "ScanSyncResult": {
+        "type": "object",
+        "properties": {
+          "build_provider": { "type": "string", "example": "jenkins" },
+          "sha": { "type": "string", "example": "abc123def" },
+          "tag": { "type": "string", "example": "v3.0.0" },
+          "harbor_repository": { "type": "string", "example": "mycode/myapp" },
+          "vulnerability_count": { "type": "integer", "example": 3 },
+          "scan_state": { "type": "string", "enum": ["success", "failed", "pending", "unknown"], "example": "failed" },
+          "commit_status": {
+            "type": "object",
+            "properties": {
+              "success": { "type": "boolean" },
+              "message": { "type": "string" }
+            }
+          }
+        }
+      },
+      "CommitStatusRequest": {
+        "type": "object",
+        "required": ["sha", "state", "context", "description"],
+        "properties": {
+          "sha": { "type": "string", "description": "commit SHA", "example": "abc123def456" },
+          "state": { "type": "string", "enum": ["pending", "success", "failed", "error"], "example": "failed" },
+          "context": { "type": "string", "description": "Check name", "example": "secret-scan" },
+          "description": { "type": "string", "description": "Short description", "example": "3 secrets leaked" },
+          "target_url": { "type": "string", "description": "Detail link (optional)", "example": "https://sonar.example.com/dashboard?id=myapp" },
+          "check_type": { "type": "string", "description": "Check type tag (defaults to context)", "example": "secret-scan" },
+          "tag": { "type": "string", "description": "Associated image tag (optional)", "example": "v3.0.0" }
+        }
+      },
+      "CommitStatusResult": {
+        "type": "object",
+        "properties": {
+          "project": { "type": "string", "example": "php/myapp" },
+          "sha": { "type": "string", "example": "abc123def456" },
+          "state": { "type": "string", "example": "failed" },
+          "context": { "type": "string", "example": "secret-scan" },
+          "description": { "type": "string", "example": "3 secrets leaked" },
+          "check_type": { "type": "string", "example": "secret-scan" },
+          "git_platform": { "type": "string", "example": "gitlab" },
+          "commit_status": {
+            "type": "object",
+            "properties": {
+              "success": { "type": "boolean" },
+              "message": { "type": "string" }
+            }
+          }
+        }
+      },
+      "TagQueryResult": {
+        "type": "object",
+        "properties": {
+          "build_provider": { "type": "string", "example": "jenkins" },
+          "project_id": { "type": "string", "example": "php/myapp" },
+          "pipeline": { "type": "string", "nullable": true, "example": "52" },
+          "tag": { "type": "string", "nullable": true, "example": "v3.0.0" },
+          "status": { "type": "string", "example": "success" },
+          "harbor_repository": { "type": "string", "example": "mycode/myapp" },
+          "all": {
+            "type": "object", "nullable": true,
+            "description": "Returns all pipeline→tag mappings for this project when pipeline is omitted",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "tag": { "type": "string" },
+                "harbor": { "type": "string" },
+                "status": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "LoginRequest": {
+        "type": "object",
+        "required": ["user", "password"],
+        "properties": {
+          "user": { "type": "string", "example": "admin" },
+          "password": { "type": "string", "example": "admin123" }
+        }
+      },
+      "LoginResult": {
+        "type": "object",
+        "properties": {
+          "token": { "type": "string", "example": "a1b2c3...", "description": "Bearer token, expires in 24h" }
+        }
+      },
+      "DiscoverResult": {
+        "type": "object",
+        "properties": {
+          "found": { "type": "integer", "example": 3 },
+          "saved": { "type": "integer", "example": 2 },
+          "errors": { "type": "array", "items": { "type": "string" } },
+          "items": { "type": "array", "items": { "type": "string" }, "description": "Discovered job names" }
+        }
+      },
+      "PlatformVersionItem": {
+        "type": "object",
+        "properties": {
+          "value": { "type": "string", "example": "v4" },
+          "source": { "type": "string", "enum": ["config", "json", "default"] },
+          "configured": { "type": "boolean", "description": "Whether this platform is configured" }
+        }
+      },
+      "ConfigModeResult": {
+        "type": "object",
+        "properties": {
+          "mode": { "type": "string", "enum": ["jenkins", "gitlab_ci", "both"], "example": "both" },
+          "source": { "type": "string", "enum": ["database", "env"], "example": "database", "description": "Config source: database=UI or DB setting, env=.env fallback" },
+          "has_jenkins": { "type": "boolean" },
+          "has_gitlab_ci": { "type": "boolean" }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/health": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Health Check",
+        "description": "Check Jenkins, Git platform, and Harbor connectivity. Returns 200 if all healthy, 503 if partially degraded.",
+        "operationId": "health",
+        "responses": {
+          "200": {
+            "description": "All healthy",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HealthResult" } } }
+          },
+          "503": {
+            "description": "Partially degraded",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HealthResult" } } }
+          }
+        }
+      }
+    },
+    "/api/main/jobs/list": {
+      "get": {
+        "tags": ["Main"],
+        "summary": "List all Jobs",
+        "description": "Fetches from Jenkins in real-time when in jenkins mode, or from DB in gitlab_ci mode. Falls back to DB cache if Jenkins is unreachable.",
+        "operationId": "mainJobsList",
+        "parameters": [{ "$ref": "#/components/parameters/format" }],
+        "responses": {
+          "200": {
+            "description": "Array of job names",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "type": "string" } } } }
+          }
+        }
+      }
+    },
+    "/api/main/map/list": {
+      "get": {
+        "tags": ["Main"],
+        "summary": "Job / Git / Harbor mapping",
+        "description": "Returns mapping relationships grouped by project. 30s cache in jenkins mode.",
+        "operationId": "mainMapList",
+        "parameters": [{ "$ref": "#/components/parameters/format" }],
+        "responses": {
+          "200": {
+            "description": "Grouped mapping object",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MapGroupedResult" } } }
+          }
+        }
+      }
+    },
+    "/api/main/git/platforms": {
+      "get": {
+        "tags": ["Main"],
+        "summary": "Configured Git platforms",
+        "description": "Returns statically configured Git platform info and Harbor API info.",
+        "operationId": "mainGitPlatforms",
+        "responses": {
+          "200": {
+            "description": "Platform configuration",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "git_platforms": { "type": "array", "items": { "type": "object" } },
+                    "harbor": { "type": "object", "nullable": true }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/main/git/discovery": {
+      "get": {
+        "tags": ["Main"],
+        "summary": "Platform connectivity detection",
+        "description": "Compares Git platforms used in mappings against configured platforms, returning configured and unconfigured lists.",
+        "operationId": "mainGitDiscovery",
+        "responses": {
+          "200": {
+            "description": "configured + unconfigured lists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "configured": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": { "type": "string" },
+                          "api_base_url": { "type": "string" }
+                        }
+                      }
+                    },
+                    "unconfigured": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": { "type": "string" },
+                          "example_remote": { "type": "string" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "/api/build/jobs/list": {
+      "get": {
+        "tags": ["Build"],
+        "summary": "Build-oriented Job list",
+        "description": "Returns all active mapped jobs with ci_provider, project_id, current_path. ?format=raw returns plain job name array.",
+        "operationId": "buildJobsList",
+        "parameters": [{ "$ref": "#/components/parameters/format" }],
+        "responses": {
+          "200": {
+            "description": "raw format returns job name array; json format returns objects with provider info",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "job_name": { "type": "string" },
+                      "ci_provider": { "type": "string", "enum": ["jenkins", "gitlab_ci"] },
+                      "project_id": { "type": "string" },
+                      "current_path": { "type": "string" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/build/config-mode": {
+      "get": {
+        "tags": ["Build"],
+        "summary": "Get build mode config",
+        "description": "Returns the currently effective build mode and its source. Database is the single source of truth; first run seeds from .env.",
+        "operationId": "buildConfigMode",
+        "responses": {
+          "200": {
+            "description": "Build mode config",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ConfigModeResult" } } }
+          }
+        }
+      }
+    },
+    "/api/build/{path}/pipelines": {
+      "get": {
+        "tags": ["Build"],
+        "summary": "Pipeline list",
+        "description": "Unified query for Jenkins / GitLab CI pipelines. ?list=id returns ID array, ?list=success returns successful pipeline IDs.",
+        "operationId": "buildPipelines",
+        "parameters": [
+          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" }, "example": "tools/runner-ci" },
+          { "$ref": "#/components/parameters/format" },
+          {
+            "name": "list", "in": "query",
+            "schema": { "type": "string", "enum": ["id", "build", "time", "success"] },
+            "description": "id=ID array, build=with # prefix, time=with timestamp, success=successful only"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pipeline list (includes build_provider, project_id, pipelines)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "build_provider": { "type": "string" },
+                    "project_id": { "type": "string" },
+                    "pipelines": { "type": "array", "items": { "$ref": "#/components/schemas/PipelineItem" } }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" }
+        }
+      }
+    },
+    "/api/build/{path}/pipelines/{id}": {
+      "get": {
+        "tags": ["Build"],
+        "summary": "Pipeline detail + Jobs",
+        "description": "?format=raw returns plain status array (e.g. [\"success\", \"failed\"])",
+        "operationId": "buildPipelineDetail",
+        "parameters": [
+          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Jobs list" },
+          "400": { "$ref": "#/components/responses/400" }
+        }
+      }
+    },
+    "/api/build/{path}/pipelines/{id}/retry": {
+      "post": {
+        "tags": ["Build"],
+        "summary": "Retry Pipeline (GitLab CI only)",
+        "operationId": "buildRetry",
+        "parameters": [
+          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Retry result" },
+          "400": { "$ref": "#/components/responses/400" }
+        }
+      }
+    },
+    "/api/build/{path}/pipelines/{id}/cancel": {
+      "post": {
+        "tags": ["Build"],
+        "summary": "Cancel Pipeline (GitLab CI only)",
+        "operationId": "buildCancel",
+        "parameters": [
+          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Cancel result" },
+          "400": { "$ref": "#/components/responses/400" }
+        }
+      }
+    },
+    "/api/build/{path}/logs/{id}": {
+      "get": {
+        "tags": ["Build"],
+        "summary": "Build logs (Jenkins / GitLab CI universal)",
+        "operationId": "buildLogs",
+        "parameters": [
+          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" }, "example": "tools/runner-ci" },
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" }, "example": 32 }
+        ],
+        "responses": {
+          "200": { "description": "text/plain raw log" },
+          "400": { "$ref": "#/components/responses/400" }
+        }
+      }
+    },
+    "/api/build/{path}/trigger": {
+      "post": {
+        "tags": ["Build"],
+        "summary": "Trigger build (POST, recommended)",
+        "description": "Pass parameters in POST body JSON via variables=object (recommended). Root-level keys are also accepted (legacy compat). Parameter names must match Jenkins Job definitions; call GET /api/build/{path}/variables first to discover them.",
+        "operationId": "buildTrigger",
+        "parameters": [
+          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" }, "example": "php/myapp" }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ref": { "type": "string", "example": "main", "description": "Branch name (passthrough; required for GitLab CI mode)" },
+                  "variables": { "type": "object", "example": { "param1": "value1" }, "description": "Build parameters (keys must match Job definitions)" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "build_provider + project_id + trigger result" },
+          "400": { "$ref": "#/components/responses/400" }
+        }
+      },
+      "get": {
+        "tags": ["Build"],
+        "summary": "Trigger build (GET, Query String)",
+        "description": "Legacy compat mode: parameters passed via Query String. ref is only used in GitLab CI mode.",
+        "operationId": "buildTriggerGet",
+        "parameters": [
+          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" }, "example": "static" }
+        ],
+        "responses": {
+          "200": { "description": "Trigger result" }
+        }
+      }
+    },
+    "/api/build/{path}/variables": {
+      "get": {
+        "tags": ["Build"],
+        "summary": "Build parameters / CI variables",
+        "description": "Returns Jenkins Job parameter definitions or GitLab CI variables. ?format=json returns full object with build_provider; default returns simplified {key: options}.",
+        "operationId": "buildVariables",
+        "parameters": [
+          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Variable key→options mapping" },
+          "400": { "$ref": "#/components/responses/400" }
+        }
+      }
+    },
+    "/api/build/{path}/branches": {
+      "get": {
+        "tags": ["Build"],
+        "summary": "Git branch list",
+        "description": "Returns plain string array, usable directly as Rundeck Option Model Provider remote URL.",
+        "operationId": "buildBranches",
+        "parameters": [
+          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Branch name array, e.g. [\"main\", \"master\", \"dev\"]" },
+          "400": { "$ref": "#/components/responses/400" }
+        }
+      }
+    },
+    "/api/build/{path}/scan-sync": {
+      "post": {
+        "tags": ["Build"],
+        "summary": "Harbor image scan → Commit Status write-back",
+        "description": "Call after CI pipeline build completion. Automatically fetches Harbor vulnerability report and writes result back to Git platform commit status (harbor-scan context). If tag is omitted, uses the latest from Harbor.",
+        "operationId": "buildScanSync",
+        "parameters": [
+          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" }, "example": "php/myapp" }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "tag": { "type": "string", "example": "v3.0.0", "description": "Image tag; omits to use latest from Harbor" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Scan sync result",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ScanSyncResult" } } }
+          },
+          "400": { "$ref": "#/components/responses/400" }
+        }
+      }
+    },
+    "/api/build/{path}/commit-status": {
+      "post": {
+        "tags": ["Build"],
+        "summary": "Generic security scan Commit Status write-back",
+        "description": "Similar to GitHub Actions Security Check. Results from any security scanner (SAST, secret scan, dependency vuln, IaC audit, etc.) can be written back to the Git platform commit/MR page. Audit records are automatically written to ci_security_checks table.",
+        "operationId": "buildCommitStatus",
+        "parameters": [
+          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" }, "example": "php/myapp" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CommitStatusRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Write-back succeeded",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CommitStatusResult" } } }
+          },
+          "400": { "$ref": "#/components/responses/400" }
+        }
+      }
+    },
+    "/api/build/{path}/tag": {
+      "get": {
+        "tags": ["Build"],
+        "summary": "Query Pipeline → Tag mapping",
+        "description": "?pipeline=52 queries tag for a specific pipeline; omit to return all mappings for this project. ?format=raw returns 'repo:tag' format.",
+        "operationId": "buildTagQuery",
+        "parameters": [
+          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" }, "example": "php/myapp" },
+          { "name": "pipeline", "in": "query", "schema": { "type": "string" }, "description": "Pipeline number (omit for all)" }
+        ],
+        "responses": {
+          "200": {
+            "description": "pipeline→tag mapping",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TagQueryResult" } } }
+          }
+        }
+      }
+    },
+
+    "/api/git/{job}/branches": {
+      "get": {
+        "tags": ["Git"],
+        "summary": "List Git branches for a Job",
+        "operationId": "gitBranches",
+        "parameters": [
+          { "name": "job", "in": "path", "required": true, "schema": { "type": "string" }, "example": "php/myapp", "allowReserved": true },
+          { "$ref": "#/components/parameters/format" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Branch name array",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "type": "string" } } } }
+          },
+          "404": { "$ref": "#/components/responses/404" }
+        }
+      }
+    },
+
+    "/api/harbor/projects": {
+      "get": {
+        "tags": ["Harbor"],
+        "summary": "List projects (auto-paginated, max 1000)",
+        "operationId": "harborProjects",
+        "parameters": [{ "$ref": "#/components/parameters/format" }],
+        "responses": {
+          "200": {
+            "description": "Project name array",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "type": "string" } } } }
+          },
+          "500": { "$ref": "#/components/responses/500" }
+        }
+      }
+    },
+    "/api/harbor/{project}/repositories": {
+      "get": {
+        "tags": ["Harbor"],
+        "summary": "List repositories (auto-paginated, max 1000)",
+        "operationId": "harborRepositories",
+        "parameters": [
+          { "name": "project", "in": "path", "required": true, "schema": { "type": "string" }, "example": "mycode" },
+          { "$ref": "#/components/parameters/format" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Repository name array (project prefix removed)",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "type": "string" } } } }
+          }
+        }
+      }
+    },
+    "/api/harbor/{project}/repositories/{repository}/tags": {
+      "get": {
+        "tags": ["Harbor"],
+        "summary": "List tags (auto-paginated, max 2000)",
+        "description": "Repository names containing / require double-encoding (%2F).",
+        "operationId": "harborTags",
+        "parameters": [
+          { "name": "project", "in": "path", "required": true, "schema": { "type": "string" }, "example": "mycode" },
+          { "name": "repository", "in": "path", "required": true, "schema": { "type": "string" }, "example": "diagnosis-runtime", "allowReserved": true },
+          { "$ref": "#/components/parameters/format" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tag name array",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "type": "string" } } } }
+          }
+        }
+      }
+    },
+    "/api/harbor/{project}/repositories/{repository}/tags/{tag}/scan": {
+      "post": {
+        "tags": ["Harbor"],
+        "summary": "Trigger image security scan",
+        "operationId": "harborScanTrigger",
+        "parameters": [
+          { "name": "project", "in": "path", "required": true, "schema": { "type": "string" }, "example": "mycode" },
+          { "name": "repository", "in": "path", "required": true, "schema": { "type": "string" }, "example": "myapp", "allowReserved": true },
+          { "name": "tag", "in": "path", "required": true, "schema": { "type": "string" }, "example": "v1.0.0" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Scan triggered",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "status": { "type": "string", "example": "ok" } } } } }
+          },
+          "503": { "description": "Scanning not enabled (Harbor missing Trivy/Clair)" }
+        }
+      },
+      "get": {
+        "tags": ["Harbor"],
+        "summary": "Get image vulnerability scan report",
+        "description": "Returns vulnerability list. Harbor v2 returns structured data, v1 returns raw report. Empty array when no vulnerabilities.",
+        "operationId": "harborScanReport",
+        "parameters": [
+          { "name": "project", "in": "path", "required": true, "schema": { "type": "string" }, "example": "mycode" },
+          { "name": "repository", "in": "path", "required": true, "schema": { "type": "string" }, "example": "myapp", "allowReserved": true },
+          { "name": "tag", "in": "path", "required": true, "schema": { "type": "string" }, "example": "v1.0.0" }
+        ],
+        "responses": {
+          "200": { "description": "Vulnerability report array, empty when clean" },
+          "503": { "description": "Scanning not enabled" }
+        }
+      }
+    },
+
+    "/api/admin/login": {
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Admin login",
+        "description": "Returns Bearer token (24h expiry). Checks database bcrypt password first, falls back to .env when DB is unavailable.",
+        "operationId": "adminLogin",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Login succeeded",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginResult" } } }
+          },
+          "401": { "$ref": "#/components/responses/401" }
+        }
+      }
+    },
+    "/api/admin/password": {
+      "put": {
+        "tags": ["Admin"],
+        "summary": "Change admin password",
+        "description": "Requires old password verification. Clears all old tokens upon change, forcing re-login. New password must be at least 6 characters.",
+        "operationId": "adminChangePassword",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["old_password", "new_password"],
+                "properties": {
+                  "old_password": { "type": "string", "example": "admin123" },
+                  "new_password": { "type": "string", "example": "newpass456", "minLength": 6 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Password changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "example": true },
+                    "message": { "type": "string", "example": "Password updated, please re-login" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "description": "Old password incorrect" }
+        }
+      }
+    },
+    "/api/admin/discover": {
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Auto-discover unmapped Jenkins Jobs",
+        "description": "Scans all Jenkins Jobs, matches Git platform via git remote, returns newly discovered entries and writes them to mapping table. Returns 503 if Jenkins is unavailable.",
+        "operationId": "adminDiscover",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Discovery result",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DiscoverResult" } } }
+          },
+          "401": { "$ref": "#/components/responses/401" },
+          "503": { "description": "Auto-discovery not available (Jenkins unreachable)" }
+        }
+      }
+    },
+    "/api/admin/job_git_map": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "List all Job-Git mappings",
+        "operationId": "adminMapList",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/format" }],
+        "responses": {
+          "200": {
+            "description": "Mapping list + available Git platforms",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "maps": { "type": "array", "items": { "$ref": "#/components/schemas/JobGitMapEntry" } },
+                    "platforms": { "type": "array", "items": { "type": "string" }, "description": "Configured Git platform names" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/401" }
+        }
+      },
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Create a mapping",
+        "operationId": "adminMapCreate",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobGitMapEntry" } } }
+        },
+        "responses": {
+          "200": { "description": "Created successfully, returns {success, entry}" },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "409": { "description": "job_name already exists" }
+        }
+      },
+      "put": {
+        "tags": ["Admin"],
+        "summary": "Update a mapping (matched by _original_job_name)",
+        "operationId": "adminMapUpdate",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  { "$ref": "#/components/schemas/JobGitMapEntry" },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "_original_job_name": { "type": "string", "description": "Original job_name before modification (required)" }
+                    },
+                    "required": ["_original_job_name"]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Updated successfully, returns {success, entry}" },
+          "401": { "$ref": "#/components/responses/401" },
+          "404": { "$ref": "#/components/responses/404" }
+        }
+      },
+      "delete": {
+        "tags": ["Admin"],
+        "summary": "Delete a mapping",
+        "operationId": "adminMapDelete",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "job_name", "in": "query", "required": true,
+            "schema": { "type": "string" },
+            "description": "Job name to delete"
+          }
+        ],
+        "responses": {
+          "200": { "description": "Deleted successfully, returns {success: true}" },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "404": { "$ref": "#/components/responses/404" }
+        }
+      }
+    },
+    "/api/admin/security_checks": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "Query security scan audit records",
+        "description": "Paginated query of ci_security_checks table. Supports filtering by project, check_type, state.",
+        "operationId": "adminSecurityChecks",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "project", "in": "query", "schema": { "type": "string" }, "description": "Project name (fuzzy match)" },
+          { "name": "check_type", "in": "query", "schema": { "type": "string" }, "description": "Check type (sast/secret-scan/sca/iac-audit etc.)" },
+          { "name": "state", "in": "query", "schema": { "type": "string", "enum": ["pending", "success", "failed", "error"] }, "description": "Scan state" },
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "per_page", "in": "query", "schema": { "type": "integer", "default": 20, "maximum": 100 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Scan record list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "checks": { "type": "array", "items": { "type": "object" } },
+                    "total": { "type": "integer" },
+                    "page": { "type": "integer" },
+                    "per_page": { "type": "integer" },
+                    "total_pages": { "type": "integer" },
+                    "filter_opts": {
+                      "type": "object",
+                      "properties": {
+                        "check_types": { "type": "array", "items": { "type": "string" } }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/401" }
+        }
+      }
+    },
+    "/api/admin/platform_versions": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "Get platform API versions and config status",
+        "description": "Returns version numbers, sources (config/json/default), and whether each platform is configured.",
+        "operationId": "adminVersionsList",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Version info",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "versions": {
+                      "type": "object",
+                      "additionalProperties": { "$ref": "#/components/schemas/PlatformVersionItem" }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/401" }
+        }
+      },
+      "put": {
+        "tags": ["Admin"],
+        "summary": "Update platform API versions",
+        "description": "Pass {versions: {gitlab: 'v5', harbor: 'v2.0'}}. Values matching defaults are not persisted.",
+        "operationId": "adminVersionsUpdate",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["versions"],
+                "properties": {
+                  "versions": { "type": "object", "description": "platform name → version", "example": { "gitlab": "v4" } }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Updated successfully, returns {success, versions}" },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" }
+        }
+      }
+    }
+  }
+}
