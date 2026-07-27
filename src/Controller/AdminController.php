@@ -194,7 +194,13 @@ class AdminController extends BaseController
             } catch (\Exception $e) {
                 // cache 不可用时仍返回 token（降级）
             }
-            return $this->output($response, ['token' => $token, 'role' => $loginRole], $request);
+            $rootAdmin = $this->config->getAdminCredentials()['user'] ?? 'admin';
+            return $this->output($response, [
+                'token' => $token,
+                'role' => $loginRole,
+                'user' => $user,
+                'is_root' => ($user === $rootAdmin),
+            ], $request);
         }
         return $this->jsonError($response, 'auth.wrong_credentials', 401);
     }
@@ -538,6 +544,10 @@ class AdminController extends BaseController
                 $rows = $pdo->query("SELECT username, role, systems, updated_at FROM admin_users ORDER BY username")->fetchAll();
             } else {
                 $rows = $pdo->query("SELECT username, role, systems, updated_at FROM admin_users WHERE role != 'admin' ORDER BY username")->fetchAll();
+            }
+            $rootAdmin = $this->config->getAdminCredentials()['user'] ?? 'admin';
+            foreach ($rows as &$row) {
+                $row['is_root'] = ($row['username'] === $rootAdmin);
             }
             return $this->output($response, $rows, $request);
         } catch (\Exception $e) {

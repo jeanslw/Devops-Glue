@@ -6,6 +6,8 @@ const VERSIONS_API  = '/api/admin/platform_versions';
 let platforms = [];
 let token = sessionStorage.getItem('admin_token') || '';
 let currentUserRole = sessionStorage.getItem('admin_role') || '';
+let currentUserName = sessionStorage.getItem('admin_user') || '';
+let currentUserIsRoot = sessionStorage.getItem('admin_is_root') === 'true';
 
 // ═══════════ Auth ═══════════
 function authHeaders() {
@@ -25,14 +27,20 @@ function goToDocs() {
 function doLogout() {
     token = '';
     currentUserRole = '';
+    currentUserName = '';
+    currentUserIsRoot = false;
     sessionStorage.removeItem('admin_token');
     sessionStorage.removeItem('admin_role');
+    sessionStorage.removeItem('admin_user');
+    sessionStorage.removeItem('admin_is_root');
     document.getElementById('login-page').style.display = 'flex';
     document.getElementById('app-page').style.display = 'none';
 }
 
 // 刷新后恢复角色菜单可见性
 (function initRoleMenu() {
+    currentUserName = sessionStorage.getItem('admin_user') || '';
+    currentUserIsRoot = sessionStorage.getItem('admin_is_root') === 'true';
     if (currentUserRole && currentUserRole !== 'admin') {
         var userMenuItem = document.querySelector('[data-tab="users"]');
         if (userMenuItem) userMenuItem.style.display = 'none';
@@ -72,8 +80,12 @@ async function doLogin() {
         if (res.ok && data.token) {
             token = data.token;
             currentUserRole = data.role || '';
+            currentUserName = data.user || '';
+            currentUserIsRoot = data.is_root === true;
             sessionStorage.setItem('admin_token', token);
             if (currentUserRole) sessionStorage.setItem('admin_role', currentUserRole);
+            if (currentUserName) sessionStorage.setItem('admin_user', currentUserName);
+            sessionStorage.setItem('admin_is_root', currentUserIsRoot ? 'true' : 'false');
             // 非 admin 隐藏用户管理菜单
             var userMenuItem = document.querySelector('[data-tab="users"]');
             if (userMenuItem) {
@@ -977,12 +989,23 @@ async function loadUsers() {
         tbody.innerHTML = users.map(u => {
             const time = u.updated_at || '-';
             const isAdmin = u.role === 'admin';
-            const actions = isAdmin
-                ? `<span style="color:#9ca3af;font-size:12px;">${__.t('user.role_admin')}</span>`
-                : `<button class="btn btn-sm btn-edit" onclick='showUserEditForm(${js(u)})'>✏️ ${__.t('common.edit')}</button>
+            const isRoot = u.is_root === true;
+            const isSelf = u.username === currentUserName;
+            let actions = '';
+            if (isSelf || isRoot) {
+                actions = `<span style="color:#9ca3af;font-size:12px;">${__.t('user.role_admin')}</span>`;
+            } else if (isAdmin) {
+                if (currentUserIsRoot) {
+                    actions = `<button class="btn btn-sm btn-del" onclick="deleteUser('${escJs(u.username)}')">🗑 ${__.t('common.delete')}</button>`;
+                } else {
+                    actions = `<span style="color:#9ca3af;font-size:12px;">${__.t('user.role_admin')}</span>`;
+                }
+            } else {
+                actions = `<button class="btn btn-sm btn-edit" onclick='showUserEditForm(${js(u)})'>✏️ ${__.t('common.edit')}</button>
                     <button class="btn btn-sm btn-del" onclick="deleteUser('${escJs(u.username)}')">🗑 ${__.t('common.delete')}</button>`;
+            }
             return `<tr>
-                <td><strong>${esc(u.username)}</strong>${isAdmin ? '' : ''}</td>
+                <td><strong>${esc(u.username)}</strong></td>
                 <td>${esc(u.role)}</td>
                 <td>${esc(u.systems || '-')}</td>
                 <td style="font-size:12px;color:#6b7280;">${esc(time)}</td>
