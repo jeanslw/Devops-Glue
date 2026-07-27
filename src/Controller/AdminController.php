@@ -194,12 +194,11 @@ class AdminController extends BaseController
             } catch (\Exception $e) {
                 // cache 不可用时仍返回 token（降级）
             }
-            $rootAdmin = $this->config->getAdminCredentials()['user'] ?? 'admin';
             return $this->output($response, [
                 'token' => $token,
                 'role' => $loginRole,
                 'user' => $user,
-                'is_root' => ($user === $rootAdmin),
+                'is_root' => ($user === $this->config->getRootAdminUser()),
             ], $request);
         }
         return $this->jsonError($response, 'auth.wrong_credentials', 401);
@@ -545,7 +544,7 @@ class AdminController extends BaseController
             } else {
                 $rows = $pdo->query("SELECT username, role, systems, updated_at FROM admin_users WHERE role != 'admin' ORDER BY username")->fetchAll();
             }
-            $rootAdmin = $this->config->getAdminCredentials()['user'] ?? 'admin';
+            $rootAdmin = $this->config->getRootAdminUser();
             foreach ($rows as &$row) {
                 $row['is_root'] = ($row['username'] === $rootAdmin);
             }
@@ -575,7 +574,7 @@ class AdminController extends BaseController
         }
 
         // 只有根 admin 能创建 admin 角色
-        $rootAdmin = $this->config->getAdminCredentials()['user'] ?? 'admin';
+        $rootAdmin = $this->config->getRootAdminUser();
         if ($role === 'admin') {
             if ($this->currentUser !== $rootAdmin) {
                 return $this->jsonError($response, 'user.cannot_create_admin', 403);
@@ -700,7 +699,7 @@ class AdminController extends BaseController
             }
 
             // 内置根账号（.env ADMIN_USER）任何人都不能删除
-            $rootAdmin = $this->config->getAdminCredentials()['user'] ?? 'admin';
+            $rootAdmin = $this->config->getRootAdminUser();
             if ($targetUser === $rootAdmin) {
                 return $this->jsonError($response, 'user.cannot_delete_root', 403);
             }

@@ -229,12 +229,21 @@ class AppConfig
     }
 
     /**
+     * 根管理员用户名（从 .env ADMIN_USER 读取，默认 'admin'）
+     * 这是唯一的根账号标识，所有权限判断都从这里取，不散落写死
+     */
+    public function getRootAdminUser(): string
+    {
+        return $this->config['admin']['user'] ?? 'admin';
+    }
+
+    /**
      * 管理后台登录凭证（从 .env 读取）
      */
     public function getAdminCredentials(): array
     {
         return [
-            'user'     => $this->config['admin']['user'] ?? 'admin',
+            'user'     => $this->getRootAdminUser(),
             'password' => $this->config['admin']['password'] ?? '',
         ];
     }
