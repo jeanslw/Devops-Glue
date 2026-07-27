@@ -318,12 +318,12 @@ class BuildController extends BaseController
         $tag         = trim($body['tag'] ?? '');
 
         if (empty($sha) || empty($state) || empty($context) || empty($description)) {
-            return $this->jsonError($response, 'sha / state / context / description 均为必填', 400);
+            return $this->jsonError($response, $this->__('build.commit_status_missing_fields'), 400);
         }
 
         $validStates = ['pending', 'success', 'failed', 'error'];
         if (!in_array($state, $validStates, true)) {
-            return $this->jsonError($response, "state 必须为: " . implode(', ', $validStates), 400);
+            return $this->jsonError($response, $this->__('build.commit_status_invalid_state', ['states' => implode(', ', $validStates)]), 400);
         }
 
         // ── 查找 git_platform ──
@@ -343,11 +343,11 @@ class BuildController extends BaseController
         }
 
         if (empty($gitPlatform)) {
-            return $this->jsonError($response, "项目 '{$path}' 未配置 git_platform，无法回写 commit status", 400);
+            return $this->jsonError($response, $this->__('build.commit_status_no_git_platform', ['path' => $path]), 400);
         }
 
         if (!$this->gitRegistry || !$this->gitRegistry->isRegistered($gitPlatform)) {
-            return $this->jsonError($response, "Git 平台 '{$gitPlatform}' 未配置或不可用", 400);
+            return $this->jsonError($response, $this->__('build.git_platform_not_available', ['platform' => $gitPlatform]), 400);
         }
 
         // ── 通过 Git Provider 回写 commit status ──
@@ -428,13 +428,13 @@ class BuildController extends BaseController
         }
 
         if (empty($harborRepo)) {
-            return $this->jsonError($response, "项目 '{$path}' 未配置 harbor_repository", 400);
+            return $this->jsonError($response, $this->__('build.no_harbor_repo', ['path' => $path]), 400);
         }
 
         // 2. 解析 Harbor 仓库信息
         $parts = explode('/', $harborRepo, 2);
         if (count($parts) !== 2) {
-            return $this->jsonError($response, "harbor_repository 格式错误: {$harborRepo}", 400);
+            return $this->jsonError($response, $this->__('build.harbor_repo_format_error', ['repo' => $harborRepo]), 400);
         }
         [$harborProject, $harborRepoName] = $parts;
 
@@ -449,14 +449,14 @@ class BuildController extends BaseController
             $tag = $harborTags[0];
         }
         if (!$tag) {
-            return $this->jsonError($response, '缺少 tag 参数且 Harbor 无可用 tag', 400);
+            return $this->jsonError($response, $this->__('build.no_tag_available'), 400);
         }
 
         // 校验 tag 在 Harbor 中确实存在（防止写入已删除的 tag）
         if ($this->harbor && is_array($harborTags) && !isset($harborTags['error'])) {
             // Harbor 可达：严格校验 tag 是否存在
             if (!in_array($tag, $harborTags)) {
-                return $this->jsonError($response, "Tag '{$tag}' 在 Harbor 仓库 '{$harborRepo}' 中不存在或已被删除", 400);
+                return $this->jsonError($response, $this->__('build.tag_not_found', ['tag' => $tag, 'repo' => $harborRepo]), 400);
             }
         }
         // Harbor 不可达时降级放行：CI 刚 push 完 tag，大概率存在；读取侧 cleanupStaleTags 兜底清理

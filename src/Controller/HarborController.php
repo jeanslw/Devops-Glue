@@ -43,7 +43,7 @@ class HarborController extends BaseController
         $result = $this->harbor->scanArtifact($project, $repository, $tag);
 
         if (isset($result['error']) && strpos($result['error'], '412') !== false) {
-            return $this->jsonError($response, '镜像扫描功能未启用，请联系管理员', 503);
+            return $this->jsonError($response, $this->__('harbor.scan_not_enabled'), 503);
         }
 
         return $this->handleResult($response, $result, $request);
@@ -57,7 +57,7 @@ class HarborController extends BaseController
         $result = $this->harbor->getScanReport($project, $repository, $tag);
 
         if (isset($result['error']) && strpos($result['error'], '412') !== false) {
-            return $this->jsonError($response, '镜像扫描功能未启用，无法获取报告', 503);
+            return $this->jsonError($response, $this->__('harbor.scan_report_not_enabled'), 503);
         }
 
         return $this->handleResult($response, $result, $request);

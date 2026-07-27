@@ -88,6 +88,10 @@ return [
     'map.ci'                      => 'CI System',
 
     // ── Build ──
+    // ── Git ──
+    'git.query_failed' => 'Git query failed',
+
+    // ── Build ──
     'build.scan_failed'     => 'Scan failed',
     'build.query_failed'    => 'Query failed',
     'build.modify_failed'   => 'Modification failed',
@@ -104,10 +108,20 @@ return [
     'build.mode_both'       => 'Jenkins + GitLab CI',
     'build.mode_hint'       => 'Changes take effect immediately. Unavailable options are disabled.',
     'build.mode_saved'      => 'Saved',
+    'build.commit_status_missing_fields' => 'sha / state / context / description are all required',
+    'build.commit_status_invalid_state'  => 'state must be: {states}',
+    'build.commit_status_no_git_platform' => "Project '{path}' has no git_platform configured, cannot write commit status",
+    'build.git_platform_not_available' => "Git platform '{platform}' is not configured or unavailable",
+    'build.no_harbor_repo'       => "Project '{path}' has no harbor_repository configured",
+    'build.harbor_repo_format_error' => 'harbor_repository format error: {repo}',
+    'build.no_tag_available'     => 'Tag parameter is missing and Harbor has no available tags',
+    'build.tag_not_found'        => "Tag '{tag}' not found in Harbor repo '{repo}' or has been deleted",
 
     // ── Harbor ──
     'harbor.trigger_failed' => 'Failed to trigger scan',
     'harbor.report_failed'  => 'Failed to get scan report',
+    'harbor.scan_not_enabled'        => 'Image scanning is not enabled, please contact administrator',
+    'harbor.scan_report_not_enabled' => 'Image scanning is not enabled, cannot get report',
 
     // ── Platform Versions ──
     'platform.versions_empty' => 'versions cannot be empty',
@@ -200,12 +214,18 @@ return [
     'form.placeholder_job_name'  => 'e.g. java/registry',
     'form.placeholder_git_remote'=> 'e.g. http://git.company.com/project.git',
     'form.placeholder_project_path' => 'e.g. group/project',
+    'form.placeholder_project_id'    => 'Number or empty',
+    'form.placeholder_web_url'       => 'Project homepage URL',
     'form.placeholder_harbor'    => 'e.g. project/repo',
+    'form.placeholder_username'  => 'username',
+    'form.placeholder_password'  => 'At least 6 characters',
     'form.placeholder_current_password' => 'Enter current password',
     'form.placeholder_new_password'     => 'At least 6 characters',
     'form.placeholder_confirm_password' => 'Enter again',
+    'form.commit_sha'            => 'Commit SHA',
 
     // ── Frontend JS ──
+    'js.username_required'      => 'Username required',
     'js.login_failed'           => 'Login failed',
     'js.scan_in_progress'       => 'Scan in progress, please wait…',
     'js.scanning'               => 'Scanning, please wait…',

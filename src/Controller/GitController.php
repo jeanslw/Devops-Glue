@@ -21,7 +21,7 @@ class GitController extends BaseController
             $branches = $this->git->getBranchesForJob($path);
             return $this->output($response, $branches, $request);
         } catch (\Exception $e) {
-            return $this->jsonError($response, $e->getMessage(), 404);
+            return $this->jsonError($response, $this->__('git.query_failed'), 404);
         }
     }
 }
