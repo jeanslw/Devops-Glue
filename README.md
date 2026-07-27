@@ -63,9 +63,12 @@ See [docs/ADMIN_MANUAL.md](docs/ADMIN_MANUAL.md) for full environment variable r
 |---|---|
 | [docs/API.md](docs/API.md) | **API Reference** — endpoints, request/response formats, quick test commands |
 | [docs/ADMIN_MANUAL.md](docs/ADMIN_MANUAL.md) | **Admin Manual** — environment variables, mapping config, custom Git platform integration |
-| [docs/technical-guide.md](docs/technical-guide.md) | **Technical Guide** — architecture, request lifecycle, database design, data flows, troubleshooting |
+| [docs/技术文档.md](docs/技术文档.md) | **技术细节文档（中文）** — 架构、请求生命周期、数据库设计、数据流、故障排查 |
+| [docs/technical-guide.md](docs/technical-guide.md) | **Technical Guide (English)** — architecture, request lifecycle, database design, data flows, troubleshooting |
 | [docs/用户说明.md](docs/用户说明.md) | **User Guide** — end-user instructions (Chinese) |
-| [CHANGELOG.md](CHANGELOG.md) | Release notes and version history |
+| [docs/常见问题.md](docs/常见问题.md) | **常见问题 FAQ（中文）** — 部署、配置、构建、认证等常见问题 |
+| [docs/FAQ.md](docs/FAQ.md) | **FAQ (English)** — deployment, configuration, builds, auth, and more |
+| [docs/CHANGELOG.md](docs/CHANGELOG.md) | Release notes and version history |
 
 ## Related Projects
 
