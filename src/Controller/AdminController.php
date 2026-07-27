@@ -697,8 +697,8 @@ class AdminController extends BaseController
             if ($targetUser === $this->currentUser) {
                 return $this->jsonError($response, 'user.cannot_delete_self', 403);
             }
-            // 非 admin 不能删除 admin 用户
-            if ($this->currentRole !== 'admin' && $target['role'] === 'admin') {
+            // 只有根 admin 可以删除其他 admin 用户
+            if ($target['role'] === 'admin' && $this->currentUser !== $rootAdmin) {
                 return $this->jsonError($response, 'user.cannot_delete_admin', 403);
             }
 
