@@ -306,6 +306,7 @@ return [
     'user.username_exists' => 'Username already exists',
     'user.not_found'    => 'User not found',
     'user.invalid_username' => 'Invalid username',
+    'user.role_super_admin' => 'Super Admin',
     'user.role_deployer' => 'Deployer',
     'user.role_viewer'   => 'Viewer',
     'user.role_admin'    => 'Admin',

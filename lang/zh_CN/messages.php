@@ -307,6 +307,7 @@ return [
     'user.username_exists' => '用户名已存在',
     'user.not_found'    => '用户不存在',
     'user.invalid_username' => '无效的用户名',
+    'user.role_super_admin' => '超级管理员',
     'user.role_deployer' => '部署者',
     'user.role_viewer'   => '只读',
     'user.role_admin'    => '管理员',

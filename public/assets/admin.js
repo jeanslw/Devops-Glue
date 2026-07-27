@@ -977,6 +977,11 @@ async function loadSecurityChecks() {
 }
 
 // ═══════════ 用户管理 ═══════════
+function roleLabel(user) {
+    if (user.is_root) return '👑 ' + __.t('user.role_super_admin');
+    return __.t('user.role_' + user.role) || user.role;
+}
+
 async function loadUsers() {
     document.getElementById('user-msg').textContent = '';
     try {
@@ -997,7 +1002,9 @@ async function loadUsers() {
             const isRoot = u.is_root === true;
             const isSelf = u.username === currentUserName;
             let actions = '';
-            if (isSelf || isRoot) {
+            if (isRoot) {
+                actions = `<span style="color:#9ca3af;font-size:12px;">${__.t('user.role_super_admin')}</span>`;
+            } else if (isSelf) {
                 actions = `<span style="color:#9ca3af;font-size:12px;">${__.t('user.role_admin')}</span>`;
             } else if (isAdmin) {
                 if (currentUserIsRoot) {
@@ -1011,7 +1018,7 @@ async function loadUsers() {
             }
             return `<tr>
                 <td><strong>${esc(u.username)}</strong></td>
-                <td>${esc(u.role)}</td>
+                <td>${roleLabel(u)}</td>
                 <td>${esc(u.systems || '-')}</td>
                 <td style="font-size:12px;color:#6b7280;">${esc(time)}</td>
                 <td style="white-space:nowrap">${actions}</td>
