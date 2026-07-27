@@ -1,18 +1,20 @@
-# Devops-Glue API v2.3.2
+# Devops-Glue API v2.4.0
 
 > **不是大厂的遥控器，是小团队的瑞士军刀。**
 
-Devops-Glue 是一套为小企业打造的 DevOps 工具链集成 API，基于 Slim4 框架实现。一套接口，统一管理 Jenkins + GitLab CI 双通道、GitLab / Gitee / GitHub / Gitea 多平台、Harbor 镜像仓库，从 CI 构建到 CD 部署全流程覆盖。
+Devops-Glue 是一套为小企业打造的 DevOps 工具链集成 API，基于 Slim4 框架实现。一套接口，统一管理 Jenkins + GitLab CI 双通道、GitLab / Gitee / GitHub / Gitea 多平台、Harbor 镜像仓库，从 CI 构建到 CD 部署全流程覆盖。支持中英双语界面，角色权限分级管理。
 
 ![系统概览](system_info.png)
 ![运行状态](system_running.png)
 
 ## 核心特性
 
+- **国际化 (i18n)** — 中文 / English 双语界面，基于 `symfony/translation` 实现，`?lang=` 即时切换
 - **双链路构建** — Jenkins + GitLab CI 无缝切换或共存，统一 API 入口
 - **多平台统一接入** — GitLab · GitHub · Gitee · Gitea，自建与 SaaS 无差别对接
 - **全链路映射** — Pipeline/Job ↔ Git 仓库 ↔ Harbor 镜像，构建→代码→制品自动关联
 - **安全扫描审计** — SAST、密钥扫描、依赖漏洞等结果以 Commit Status 回写 Git 平台，可追溯可审计
+- **角色权限管理** — `super_admin` > `admin` > `deployer` > `viewer` 四级权限，根管理员不可删除
 - **可视化管理后台** — 服务监测、映射配置、安全扫描、用户管理，表单操作零配置上手
 - **零配置启动** — SQLite 默认零依赖，MySQL / MariaDB 一键切换
 
