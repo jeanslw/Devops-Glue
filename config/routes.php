@@ -5,6 +5,7 @@ use App\Controller\MainController;
 use App\Controller\HarborController;
 use App\Controller\AdminController;
 use App\Controller\BuildController;
+use App\Service\I18nService;
 
 // 管理页面
 $app->get('/admin', function ($request, $response) {
@@ -19,6 +20,15 @@ $app->group('/api', function (RouteCollectorProxy $api) use ($app) {
 
     // 健康检查
     $api->map(['GET'], '/health', [MainController::class, 'health']);
+
+    // 国际化：获取指定语言的语言包（供前端使用）
+    $api->get('/i18n/{locale}', function ($request, $response, $args) use ($app) {
+        $locale = $args['locale'] ?? 'zh_CN';
+        $i18n = $app->getContainer()->get(I18nService::class);
+        $messages = $i18n->getAll($locale);
+        $response->getBody()->write(json_encode($messages, JSON_UNESCAPED_UNICODE));
+        return $response->withHeader('Content-Type', 'application/json');
+    });
 
     // 简单鉴权 helper（闭包内复用）
     $checkAuth = function ($request) {
@@ -64,11 +74,26 @@ $app->group('/api', function (RouteCollectorProxy $api) use ($app) {
     // OpenAPI 规范 —— 需登录
     $api->get('/openapi.json', function ($request, $response) use ($checkAuth, $app) {
         if (!$checkAuth($request)) {
-            $response->getBody()->write(json_encode(['code' => 401, 'message' => '请先登录 API 文档']));
+            $i18n = $app->getContainer()->get(I18nService::class);
+            $response->getBody()->write(json_encode(['code' => 401, 'message' => $i18n->trans('auth.please_login_first')]));
             return $response->withStatus(401)->withHeader('Content-Type', 'application/json');
         }
 
-        $specFile = __DIR__ . '/../templates/openapi.json';
+        $lang = $request->getQueryParams()['lang'] ?? '';
+        $map = ['zh-CN' => 'zh', 'zh' => 'zh', 'en' => 'en'];
+        $suffix = $map[$lang] ?? '';
+        if (!$suffix) {
+            $accept = $request->getHeaderLine('Accept-Language');
+            if (stripos($accept, 'zh') !== false) {
+                $suffix = 'zh';
+            } elseif (stripos($accept, 'en') !== false) {
+                $suffix = 'en';
+            }
+        }
+        $specFile = __DIR__ . '/../templates/openapi' . ($suffix ? '.' . $suffix : '') . '.json';
+        if (!file_exists($specFile)) {
+            $specFile = __DIR__ . '/../templates/openapi.json';
+        }
         $spec = file_exists($specFile)
             ? json_decode(file_get_contents($specFile), true)
             : ['openapi' => '3.0.3', 'info' => ['title' => 'Devops-Glue API'], 'paths' => []];
@@ -88,7 +113,7 @@ $app->group('/api', function (RouteCollectorProxy $api) use ($app) {
 
         $spec['servers'] = [[
             'url'         => $apiBaseUrl,
-            'description' => '当前环境',
+            'description' => $app->getContainer()->get(I18nService::class)->trans('admin.current_env'),
         ]];
 
         $response->getBody()->write(json_encode($spec, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
@@ -115,6 +140,10 @@ $app->group('/api', function (RouteCollectorProxy $api) use ($app) {
         $admin->map(['GET'], '/security_checks', [AdminController::class, 'securityChecksList']);
         $admin->map(['GET'], '/build_mode', [AdminController::class, 'getBuildMode']);
         $admin->map(['PUT'], '/build_mode', [AdminController::class, 'updateBuildMode']);
+        $admin->map(['GET'], '/users', [AdminController::class, 'userList']);
+        $admin->map(['POST'], '/users', [AdminController::class, 'userCreate']);
+        $admin->map(['PUT'], '/users/{username}', [AdminController::class, 'userUpdate']);
+        $admin->map(['DELETE'], '/users/{username}', [AdminController::class, 'userDelete']);
     });
 
     $api->group('/build', function (RouteCollectorProxy $build) {

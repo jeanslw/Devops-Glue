@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>管理后台 — Devops-Glue</title>
+    <title data-i18n="admin.title">管理后台 — Devops-Glue</title>
     <link rel="icon" href="/favicon.ico" type="image/x-icon">
     <link rel="stylesheet" href="/assets/admin.css">
 </head>
@@ -12,12 +12,18 @@
 <!-- ═══════════ 登录 ═══════════ -->
 <div id="login-page" class="login-wrap">
     <div class="login-card">
-        <h3>🔐 管理登录</h3>
-        <p class="sub">Devops-Glue 管理后台</p>
-        <input id="login-user" placeholder="账号" autocomplete="username">
-        <input id="login-pass" type="password" placeholder="密码" autocomplete="current-password">
-        <button class="btn btn-pri" onclick="doLogin()">登 录</button>
+        <h3 data-i18n="admin.login_title">🔐 管理登录</h3>
+        <p class="sub" data-i18n="admin.login_subtitle">Devops-Glue 管理后台</p>
+        <input id="login-user" data-i18n-placeholder="admin.account_placeholder" placeholder="账号" autocomplete="username">
+        <input id="login-pass" type="password" data-i18n-placeholder="admin.password_placeholder" placeholder="密码" autocomplete="current-password">
+        <button class="btn btn-pri" onclick="doLogin()" data-i18n="auth.login">登 录</button>
         <div class="login-err" id="login-err"></div>
+    </div>
+    <div style="position:fixed;top:16px;right:16px;z-index:100;display:inline-flex;align-items:center;gap:4px;">
+        🌐 <select id="lang-select-login" onchange="__.switchTo(this.value);document.getElementById('lang-select').value=this.value;" style="border:1px solid rgba(255,255,255,0.5);border-radius:6px;padding:4px 10px;font-size:13px;background:rgba(255,255,255,0.2);color:#fff;cursor:pointer;backdrop-filter:blur(4px);">
+            <option value="zh-CN" style="color:#333;background:#fff;">中文</option>
+            <option value="en" style="color:#333;background:#fff;">English</option>
+        </select>
     </div>
 </div>
 
@@ -25,11 +31,17 @@
 <div id="app-page" style="display:none;">
 
     <div class="topbar">
-        <a href="/" class="logo"><img src="/logo.png" alt="Logo" style="height:32px;width:auto;vertical-align:middle;"> Devops-Glue 管理后台</a>
+        <a href="/" class="logo"><img src="/logo.png" alt="Logo" style="height:32px;width:auto;vertical-align:middle;"> <span data-i18n="admin.login_subtitle">管理后台</span></a>
         <div class="top-right">
-            <a href="/">🏠 首页</a>
-            <a href="#" onclick="goToDocs()">📖 API 文档</a>
-            <a href="#" onclick="doLogout()">🚪 退出</a>
+            <span class="lang-switch" style="margin-right:12px;font-size:13px;color:#6b7280;display:inline-flex;align-items:center;gap:4px;">
+                🌐 <select id="lang-select" onchange="__.switchTo(this.value)" style="border:1px solid #9ca3af;border-radius:6px;padding:3px 8px;font-size:13px;background:#fff;color:#111827;cursor:pointer;">
+                    <option value="zh-CN" style="color:#111827;">中文</option>
+                    <option value="en" style="color:#111827;">English</option>
+                </select>
+            </span>
+            <a href="/" data-i18n="admin.home">🏠 首页</a>
+            <a href="#" onclick="goToDocs()" data-i18n="admin.api_docs">📖 API 文档</a>
+            <a href="#" onclick="doLogout()" data-i18n="auth.logout">🚪 退出</a>
         </div>
     </div>
 
@@ -37,23 +49,26 @@
         <!-- 侧栏 -->
         <div class="sidebar">
             <div class="menu-item active" data-tab="monitor" onclick="switchTab('monitor')">
-                <span class="menu-icon">📡</span> 服务监测
+                <span class="menu-icon">📡</span> <span data-i18n="admin.sidebar_monitor">服务监测</span>
             </div>
             <div class="menu-item" data-tab="mapping" onclick="switchTab('mapping')">
-                <span class="menu-icon">📋</span> 映射管理
+                <span class="menu-icon">📋</span> <span data-i18n="admin.sidebar_mapping">映射管理</span>
             </div>
             <div class="menu-item" data-tab="security" onclick="switchTab('security')">
-                <span class="menu-icon">🛡️</span> 安全扫描
+                <span class="menu-icon">🛡️</span> <span data-i18n="admin.sidebar_security">安全扫描</span>
             </div>
             <div class="menu-item" data-tab="versions" onclick="switchTab('versions')">
-                <span class="menu-icon">🔧</span> 对接版本
+                <span class="menu-icon">🔧</span> <span data-i18n="admin.sidebar_versions">对接版本</span>
             </div>
             <div class="menu-div"></div>
             <div class="menu-item" data-tab="mode" onclick="switchTab('mode')">
-                <span class="menu-icon">🔧</span> 配置模式
+                <span class="menu-icon">🔧</span> <span data-i18n="admin.sidebar_mode">配置模式</span>
+            </div>
+            <div class="menu-item" data-tab="users" onclick="switchTab('users')">
+                <span class="menu-icon">👤</span> <span data-i18n="admin.sidebar_users">用户管理</span>
             </div>
             <div class="menu-item" data-tab="password" onclick="switchTab('password')">
-                <span class="menu-icon">🔑</span> 修改密码
+                <span class="menu-icon">🔑</span> <span data-i18n="admin.sidebar_password">修改密码</span>
             </div>
         </div>
 
@@ -66,45 +81,45 @@
             <!-- ═══ 服务监测 Tab ═══ -->
             <div id="tab-monitor">
                 <!-- 数据概览通栏 -->
-                <div class="section-banner"><span>📊 数据概览</span></div>
+                <div class="section-banner"><span>📊 <span data-i18n="monitor.data_overview">数据概览</span></span></div>
                 <!-- 统计卡片 -->
                 <div class="stats-row" style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
-                    <div class="stat-card"><div class="stat-num" id="stat-total">—</div><div class="stat-label">总映射数</div></div>
-                    <div class="stat-card"><div class="stat-num" id="stat-active">—</div><div class="stat-label">活跃项目</div></div>
-                    <div class="stat-card"><div class="stat-num" id="stat-platforms">—</div><div class="stat-label">Git 平台</div></div>
-                    <div class="stat-card"><div class="stat-num" id="stat-repos">—</div><div class="stat-label">镜像仓库</div></div>
+                    <div class="stat-card"><div class="stat-num" id="stat-total">—</div><div class="stat-label" data-i18n="map.total">总映射数</div></div>
+                    <div class="stat-card"><div class="stat-num" id="stat-active">—</div><div class="stat-label" data-i18n="map.active">活跃项目</div></div>
+                    <div class="stat-card"><div class="stat-num" id="stat-platforms">—</div><div class="stat-label" data-i18n="map.git_platforms">Git 平台</div></div>
+                    <div class="stat-card"><div class="stat-num" id="stat-repos">—</div><div class="stat-label" data-i18n="map.image_repos">镜像仓库</div></div>
                 </div>
 
                 <!-- 服务监测通栏 -->
-                <div class="section-banner"><span>📡 服务监测</span></div>
+                <div class="section-banner"><span>📡 <span data-i18n="monitor.service_check">服务监测</span></span></div>
 
                 <div class="monitor-grid" id="monitor-grid">
                     <div class="monitor-card" id="card-jenkins">
-                        <h4><span class="dot dot-load" id="dot-jenkins"></span> Jenkins</h4>
+                        <h4><span class="dot dot-load" id="dot-jenkins"></span> <span data-i18n="monitor.jenkins">Jenkins</span></h4>
                         <div class="svc-row parent">
                             <span class="svc-icon" id="icon-jenkins">⏳</span>
                             <span class="svc-name" id="name-jenkins" data-base="Jenkins">Jenkins</span>
-                            <span class="svc-stat" id="stat-jenkins">检测中…</span>
+                            <span class="svc-stat" id="stat-jenkins" data-i18n="common.detecting">检测中…</span>
                         </div>
                     </div>
 
                     <div class="monitor-card" id="card-git">
-                        <h4><span class="dot dot-load" id="dot-git"></span> Git 平台</h4>
+                        <h4><span class="dot dot-load" id="dot-git"></span> <span data-i18n="monitor.git_platforms">Git 平台</span></h4>
                         <div id="git-rows">
                             <div class="svc-row parent">
                                 <span class="svc-icon">⏳</span>
-                                <span class="svc-name">Git 平台</span>
-                                <span class="svc-stat">检测中…</span>
+                                <span class="svc-name" data-i18n="monitor.git_platforms">Git 平台</span>
+                                <span class="svc-stat" data-i18n="common.detecting">检测中…</span>
                             </div>
                         </div>
                     </div>
 
                     <div class="monitor-card" id="card-harbor">
-                        <h4><span class="dot dot-load" id="dot-harbor"></span> Harbor</h4>
+                        <h4><span class="dot dot-load" id="dot-harbor"></span> <span data-i18n="monitor.harbor">Harbor</span></h4>
                         <div class="svc-row parent">
                             <span class="svc-icon" id="icon-harbor">⏳</span>
                             <span class="svc-name" id="name-harbor" data-base="Harbor">Harbor</span>
-                            <span class="svc-stat" id="stat-harbor">检测中…</span>
+                            <span class="svc-stat" id="stat-harbor" data-i18n="common.detecting">检测中…</span>
                         </div>
                     </div>
                 </div>
@@ -115,16 +130,16 @@
 
                 <!-- 工具栏 -->
                 <div class="toolbar" style="justify-content:space-between;">
-                    <h3 style="flex:1;">映射配置</h3>
+                    <h3 style="flex:1;" data-i18n="map.config">映射配置</h3>
                     <div style="flex:2;display:flex;justify-content:center;">
                         <div class="view-toggle" id="view-toggle">
-                            <button class="btn active" data-view="table" onclick="switchMapView('table')">📋 表格</button>
-                            <button class="btn" data-view="topology" onclick="switchMapView('topology')">🗺️ 拓扑图</button>
+                            <button class="btn active" data-view="table" onclick="switchMapView('table')">📋 <span data-i18n="map.table_view">表格</span></button>
+                            <button class="btn" data-view="topology" onclick="switchMapView('topology')">🗺️ <span data-i18n="map.topology_view">拓扑图</span></button>
                         </div>
                     </div>
                     <div style="flex:1;display:flex;gap:8px;justify-content:flex-end;">
-                        <button class="btn btn-pri" onclick="showForm()">＋ 新增映射</button>
-                        <button class="btn btn-discover" onclick="doDiscover()">🔍 自动发现</button>
+                        <button class="btn btn-pri" onclick="showForm()">＋ <span data-i18n="map.new">新增映射</span></button>
+                        <button class="btn btn-discover" onclick="doDiscover()">🔍 <span data-i18n="map.auto_discover">自动发现</span></button>
                     </div>
                 </div>
 
@@ -132,88 +147,88 @@
                 <div id="table-view">
                     <!-- 筛选栏 -->
                     <div class="filter-bar" style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;align-items:center;">
-                        <input id="map-search" type="text" placeholder="搜索 Job/仓库/Remote…" style="flex:0 1 300px;min-width:160px;padding:7px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" oninput="onFilterChange()">
+                        <input id="map-search" type="text" data-i18n-placeholder="map.search_placeholder" placeholder="搜索 Job/仓库/Remote…" style="flex:0 1 300px;min-width:160px;padding:7px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" oninput="onFilterChange()">
                         <select id="map-provider-filter" onchange="onFilterChange()" style="padding:7px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;min-width:110px;">
-                            <option value="">全部构建源</option>
+                            <option value="" data-i18n="map.all_build_sources">全部构建源</option>
                             <option value="jenkins">⚡ Jenkins</option>
                             <option value="gitlab_ci">🐺 GitLab CI</option>
                         </select>
                         <select id="map-platform-filter" onchange="onFilterChange()" style="padding:7px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;min-width:110px;">
-                            <option value="">全部平台</option>
+                            <option value="" data-i18n="map.all_platforms">全部平台</option>
                         </select>
                     </div>
 
                     <div class="card">
-                        <div id="loading-map" style="text-align:center;padding:40px;color:#9ca3af;">加载中…</div>
+                        <div id="loading-map" style="text-align:center;padding:40px;color:#9ca3af;" data-i18n="common.loading">加载中…</div>
                         <div id="table-wrap" style="display:none;overflow-x:auto;">
                             <table>
                                 <thead>
-                                    <tr><th>Job 名称</th><th>构建源</th><th>Git 平台</th><th>Git Remote</th><th>Harbor 仓库</th><th>状态</th><th>操作</th></tr>
+                                    <tr><th data-i18n="map.job_name">Job 名称</th><th data-i18n="map.build_source">构建源</th><th data-i18n="map.git_platform">Git 平台</th><th data-i18n="map.git_remote">Git Remote</th><th data-i18n="map.harbor_repo">Harbor 仓库</th><th data-i18n="map.status">状态</th><th data-i18n="map.actions">操作</th></tr>
                                 </thead>
                                 <tbody id="map-tbody"></tbody>
                             </table>
                             <!-- 分页 -->
                             <div id="map-pagination" style="display:flex;justify-content:center;align-items:center;gap:8px;padding:12px 0;font-size:13px;"></div>
                         </div>
-                        <div id="empty-msg" style="display:none;text-align:center;padding:40px;color:#9ca3af;">
+                        <div id="empty-msg" style="display:none;text-align:center;padding:40px;color:#9ca3af;" data-i18n="map.no_data">
                             暂无映射配置，点击上方按钮新增
                         </div>
                     </div>
 
-                    <!-- 表单面板（新增/编辑时在列表下方展开） -->
+                    <!-- 表单面板 -->
                     <div class="form-panel" id="form-panel">
-                        <h3 id="form-title">新增映射</h3>
+                        <h3 id="form-title" data-i18n="map.new">新增映射</h3>
                         <form id="map-form" onsubmit="submitForm(event)">
                             <input type="hidden" id="original-name">
                             <div class="form-grid">
                                 <div>
-                                    <label><span class="req">*</span> Job 名称</label>
-                                    <input id="f-job_name" placeholder="例: java/registry" required>
+                                    <label><span class="req">*</span> <span data-i18n="form.job_name">Job 名称</span></label>
+                                    <input id="f-job_name" data-i18n-placeholder="form.placeholder_job_name" placeholder="例: java/registry" required>
                                 </div>
                                 <div>
-                                    <label>Git 平台</label>
+                                    <label data-i18n="form.git_platform">Git 平台</label>
                                     <select id="f-git_platform"></select>
                                 </div>
                                 <div>
-                                    <label>Build 系统</label>
+                                    <label data-i18n="form.build_system">Build 系统</label>
                                     <select id="f-build_provider">
-                                        <option value="">— 请选择 —</option>
+                                        <option value="" data-i18n="form.please_select">— 请选择 —</option>
                                         <option value="jenkins">jenkins</option>
                                         <option value="gitlab_ci">gitlab_ci</option>
                                     </select>
                                 </div>
                                 <div>
-                                    <label>状态</label>
+                                    <label data-i18n="form.status_field">状态</label>
                                     <select id="f-status">
-                                        <option value="pending">待启用</option>
-                                        <option value="active">启用</option>
-                                        <option value="disabled">禁用</option>
+                                        <option value="pending" data-i18n="common.pending">待启用</option>
+                                        <option value="active" data-i18n="common.enabled">启用</option>
+                                        <option value="disabled" data-i18n="common.disabled">禁用</option>
                                     </select>
                                 </div>
                                 <div class="full">
-                                    <label>Git Remote URL</label>
-                                    <input id="f-git_remote" placeholder="例: http://git.company.com/project.git">
+                                    <label data-i18n="form.git_remote_url">Git Remote URL</label>
+                                    <input id="f-git_remote" data-i18n-placeholder="form.placeholder_git_remote" placeholder="例: http://git.company.com/project.git">
                                 </div>
                                 <div>
-                                    <label>Project ID</label>
+                                    <label data-i18n="form.project_id">Project ID</label>
                                     <input id="f-project_id" placeholder="数字或空">
                                 </div>
                                 <div class="full">
-                                    <label>Web URL</label>
+                                    <label data-i18n="form.web_url">Web URL</label>
                                     <input id="f-web_url" placeholder="项目主页链接">
                                 </div>
                                 <div>
-                                    <label>项目路径</label>
-                                    <input id="f-current_path" placeholder="例: group/project">
+                                    <label data-i18n="form.project_path">项目路径</label>
+                                    <input id="f-current_path" data-i18n-placeholder="form.placeholder_project_path" placeholder="例: group/project">
                                 </div>
                                 <div>
-                                    <label>Harbor 仓库</label>
-                                    <input id="f-harbor_repository" placeholder="例: project/repo">
+                                    <label data-i18n="form.harbor_repository">Harbor 仓库</label>
+                                    <input id="f-harbor_repository" data-i18n-placeholder="form.placeholder_harbor" placeholder="例: project/repo">
                                 </div>
                             </div>
                             <div class="form-actions">
-                                <button type="submit" class="btn btn-save">💾 保存</button>
-                                <button type="button" class="btn btn-cancel" onclick="hideForm()">取消</button>
+                                <button type="submit" class="btn btn-save">💾 <span data-i18n="common.save">保存</span></button>
+                                <button type="button" class="btn btn-cancel" onclick="hideForm()" data-i18n="common.cancel">取消</button>
                             </div>
                         </form>
                     </div>
@@ -221,12 +236,12 @@
 
                 <!-- 拓扑视图 -->
                 <div id="topo-view" style="display:none;">
-                    <div id="topo-loading" style="text-align:center;padding:60px;color:#9ca3af;">加载中…</div>
+                    <div id="topo-loading" style="text-align:center;padding:60px;color:#9ca3af;" data-i18n="common.loading">加载中…</div>
                     <div id="topo-grid" style="display:none;"></div>
                     <div id="topo-pagination" style="display:none;justify-content:center;align-items:center;gap:8px;padding:12px 0;font-size:13px;"></div>
                     <div id="topo-empty" style="display:none;text-align:center;padding:60px;color:#9ca3af;">
-                        <p style="font-size:15px;">暂无映射数据</p>
-                        <p style="font-size:13px;margin-top:6px;">请先通过「表格」视图新增或自动发现映射关系</p>
+                        <p style="font-size:15px;" data-i18n="map.no_data_topo">暂无映射数据</p>
+                        <p style="font-size:13px;margin-top:6px;" data-i18n="map.no_data_topo_hint">请先通过「表格」视图新增或自动发现映射关系</p>
                     </div>
                 </div>
 
@@ -234,21 +249,21 @@
 
             <!-- ═══ API 版本 Tab ═══ -->
             <div id="tab-versions" style="display:none;">
-                <div class="toolbar"><h3>🔧 平台对接版本配置</h3></div>
+                <div class="toolbar"><h3 data-i18n="platform.config">🔧 平台对接版本配置</h3></div>
                 <div class="card">
-                    <p style="font-size:13px;color:#6b7280;margin-bottom:16px;">
+                    <p style="font-size:13px;color:#6b7280;margin-bottom:16px;" data-i18n="platform.hint">
                         以下版本号用于构建各平台的 API 请求路径（如 <code>/api/v4</code>）。
                         修改后立即生效，留空则恢复默认值。GitHub 版本通过 HTTP Header 传递，仅影响显示。
                     </p>
-                    <div id="ver-loading" style="text-align:center;padding:30px;color:#9ca3af;">加载中…</div>
+                    <div id="ver-loading" style="text-align:center;padding:30px;color:#9ca3af;" data-i18n="common.loading">加载中…</div>
                     <div id="ver-table-wrap" style="display:none;">
                         <table>
-                            <thead><tr><th>平台</th><th>默认值</th><th>来源</th><th>当前版本</th><th>说明</th></tr></thead>
+                            <thead><tr><th data-i18n="platform.platform">平台</th><th data-i18n="platform.default">默认值</th><th data-i18n="platform.source">来源</th><th data-i18n="platform.current">当前版本</th><th data-i18n="platform.note">说明</th></tr></thead>
                             <tbody id="ver-tbody"></tbody>
                         </table>
                         <div style="margin-top:16px;text-align:right;">
-                            <button class="btn btn-save" onclick="saveVersions()">💾 保存</button>
-                            <span id="ver-status" style="font-size:13px;color:#16a34a;margin-left:12px;display:none;">已保存</span>
+                            <button class="btn btn-save" onclick="saveVersions()">💾 <span data-i18n="common.save">保存</span></button>
+                            <span id="ver-status" style="font-size:13px;color:#16a34a;margin-left:12px;display:none;" data-i18n="build.mode_saved">已保存</span>
                         </div>
                     </div>
                 </div>
@@ -256,80 +271,129 @@
 
             <!-- ═══ 安全扫描 Tab ═══ -->
             <div id="tab-security" style="display:none;">
-                <div class="toolbar"><h3>🛡️ 安全扫描结果</h3></div>
+                <div class="toolbar"><h3 data-i18n="security.scan_results">🛡️ 安全扫描结果</h3></div>
 
                 <!-- 筛选栏 -->
                 <div class="filter-bar" style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;align-items:center;">
-                    <input id="sec-search-project" type="text" placeholder="搜索项目…" style="flex:1;min-width:180px;padding:7px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" oninput="secOnFilterChange()">
+                    <input id="sec-search-project" type="text" data-i18n-placeholder="security.search_placeholder" placeholder="搜索项目…" style="flex:1;min-width:180px;padding:7px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" oninput="secOnFilterChange()">
                     <select id="sec-filter-type" onchange="secOnFilterChange()" style="padding:7px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;min-width:120px;">
-                        <option value="">全部类型</option>
+                        <option value="" data-i18n="map.all_types">全部类型</option>
                     </select>
                     <select id="sec-filter-state" onchange="secOnFilterChange()" style="padding:7px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;min-width:120px;">
-                        <option value="">全部状态</option>
-                        <option value="success">✅ 通过</option>
-                        <option value="failed">❌ 失败</option>
-                        <option value="error">⚠️ 错误</option>
-                        <option value="pending">⏳ 待处理</option>
+                        <option value="" data-i18n="map.all_status">全部状态</option>
+                        <option value="success" data-i18n="security.passed">✅ 通过</option>
+                        <option value="failed" data-i18n="security.failed">❌ 失败</option>
+                        <option value="error" data-i18n="security.error">⚠️ 错误</option>
+                        <option value="pending" data-i18n="security.pending">⏳ 待处理</option>
                     </select>
                 </div>
 
                 <div class="card">
-                    <div id="sec-loading" style="text-align:center;padding:40px;color:#9ca3af;">加载中…</div>
+                    <div id="sec-loading" style="text-align:center;padding:40px;color:#9ca3af;" data-i18n="common.loading">加载中…</div>
                     <div id="sec-table-wrap" style="display:none;overflow-x:auto;">
                         <table>
                             <thead>
-                                <tr><th>时间</th><th>项目</th><th>类型</th><th>状态</th><th>标签</th><th>描述</th><th>Commit SHA</th></tr>
+                                <tr><th data-i18n="security.time">时间</th><th data-i18n="security.project">项目</th><th data-i18n="security.type">类型</th><th data-i18n="map.status">状态</th><th data-i18n="security.tag">标签</th><th data-i18n="security.description">描述</th><th>Commit SHA</th></tr>
                             </thead>
                             <tbody id="sec-tbody"></tbody>
                         </table>
                         <div id="sec-pagination" style="display:flex;justify-content:center;align-items:center;gap:8px;padding:12px 0;font-size:13px;"></div>
                     </div>
-                    <div id="sec-empty" style="display:none;text-align:center;padding:40px;color:#9ca3af;">暂无扫描记录</div>
+                    <div id="sec-empty" style="display:none;text-align:center;padding:40px;color:#9ca3af;" data-i18n="security.no_records">暂无扫描记录</div>
                 </div>
             </div>
 
             <!-- ═══ 配置模式 Tab ═══ -->
             <div id="tab-mode" style="display:none;">
-                <div class="toolbar"><h3>🔧 配置模式</h3></div>
+                <div class="toolbar"><h3 data-i18n="admin.sidebar_mode">🔧 配置模式</h3></div>
                 <div class="monitor-card">
-                    <div id="mode-display" style="text-align:center;padding:24px 0 8px;font-size:15px;line-height:2.2;">
+                    <div id="mode-display" style="text-align:center;padding:24px 0 8px;font-size:15px;line-height:2.2;" data-i18n="common.loading">
                         加载中…
                     </div>
                     <div id="mode-config" style="display:none;border-top:1px solid #e5e7eb;padding:16px 24px 4px;margin-top:12px;">
                         <div style="display:flex;align-items:center;gap:12px;justify-content:center;flex-wrap:wrap;">
-                            <label style="font-size:13px;font-weight:600;color:#374151;">构建系统模式：</label>
+                            <label style="font-size:13px;font-weight:600;color:#374151;" data-i18n="build.mode_label">构建系统模式：</label>
                             <select id="build-mode-select" style="width:auto;min-width:170px;" onchange="onBuildModeChange()">
-                                <option value="jenkins">⚡ Jenkins</option>
-                                <option value="gitlab_ci">🐺 GitLab CI</option>
-                                <option value="both">⚡ Jenkins + 🐺 GitLab CI</option>
+                                <option value="jenkins" data-i18n="build.mode_jenkins">⚡ Jenkins</option>
+                                <option value="gitlab_ci" data-i18n="build.mode_gitlab_ci">🐺 GitLab CI</option>
+                                <option value="both" data-i18n="build.mode_both">⚡ Jenkins + 🐺 GitLab CI</option>
                             </select>
-                            <span id="build-mode-status" style="font-size:12px;color:#16a34a;display:none;">✅ 已保存</span>
+                            <span id="build-mode-status" style="font-size:12px;color:#16a34a;display:none;" data-i18n="build.mode_saved">✅ 已保存</span>
                         </div>
-                        <p style="text-align:center;font-size:11px;color:#9ca3af;margin-top:8px;">
+                        <p style="text-align:center;font-size:11px;color:#9ca3af;margin-top:8px;" data-i18n="build.mode_hint">
                             修改后即时生效。不可用的选项会在下拉中禁用。
                         </p>
                     </div>
                 </div>
             </div>
 
+            <!-- ═══ 用户管理 Tab ═══ -->
+            <div id="tab-users" style="display:none;">
+                <div class="toolbar">
+                    <h3 data-i18n="admin.sidebar_users">👤 用户管理</h3>
+                    <button class="btn btn-pri" onclick="showUserForm()" data-i18n="user.add_user">＋ 新增用户</button>
+                </div>
+                <div id="user-form" class="card" style="display:none;max-width:500px;">
+                    <form onsubmit="submitUserForm(event)">
+                        <input type="hidden" id="edit-target-username">
+                        <h4 id="user-form-title" data-i18n="user.add_user" style="margin-top:0;margin-bottom:14px;">＋ 新增用户</h4>
+                        <div id="new-username-wrap" style="margin-bottom:10px;">
+                            <label data-i18n="user.username">用户名</label>
+                            <input type="text" id="new-username" required placeholder="username" autocomplete="off">
+                        </div>
+                        <div style="margin-bottom:10px;">
+                            <label id="new-password-label" data-i18n="user.password">密码</label>
+                            <input type="password" id="new-password" required placeholder="至少 6 位" autocomplete="new-password" minlength="6">
+                        </div>
+                        <div style="margin-bottom:10px;">
+                            <label data-i18n="user.role">角色</label>
+                            <select id="new-role" style="width:100%;"></select>
+                        </div>
+                        <div id="new-systems-wrap" style="margin-bottom:10px;">
+                            <label data-i18n="user.systems">可登录系统</label>
+                            <select id="new-systems" style="width:100%;"></select>
+                        </div>
+                        <button type="submit" class="btn btn-save">💾 <span data-i18n="user.save_user">保存</span></button>
+                        <button type="button" class="btn" onclick="hideUserForm()" data-i18n="user.cancel">取消</button>
+                        <span id="user-msg" style="margin-left:12px;font-size:13px;"></span>
+                    </form>
+                </div>
+                <div class="card" style="margin-top:12px;overflow-x:auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th data-i18n="user.username">用户名</th>
+                                <th data-i18n="user.role">角色</th>
+                                <th data-i18n="user.systems">可登录系统</th>
+                                <th data-i18n="user.updated_at">更新时间</th>
+                                <th data-i18n="user.actions">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="user-tbody">
+                            <tr><td colspan="5" style="text-align:center;color:#9ca3af;" data-i18n="common.loading">加载中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
             <!-- ═══ 修改密码 Tab ═══ -->
             <div id="tab-password" style="display:none;">
-                <div class="toolbar"><h3>🔑 修改密码</h3></div>
+                <div class="toolbar"><h3 data-i18n="auth.change_password">🔑 修改密码</h3></div>
                 <div class="card" style="max-width:500px;">
                     <form onsubmit="changePassword(event)">
                         <div style="margin-bottom:10px;">
-                            <label>旧密码</label>
-                            <input type="password" id="old-pass" required placeholder="输入当前密码">
+                            <label data-i18n="auth.old_password">旧密码</label>
+                            <input type="password" id="old-pass" required data-i18n-placeholder="form.placeholder_current_password" placeholder="输入当前密码">
                         </div>
                         <div style="margin-bottom:10px;">
-                            <label>新密码</label>
-                            <input type="password" id="new-pass" required placeholder="至少 6 位" minlength="6">
+                            <label data-i18n="auth.new_password">新密码</label>
+                            <input type="password" id="new-pass" required data-i18n-placeholder="form.placeholder_new_password" placeholder="至少 6 位" minlength="6">
                         </div>
                         <div style="margin-bottom:10px;">
-                            <label>确认新密码</label>
-                            <input type="password" id="new-pass2" required placeholder="再输入一次" minlength="6">
+                            <label data-i18n="auth.confirm_password">确认新密码</label>
+                            <input type="password" id="new-pass2" required data-i18n-placeholder="form.placeholder_confirm_password" placeholder="再输入一次" minlength="6">
                         </div>
-                        <button type="submit" class="btn btn-save">💾 更新密码</button>
+                        <button type="submit" class="btn btn-save">💾 <span data-i18n="auth.update_password">更新密码</span></button>
                         <span id="pwd-msg" style="margin-left:12px;font-size:13px;"></span>
                     </form>
                 </div>
@@ -339,6 +403,7 @@
     </div><!-- /layout -->
 </div><!-- /app-page -->
 
+<script src="/assets/i18n.js"></script>
 <script src="/assets/admin.js"></script>
 
 </body>

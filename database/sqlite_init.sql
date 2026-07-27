@@ -55,6 +55,8 @@ CREATE TABLE IF NOT EXISTS ci_app_settings (
 CREATE TABLE IF NOT EXISTS admin_users (
     username      TEXT PRIMARY KEY,
     password_hash TEXT NOT NULL,
+    role          TEXT NOT NULL DEFAULT 'admin',
+    systems       TEXT NOT NULL DEFAULT 'ci,cd',
     updated_at    TEXT DEFAULT (datetime('now','localtime'))
 );
 

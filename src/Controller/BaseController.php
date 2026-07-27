@@ -3,9 +3,37 @@ namespace App\Controller;
 
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
+use App\Service\I18nService;
 
 class BaseController
 {
+    protected ?I18nService $i18n = null;
+
+    /**
+     * 注入国际化服务（由 DI 容器在构造后调用）
+     */
+    public function setI18n(I18nService $i18n): void
+    {
+        $this->i18n = $i18n;
+    }
+
+    /**
+     * 翻译快捷方法
+     * @param string $key    翻译键
+     * @param array  $params 替换参数
+     */
+    protected function __(string $key, array $params = []): string
+    {
+        return $this->i18n ? $this->i18n->trans($key, $params) : $key;
+    }
+
+    /**
+     * 从请求中检测语言
+     */
+    protected function getLocale(Request $request): string
+    {
+        return $this->i18n ? $this->i18n->detectLocale($request) : 'zh_CN';
+    }
     /**
      * 统一输出处理
      * @param Response $response
@@ -66,9 +94,18 @@ class BaseController
 
     /**
      * JSON 错误响应（不受 format 参数影响）
+     * @param string $message 错误消息（如为翻译键如 "auth.wrong_credentials"，会先尝试翻译）
      */
     protected function jsonError(Response $response, string $message, int $code = 400): Response
     {
+        // 如果 i18n 可用且消息看起来像翻译键（含点号），尝试翻译
+        if ($this->i18n && str_contains($message, '.') && !str_contains($message, ' ')) {
+            $translated = $this->i18n->trans($message);
+            // 翻译成功（不同于键本身）则使用翻译结果
+            if ($translated !== $message) {
+                $message = $translated;
+            }
+        }
         $response->getBody()->write(json_encode(['code' => $code, 'message' => $message]));
         return $response->withStatus($code)->withHeader('Content-Type', 'application/json');
     }

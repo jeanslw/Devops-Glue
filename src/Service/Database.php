@@ -186,6 +186,8 @@ class Database
         $pdo->exec("CREATE TABLE IF NOT EXISTS admin_users (
             username {$TEXT_PK},
             password_hash TEXT NOT NULL,
+            role {$VARCHAR} NOT NULL DEFAULT 'admin',
+            systems {$VARCHAR} NOT NULL DEFAULT 'ci,cd',
             updated_at {$TS_TYPE} DEFAULT ({$NOW})
         ){$ENGINE}");
 
@@ -258,7 +260,8 @@ class Database
             $pass = $_ENV['ADMIN_PASSWORD'] ?? '';
             if (!empty($pass)) {
                 $hash = password_hash($pass, PASSWORD_BCRYPT);
-                $pdo->prepare("INSERT INTO admin_users (username, password_hash) VALUES (?, ?)")->execute([$user, $hash]);
+                $pdo->prepare("INSERT INTO admin_users (username, password_hash, role, systems) VALUES (?, ?, 'admin', 'ci,cd')")
+                    ->execute([$user, $hash]);
             }
         }
     }
