@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.4.0 (2026-07-28)
+- **国际化 (i18n)** — 新增 `symfony/translation` 依赖，支持中文/英文双语界面
+- **超级管理员** — 引入 `super_admin` 角色，数据库存储，权限优于普通 `admin`
+- **用户权限分级** — `super_admin` > `admin` > `deployer` > `viewer`，普通 admin 不可管理其他管理员
+- **根管理员保护** — 内置 root 账号不可删除、不可修改
+- **管理后台增强** — 用户列表角色区分显示，顶部栏显示当前登录用户
+
 ## v2.3.2 (2026-07-25)
 - Multi-environment config support (`APP_ENV` with `.env.{ENV}` overrides)
 - Build mode runtime switching with backend validation
