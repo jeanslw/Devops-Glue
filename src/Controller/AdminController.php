@@ -688,6 +688,11 @@ class AdminController extends BaseController
                 return $this->jsonError($response, 'user.not_found', 404);
             }
 
+            // 内置根账号（.env ADMIN_USER）任何人都不能删除
+            $rootAdmin = $this->config->getAdminCredentials()['user'] ?? 'admin';
+            if ($targetUser === $rootAdmin) {
+                return $this->jsonError($response, 'user.cannot_delete_root', 403);
+            }
             // 不能删除自己
             if ($targetUser === $this->currentUser) {
                 return $this->jsonError($response, 'user.cannot_delete_self', 403);
