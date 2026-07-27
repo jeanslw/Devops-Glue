@@ -37,10 +37,14 @@ function doLogout() {
     document.getElementById('app-page').style.display = 'none';
 }
 
-// 刷新后恢复角色菜单可见性
+// 刷新后恢复角色菜单可见性及用户名显示
 (function initRoleMenu() {
     currentUserName = sessionStorage.getItem('admin_user') || '';
     currentUserIsRoot = sessionStorage.getItem('admin_is_root') === 'true';
+    if (currentUserName) {
+        var topUser = document.getElementById('top-user');
+        if (topUser) topUser.textContent = '👤 ' + currentUserName;
+    }
     if (currentUserRole && currentUserRole !== 'admin') {
         var userMenuItem = document.querySelector('[data-tab="users"]');
         if (userMenuItem) userMenuItem.style.display = 'none';
@@ -93,6 +97,7 @@ async function doLogin() {
             }
             document.getElementById('login-page').style.display = 'none';
             document.getElementById('app-page').style.display = 'block';
+            document.getElementById('top-user').textContent = '👤 ' + currentUserName;
             switchTab('monitor');
         } else {
             errEl.textContent = data.message || __.t('js.login_failed');

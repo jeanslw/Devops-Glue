@@ -574,9 +574,10 @@ class AdminController extends BaseController
             return $this->jsonError($response, 'auth.new_password_short', 400);
         }
 
-        // 只有 admin 能创建 admin 角色
+        // 只有根 admin 能创建 admin 角色
+        $rootAdmin = $this->config->getAdminCredentials()['user'] ?? 'admin';
         if ($role === 'admin') {
-            if ($this->currentRole !== 'admin') {
+            if ($this->currentUser !== $rootAdmin) {
                 return $this->jsonError($response, 'user.cannot_create_admin', 403);
             }
             // admin 创建的 admin 账号 system 至少含 cd
