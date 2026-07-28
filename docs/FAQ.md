@@ -35,6 +35,8 @@ Open `http://localhost:8080` in your browser. Default credentials come from `ADM
 
 ### Q: How to deploy with Docker?
 
+`docker-compose/docker-compose.yml` provides a full deployment setup with MySQL included.
+
 ```bash
 docker build -t devops-glue .
 docker run -d -p 8080:8080 \
@@ -42,7 +44,62 @@ docker run -d -p 8080:8080 \
   devops-glue
 ```
 
-`docker-compose/docker-compose.yml` provides a full deployment setup with MySQL included.
+### Q: How to deploy CI + CD services together?
+
+There are three deployment modes for the CI (devops-glue) and CD (devops-cd) services:
+
+**1. Same host — single `docker-compose.yml` (recommended)**
+
+`docker-compose/docker-compose.yml` already contains a commented `cd-service` block. Uncomment it:
+
+```bash
+cd docker-compose/
+# Edit docker-compose.yml, uncomment the cd-service section (# cd-service: → cd-service:)
+docker compose up -d
+```
+
+This launches CI, CD, and MySQL in one go. Both services connect to `devops-mysql` via Docker's internal DNS. The CD service's `.env` should set `DB_HOST=devops-mysql`.
+
+**2. Same host — separate `docker-compose.yml` files**
+
+Deploy CI and CD independently. They share MySQL, so you must create a shared network first:
+
+```bash
+# In the CI project
+docker network create devops-net
+cd docker-compose/
+docker compose up -d
+
+# In the CD project
+# Ensure the CD's docker-compose.yml uses the same network:
+#   networks:
+#     default:
+#       name: devops-net
+#       external: true
+docker compose up -d
+```
+
+The CD service's `.env` should set `DB_HOST=devops-mysql` (Docker DNS resolves across the shared network).
+
+**3. Separate hosts**
+
+When CI and CD run on different machines, MySQL must be accessible from outside Docker:
+
+- CI host: in `docker-compose.yml`, expose MySQL port:
+  ```yaml
+  mysql:
+    ports:
+      - "3306:3306"
+  ```
+- CD host: in its `.env`, point to the CI host:
+  ```env
+  DB_HOST=<CI_HOST_IP>
+  DB_PORT=3306
+  DB_NAME=devops_glue
+  DB_USER=root
+  DB_PASS=<CI_MYSQL_ROOT_PASSWORD>
+  ```
+- Firewall: allow CD host access to CI host's port 3306
 
 ### Q: Why is the homepage empty?
 
