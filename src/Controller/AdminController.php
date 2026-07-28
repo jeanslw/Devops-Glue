@@ -11,7 +11,7 @@ class AdminController extends BaseController
     private AppConfig $config;
     private ?AutoDiscover $autoDiscover;
     private string $currentUser = '';
-    private string $currentRole = 'admin';
+    private string $currentRole = AppConfig::ROLE_ADMIN;
 
     public function __construct(AppConfig $config, ?AutoDiscover $autoDiscover = null)
     {
@@ -94,7 +94,7 @@ class AdminController extends BaseController
             $whereClause = $where ? 'WHERE ' . implode(' AND ', $where) : '';
 
             // 总数
-            $countStmt = $pdo->prepare("SELECT count(*) FROM ci_security_checks {$whereClause}");
+            $countStmt = $pdo->prepare("SELECT count(*) FROM " . AppConfig::TABLE_SECURITY_CHECKS . " {$whereClause}");
             $countStmt->execute($bind);
             $total = (int)$countStmt->fetchColumn();
 
@@ -104,13 +104,13 @@ class AdminController extends BaseController
 
             // 分页查询
             $rows = $pdo->prepare(
-                "SELECT * FROM ci_security_checks {$whereClause} ORDER BY created_at DESC LIMIT {$perPage} OFFSET {$offset}"
+                "SELECT * FROM " . AppConfig::TABLE_SECURITY_CHECKS . " {$whereClause} ORDER BY created_at DESC LIMIT {$perPage} OFFSET {$offset}"
             );
             $rows->execute($bind);
             $checks = $rows->fetchAll();
 
             // 可选筛选值
-            $types = $pdo->query("SELECT DISTINCT check_type FROM ci_security_checks ORDER BY check_type")->fetchAll(\PDO::FETCH_COLUMN);
+            $types = $pdo->query("SELECT DISTINCT check_type FROM " . AppConfig::TABLE_SECURITY_CHECKS . " ORDER BY check_type")->fetchAll(\PDO::FETCH_COLUMN);
 
             return $this->output($response, [
                 'checks'      => $checks,
@@ -143,12 +143,12 @@ class AdminController extends BaseController
         $authed = false;
 
         $dbUser = null;
-        $loginRole = 'admin'; // .env 降级默认为 admin
+        $loginRole = AppConfig::ROLE_ADMIN; // .env 降级默认为 admin
 
         // 优先查数据库
         try {
             $pdo = \App\Service\Database::getPdo();
-            $row = $pdo->prepare("SELECT password_hash, systems, role FROM admin_users WHERE username = ?");
+            $row = $pdo->prepare("SELECT password_hash, systems, role FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE username = ?");
             $row->execute([$user]);
             $dbUser = $row->fetch();
             if ($dbUser && password_verify($pass, $dbUser['password_hash'])) {
@@ -156,16 +156,16 @@ class AdminController extends BaseController
                 $systemType = $this->config->getSystemType();
                 $systems = $dbUser['systems'] ?? '';
                 $allowed = false;
-                if ($systemType === 'ci') {
-                    $allowed = strpos($systems, 'ci') !== false;
-                } elseif ($systemType === 'cd') {
-                    $allowed = strpos($systems, 'cd') !== false;
+                if ($systemType === AppConfig::SYSTEM_CI) {
+                    $allowed = strpos($systems, AppConfig::SYSTEM_CI) !== false;
+                } elseif ($systemType === AppConfig::SYSTEM_CD) {
+                    $allowed = strpos($systems, AppConfig::SYSTEM_CD) !== false;
                 } else { // both
-                    $allowed = strpos($systems, 'ci') !== false || strpos($systems, 'cd') !== false;
+                    $allowed = strpos($systems, AppConfig::SYSTEM_CI) !== false || strpos($systems, AppConfig::SYSTEM_CD) !== false;
                 }
                 if (!$allowed) {
-                    $errKey = $systemType === 'ci' ? 'auth.no_ci_access'
-                        : ($systemType === 'cd' ? 'auth.no_cd_access' : 'auth.no_system_access');
+                    $errKey = $systemType === AppConfig::SYSTEM_CI ? 'auth.no_ci_access'
+                        : ($systemType === AppConfig::SYSTEM_CD ? 'auth.no_cd_access' : 'auth.no_system_access');
                     return $this->jsonError($response, $errKey, 403);
                 }
                 $loginRole = $dbUser['role'];
@@ -180,7 +180,7 @@ class AdminController extends BaseController
             $cred = $this->config->getAdminCredentials();
             if ($user === $cred['user'] && $pass === $cred['password'] && $pass !== '') {
                 $authed = true;
-                $loginRole = 'admin';
+                $loginRole = AppConfig::ROLE_ADMIN;
             }
         }
 
@@ -189,8 +189,8 @@ class AdminController extends BaseController
             // 持久化 token，24h 过期
             try {
                 $pdo = \App\Service\Database::getPdo();
-                $sql = \App\Service\Database::sqlUpsert('cache', 'cache_key, value, expires_at', '?, ?, ?');
-                $pdo->prepare($sql)->execute(['admin_token_' . $token, $user . '|' . $loginRole, time() + 86400]);
+                $sql = \App\Service\Database::sqlUpsert(AppConfig::TABLE_CACHE, 'cache_key, value, expires_at', '?, ?, ?');
+                $pdo->prepare($sql)->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . $token, $user . '|' . $loginRole, time() + AppConfig::TTL_TOKEN]);
             } catch (\Exception $e) {
                 // cache 不可用时仍返回 token（降级）
             }
@@ -223,7 +223,7 @@ class AdminController extends BaseController
             $username = $cred['user'];
 
             // 验证旧密码
-            $row = $pdo->prepare("SELECT password_hash FROM admin_users WHERE username = ?");
+            $row = $pdo->prepare("SELECT password_hash FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE username = ?");
             $row->execute([$username]);
             $dbUser = $row->fetch();
 
@@ -241,12 +241,12 @@ class AdminController extends BaseController
 
             // 更新密码
             $hash = password_hash($newPass, PASSWORD_BCRYPT);
-            $sql = \App\Service\Database::sqlUpsert('admin_users', 'username, password_hash, updated_at', '?, ?, ' . \App\Service\Database::sqlNow());
+            $sql = \App\Service\Database::sqlUpsert(AppConfig::TABLE_ADMIN_USERS, 'username, password_hash, updated_at', '?, ?, ' . \App\Service\Database::sqlNow());
             \App\Service\Database::getPdo()->prepare($sql)->execute([$username, $hash]);
 
             // 密码变更后清除所有旧 token
             try {
-                \App\Service\Database::getPdo()->exec("DELETE FROM cache WHERE cache_key LIKE 'admin_token_%'");
+                \App\Service\Database::getPdo()->exec("DELETE FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key LIKE '" . AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . "%'");
             } catch (\Exception $e) {}
 
             return $this->output($response, ['success' => true, 'message' => $this->__('auth.password_updated')], $request);
@@ -293,7 +293,7 @@ class AdminController extends BaseController
             $filtered = array_filter($filtered, fn($m) => ($m['git_platform'] ?? '') === $platform);
         }
         if ($provider !== '') {
-            $filtered = array_filter($filtered, fn($m) => ($m['build_provider'] ?? 'jenkins') === $provider);
+            $filtered = array_filter($filtered, fn($m) => ($m['build_provider'] ?? AppConfig::PROVIDER_JENKINS) === $provider);
         }
 
         // 重置索引
@@ -481,7 +481,7 @@ class AdminController extends BaseController
         if ($err = $this->authCheck($request, $response)) return $err;
         $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
         $mode = trim($body['mode'] ?? '');
-        if (!in_array($mode, ['jenkins', 'gitlab_ci', 'both'])) {
+        if (!in_array($mode, [AppConfig::BUILD_MODE_JENKINS, AppConfig::BUILD_MODE_GITLAB_CI, AppConfig::BUILD_MODE_BOTH])) {
             return $this->jsonError($response, 'build.mode_required', 400);
         }
 
@@ -492,10 +492,10 @@ class AdminController extends BaseController
         $glCfg = $hasGitlab ? $this->config->getGitlabConfig() : [];
         $hasGitlabCi = $hasGitlab && !empty($glCfg['base_url']) && !empty($glCfg['token']);
 
-        if (($mode === 'jenkins' || $mode === 'both') && !$hasJenkins) {
+        if (($mode === AppConfig::BUILD_MODE_JENKINS || $mode === AppConfig::BUILD_MODE_BOTH) && !$hasJenkins) {
             return $this->jsonError($response, 'build.jenkins_unavail', 400);
         }
-        if (($mode === 'gitlab_ci' || $mode === 'both') && !$hasGitlabCi) {
+        if (($mode === AppConfig::BUILD_MODE_GITLAB_CI || $mode === AppConfig::BUILD_MODE_BOTH) && !$hasGitlabCi) {
             return $this->jsonError($response, 'build.gitlab_ci_unavail', 400);
         }
 
@@ -504,13 +504,13 @@ class AdminController extends BaseController
 
             // 切到单 provider 模式时，将对方 provider 的 active 记录降为 pending
             // 杜绝切模式后对方记录仍处于启用状态，避免意外参与构建或干扰自动发现
-            if ($mode === 'jenkins' || $mode === 'gitlab_ci') {
-                $otherProvider = ($mode === 'jenkins') ? 'gitlab_ci' : 'jenkins';
+            if ($mode === AppConfig::BUILD_MODE_JENKINS || $mode === AppConfig::BUILD_MODE_GITLAB_CI) {
+                $otherProvider = ($mode === AppConfig::BUILD_MODE_JENKINS) ? AppConfig::PROVIDER_GITLAB_CI : AppConfig::PROVIDER_JENKINS;
                 $maps = $this->config->getJobGitMap();
                 $changed = false;
                 foreach ($maps as &$m) {
-                    if (($m['build_provider'] ?? 'jenkins') === $otherProvider && ($m['status'] ?? 'active') !== 'pending') {
-                        $m['status'] = 'pending';
+                    if (($m['build_provider'] ?? AppConfig::PROVIDER_JENKINS) === $otherProvider && ($m['status'] ?? AppConfig::STATUS_ACTIVE) !== AppConfig::STATUS_PENDING) {
+                        $m['status'] = AppConfig::STATUS_PENDING;
                         $changed = true;
                     }
                 }
@@ -540,9 +540,9 @@ class AdminController extends BaseController
         try {
             $pdo = \App\Service\Database::getPdo();
             if ($this->isAdminRole()) {
-                $rows = $pdo->query("SELECT username, role, systems, updated_at FROM admin_users ORDER BY username")->fetchAll();
+                $rows = $pdo->query("SELECT username, role, systems, updated_at FROM " . AppConfig::TABLE_ADMIN_USERS . " ORDER BY username")->fetchAll();
             } else {
-                $rows = $pdo->query("SELECT username, role, systems, updated_at FROM admin_users WHERE role NOT IN ('admin', 'super_admin') ORDER BY username")->fetchAll();
+                $rows = $pdo->query("SELECT username, role, systems, updated_at FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE role NOT IN ('" . AppConfig::ROLE_ADMIN . "', '" . AppConfig::ROLE_SUPER_ADMIN . "') ORDER BY username")->fetchAll();
             }
             $rootAdmin = $this->config->getRootAdminUser();
             foreach ($rows as &$row) {
@@ -566,8 +566,8 @@ class AdminController extends BaseController
         $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
         $username = trim($body['username'] ?? '');
         $password = $body['password'] ?? '';
-        $role     = trim($body['role'] ?? 'deployer');
-        $systems  = trim($body['systems'] ?? 'cd');
+        $role     = trim($body['role'] ?? AppConfig::ROLE_DEPLOYER);
+        $systems  = trim($body['systems'] ?? AppConfig::SYSTEM_CD);
 
         if ($username === '' || strlen($password) < 6) {
             return $this->jsonError($response, 'auth.new_password_short', 400);
@@ -575,32 +575,32 @@ class AdminController extends BaseController
 
         // 只有根 admin 能创建管理员角色（admin / super_admin）
         $rootAdmin = $this->config->getRootAdminUser();
-        if ($role === 'admin' || $role === 'super_admin') {
+        if ($role === AppConfig::ROLE_ADMIN || $role === AppConfig::ROLE_SUPER_ADMIN) {
             if ($this->currentUser !== $rootAdmin) {
                 return $this->jsonError($response, 'user.cannot_create_admin', 403);
             }
             // 管理员账号 system 至少含 cd
-            if (strpos($systems, 'cd') === false) {
-                $systems = $systems === '' ? 'cd' : $systems . ',cd';
+            if (strpos($systems, AppConfig::SYSTEM_CD) === false) {
+                $systems = $systems === '' ? AppConfig::SYSTEM_CD : $systems . ',' . AppConfig::SYSTEM_CD;
             }
         }
 
         // 非管理员创建的账号不能包含 ci
-        if (!$this->isAdminRole() && strpos($systems, 'ci') !== false) {
+        if (!$this->isAdminRole() && strpos($systems, AppConfig::SYSTEM_CI) !== false) {
             return $this->jsonError($response, 'user.cd_no_ci_access', 403);
         }
 
         try {
             $pdo = \App\Service\Database::getPdo();
             // 检查重名
-            $exists = $pdo->prepare("SELECT 1 FROM admin_users WHERE username = ?");
+            $exists = $pdo->prepare("SELECT 1 FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE username = ?");
             $exists->execute([$username]);
             if ($exists->fetch()) {
                 return $this->jsonError($response, 'user.username_exists', 409);
             }
 
             $hash = password_hash($password, PASSWORD_BCRYPT);
-            $stmt = $pdo->prepare("INSERT INTO admin_users (username, password_hash, role, systems, updated_at) VALUES (?, ?, ?, ?, " . \App\Service\Database::sqlNow() . ")");
+            $stmt = $pdo->prepare("INSERT INTO " . AppConfig::TABLE_ADMIN_USERS . " (username, password_hash, role, systems, updated_at) VALUES (?, ?, ?, ?, " . \App\Service\Database::sqlNow() . ")");
             $stmt->execute([$username, $hash, $role, $systems]);
 
             return $this->output($response, ['success' => true, 'username' => $username], $request);
@@ -629,7 +629,7 @@ class AdminController extends BaseController
             $pdo = \App\Service\Database::getPdo();
 
             // 查目标用户信息
-            $row = $pdo->prepare("SELECT username, role FROM admin_users WHERE username = ?");
+            $row = $pdo->prepare("SELECT username, role FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE username = ?");
             $row->execute([$targetUser]);
             $target = $row->fetch();
             if (!$target) {
@@ -645,7 +645,7 @@ class AdminController extends BaseController
             $bind   = [];
 
             if ($role !== null) {
-                if ($role === 'admin' || $role === 'super_admin') {
+                if ($role === AppConfig::ROLE_ADMIN || $role === AppConfig::ROLE_SUPER_ADMIN) {
                     return $this->jsonError($response, 'user.cannot_promote_admin', 403);
                 }
                 $fields[] = 'role = ?';
@@ -665,7 +665,7 @@ class AdminController extends BaseController
             }
 
             $fields[] = 'updated_at = ' . \App\Service\Database::sqlNow();
-            $sql = 'UPDATE admin_users SET ' . implode(', ', $fields) . ' WHERE username = ?';
+            $sql = 'UPDATE ' . AppConfig::TABLE_ADMIN_USERS . ' SET ' . implode(', ', $fields) . ' WHERE username = ?';
             $bind[] = $targetUser;
             $pdo->prepare($sql)->execute($bind);
 
@@ -691,7 +691,7 @@ class AdminController extends BaseController
             $pdo = \App\Service\Database::getPdo();
 
             // 查目标用户信息
-            $row = $pdo->prepare("SELECT username, role FROM admin_users WHERE username = ?");
+            $row = $pdo->prepare("SELECT username, role FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE username = ?");
             $row->execute([$targetUser]);
             $target = $row->fetch();
             if (!$target) {
@@ -712,7 +712,7 @@ class AdminController extends BaseController
                 return $this->jsonError($response, 'user.cannot_delete_admin', 403);
             }
 
-            $pdo->prepare("DELETE FROM admin_users WHERE username = ?")->execute([$targetUser]);
+            $pdo->prepare("DELETE FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE username = ?")->execute([$targetUser]);
             return $this->output($response, ['success' => true], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.modify_failed') . ': ' . $e->getMessage(), 500);
@@ -726,7 +726,7 @@ class AdminController extends BaseController
      */
     private function isAdminRole(): bool
     {
-        return $this->currentRole === 'admin' || $this->currentRole === 'super_admin';
+        return $this->currentRole === AppConfig::ROLE_ADMIN || $this->currentRole === AppConfig::ROLE_SUPER_ADMIN;
     }
 
     /**
@@ -734,7 +734,7 @@ class AdminController extends BaseController
      */
     private function isTargetAdmin(string $role): bool
     {
-        return $role === 'admin' || $role === 'super_admin';
+        return $role === AppConfig::ROLE_ADMIN || $role === AppConfig::ROLE_SUPER_ADMIN;
     }
 
     /**
@@ -752,14 +752,14 @@ class AdminController extends BaseController
         // 验证 cache 中的随机 token
         try {
             $pdo = \App\Service\Database::getPdo();
-            $row = $pdo->prepare("SELECT value FROM cache WHERE cache_key = ? AND expires_at > ?");
-            $row->execute(['admin_token_' . $token, time()]);
+            $row = $pdo->prepare("SELECT value FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key = ? AND expires_at > ?");
+            $row->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . $token, time()]);
             $cache = $row->fetch(\PDO::FETCH_ASSOC);
             if ($cache) {
                 // value 格式：username|role
                 $parts = explode('|', $cache['value']);
                 $this->currentUser = $parts[0] ?? '';
-                $this->currentRole = $parts[1] ?? 'admin';
+                $this->currentRole = $parts[1] ?? AppConfig::ROLE_ADMIN;
                 return null;
             }
         } catch (\Exception $e) {
@@ -770,7 +770,7 @@ class AdminController extends BaseController
         if (empty($cred['password'])) {
             try {
                 $pdo = \App\Service\Database::getPdo();
-                $cnt = $pdo->query("SELECT count(*) c FROM admin_users")->fetch()['c'];
+                $cnt = $pdo->query("SELECT count(*) c FROM " . AppConfig::TABLE_ADMIN_USERS)->fetch()['c'];
                 if ($cnt == 0) return null;
             } catch (\Exception $e) {}
         }
@@ -807,9 +807,9 @@ class AdminController extends BaseController
     {
         try {
             $pdo = \App\Service\Database::getPdo();
-            $modes = ['jenkins', 'gitlab_ci', 'both'];
+            $modes = [AppConfig::BUILD_MODE_JENKINS, AppConfig::BUILD_MODE_GITLAB_CI, AppConfig::BUILD_MODE_BOTH];
             foreach ($modes as $mode) {
-                $pdo->prepare("DELETE FROM cache WHERE cache_key = ?")->execute(['map_list_' . $mode]);
+                $pdo->prepare("DELETE FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key = ?")->execute([AppConfig::CACHE_KEY_MAP_LIST_PREFIX . $mode]);
             }
         } catch (\Exception $e) {
             // 缓存清理失败不影响主流程

@@ -5,6 +5,48 @@ class AppConfig
 {
     public const APP_VERSION = '2.4.0';
 
+    // ── 表名常量 ──
+    public const TABLE_JOB_GIT_MAP       = 'ci_job_git_map';
+    public const TABLE_PIPELINE_TAGS     = 'ci_pipeline_tags';
+    public const TABLE_SECURITY_CHECKS   = 'ci_security_checks';
+    public const TABLE_ADMIN_USERS       = 'admin_users';
+    public const TABLE_PLATFORM_VERSIONS = 'ci_platform_versions';
+    public const TABLE_APP_SETTINGS      = 'ci_app_settings';
+    public const TABLE_CACHE             = 'cache';
+
+    // ── 角色常量 ──
+    public const ROLE_SUPER_ADMIN = 'super_admin';
+    public const ROLE_ADMIN       = 'admin';
+    public const ROLE_DEPLOYER    = 'deployer';
+
+    // ── 状态常量 ──
+    public const STATUS_ACTIVE   = 'active';
+    public const STATUS_INACTIVE = 'inactive';
+    public const STATUS_PENDING  = 'pending';
+
+    // ── 系统类型常量 ──
+    public const SYSTEM_CI   = 'ci';
+    public const SYSTEM_CD   = 'cd';
+    public const SYSTEM_BOTH = 'both';
+
+    // ── 构建模式常量 ──
+    public const BUILD_MODE_JENKINS   = 'jenkins';
+    public const BUILD_MODE_GITLAB_CI = 'gitlab_ci';
+    public const BUILD_MODE_BOTH      = 'both';
+
+    // ── 构建提供者常量 ──
+    public const PROVIDER_JENKINS   = 'jenkins';
+    public const PROVIDER_GITLAB_CI = 'gitlab_ci';
+
+    // ── 缓存键前缀常量 ──
+    public const CACHE_KEY_ADMIN_TOKEN_PREFIX = 'admin_token_';
+    public const CACHE_KEY_MAP_LIST_PREFIX    = 'map_list_';
+    public const CACHE_KEY_HARBOR_VERSION     = 'harbor_api_version';
+
+    // ── TTL 常量（秒）──
+    public const TTL_TOKEN  = 86400;  // 登录 token 有效期（24h）
+    public const TTL_CACHE  = 3600;   // 通用缓存有效期（1h）
+
     private array $config;
 
     public function __construct(array $config)
@@ -67,8 +109,8 @@ class AppConfig
     // 当前实例系统类型：ci / cd / both
     public function getSystemType(): string
     {
-        $type = $this->config['app']['system_type'] ?? 'ci';
-        return in_array($type, ['ci', 'cd', 'both']) ? $type : 'ci';
+        $type = $this->config['app']['system_type'] ?? self::SYSTEM_CI;
+        return in_array($type, [self::SYSTEM_CI, self::SYSTEM_CD, self::SYSTEM_BOTH]) ? $type : self::SYSTEM_CI;
     }
 
     // CORS 配置
@@ -81,14 +123,14 @@ class AppConfig
     public function getJobGitMap(): array
     {
         $pdo = \App\Service\Database::getPdo();
-        return $pdo->query("SELECT * FROM ci_job_git_map ORDER BY job_name")->fetchAll();
+        return $pdo->query("SELECT * FROM " . self::TABLE_JOB_GIT_MAP . " ORDER BY job_name")->fetchAll();
     }
 
     public function saveJobGitMap(array $data): void
     {
         $pdo = \App\Service\Database::getPdo();
         $cols = 'job_name,git_platform,build_provider,git_remote,project_id,web_url,current_path,harbor_repository,api_version,status';
-        $upsertSql = \App\Service\Database::sqlUpsert('ci_job_git_map', $cols, '?,?,?,?,?,?,?,?,?,?');
+        $upsertSql = \App\Service\Database::sqlUpsert(self::TABLE_JOB_GIT_MAP, $cols, '?,?,?,?,?,?,?,?,?,?');
         $upsertStmt = $pdo->prepare($upsertSql);
 
         $incomingNames = [];
@@ -98,23 +140,23 @@ class AppConfig
             $upsertStmt->execute([
                 $row['job_name'],
                 $row['git_platform'] ?? null,
-                $row['build_provider'] ?? 'jenkins',
+                $row['build_provider'] ?? self::PROVIDER_JENKINS,
                 $row['git_remote'] ?? null,
                 $row['project_id'] ?? null,
                 $row['web_url'] ?? null,
                 $row['current_path'] ?? null,
                 $row['harbor_repository'] ?? null,
                 $row['api_version'] ?? null,
-                $row['status'] ?? 'active',
+                $row['status'] ?? self::STATUS_ACTIVE,
             ]);
         }
 
         // 删除 DB 中存在但传入数据里已移除的行（不再全表删除）
         if (!empty($incomingNames)) {
             $placeholders = implode(',', array_fill(0, count($incomingNames), '?'));
-            $pdo->prepare("DELETE FROM ci_job_git_map WHERE job_name NOT IN ({$placeholders})")->execute($incomingNames);
+            $pdo->prepare("DELETE FROM " . self::TABLE_JOB_GIT_MAP . " WHERE job_name NOT IN ({$placeholders})")->execute($incomingNames);
         } else {
-            $pdo->exec("DELETE FROM ci_job_git_map");
+            $pdo->exec("DELETE FROM " . self::TABLE_JOB_GIT_MAP);
         }
     }
 
@@ -122,7 +164,7 @@ class AppConfig
     public function deleteJobGitMap(string $jobName): void
     {
         $pdo = \App\Service\Database::getPdo();
-        $pdo->prepare("DELETE FROM ci_job_git_map WHERE job_name = ?")->execute([$jobName]);
+        $pdo->prepare("DELETE FROM " . self::TABLE_JOB_GIT_MAP . " WHERE job_name = ?")->execute([$jobName]);
     }
 
     // Harbor
@@ -285,7 +327,7 @@ class AppConfig
         // SQLite 覆盖默认
         try {
             $pdo = \App\Service\Database::getPdo();
-            $rows = $pdo->query("SELECT platform, version FROM ci_platform_versions")->fetchAll();
+            $rows = $pdo->query("SELECT platform, version FROM " . self::TABLE_PLATFORM_VERSIONS)->fetchAll();
             foreach ($rows as $r) {
                 if (isset($result[$r['platform']])) {
                     $result[$r['platform']] = ['value' => $r['version'], 'source' => 'json'];
@@ -312,8 +354,8 @@ class AppConfig
     public function savePlatformApiVersions(array $data): void
     {
         $pdo = \App\Service\Database::getPdo();
-        $pdo->exec("DELETE FROM ci_platform_versions");
-        $stmt = $pdo->prepare("INSERT INTO ci_platform_versions (platform, version) VALUES (?, ?)");
+        $pdo->exec("DELETE FROM " . self::TABLE_PLATFORM_VERSIONS);
+        $stmt = $pdo->prepare("INSERT INTO " . self::TABLE_PLATFORM_VERSIONS . " (platform, version) VALUES (?, ?)");
         foreach ($data as $name => $ver) {
             $default = self::$DEFAULT_API_VERSIONS[$name] ?? null;
             if ($ver !== $default && $ver !== '' && $ver !== null) {
@@ -333,17 +375,17 @@ class AppConfig
     {
         try {
             $pdo = \App\Service\Database::getPdo();
-            $row = $pdo->query("SELECT value FROM ci_app_settings WHERE setting_key = 'build_mode'")->fetch();
-            if ($row && in_array($row['value'], ['jenkins', 'gitlab_ci', 'both'])) {
+            $row = $pdo->query("SELECT value FROM " . self::TABLE_APP_SETTINGS . " WHERE setting_key = 'build_mode'")->fetch();
+            if ($row && in_array($row['value'], [self::BUILD_MODE_JENKINS, self::BUILD_MODE_GITLAB_CI, self::BUILD_MODE_BOTH])) {
                 return $row['value'];
             }
             // DB 无记录 → 首次运行，以 .env 为种子写入 DB
-            $envMode = $_ENV['BUILD_MODE'] ?? 'both';
+            $envMode = $_ENV['BUILD_MODE'] ?? self::BUILD_MODE_BOTH;
             $this->setBuildMode($envMode);
             return $envMode;
         } catch (\Exception $e) {
             // DB 彻底不可用时的最后兜底
-            return $_ENV['BUILD_MODE'] ?? 'both';
+            return $_ENV['BUILD_MODE'] ?? self::BUILD_MODE_BOTH;
         }
     }
 
@@ -354,8 +396,8 @@ class AppConfig
     {
         try {
             $pdo = \App\Service\Database::getPdo();
-            $row = $pdo->query("SELECT value FROM ci_app_settings WHERE setting_key = 'build_mode'")->fetch();
-            if ($row && in_array($row['value'], ['jenkins', 'gitlab_ci', 'both'])) {
+            $row = $pdo->query("SELECT value FROM " . self::TABLE_APP_SETTINGS . " WHERE setting_key = 'build_mode'")->fetch();
+            if ($row && in_array($row['value'], [self::BUILD_MODE_JENKINS, self::BUILD_MODE_GITLAB_CI, self::BUILD_MODE_BOTH])) {
                 return 'database';
             }
         } catch (\Exception $e) {}
@@ -367,11 +409,11 @@ class AppConfig
      */
     public function setBuildMode(string $mode): void
     {
-        if (!in_array($mode, ['jenkins', 'gitlab_ci', 'both'])) {
+        if (!in_array($mode, [self::BUILD_MODE_JENKINS, self::BUILD_MODE_GITLAB_CI, self::BUILD_MODE_BOTH])) {
             throw new \InvalidArgumentException("Invalid build mode: {$mode}");
         }
         $pdo = \App\Service\Database::getPdo();
-        $sql = \App\Service\Database::sqlUpsert('ci_app_settings', 'setting_key, value, updated_at', '?, ?, ' . \App\Service\Database::sqlNow());
+        $sql = \App\Service\Database::sqlUpsert(self::TABLE_APP_SETTINGS, 'setting_key, value, updated_at', '?, ?, ' . \App\Service\Database::sqlNow());
         $pdo->prepare($sql)->execute(['build_mode', $mode]);
     }
 

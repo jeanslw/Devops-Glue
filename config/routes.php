@@ -45,8 +45,8 @@ $app->group('/api', function (RouteCollectorProxy $api) use ($app) {
         // 验证 cache 中的随机 token（与 AdminController 一致）
         try {
             $pdo = \App\Service\Database::getPdo();
-            $row = $pdo->prepare("SELECT value FROM cache WHERE cache_key = ? AND expires_at > ?");
-            $row->execute(['admin_token_' . $token, time()]);
+            $row = $pdo->prepare("SELECT value FROM " . \App\Config\AppConfig::TABLE_CACHE . " WHERE cache_key = ? AND expires_at > ?");
+            $row->execute([\App\Config\AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . $token, time()]);
             if ($row->fetch()) return true;
         } catch (\Exception $e) {}
 

@@ -33,14 +33,14 @@ class AutoDiscover
         $activeRemotes = [];   // 归一化后的 key：host/path（统一格式，跨协议去重）
         $existingNames = [];
         foreach ($this->config->getJobGitMap() as $m) {
-            $bp = $m['build_provider'] ?? 'jenkins';
+            $bp = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
 
             // 单 provider 模式：排斥对方 provider 的记录，杜绝交叉污染
-            if ($buildMode !== 'both' && $bp !== $buildMode) continue;
+            if ($buildMode !== AppConfig::BUILD_MODE_BOTH && $bp !== $buildMode) continue;
 
             if (!empty($m['job_name'])) $existingNames[] = $m['job_name'];
             if (empty($m['git_remote'])) continue;
-            if (($m['status'] ?? 'active') === 'active') {
+            if (($m['status'] ?? AppConfig::STATUS_ACTIVE) === AppConfig::STATUS_ACTIVE) {
                 $key = $this->normalizeRemote($m['git_remote']);
                 if ($key) $activeRemotes[] = $key;
             }
@@ -49,7 +49,7 @@ class AutoDiscover
         $errors    = [];
         $found     = [];
 
-        if (in_array($buildMode, ['jenkins', 'both'])) {
+        if (in_array($buildMode, [AppConfig::BUILD_MODE_JENKINS, AppConfig::BUILD_MODE_BOTH])) {
             try {
                 $found = array_merge($found, $this->scanJenkins($activeRemotes, $existingNames));
             } catch (\Exception $e) {
@@ -57,7 +57,7 @@ class AutoDiscover
             }
         }
 
-        if (in_array($buildMode, ['gitlab_ci', 'both'])) {
+        if (in_array($buildMode, [AppConfig::BUILD_MODE_GITLAB_CI, AppConfig::BUILD_MODE_BOTH])) {
             try {
                 $found = array_merge($found, $this->scanGitlabCi($activeRemotes, $existingNames));
             } catch (\Exception $e) {
@@ -81,16 +81,16 @@ class AutoDiscover
         // 同样按模式隔离：只收集当前模式相关 provider 的 job_name，防止跨 provider 误判重复
         $names = [];
         foreach ($maps as $m) {
-            $bp = $m['build_provider'] ?? 'jenkins';
-            if ($buildMode !== 'both' && $bp !== $buildMode) continue;
+            $bp = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
+            if ($buildMode !== AppConfig::BUILD_MODE_BOTH && $bp !== $buildMode) continue;
             if (!empty($m['job_name'])) $names[] = $m['job_name'];
         }
 
         foreach ($discovered as $item) {
-            $e = $item['entry'];
-            if (in_array($e['job_name'], $names)) continue;
+            $e = $item['entry'] ?? null;
+            if (!$e || empty($e['job_name']) || in_array($e['job_name'], $names)) continue;
             // 新发现全部设为 pending，用户手动启用后才变 active
-            $e['status'] = 'pending';
+            $e['status'] = AppConfig::STATUS_PENDING;
             $maps[] = $e;
             $saved++;
         }
@@ -119,7 +119,7 @@ class AutoDiscover
 
                 $found[] = ['entry' => [
                     'job_name'       => $jobName,
-                    'build_provider' => 'jenkins',
+                    'build_provider' => AppConfig::PROVIDER_JENKINS,
                     'git_platform'   => $platform,
                     'git_remote'     => $remote,
                     'current_path'   => $this->extractPath($remote, $jobName),
@@ -175,7 +175,7 @@ class AutoDiscover
 
                     $found[] = ['entry' => [
                         'job_name'       => $path,
-                        'build_provider' => 'gitlab_ci',
+                        'build_provider' => AppConfig::PROVIDER_GITLAB_CI,
                         'git_platform'   => 'gitlab',
                         'git_remote'     => $remote,
                         'current_path'   => $path,

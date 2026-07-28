@@ -4,6 +4,7 @@ namespace App\Service\Build;
 use App\Service\JenkinsService;
 use App\Service\GitService;
 use App\Service\Logger;
+use App\Config\AppConfig;
 
 class JenkinsBuildProvider implements BuildProviderInterface
 {
@@ -18,7 +19,7 @@ class JenkinsBuildProvider implements BuildProviderInterface
         $this->logger = $logger;
     }
 
-    public function getName(): string { return 'jenkins'; }
+    public function getName(): string { return AppConfig::PROVIDER_JENKINS; }
 
     public function getPipelines(string $projectId, int $perPage = 20): array
     {
@@ -58,7 +59,7 @@ class JenkinsBuildProvider implements BuildProviderInterface
             'name'       => $projectId,
             'stage'      => 'build',
             'status'     => strtolower($status),
-            'runner'     => 'jenkins',
+            'runner'     => AppConfig::PROVIDER_JENKINS,
             'created_at' => '',
             'duration'   => 0,
         ]];
