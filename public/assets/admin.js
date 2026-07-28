@@ -167,9 +167,11 @@ async function loadMonitor() {
         document.getElementById('stat-repos').textContent = st.harbor_repos ?? '—';
 
         // Jenkins
-        const jOk = chk.jenkins === true;
+        const jRaw = chk.jenkins;
+        const jOk  = jRaw === true;
         const jVer = chk.jenkins_version || '';
-        setSvc('icon-jenkins', 'name-jenkins', 'stat-jenkins', 'dot-jenkins', jOk, jVer ? 'v'+jVer : '', jOk ? __.t('common.ok') : __.t('common.unreachable'));
+        const jLabel = jOk ? __.t('common.ok') : jRaw===null ? __.t('common.na') : __.t('common.unreachable');
+        setSvc('icon-jenkins', 'name-jenkins', 'stat-jenkins', 'dot-jenkins', jRaw, jVer ? 'v'+jVer : '', jLabel);
 
         // Git 平台
         const gitRows = document.getElementById('git-rows');

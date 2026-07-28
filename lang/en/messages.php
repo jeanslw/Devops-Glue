@@ -21,6 +21,7 @@ return [
     'common.disabled' => 'Disabled',
     'common.pending'  => 'Pending',
     'common.unknown'  => 'Unknown',
+    'common.na'          => 'N/A',
     'common.unreachable' => 'Unreachable',
     'common.not_configured' => 'Not Configured',
     'common.network_error' => 'Network Error',

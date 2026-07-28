@@ -22,6 +22,7 @@ return [
     'common.disabled' => '禁用',
     'common.pending'  => '待启用',
     'common.unknown'  => '未知',
+    'common.na'          => '不适用',
     'common.unreachable' => '不可达',
     'common.not_configured' => '未配置',
     'common.network_error' => '网络错误',
