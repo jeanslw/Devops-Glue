@@ -158,7 +158,10 @@ return [
     'monitor.data_overview' => 'Data Overview',
     'monitor.service_check' => 'Service Health',
     'monitor.jenkins'      => 'Jenkins',
-    'monitor.git_platforms'=> 'Git Platforms',
+    'monitor.git_platforms'=> 'Git Runtime Health',
+    'monitor.git_reachable'=> 'API Reachable',
+    'monitor.git_unreachable'=> 'API Unreachable',
+    'monitor.git_no_ref'  => 'No Runtime Reference',
     'monitor.harbor'       => 'Harbor',
 
     // ── Admin Panel ──

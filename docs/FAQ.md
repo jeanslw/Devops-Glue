@@ -125,6 +125,28 @@ Jenkins build triggers have a timeout limit, defaulting to 300 seconds (`BUILD_T
 
 The system abstracts both through the `BuildProvider` interface. Each record in `ci_job_git_map` specifies its `build_provider`, and API calls are automatically routed to the corresponding build engine.
 
+### Q: How to configure a Jenkins job to work with parameterized Git branches?
+
+passes branch info to Jenkins via build parameters. Your Jenkins job must be set up to accept them:
+
+1. **Install Git Parameter plugin** in Jenkins (if not already installed)
+2. In the job configuration, add a **Git Parameter** build parameter:
+   - Name: e.g., `branch` or `git_branch`
+   - Parameter Type: `Branch`
+   - Default Value: `main`
+3. Under **Source Code Management → Git → Branches to build**, set:
+   - Branch Specifier: `${branch}` (your parameter name)
+4. In the Git Parameter **Advanced** settings:
+   - Branch Filter: `origin/(.*)`
+
+This tells Jenkins to accept any branch passed via the build parameter, rather than building a fixed branch. When devops-glue triggers a build, it passes the selected branch as the parameter value.
+
+### Q: Trigger build fails with "branch not found"?
+
+- Ensure the Git Parameter plugin is installed and configured in the Jenkins job
+- Verify the parameter name in the Jenkins job matches what devops-glue passes
+- Check that the Branch Filter regex is correct: `origin/(.*)` matches all remote branches
+
 ---
 
 ## Mapping Management
@@ -245,10 +267,18 @@ All scan records are stored centrally in the `ci_security_checks` audit table.
 
 ### Q: What to note when changing table structures?
 
-⚠️ **Must update in three places simultaneously:**
-1. `src/Service/Database.php` → `ensureTables()` method
-2. `database/mysql_init.sql`
-3. `database/sqlite_init.sql`
+⚠️ **Must update in four places simultaneously:**
+1. `config/AppConfig.php` → Add a `TABLE_*` constant for the new table
+2. `src/Service/Database.php` → `ensureTables()` method (auto-migration logic)
+3. `database/mysql_init.sql` → MySQL manual init script
+4. `database/sqlite_init.sql` → SQLite manual init script
+
+Adding a new table (e.g., `ci_new_table`) involves:
+1. Define `TABLE_NEW_TABLE = 'ci_new_table'` in `AppConfig.php`
+2. Add `CREATE TABLE IF NOT EXISTS` in `ensureTables()`, referencing the constant
+3. Add the same `CREATE TABLE` statement to both `mysql_init.sql` and `sqlite_init.sql`
+
+Existing columns or indexes added via `ALTER TABLE` / `CREATE INDEX` in `ensureTables()` don't need the manual scripts updated, but new tables always do.
 
 ### Q: What data is cached and for how long?
 
@@ -306,6 +336,38 @@ Gitee's public API does not support the Commit Status endpoint (returns 405). Co
 ### Q: When does `DEFAULT_GIT_PLATFORM` take effect?
 
 When the `git_remote` URL cannot be recognized by any registered Provider, it falls back to `DEFAULT_GIT_PLATFORM`.
+
+### Q: What does "Git 运行时连通性" (Git Runtime Health) actually monitor?
+
+The health check panel displays **Git runtime connectivity**, not integration health. It answers one narrow question: "can the system reach the API endpoints of the Git platforms currently referenced by existing mappings?"
+
+The check flow:
+
+```
+ci_job_git_map.git_platform (e.g., "gitee")
+        ↓
+Config match → api_base_url (e.g., "https://gitee.com/api/v5")
+        ↓
+HEAD request → HTTP 200 = reachable
+```
+
+**What it checks:** Network connectivity to the Git platform API endpoint.
+
+**What it does NOT check:**
+- Token validity / authentication status
+- Whether the actual repository exists
+- Whether webhooks are properly configured
+- Whether Jenkins can clone the repository
+
+The three possible statuses:
+
+| Status | Meaning | Display |
+|---|---|---|
+| `null` (no mapping references any platform) | No runtime reference — skip check | ⚪ 无运行时引用 |
+| `true` (HEAD succeeds) | API endpoint is reachable | ✅ API 可达 |
+| `false` (HEAD fails) | API endpoint is unreachable | ❌ API 不可达 |
+
+If no `ci_job_git_map` records reference a Git platform, the check is skipped with "无运行时引用 / No Runtime Reference" — this does **not** mean the platform is unconfigured, only that no mapping is currently using it.
 
 ---
 

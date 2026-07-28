@@ -179,12 +179,12 @@ async function loadMonitor() {
         const dotGit = document.getElementById('dot-git');
         if (gitData === null || gitData === undefined) {
             dotGit.className = 'dot dot-off';
-            gitRows.innerHTML = '<div class="svc-row parent"><span class="svc-icon">⚪</span><span class="svc-name">' + __.t('monitor.git_platforms') + '</span><span class="svc-stat off">' + __.t('common.not_configured') + '</span></div>';
+            gitRows.innerHTML = '<div class="svc-row parent"><span class="svc-icon">⚪</span><span class="svc-name">' + __.t('monitor.git_platforms') + '</span><span class="svc-stat off">' + __.t('monitor.git_no_ref') + '</span></div>';
         } else if (Array.isArray(gitData) && gitData.length > 0) {
             dotGit.className = gitData.every(g=>g.reachable) ? 'dot dot-ok' : 'dot dot-err';
             gitRows.innerHTML = gitData.map(g => {
                 const ok = g.reachable;
-                const label = ok ? __.t('common.ok') : __.t('common.unreachable');
+                const label = ok ? __.t('monitor.git_reachable') : __.t('monitor.git_unreachable');
                 return '<div class="svc-row child">' +
                     '<span class="svc-icon">' + (ok ? '✅' : '❌') + '</span>' +
                     '<span class="svc-name">' + esc(g.name) + '<span class="svc-ver">' + (g.api_version||'') + '</span></span>' +

@@ -158,7 +158,10 @@ return [
     'monitor.data_overview' => '数据概览',
     'monitor.service_check' => '服务监测',
     'monitor.jenkins'      => 'Jenkins',
-    'monitor.git_platforms'=> 'Git 平台',
+    'monitor.git_platforms'=> 'Git 运行时连通性',
+    'monitor.git_reachable'=> 'API 可达',
+    'monitor.git_unreachable'=> 'API 不可达',
+    'monitor.git_no_ref'  => '无运行时引用',
     'monitor.harbor'       => 'Harbor',
 
     // ── 管理后台通用 ──
