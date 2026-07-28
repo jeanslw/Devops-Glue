@@ -3,6 +3,7 @@ namespace App\Service\Build;
 
 use GuzzleHttp\Client;
 use App\Service\Logger;
+use App\Config\AppConfig;
 
 class GitlabCiBuildProvider implements BuildProviderInterface
 {
@@ -21,7 +22,7 @@ class GitlabCiBuildProvider implements BuildProviderInterface
         ]);
     }
 
-    public function getName(): string { return 'gitlab_ci'; }
+    public function getName(): string { return AppConfig::PROVIDER_GITLAB_CI; }
 
     public function getPipelines(string $projectId, int $perPage = 20): array
     {

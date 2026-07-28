@@ -24,12 +24,12 @@ class MappingManager
     /** 是否注册了某类 Provider */
     public function hasJenkins(): bool
     {
-        return in_array($this->config->getBuildMode(), ['jenkins', 'both']);
+        return in_array($this->config->getBuildMode(), [AppConfig::BUILD_MODE_JENKINS, AppConfig::BUILD_MODE_BOTH]);
     }
 
     public function hasGitlabCi(): bool
     {
-        return in_array($this->config->getBuildMode(), ['gitlab_ci', 'both']);
+        return in_array($this->config->getBuildMode(), [AppConfig::BUILD_MODE_GITLAB_CI, AppConfig::BUILD_MODE_BOTH]);
     }
 
     // ── 全量查询（过滤禁用 + 模式筛选） ──
@@ -38,13 +38,13 @@ class MappingManager
     public function activeMaps(): array
     {
         $maps = $this->config->getJobGitMap();
-        $maps = array_filter($maps, fn($m) => ($m['status'] ?? 'active') === 'active');
+        $maps = array_filter($maps, fn($m) => ($m['status'] ?? AppConfig::STATUS_ACTIVE) === AppConfig::STATUS_ACTIVE);
 
         $mode = $this->config->getBuildMode();
-        if ($mode === 'gitlab_ci') {
-            $maps = array_filter($maps, fn($m) => ($m['build_provider'] ?? 'jenkins') === 'gitlab_ci');
-        } elseif ($mode === 'jenkins') {
-            $maps = array_filter($maps, fn($m) => ($m['build_provider'] ?? 'jenkins') !== 'gitlab_ci');
+        if ($mode === AppConfig::BUILD_MODE_GITLAB_CI) {
+            $maps = array_filter($maps, fn($m) => ($m['build_provider'] ?? AppConfig::PROVIDER_JENKINS) === AppConfig::PROVIDER_GITLAB_CI);
+        } elseif ($mode === AppConfig::BUILD_MODE_JENKINS) {
+            $maps = array_filter($maps, fn($m) => ($m['build_provider'] ?? AppConfig::PROVIDER_JENKINS) !== AppConfig::PROVIDER_GITLAB_CI);
         }
         return array_values($maps);
     }
@@ -74,16 +74,16 @@ class MappingManager
      */
     public function resolveProject(string $projectPath): array
     {
-        $provider  = 'jenkins';
+        $provider  = AppConfig::PROVIDER_JENKINS;
         $projectId = $projectPath;
 
         foreach ($this->activeMaps() as $m) {
             $job = $m['job_name'] ?? '';
             $cp  = $m['current_path'] ?? '';
             if ($job === $projectPath || $cp === $projectPath || $job === str_replace('-', '/', $projectPath)) {
-                $bp = $m['build_provider'] ?? 'jenkins';
+                $bp = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
                 if (!empty($bp)) $provider = $bp;
-                if ($provider !== 'jenkins' && !empty($m['project_id'])) {
+                if ($provider !== AppConfig::PROVIDER_JENKINS && !empty($m['project_id'])) {
                     $projectId = (string) $m['project_id'];
                 }
                 break;

@@ -201,7 +201,7 @@ return [
         // 这样 UI 切换模式时无需重启即可生效
         $jenkinsCfg = $config->getJenkinsConfig();
         if (!empty($jenkinsCfg['url'])) {
-            $registry->register('jenkins', function () use ($c, $logger) {
+            $registry->register(AppConfig::PROVIDER_JENKINS, function () use ($c, $logger) {
                 return new JenkinsBuildProvider($c->get(JenkinsService::class), $c->get(GitService::class), $logger);
             });
         }
@@ -210,7 +210,7 @@ return [
         if ($config->isPlatformConfigured('gitlab')) {
             $glCfg = $config->getGitlabConfig();
             if (!empty($glCfg['base_url']) && !empty($glCfg['token'])) {
-                $registry->register('gitlab_ci', function () use ($glCfg, $logger) {
+                $registry->register(AppConfig::PROVIDER_GITLAB_CI, function () use ($glCfg, $logger) {
                     return new GitlabCiBuildProvider($glCfg['base_url'], $glCfg['token'], $logger);
                 });
             }

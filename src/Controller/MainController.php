@@ -28,7 +28,7 @@ class MainController extends BaseController
      */
     public function jobsList(Request $request, Response $response): Response
     {
-        if ($this->mapping->buildMode() === 'gitlab_ci') {
+        if ($this->mapping->buildMode() === AppConfig::BUILD_MODE_GITLAB_CI) {
             return $this->output($response, $this->mapping->activeJobNames(), $request);
         }
         try {
@@ -44,13 +44,13 @@ class MainController extends BaseController
     public function mapList(Request $request, Response $response): Response
     {
         $buildMode = $this->config->getBuildMode();
-        $cacheKey = 'map_list_' . $buildMode;
+        $cacheKey = AppConfig::CACHE_KEY_MAP_LIST_PREFIX . $buildMode;
 
         // 有缓存且未过期，直接返回（gitlab_ci 模式跳过缓存，避免 Jenkins 旧数据）
-        if ($buildMode !== 'gitlab_ci') {
+        if ($buildMode !== AppConfig::BUILD_MODE_GITLAB_CI) {
             try {
                 $pdo = \App\Service\Database::getPdo();
-                $cached = $pdo->prepare("SELECT value FROM cache WHERE cache_key = ? AND expires_at > ?");
+                $cached = $pdo->prepare("SELECT value FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key = ? AND expires_at > ?");
                 $cached->execute([$cacheKey, time()]);
                 $row = $cached->fetch();
                 if ($row) {
@@ -64,11 +64,11 @@ class MainController extends BaseController
         try {
             $maps = $this->config->getJobGitMap();
             // 过滤禁用 + 模式筛选
-            $maps = array_filter($maps, fn($m) => ($m['status'] ?? 'active') === 'active');
-            if ($buildMode === 'gitlab_ci') {
-                $maps = array_values(array_filter($maps, fn($m) => ($m['build_provider'] ?? 'jenkins') === 'gitlab_ci'));
-            } elseif ($buildMode === 'jenkins') {
-                $maps = array_values(array_filter($maps, fn($m) => ($m['build_provider'] ?? 'jenkins') !== 'gitlab_ci'));
+            $maps = array_filter($maps, fn($m) => ($m['status'] ?? AppConfig::STATUS_ACTIVE) === AppConfig::STATUS_ACTIVE);
+            if ($buildMode === AppConfig::BUILD_MODE_GITLAB_CI) {
+                $maps = array_values(array_filter($maps, fn($m) => ($m['build_provider'] ?? AppConfig::PROVIDER_JENKINS) === AppConfig::PROVIDER_GITLAB_CI));
+            } elseif ($buildMode === AppConfig::BUILD_MODE_JENKINS) {
+                $maps = array_values(array_filter($maps, fn($m) => ($m['build_provider'] ?? AppConfig::PROVIDER_JENKINS) !== AppConfig::PROVIDER_GITLAB_CI));
             }
         } catch (\Exception $e) {
             $maps = [];
@@ -87,7 +87,7 @@ class MainController extends BaseController
             if (!isset($grouped[$key])) {
                 $grouped[$key] = [
                     'git_platform'      => $map['git_platform'],
-                    'build_provider'    => $map['build_provider'] ?? 'jenkins',
+                    'build_provider'    => $map['build_provider'] ?? AppConfig::PROVIDER_JENKINS,
                     'git_remote'        => $map['git_remote'],
                     'project_id'        => $map['project_id'] ?? null,
                     'web_url'           => $map['web_url'] ?? '',
@@ -116,7 +116,7 @@ class MainController extends BaseController
         // 写入缓存（30s TTL）
         try {
             $pdo = \App\Service\Database::getPdo();
-            $sql = \App\Service\Database::sqlUpsert('cache', 'cache_key, value, expires_at', '?, ?, ?');
+            $sql = \App\Service\Database::sqlUpsert(AppConfig::TABLE_CACHE, 'cache_key, value, expires_at', '?, ?, ?');
             $stmt = $pdo->prepare($sql);
             $stmt->execute([$cacheKey, json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), time() + 30]);
         } catch (\Exception $e) {
@@ -200,7 +200,7 @@ class MainController extends BaseController
         ];
 
         $buildMode = $this->config->getBuildMode();
-        if ($buildMode !== 'gitlab_ci') {
+        if ($buildMode !== AppConfig::BUILD_MODE_GITLAB_CI) {
             try {
                 // 健康检查用独立短超时 Client，避免 Jenkins 宕机时卡住
                 $jk = $this->config->getJenkinsConfig();
@@ -310,17 +310,21 @@ class MainController extends BaseController
         }
 
         $gitOk = $checks['git'] === null || !empty(array_filter($checks['git'], fn($g) => $g['reachable']));
-        $allOk = $checks['jenkins'] && $gitOk && ($checks['harbor'] === true || $checks['harbor'] === null);
+        $allOk = ($checks['jenkins'] === true || $checks['jenkins'] === null)
+            && $gitOk
+            && ($checks['harbor'] === true || $checks['harbor'] === null);
         $status = $allOk ? 'ok' : 'degraded';
 
         // 统计卡片数据
         $stats = ['total_maps' => 0, 'active_maps' => 0, 'git_platforms' => 0, 'harbor_repos' => 0];
         try {
             $pdo = \App\Service\Database::getPdo();
-            $stats['total_maps'] = (int)$pdo->query("SELECT count(*) FROM ci_job_git_map")->fetchColumn();
-            $stats['active_maps'] = (int)$pdo->query("SELECT count(*) FROM ci_job_git_map WHERE status = 'active'")->fetchColumn();
-            $stats['git_platforms'] = (int)$pdo->query("SELECT count(DISTINCT git_platform) FROM ci_job_git_map WHERE git_platform IS NOT NULL AND git_platform != ''")->fetchColumn();
-            $stats['harbor_repos'] = (int)$pdo->query("SELECT count(DISTINCT harbor_repository) FROM ci_job_git_map WHERE harbor_repository IS NOT NULL AND harbor_repository != ''")->fetchColumn();
+            $stats['total_maps'] = (int)$pdo->query("SELECT count(*) FROM " . AppConfig::TABLE_JOB_GIT_MAP)->fetchColumn();
+            $stmt = $pdo->prepare("SELECT count(*) FROM " . AppConfig::TABLE_JOB_GIT_MAP . " WHERE status = ?");
+            $stmt->execute([AppConfig::STATUS_ACTIVE]);
+            $stats['active_maps'] = (int)$stmt->fetchColumn();
+            $stats['git_platforms'] = (int)$pdo->query("SELECT count(DISTINCT git_platform) FROM " . AppConfig::TABLE_JOB_GIT_MAP . " WHERE git_platform IS NOT NULL AND git_platform != ''")->fetchColumn();
+            $stats['harbor_repos'] = (int)$pdo->query("SELECT count(DISTINCT harbor_repository) FROM " . AppConfig::TABLE_JOB_GIT_MAP . " WHERE harbor_repository IS NOT NULL AND harbor_repository != ''")->fetchColumn();
         } catch (\Exception $e) {}
 
         $data = [

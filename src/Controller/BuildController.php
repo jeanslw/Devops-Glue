@@ -38,7 +38,7 @@ class BuildController extends BaseController
         foreach ($this->mapping->activeMaps() as $m) {
             $all[] = [
                 'job_name'     => $m['job_name'] ?? '',
-                'ci_provider'  => $m['build_provider'] ?? 'jenkins',
+                'ci_provider'  => $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS,
                 'project_id'   => $m['project_id'] ?? ($m['current_path'] ?? $m['job_name']),
                 'current_path' => $m['current_path'] ?? '',
             ];
@@ -52,8 +52,8 @@ class BuildController extends BaseController
 
     public function configMode(Request $request, Response $response): Response
     {
-        $hasJenkins = $this->registry->isRegistered('jenkins');
-        $hasGitlab  = $this->registry->isRegistered('gitlab_ci');
+        $hasJenkins = $this->registry->isRegistered(AppConfig::PROVIDER_JENKINS);
+        $hasGitlab  = $this->registry->isRegistered(AppConfig::PROVIDER_GITLAB_CI);
         $mode   = $this->config->getBuildMode();
         $source = $this->config->getBuildModeSource();
         return $this->output($response, ['mode' => $mode, 'source' => $source, 'has_jenkins' => $hasJenkins, 'has_gitlab_ci' => $hasGitlab], $request);
@@ -389,7 +389,7 @@ class BuildController extends BaseController
         try {
             $pdo = \App\Service\Database::getPdo();
             $sql = \App\Service\Database::sqlUpsert(
-                'ci_security_checks',
+                AppConfig::TABLE_SECURITY_CHECKS,
                 'project, sha, check_type, state, context, description, tag, created_at',
                 '?, ?, ?, ?, ?, ?, ?, ' . \App\Service\Database::sqlNow()
             );
@@ -410,7 +410,7 @@ class BuildController extends BaseController
         // 1. 获取 job_git_map 中的映射信息（不依赖 CI 系统）
         $maps = $this->config->getJobGitMap();
         $harborRepo  = '';
-        $provider    = 'jenkins';
+        $provider    = AppConfig::PROVIDER_JENKINS;
         $gitPlatform = '';
         $gitProjectId  = null;
         $gitCurrentPath = '';
@@ -419,7 +419,7 @@ class BuildController extends BaseController
             $cp  = $m['current_path'] ?? '';
             if ($job === $path || $cp === $path) {
                 $harborRepo     = $m['harbor_repository'] ?? '';
-                $provider       = $m['build_provider'] ?? 'jenkins';
+                $provider       = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
                 $gitPlatform    = $m['git_platform'] ?? '';
                 $gitProjectId   = $m['project_id'] ?? null;
                 $gitCurrentPath = $cp;
@@ -516,7 +516,9 @@ class BuildController extends BaseController
         }
 
         // 5. 记录 pipeline → tag 映射（含扫描状态）
-        $this->recordPipelineTag($path, $iid ?: time(), $tag, $harborRepo, $state);
+        if (!empty($iid)) {
+            $this->recordPipelineTag($path, (int)$iid, $tag, $harborRepo, $state);
+        }
 
         return $this->output($response, [
             'build_provider'       => $provider,
@@ -578,7 +580,7 @@ class BuildController extends BaseController
     {
         try {
             $pdo = \App\Service\Database::getPdo();
-            $rows = $pdo->query("SELECT project, pipeline_iid, tag, harbor_repository, status, created_at FROM ci_pipeline_tags ORDER BY created_at DESC")->fetchAll();
+            $rows = $pdo->query("SELECT project, pipeline_iid, tag, harbor_repository, status, created_at FROM " . AppConfig::TABLE_PIPELINE_TAGS . " ORDER BY created_at DESC")->fetchAll();
             $result = [];
             foreach ($rows as $r) {
                 $result[$r['project']][(string) $r['pipeline_iid']] = [
@@ -635,7 +637,7 @@ class BuildController extends BaseController
         if (!empty($staleKeys)) {
             try {
                 $pdo  = \App\Service\Database::getPdo();
-                $stmt = $pdo->prepare("DELETE FROM ci_pipeline_tags WHERE project = ? AND pipeline_iid = ?");
+                $stmt = $pdo->prepare("DELETE FROM " . AppConfig::TABLE_PIPELINE_TAGS . " WHERE project = ? AND pipeline_iid = ?");
                 foreach ($staleKeys as $key) {
                     $stmt->execute([$key['project'], $key['pipeline_iid']]);
                     unset($tagGroups[$key['project']][(string) $key['pipeline_iid']]);
@@ -651,7 +653,7 @@ class BuildController extends BaseController
         if (mb_strlen($tag) > 255 || mb_strlen($path) > 255) return;
         try {
             $pdo = \App\Service\Database::getPdo();
-            $sql   = \App\Service\Database::sqlUpsert('ci_pipeline_tags', 'project, pipeline_iid, tag, harbor_repository, status', '?, ?, ?, ?, ?');
+            $sql   = \App\Service\Database::sqlUpsert(AppConfig::TABLE_PIPELINE_TAGS, 'project, pipeline_iid, tag, harbor_repository, status', '?, ?, ?, ?, ?');
             $stmt = $pdo->prepare($sql);
             $stmt->execute([$path, $pipelineIid, $tag, $harborRepo, $status]);
         } catch (\Exception $e) {

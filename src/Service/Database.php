@@ -134,28 +134,28 @@ class Database
         $TS_TYPE  = $isMySQL ? 'DATETIME' : 'TEXT';
 
         // ci_job_git_map
-        $pdo->exec("CREATE TABLE IF NOT EXISTS ci_job_git_map (
+        $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_JOB_GIT_MAP . " (
             job_name {$TEXT_PK},
             git_platform TEXT,
-            build_provider {$VARCHAR} DEFAULT 'jenkins',
+            build_provider {$VARCHAR} DEFAULT '" . \App\Config\AppConfig::PROVIDER_JENKINS . "',
             git_remote TEXT,
             project_id INTEGER,
             web_url TEXT,
             current_path TEXT,
             harbor_repository TEXT,
             api_version TEXT,
-            status {$VARCHAR} DEFAULT 'active'
+            status {$VARCHAR} DEFAULT '" . \App\Config\AppConfig::STATUS_ACTIVE . "'
         ){$ENGINE}");
-        try { $pdo->exec("ALTER TABLE ci_job_git_map ADD COLUMN status {$VARCHAR} DEFAULT 'active'"); } catch (\Exception $e) {}
+        try { $pdo->exec("ALTER TABLE " . \App\Config\AppConfig::TABLE_JOB_GIT_MAP . " ADD COLUMN status {$VARCHAR} DEFAULT '" . \App\Config\AppConfig::STATUS_ACTIVE . "'"); } catch (\Exception $e) {}
 
         // ci_platform_versions
-        $pdo->exec("CREATE TABLE IF NOT EXISTS ci_platform_versions (
+        $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_PLATFORM_VERSIONS . " (
             platform {$TEXT_PK},
             version TEXT NOT NULL
         ){$ENGINE}");
 
         // ci_pipeline_tags
-        $pdo->exec("CREATE TABLE IF NOT EXISTS ci_pipeline_tags (
+        $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_PIPELINE_TAGS . " (
             project {$VCHAR255},
             pipeline_iid INTEGER NOT NULL,
             tag {$VARCHAR} NOT NULL,
@@ -164,18 +164,18 @@ class Database
             created_at {$TS_TYPE} DEFAULT ({$NOW}),
             PRIMARY KEY (project, pipeline_iid)
         ){$ENGINE}");
-        try { $pdo->exec("ALTER TABLE ci_pipeline_tags ADD COLUMN harbor_repository TEXT"); } catch (\Exception $e) {}
-        try { $pdo->exec("ALTER TABLE ci_pipeline_tags ADD COLUMN status {$VARCHAR} DEFAULT ''"); } catch (\Exception $e) {}
+        try { $pdo->exec("ALTER TABLE " . \App\Config\AppConfig::TABLE_PIPELINE_TAGS . " ADD COLUMN harbor_repository TEXT"); } catch (\Exception $e) {}
+        try { $pdo->exec("ALTER TABLE " . \App\Config\AppConfig::TABLE_PIPELINE_TAGS . " ADD COLUMN status {$VARCHAR} DEFAULT ''"); } catch (\Exception $e) {}
 
         // cache
         if ($isMySQL) {
-            $pdo->exec("CREATE TABLE IF NOT EXISTS cache (
+            $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_CACHE . " (
                 cache_key VARCHAR(255) PRIMARY KEY,
                 `value` MEDIUMTEXT NOT NULL,
                 expires_at INTEGER
             ){$ENGINE}");
         } else {
-            $pdo->exec("CREATE TABLE IF NOT EXISTS cache (
+            $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_CACHE . " (
                 cache_key TEXT PRIMARY KEY,
                 value TEXT NOT NULL,
                 expires_at INTEGER
@@ -183,23 +183,23 @@ class Database
         }
 
         // admin_users
-        $pdo->exec("CREATE TABLE IF NOT EXISTS admin_users (
+        $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_ADMIN_USERS . " (
             username {$TEXT_PK},
             password_hash TEXT NOT NULL,
-            role {$VARCHAR} NOT NULL DEFAULT 'admin',
+            role {$VARCHAR} NOT NULL DEFAULT '" . \App\Config\AppConfig::ROLE_ADMIN . "',
             systems {$VARCHAR} NOT NULL DEFAULT 'ci,cd',
             updated_at {$TS_TYPE} DEFAULT ({$NOW})
         ){$ENGINE}");
 
         // ci_app_settings（应用运行时配置，与缓存分离）
         if ($isMySQL) {
-            $pdo->exec("CREATE TABLE IF NOT EXISTS ci_app_settings (
+            $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_APP_SETTINGS . " (
                 setting_key VARCHAR(255) PRIMARY KEY,
                 `value` MEDIUMTEXT NOT NULL,
                 updated_at {$TS_TYPE} DEFAULT ({$NOW})
             ){$ENGINE}");
         } else {
-            $pdo->exec("CREATE TABLE IF NOT EXISTS ci_app_settings (
+            $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_APP_SETTINGS . " (
                 setting_key TEXT PRIMARY KEY,
                 value TEXT NOT NULL,
                 updated_at {$TS_TYPE} DEFAULT ({$NOW})
@@ -208,19 +208,19 @@ class Database
 
         // 迁移：将 cache 表中可能残留的 build_mode 移至 ci_app_settings
         try {
-            $old = $pdo->query("SELECT value FROM cache WHERE cache_key = 'build_mode'")->fetch();
-            if ($old && in_array($old['value'], ['jenkins', 'gitlab_ci', 'both'])) {
-                $exists = $pdo->query("SELECT 1 FROM ci_app_settings WHERE setting_key = 'build_mode'")->fetch();
+            $old = $pdo->query("SELECT value FROM " . \App\Config\AppConfig::TABLE_CACHE . " WHERE cache_key = 'build_mode'")->fetch();
+            if ($old && in_array($old['value'], [\App\Config\AppConfig::BUILD_MODE_JENKINS, \App\Config\AppConfig::BUILD_MODE_GITLAB_CI, \App\Config\AppConfig::BUILD_MODE_BOTH])) {
+                $exists = $pdo->query("SELECT 1 FROM " . \App\Config\AppConfig::TABLE_APP_SETTINGS . " WHERE setting_key = 'build_mode'")->fetch();
                 if (!$exists) {
-                    $sql = self::sqlUpsert('ci_app_settings', 'setting_key, value, updated_at', '?, ?, ' . self::sqlNow());
+                    $sql = self::sqlUpsert(\App\Config\AppConfig::TABLE_APP_SETTINGS, 'setting_key, value, updated_at', '?, ?, ' . self::sqlNow());
                     $pdo->prepare($sql)->execute(['build_mode', $old['value']]);
                 }
-                $pdo->exec("DELETE FROM cache WHERE cache_key = 'build_mode'");
+                $pdo->exec("DELETE FROM " . \App\Config\AppConfig::TABLE_CACHE . " WHERE cache_key = 'build_mode'");
             }
         } catch (\Exception $e) {}
 
         // ci_security_checks（安全扫描审计记录）
-        $pdo->exec("CREATE TABLE IF NOT EXISTS ci_security_checks (
+        $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_SECURITY_CHECKS . " (
             id {$PK},
             project {$VARCHAR} NOT NULL,
             sha {$VARCHAR} NOT NULL,
@@ -231,14 +231,14 @@ class Database
             tag {$VARCHAR} DEFAULT '',
             created_at {$TS_TYPE} DEFAULT ({$NOW})
         ){$ENGINE}");
-        try { $pdo->exec("ALTER TABLE ci_security_checks ADD COLUMN tag {$VARCHAR} DEFAULT ''"); } catch (\Exception $e) {}
+        try { $pdo->exec("ALTER TABLE " . \App\Config\AppConfig::TABLE_SECURITY_CHECKS . " ADD COLUMN tag {$VARCHAR} DEFAULT ''"); } catch (\Exception $e) {}
 
         // ── 索引 ──
-        try { $pdo->exec("CREATE INDEX IF NOT EXISTS idx_pipeline_tags_project ON ci_pipeline_tags(project)"); } catch (\Exception $e) {}
-        try { $pdo->exec("CREATE INDEX IF NOT EXISTS idx_pipeline_tags_created ON ci_pipeline_tags(created_at)"); } catch (\Exception $e) {}
-        try { $pdo->exec("CREATE INDEX IF NOT EXISTS idx_job_git_map_current_path ON ci_job_git_map(current_path)"); } catch (\Exception $e) {}
-        try { $pdo->exec("CREATE INDEX IF NOT EXISTS idx_security_checks_project ON ci_security_checks(project, check_type)"); } catch (\Exception $e) {}
-        try { $pdo->exec("CREATE INDEX IF NOT EXISTS idx_security_checks_sha ON ci_security_checks(sha)"); } catch (\Exception $e) {}
+        try { $pdo->exec("CREATE INDEX IF NOT EXISTS idx_pipeline_tags_project ON " . \App\Config\AppConfig::TABLE_PIPELINE_TAGS . "(project)"); } catch (\Exception $e) {}
+        try { $pdo->exec("CREATE INDEX IF NOT EXISTS idx_pipeline_tags_created ON " . \App\Config\AppConfig::TABLE_PIPELINE_TAGS . "(created_at)"); } catch (\Exception $e) {}
+        try { $pdo->exec("CREATE INDEX IF NOT EXISTS idx_job_git_map_current_path ON " . \App\Config\AppConfig::TABLE_JOB_GIT_MAP . "(current_path)"); } catch (\Exception $e) {}
+        try { $pdo->exec("CREATE INDEX IF NOT EXISTS idx_security_checks_project ON " . \App\Config\AppConfig::TABLE_SECURITY_CHECKS . "(project, check_type)"); } catch (\Exception $e) {}
+        try { $pdo->exec("CREATE INDEX IF NOT EXISTS idx_security_checks_sha ON " . \App\Config\AppConfig::TABLE_SECURITY_CHECKS . "(sha)"); } catch (\Exception $e) {}
 
         // 一次性 JSON 迁移（仅 SQLite）
         if (!$isMySQL) {
@@ -254,19 +254,19 @@ class Database
     private static function seedAdmin(): void
     {
         $pdo = self::$pdo;
-        $cnt = $pdo->query("SELECT count(*) c FROM admin_users")->fetch()['c'];
+        $cnt = $pdo->query("SELECT count(*) c FROM " . \App\Config\AppConfig::TABLE_ADMIN_USERS)->fetch()['c'];
         if ($cnt == 0) {
             $user = $_ENV['ADMIN_USER'] ?? 'admin';
             $pass = $_ENV['ADMIN_PASSWORD'] ?? '';
             if (!empty($pass)) {
                 $hash = password_hash($pass, PASSWORD_BCRYPT);
-                $pdo->prepare("INSERT INTO admin_users (username, password_hash, role, systems) VALUES (?, ?, 'super_admin', 'ci,cd')")
+                $pdo->prepare("INSERT INTO " . \App\Config\AppConfig::TABLE_ADMIN_USERS . " (username, password_hash, role, systems) VALUES (?, ?, '" . \App\Config\AppConfig::ROLE_SUPER_ADMIN . "', 'ci,cd')")
                     ->execute([$user, $hash]);
             }
         }
         // 迁移：已有根管理员 role 从 'admin' 升级为 'super_admin'
         $rootUser = $_ENV['ADMIN_USER'] ?? 'admin';
-        $pdo->prepare("UPDATE admin_users SET role = 'super_admin' WHERE username = ? AND role = 'admin'")
+        $pdo->prepare("UPDATE " . \App\Config\AppConfig::TABLE_ADMIN_USERS . " SET role = '" . \App\Config\AppConfig::ROLE_SUPER_ADMIN . "' WHERE username = ? AND role = '" . \App\Config\AppConfig::ROLE_ADMIN . "'")
             ->execute([$rootUser]);
     }
 
@@ -281,15 +281,16 @@ class Database
         if (!is_array($data) || !isset($data[0])) { @unlink($path); return; }
 
         $isMySQL = self::$driver === 'mysql';
+        $table = \App\Config\AppConfig::TABLE_JOB_GIT_MAP;
         $sql = $isMySQL
-            ? "INSERT IGNORE INTO ci_job_git_map (job_name,git_platform,build_provider,git_remote,project_id,web_url,current_path,harbor_repository,api_version) VALUES (?,?,?,?,?,?,?,?,?)"
-            : "INSERT OR IGNORE INTO ci_job_git_map (job_name,git_platform,build_provider,git_remote,project_id,web_url,current_path,harbor_repository,api_version) VALUES (?,?,?,?,?,?,?,?,?)";
+            ? "INSERT IGNORE INTO {$table} (job_name,git_platform,build_provider,git_remote,project_id,web_url,current_path,harbor_repository,api_version) VALUES (?,?,?,?,?,?,?,?,?)"
+            : "INSERT OR IGNORE INTO {$table} (job_name,git_platform,build_provider,git_remote,project_id,web_url,current_path,harbor_repository,api_version) VALUES (?,?,?,?,?,?,?,?,?)";
 
         $stmt = $pdo->prepare($sql);
         foreach ($data as $row) {
             if (empty($row['job_name'])) continue;
             $stmt->execute([
-                $row['job_name'], $row['git_platform'] ?? null, $row['build_provider'] ?? 'jenkins',
+                $row['job_name'], $row['git_platform'] ?? null, $row['build_provider'] ?? \App\Config\AppConfig::PROVIDER_JENKINS,
                 $row['git_remote'] ?? null, $row['project_id'] ?? null, $row['web_url'] ?? null,
                 $row['current_path'] ?? null, $row['harbor_repository'] ?? null, $row['api_version'] ?? null,
             ]);
@@ -306,9 +307,10 @@ class Database
         if (!is_array($data)) { @unlink($path); return; }
 
         $isMySQL = self::$driver === 'mysql';
+        $table = \App\Config\AppConfig::TABLE_PLATFORM_VERSIONS;
         $sql = $isMySQL
-            ? "REPLACE INTO ci_platform_versions (platform,version) VALUES (?,?)"
-            : "INSERT OR REPLACE INTO ci_platform_versions (platform,version) VALUES (?,?)";
+            ? "REPLACE INTO {$table} (platform,version) VALUES (?,?)"
+            : "INSERT OR REPLACE INTO {$table} (platform,version) VALUES (?,?)";
 
         $stmt = $pdo->prepare($sql);
         foreach ($data as $platform => $ver) {
@@ -326,9 +328,10 @@ class Database
         if (!is_array($data)) { @unlink($path); return; }
 
         $isMySQL = self::$driver === 'mysql';
+        $table = \App\Config\AppConfig::TABLE_PIPELINE_TAGS;
         $sql = $isMySQL
-            ? "REPLACE INTO ci_pipeline_tags (project,pipeline_iid,tag) VALUES (?,?,?)"
-            : "INSERT OR REPLACE INTO ci_pipeline_tags (project,pipeline_iid,tag) VALUES (?,?,?)";
+            ? "REPLACE INTO {$table} (project,pipeline_iid,tag) VALUES (?,?,?)"
+            : "INSERT OR REPLACE INTO {$table} (project,pipeline_iid,tag) VALUES (?,?,?)";
 
         $stmt = $pdo->prepare($sql);
         foreach ($data as $project => $tags) {
