@@ -1,8 +1,8 @@
 <?php
 /**
  * 快速测试脚本（核心接口 + 代表性格式切换）
- * 使用：php test/test_api_html_simp.php [baseUrl]
- * 示例：php test/test_api_html_simp.php http://localhost:8080
+ * 使用：php tests/test_api_html_simp.php [baseUrl]
+ * 示例：php tests/test_api_html_simp.php http://localhost:8080
  * 生成文件：public/test_report_YYYYMMDD_HHMMSS.html
  */
 
