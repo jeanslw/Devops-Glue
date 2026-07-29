@@ -174,6 +174,10 @@ class JenkinsBuildProvider implements BuildProviderInterface
                         $item['choices'] = $def['choices'];
                     }
                     $item['defaultValue'] = $def['defaultValue'] ?? null;
+                } elseif (str_contains($class, 'unochoice') || str_contains($class, 'CascadeChoiceParameter')) {
+                    // Active Choices / Cascade Choice：选项由 Groovy 脚本动态计算，API 拿不到 choices
+                    $item['type'] = 'dynamic';
+                    $item['defaultValue'] = $def['defaultValue'] ?? null;
                 } elseif (str_contains($class, 'StringParameterDefinition')) {
                     $item['type'] = 'string';
                     $item['defaultValue'] = $def['defaultValue'] ?? '';
