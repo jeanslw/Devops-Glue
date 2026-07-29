@@ -21,8 +21,8 @@ class AppConfigTest extends TestCase
 
     public function testRoleConstantsAreDistinct(): void
     {
-        $roles = [AppConfig::ROLE_SUPER_ADMIN, AppConfig::ROLE_ADMIN, AppConfig::ROLE_DEPLOYER];
-        $this->assertCount(3, array_unique($roles), '三个角色值必须互不相同');
+        $roles = [AppConfig::ROLE_SUPER_ADMIN, AppConfig::ROLE_ADMIN, AppConfig::ROLE_DEPLOYER, AppConfig::ROLE_VIEWER];
+        $this->assertCount(4, array_unique($roles), '四个角色值必须互不相同');
     }
 
     public function testSystemTypeConstantsAreValid(): void

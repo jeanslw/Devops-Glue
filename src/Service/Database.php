@@ -233,6 +233,71 @@ class Database
         ){$ENGINE}");
         try { $pdo->exec("ALTER TABLE " . \App\Config\AppConfig::TABLE_SECURITY_CHECKS . " ADD COLUMN tag {$VARCHAR} DEFAULT ''"); } catch (\Exception $e) {}
 
+        // ── RBAC 权限系统 ──
+        // roles
+        $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_ROLES . " (
+            id {$PK},
+            name {$VARCHAR} NOT NULL UNIQUE,
+            description TEXT DEFAULT '',
+            is_system TINYINT NOT NULL DEFAULT 0,
+            created_at {$TS_TYPE} DEFAULT ({$NOW})
+        ){$ENGINE}");
+        // permissions
+        if ($isMySQL) {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_PERMISSIONS . " (
+                perm_key VARCHAR(128) PRIMARY KEY,
+                description TEXT DEFAULT ''
+            ){$ENGINE}");
+        } else {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_PERMISSIONS . " (
+                perm_key TEXT PRIMARY KEY,
+                description TEXT DEFAULT ''
+            )");
+        }
+        // role_permissions
+        if ($isMySQL) {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_ROLE_PERMISSIONS . " (
+                role_id INTEGER NOT NULL,
+                perm_key VARCHAR(128) NOT NULL,
+                PRIMARY KEY (role_id, perm_key)
+            ){$ENGINE}");
+        } else {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_ROLE_PERMISSIONS . " (
+                role_id INTEGER NOT NULL,
+                perm_key TEXT NOT NULL,
+                PRIMARY KEY (role_id, perm_key)
+            )");
+        }
+
+        // 种子数据：权限定义
+        $permUpsert = self::sqlUpsert(\App\Config\AppConfig::TABLE_PERMISSIONS, 'perm_key, description', '?, ?');
+        $permStmt = $pdo->prepare($permUpsert);
+        foreach (\App\Config\AppConfig::DEFAULT_PERMISSIONS as $key => $desc) {
+            try { $permStmt->execute([$key, $desc]); } catch (\Exception $e) {}
+        }
+
+        // 种子数据：系统角色（幂等）
+        $roleUpsert = self::sqlUpsert(\App\Config\AppConfig::TABLE_ROLES, 'name, description, is_system', '?, ?, 1');
+        $roleStmt = $pdo->prepare($roleUpsert);
+        foreach (\App\Config\AppConfig::DEFAULT_ROLES as $roleName => $perms) {
+            $roleDesc = [
+                \App\Config\AppConfig::ROLE_SUPER_ADMIN => '超级管理员',
+                \App\Config\AppConfig::ROLE_ADMIN       => '管理员',
+                \App\Config\AppConfig::ROLE_DEPLOYER    => '部署者',
+                \App\Config\AppConfig::ROLE_VIEWER      => '只读',
+            ][$roleName] ?? '';
+            try { $roleStmt->execute([$roleName, $roleDesc]); } catch (\Exception $e) {}
+        }
+
+        // 种子数据：角色↔权限（先清再插，确保与 DEFAULT_ROLES 一致）
+        try { $pdo->exec("DELETE FROM " . \App\Config\AppConfig::TABLE_ROLE_PERMISSIONS); } catch (\Exception $e) {}
+        $rpStmt = $pdo->prepare("INSERT INTO " . \App\Config\AppConfig::TABLE_ROLE_PERMISSIONS . " (role_id, perm_key) VALUES ((SELECT id FROM " . \App\Config\AppConfig::TABLE_ROLES . " WHERE name = ?), ?)");
+        foreach (\App\Config\AppConfig::DEFAULT_ROLES as $roleName => $perms) {
+            foreach ($perms as $permKey) {
+                try { $rpStmt->execute([$roleName, $permKey]); } catch (\Exception $e) {}
+            }
+        }
+
         // ── 索引 ──
         try { $pdo->exec("CREATE INDEX IF NOT EXISTS idx_pipeline_tags_project ON " . \App\Config\AppConfig::TABLE_PIPELINE_TAGS . "(project)"); } catch (\Exception $e) {}
         try { $pdo->exec("CREATE INDEX IF NOT EXISTS idx_pipeline_tags_created ON " . \App\Config\AppConfig::TABLE_PIPELINE_TAGS . "(created_at)"); } catch (\Exception $e) {}

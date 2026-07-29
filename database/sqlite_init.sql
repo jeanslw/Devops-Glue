@@ -73,6 +73,28 @@ CREATE TABLE IF NOT EXISTS ci_security_checks (
     created_at    TEXT DEFAULT (datetime('now','localtime'))
 );
 
+-- ── 8. roles（角色）──
+CREATE TABLE IF NOT EXISTS roles (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL UNIQUE,
+    description TEXT DEFAULT '',
+    is_system   INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT DEFAULT (datetime('now','localtime'))
+);
+
+-- ── 9. permissions（权限定义）──
+CREATE TABLE IF NOT EXISTS permissions (
+    perm_key    TEXT PRIMARY KEY,
+    description TEXT DEFAULT ''
+);
+
+-- ── 10. role_permissions（角色↔权限）──
+CREATE TABLE IF NOT EXISTS role_permissions (
+    role_id  INTEGER NOT NULL,
+    perm_key TEXT NOT NULL,
+    PRIMARY KEY (role_id, perm_key)
+);
+
 -- ── 索引 ──
 CREATE INDEX IF NOT EXISTS idx_pipeline_tags_project     ON ci_pipeline_tags(project);
 CREATE INDEX IF NOT EXISTS idx_pipeline_tags_created      ON ci_pipeline_tags(created_at);

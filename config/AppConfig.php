@@ -13,11 +13,52 @@ class AppConfig
     public const TABLE_PLATFORM_VERSIONS = 'ci_platform_versions';
     public const TABLE_APP_SETTINGS      = 'ci_app_settings';
     public const TABLE_CACHE             = 'cache';
+    public const TABLE_ROLES             = 'roles';
+    public const TABLE_PERMISSIONS       = 'permissions';
+    public const TABLE_ROLE_PERMISSIONS  = 'role_permissions';
 
     // ── 角色常量 ──
     public const ROLE_SUPER_ADMIN = 'super_admin';
     public const ROLE_ADMIN       = 'admin';
     public const ROLE_DEPLOYER    = 'deployer';
+    public const ROLE_VIEWER      = 'viewer';
+
+    // ── 权限键常量 ──
+    public const PERM_CI_MANAGE             = 'ci.manage';
+    public const PERM_CI_USERS_MANAGE       = 'ci.users.manage';
+    public const PERM_CI_USERS_MANAGE_ADMIN = 'ci.users.manage_admin';
+    public const PERM_CI_MAPPING_EDIT       = 'ci.mapping.edit';
+    public const PERM_CI_PLATFORM_EDIT      = 'ci.platform.edit';
+    public const PERM_CI_MODE_EDIT          = 'ci.mode.edit';
+    public const PERM_CI_DISCOVER           = 'ci.discover';
+
+    /** 默认权限种子数据：key => description */
+    public const DEFAULT_PERMISSIONS = [
+        self::PERM_CI_MANAGE             => '管理后台完整访问',
+        self::PERM_CI_USERS_MANAGE       => '用户管理（查看/创建/编辑/删除）',
+        self::PERM_CI_USERS_MANAGE_ADMIN => '管理管理员账号（仅 super_admin）',
+        self::PERM_CI_MAPPING_EDIT       => '编辑映射（新增/编辑/删除）',
+        self::PERM_CI_PLATFORM_EDIT      => '编辑平台版本',
+        self::PERM_CI_MODE_EDIT          => '修改构建模式',
+        self::PERM_CI_DISCOVER           => '自动发现',
+    ];
+
+    /** 默认角色种子数据：name => permissions[] */
+    public const DEFAULT_ROLES = [
+        self::ROLE_SUPER_ADMIN => [
+            self::PERM_CI_MANAGE, self::PERM_CI_USERS_MANAGE,
+            self::PERM_CI_USERS_MANAGE_ADMIN, self::PERM_CI_MAPPING_EDIT,
+            self::PERM_CI_PLATFORM_EDIT, self::PERM_CI_MODE_EDIT,
+            self::PERM_CI_DISCOVER,
+        ],
+        self::ROLE_ADMIN => [
+            self::PERM_CI_MANAGE, self::PERM_CI_USERS_MANAGE,
+            self::PERM_CI_MAPPING_EDIT, self::PERM_CI_PLATFORM_EDIT,
+            self::PERM_CI_MODE_EDIT, self::PERM_CI_DISCOVER,
+        ],
+        self::ROLE_DEPLOYER => [],
+        self::ROLE_VIEWER   => [],
+    ];
 
     // ── 状态常量 ──
     public const STATUS_ACTIVE   = 'active';

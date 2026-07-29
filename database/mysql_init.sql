@@ -74,6 +74,28 @@ CREATE TABLE IF NOT EXISTS `ci_security_checks` (
     `created_at`    DATETIME DEFAULT (NOW())
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- ── 8. roles（角色）──
+CREATE TABLE IF NOT EXISTS `roles` (
+    `id`          INT AUTO_INCREMENT PRIMARY KEY,
+    `name`        VARCHAR(255) NOT NULL UNIQUE,
+    `description` TEXT DEFAULT '',
+    `is_system`   TINYINT NOT NULL DEFAULT 0,
+    `created_at`  DATETIME DEFAULT (NOW())
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ── 9. permissions（权限定义）──
+CREATE TABLE IF NOT EXISTS `permissions` (
+    `perm_key`    VARCHAR(128) PRIMARY KEY,
+    `description` TEXT DEFAULT ''
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ── 10. role_permissions（角色↔权限）──
+CREATE TABLE IF NOT EXISTS `role_permissions` (
+    `role_id`  INTEGER NOT NULL,
+    `perm_key` VARCHAR(128) NOT NULL,
+    PRIMARY KEY (`role_id`, `perm_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- ── 索引 ──
 -- 注：首次建库和迁移都通过下方 _add_index 过程处理（兼容 DATETIME / TEXT 两种列类型）
 -- 这里不放裸 CREATE INDEX，避免重复执行时报 1061（重复键名）

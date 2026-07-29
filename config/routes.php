@@ -146,6 +146,11 @@ $app->group('/api', function (RouteCollectorProxy $api) use ($app) {
         $admin->map(['POST'], '/users', [AdminController::class, 'userCreate']);
         $admin->map(['PUT'], '/users/{username}', [AdminController::class, 'userUpdate']);
         $admin->map(['DELETE'], '/users/{username}', [AdminController::class, 'userDelete']);
+        $admin->map(['GET'], '/roles', [AdminController::class, 'roleList']);
+        $admin->map(['POST'], '/roles', [AdminController::class, 'roleCreate']);
+        $admin->map(['PUT'], '/roles/{id}', [AdminController::class, 'roleUpdate']);
+        $admin->map(['DELETE'], '/roles/{id}', [AdminController::class, 'roleDelete']);
+        $admin->map(['GET'], '/permissions', [AdminController::class, 'permissionList']);
     });
 
     $api->group('/build', function (RouteCollectorProxy $build) {

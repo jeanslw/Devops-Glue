@@ -12,6 +12,7 @@ class AdminController extends BaseController
     private ?AutoDiscover $autoDiscover;
     private string $currentUser = '';
     private string $currentRole = AppConfig::ROLE_ADMIN;
+    private array $userPermissions = [];
 
     public function __construct(AppConfig $config, ?AutoDiscover $autoDiscover = null)
     {
@@ -573,10 +574,9 @@ class AdminController extends BaseController
             return $this->jsonError($response, 'auth.new_password_short', 400);
         }
 
-        // 只有根 admin 能创建管理员角色（admin / super_admin）
-        $rootAdmin = $this->config->getRootAdminUser();
+        // 只有拥有 ci.users.manage_admin 权限的用户能创建管理员角色
         if ($role === AppConfig::ROLE_ADMIN || $role === AppConfig::ROLE_SUPER_ADMIN) {
-            if ($this->currentUser !== $rootAdmin) {
+            if (!$this->hasPermission(AppConfig::PERM_CI_USERS_MANAGE_ADMIN)) {
                 return $this->jsonError($response, 'user.cannot_create_admin', 403);
             }
             // 管理员账号 system 至少含 cd
@@ -636,8 +636,8 @@ class AdminController extends BaseController
                 return $this->jsonError($response, 'user.not_found', 404);
             }
 
-            // 不能修改管理员账号
-            if ($this->isTargetAdmin($target['role'])) {
+            // 修改管理员账号需要 ci.users.manage_admin 权限
+            if ($this->isTargetAdmin($target['role']) && !$this->hasPermission(AppConfig::PERM_CI_USERS_MANAGE_ADMIN)) {
                 return $this->jsonError($response, 'user.cannot_edit_admin', 403);
             }
 
@@ -645,7 +645,8 @@ class AdminController extends BaseController
             $bind   = [];
 
             if ($role !== null) {
-                if ($role === AppConfig::ROLE_ADMIN || $role === AppConfig::ROLE_SUPER_ADMIN) {
+                // 提升为管理员需要 ci.users.manage_admin 权限
+                if (($role === AppConfig::ROLE_ADMIN || $role === AppConfig::ROLE_SUPER_ADMIN) && !$this->hasPermission(AppConfig::PERM_CI_USERS_MANAGE_ADMIN)) {
                     return $this->jsonError($response, 'user.cannot_promote_admin', 403);
                 }
                 $fields[] = 'role = ?';
@@ -707,8 +708,8 @@ class AdminController extends BaseController
             if ($targetUser === $this->currentUser) {
                 return $this->jsonError($response, 'user.cannot_delete_self', 403);
             }
-            // 只有根 admin 可以删除其他管理员用户
-            if ($this->isTargetAdmin($target['role']) && $this->currentUser !== $rootAdmin) {
+            // 删除管理员用户需要 ci.users.manage_admin 权限
+            if ($this->isTargetAdmin($target['role']) && !$this->hasPermission(AppConfig::PERM_CI_USERS_MANAGE_ADMIN)) {
                 return $this->jsonError($response, 'user.cannot_delete_admin', 403);
             }
 
@@ -719,18 +720,197 @@ class AdminController extends BaseController
         }
     }
 
+    // ────────────────────────── 角色权限管理 ──────────────────────────
+
+    /** GET /api/admin/roles — 列出所有角色及权限 */
+    public function roleList(Request $request, Response $response): Response
+    {
+        if ($err = $this->authCheck($request, $response)) return $err;
+        try {
+            $pdo = \App\Service\Database::getPdo();
+            $roles = $pdo->query("SELECT id, name, description, is_system, created_at FROM " . AppConfig::TABLE_ROLES . " ORDER BY id")->fetchAll();
+            $permStmt = $pdo->prepare("SELECT perm_key FROM " . AppConfig::TABLE_ROLE_PERMISSIONS . " WHERE role_id = ?");
+            foreach ($roles as &$r) {
+                $permStmt->execute([$r['id']]);
+                $r['permissions'] = $permStmt->fetchAll(\PDO::FETCH_COLUMN);
+                $r['is_system'] = (bool)$r['is_system'];
+            }
+            return $this->output($response, $roles, $request);
+        } catch (\Exception $e) {
+            return $this->jsonError($response, $this->__('build.query_failed') . ': ' . $e->getMessage(), 500);
+        }
+    }
+
+    /** POST /api/admin/roles — 新建角色 */
+    public function roleCreate(Request $request, Response $response): Response
+    {
+        if ($err = $this->authCheck($request, $response)) return $err;
+        if (!$this->hasPermission(AppConfig::PERM_CI_USERS_MANAGE_ADMIN)) {
+            return $this->jsonError($response, 'user.cannot_create_admin', 403);
+        }
+        $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
+        $name = trim($body['name'] ?? '');
+        $desc = trim($body['description'] ?? '');
+        $perms = $body['permissions'] ?? [];
+        if ($name === '') {
+            return $this->jsonError($response, 'user.invalid_username', 400);
+        }
+        try {
+            $pdo = \App\Service\Database::getPdo();
+            $exists = $pdo->prepare("SELECT 1 FROM " . AppConfig::TABLE_ROLES . " WHERE name = ?");
+            $exists->execute([$name]);
+            if ($exists->fetch()) {
+                return $this->jsonError($response, 'user.username_exists', 409);
+            }
+            $pdo->prepare("INSERT INTO " . AppConfig::TABLE_ROLES . " (name, description, is_system, created_at) VALUES (?, ?, 0, " . \App\Service\Database::sqlNow() . ")")->execute([$name, $desc]);
+            $roleId = $pdo->lastInsertId();
+            // 分配权限（只分配已定义的权限键）
+            $validKeys = array_keys(AppConfig::DEFAULT_PERMISSIONS);
+            $permInsert = $pdo->prepare("INSERT INTO " . AppConfig::TABLE_ROLE_PERMISSIONS . " (role_id, perm_key) VALUES (?, ?)");
+            foreach ($perms as $pk) {
+                if (in_array($pk, $validKeys, true)) {
+                    try { $permInsert->execute([$roleId, $pk]); } catch (\Exception $e) {}
+                }
+            }
+            return $this->output($response, ['success' => true, 'id' => (int)$roleId, 'name' => $name], $request);
+        } catch (\Exception $e) {
+            return $this->jsonError($response, $this->__('build.save_failed') . ': ' . $e->getMessage(), 500);
+        }
+    }
+
+    /** PUT /api/admin/roles/{id} — 更新角色（权限列表全覆盖） */
+    public function roleUpdate(Request $request, Response $response, array $args): Response
+    {
+        if ($err = $this->authCheck($request, $response)) return $err;
+        if (!$this->hasPermission(AppConfig::PERM_CI_USERS_MANAGE_ADMIN)) {
+            return $this->jsonError($response, 'user.cannot_create_admin', 403);
+        }
+        $roleId = (int)($args['id'] ?? 0);
+        $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
+        $desc  = trim($body['description'] ?? '');
+        $perms = $body['permissions'] ?? null;
+        try {
+            $pdo = \App\Service\Database::getPdo();
+            $role = $pdo->prepare("SELECT id, is_system FROM " . AppConfig::TABLE_ROLES . " WHERE id = ?");
+            $role->execute([$roleId]);
+            $r = $role->fetch();
+            if (!$r) {
+                return $this->jsonError($response, 'user.not_found', 404);
+            }
+            if ($r['is_system']) {
+                return $this->jsonError($response, 'user.cannot_create_admin', 403);
+            }
+            if ($desc !== '') {
+                $pdo->prepare("UPDATE " . AppConfig::TABLE_ROLES . " SET description = ? WHERE id = ?")->execute([$desc, $roleId]);
+            }
+            if (is_array($perms)) {
+                $pdo->prepare("DELETE FROM " . AppConfig::TABLE_ROLE_PERMISSIONS . " WHERE role_id = ?")->execute([$roleId]);
+                $validKeys = array_keys(AppConfig::DEFAULT_PERMISSIONS);
+                $permInsert = $pdo->prepare("INSERT INTO " . AppConfig::TABLE_ROLE_PERMISSIONS . " (role_id, perm_key) VALUES (?, ?)");
+                foreach ($perms as $pk) {
+                    if (in_array($pk, $validKeys, true)) {
+                        try { $permInsert->execute([$roleId, $pk]); } catch (\Exception $e) {}
+                    }
+                }
+            }
+            return $this->output($response, ['success' => true], $request);
+        } catch (\Exception $e) {
+            return $this->jsonError($response, $this->__('build.modify_failed') . ': ' . $e->getMessage(), 500);
+        }
+    }
+
+    /** DELETE /api/admin/roles/{id} — 删除角色（仅自定义角色） */
+    public function roleDelete(Request $request, Response $response, array $args): Response
+    {
+        if ($err = $this->authCheck($request, $response)) return $err;
+        if (!$this->hasPermission(AppConfig::PERM_CI_USERS_MANAGE_ADMIN)) {
+            return $this->jsonError($response, 'user.cannot_create_admin', 403);
+        }
+        $roleId = (int)($args['id'] ?? 0);
+        try {
+            $pdo = \App\Service\Database::getPdo();
+            $role = $pdo->prepare("SELECT id, is_system, name FROM " . AppConfig::TABLE_ROLES . " WHERE id = ?");
+            $role->execute([$roleId]);
+            $r = $role->fetch();
+            if (!$r) {
+                return $this->jsonError($response, 'user.not_found', 404);
+            }
+            if ($r['is_system']) {
+                return $this->jsonError($response, 'user.cannot_create_admin', 403);
+            }
+            // 检查是否有用户绑定此角色
+            $used = $pdo->prepare("SELECT 1 FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE role = ?");
+            $used->execute([$r['name']]);
+            if ($used->fetch()) {
+                return $this->jsonError($response, 'role.in_use', 400);
+            }
+            $pdo->prepare("DELETE FROM " . AppConfig::TABLE_ROLE_PERMISSIONS . " WHERE role_id = ?")->execute([$roleId]);
+            $pdo->prepare("DELETE FROM " . AppConfig::TABLE_ROLES . " WHERE id = ?")->execute([$roleId]);
+            return $this->output($response, ['success' => true], $request);
+        } catch (\Exception $e) {
+            return $this->jsonError($response, $this->__('build.modify_failed') . ': ' . $e->getMessage(), 500);
+        }
+    }
+
+    /** GET /api/admin/permissions — 列出所有可用权限 */
+    public function permissionList(Request $request, Response $response): Response
+    {
+        if ($err = $this->authCheck($request, $response)) return $err;
+        try {
+            $pdo = \App\Service\Database::getPdo();
+            $rows = $pdo->query("SELECT perm_key, description FROM " . AppConfig::TABLE_PERMISSIONS . " ORDER BY perm_key")->fetchAll();
+            return $this->output($response, $rows, $request);
+        } catch (\Exception $e) {
+            return $this->jsonError($response, $this->__('build.query_failed') . ': ' . $e->getMessage(), 500);
+        }
+    }
+
     // ────────────────────────── helpers ──────────────────────────
 
     /**
-     * 判断角色是否为管理员（admin 或 super_admin）
+     * 判断当前用户是否有指定权限
+     * super_admin 始终拥有所有权限
      */
-    private function isAdminRole(): bool
+    private function hasPermission(string $permKey): bool
     {
-        return $this->currentRole === AppConfig::ROLE_ADMIN || $this->currentRole === AppConfig::ROLE_SUPER_ADMIN;
+        if ($this->currentRole === AppConfig::ROLE_SUPER_ADMIN) {
+            return true;
+        }
+        if (empty($this->userPermissions)) {
+            $this->loadUserPermissions();
+        }
+        return in_array($permKey, $this->userPermissions, true);
+    }
+
+    /** 从数据库加载当前用户的权限列表 */
+    private function loadUserPermissions(): void
+    {
+        $this->userPermissions = [];
+        if (empty($this->currentUser)) return;
+        try {
+            $pdo = \App\Service\Database::getPdo();
+            $stmt = $pdo->prepare("
+                SELECT rp.perm_key FROM " . AppConfig::TABLE_ROLE_PERMISSIONS . " rp
+                JOIN " . AppConfig::TABLE_ROLES . " r ON r.id = rp.role_id
+                WHERE r.name = ?
+            ");
+            $stmt->execute([$this->currentRole]);
+            $this->userPermissions = $stmt->fetchAll(\PDO::FETCH_COLUMN);
+        } catch (\Exception $e) {
+            $this->userPermissions = [];
+        }
     }
 
     /**
-     * 判断目标用户是否为管理员角色
+     * 判断角色是否为管理员（兼容旧代码，基于权限 ci.manage）
+     */
+    private function isAdminRole(): bool
+    {
+        return $this->hasPermission(AppConfig::PERM_CI_MANAGE);
+    }
+
+    /**
+     * 判断目标用户是否为管理员角色（基于字面角色名，用于保护内置角色）
      */
     private function isTargetAdmin(string $role): bool
     {

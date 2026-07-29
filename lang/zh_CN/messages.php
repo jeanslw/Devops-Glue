@@ -337,4 +337,6 @@ return [
     'user.systems_cd'    => '仅 CD',
     'user.systems_ci'    => '仅 CI',
     'user.systems_cd_ci' => 'CD + CI',
+    'role.in_use'       => '该角色下还有用户，无法删除',
+    'role.no_users'     => '暂无角色',
 ];
