@@ -195,11 +195,24 @@ class AdminController extends BaseController
             } catch (\Exception $e) {
                 // cache 不可用时仍返回 token（降级）
             }
+            // 查询该角色的权限列表
+            $perms = [];
+            try {
+                $permStmt = $pdo->prepare("
+                    SELECT rp.perm_key FROM " . AppConfig::TABLE_ROLE_PERMISSIONS . " rp
+                    JOIN " . AppConfig::TABLE_ROLES . " r ON r.id = rp.role_id
+                    WHERE r.name = ?
+                ");
+                $permStmt->execute([$loginRole]);
+                $perms = $permStmt->fetchAll(\PDO::FETCH_COLUMN);
+            } catch (\Exception $e) {}
+
             return $this->output($response, [
-                'token' => $token,
-                'role' => $loginRole,
-                'user' => $user,
-                'is_root' => ($user === $this->config->getRootAdminUser()),
+                'token'       => $token,
+                'role'        => $loginRole,
+                'user'        => $user,
+                'is_root'     => ($user === $this->config->getRootAdminUser()),
+                'permissions' => $perms,
             ], $request);
         }
         return $this->jsonError($response, 'auth.wrong_credentials', 401);

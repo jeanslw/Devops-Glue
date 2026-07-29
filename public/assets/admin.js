@@ -8,6 +8,10 @@ let token = sessionStorage.getItem('admin_token') || '';
 let currentUserRole = sessionStorage.getItem('admin_role') || '';
 let currentUserName = sessionStorage.getItem('admin_user') || '';
 let currentUserIsRoot = sessionStorage.getItem('admin_is_root') === 'true';
+let userPermissions = JSON.parse(sessionStorage.getItem('admin_perms') || '[]');
+let allRoles = [];       // 完整角色列表（含权限）
+let allRolesMap = {};    // {name: label}
+let adminRoleNames = new Set(); // 含有 ci.manage 权限的角色名
 
 // ═══════════ Auth ═══════════
 function authHeaders() {
@@ -29,10 +33,15 @@ function doLogout() {
     currentUserRole = '';
     currentUserName = '';
     currentUserIsRoot = false;
+    userPermissions = [];
+    allRoles = [];
+    allRolesMap = {};
+    adminRoleNames = new Set();
     sessionStorage.removeItem('admin_token');
     sessionStorage.removeItem('admin_role');
     sessionStorage.removeItem('admin_user');
     sessionStorage.removeItem('admin_is_root');
+    sessionStorage.removeItem('admin_perms');
     document.getElementById('login-page').style.display = 'flex';
     document.getElementById('app-page').style.display = 'none';
 }
@@ -41,11 +50,12 @@ function doLogout() {
 (function initRoleMenu() {
     currentUserName = sessionStorage.getItem('admin_user') || '';
     currentUserIsRoot = sessionStorage.getItem('admin_is_root') === 'true';
+    userPermissions = JSON.parse(sessionStorage.getItem('admin_perms') || '[]');
     if (currentUserName) {
         var topUser = document.getElementById('top-user');
         if (topUser) topUser.textContent = '👤 ' + currentUserName;
     }
-    if (currentUserRole && !isAdminRole(currentUserRole)) {
+    if (currentUserRole && !isAdminRole()) {
         var userMenuItem = document.querySelector('[data-tab="users"]');
         if (userMenuItem) userMenuItem.style.display = 'none';
     }
@@ -86,14 +96,18 @@ async function doLogin() {
             currentUserRole = data.role || '';
             currentUserName = data.user || '';
             currentUserIsRoot = data.is_root === true;
+            userPermissions = data.permissions || [];
             sessionStorage.setItem('admin_token', token);
             if (currentUserRole) sessionStorage.setItem('admin_role', currentUserRole);
             if (currentUserName) sessionStorage.setItem('admin_user', currentUserName);
             sessionStorage.setItem('admin_is_root', currentUserIsRoot ? 'true' : 'false');
+            sessionStorage.setItem('admin_perms', JSON.stringify(userPermissions));
+            // 预先加载角色列表用于显示
+            await loadRolesMap();
             // 非 admin 隐藏用户管理菜单
             var userMenuItem = document.querySelector('[data-tab="users"]');
             if (userMenuItem) {
-                userMenuItem.style.display = isAdminRole(currentUserRole) ? '' : 'none';
+                userMenuItem.style.display = isAdminRole() ? '' : 'none';
             }
             document.getElementById('login-page').style.display = 'none';
             document.getElementById('app-page').style.display = 'block';
@@ -979,22 +993,51 @@ async function loadSecurityChecks() {
 }
 
 // ═══════════ 用户管理 ═══════════
-function isAdminRole(role) { return role === 'admin' || role === 'super_admin'; }
+function isAdminRole(roleName) {
+    // 检查指定角色名是否含 ci.manage 权限
+    if (roleName !== undefined) return roleName === 'super_admin' || adminRoleNames.has(roleName);
+    // 检查当前用户
+    return userPermissions.includes('ci.manage');
+}
 
 function roleLabel(user) {
-    if (user.role === 'super_admin') return '👑 ' + __.t('user.role_super_admin');
-    return __.t('user.role_' + user.role) || user.role;
+    const role = user.role || '';
+    if (role === 'super_admin') return '👑 ' + (allRolesMap[role] || __.t('user.role_super_admin'));
+    // 优先用角色的 description，否则用翻译键，最后用角色名本身
+    return allRolesMap[role] || __.t('user.role_' + role) || role;
+}
+
+/** 加载角色列表，构建 name→label 映射 + admin 角色集合 */
+async function loadRolesMap() {
+    try {
+        const res = await fetch('/api/admin/roles', { headers: authHeaders() });
+        if (res.ok) {
+            const roles = await res.json();
+            allRoles = roles || [];
+            allRolesMap = {};
+            adminRoleNames = new Set();
+            allRoles.forEach(r => {
+                allRolesMap[r.name] = r.description || r.name;
+                if (r.permissions && r.permissions.includes('ci.manage')) {
+                    adminRoleNames.add(r.name);
+                }
+            });
+            // super_admin 始终算 admin
+            adminRoleNames.add('super_admin');
+        }
+    } catch (e) {}
 }
 
 async function loadUsers() {
     document.getElementById('user-msg').textContent = '';
     try {
+        if (!allRoles.length) await loadRolesMap();
         const res = await fetch('/api/admin/users', { headers: authHeaders() });
         if (!res.ok && res.status === 403) { alert(__.t('user.cannot_create_admin')); return; }
         if (handle401(res)) return;
         const result = await res.json();
         const allUsers = Array.isArray(result) ? result : (result.data || []);
-        const users = isAdminRole(currentUserRole) ? allUsers : allUsers.filter(u => !isAdminRole(u.role));
+        const users = isAdminRole() ? allUsers : allUsers.filter(u => !isAdminRole(u.role));
         const tbody = document.getElementById('user-tbody');
         if (!users.length) {
             tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#9ca3af;">' + __.t('user.no_users') + '</td></tr>';
@@ -1003,7 +1046,7 @@ async function loadUsers() {
         tbody.innerHTML = users.map(u => {
             const time = u.updated_at || '-';
             const isSuperAdmin = u.role === 'super_admin';
-            const isAdmin = u.role === 'admin';
+            const isAdmin = isAdminRole(u.role);
             const isSelf = u.username === currentUserName;
             let actions = '';
             if (isSuperAdmin) {
@@ -1067,13 +1110,20 @@ function showUserEditForm(user) {
 }
 
 // 根据当前用户角色动态填充角色下拉
-function populateRoleSelect(selected) {
+async function populateRoleSelect(selected) {
     var sel = document.getElementById('new-role');
     sel.innerHTML = '';
-    sel.add(new Option(__.t('user.role_deployer'), 'deployer'));
-    sel.add(new Option(__.t('user.role_viewer'), 'viewer'));
-    if (isAdminRole(currentUserRole)) {
-        sel.add(new Option(__.t('user.role_admin'), 'admin'));
+    if (!allRoles.length) await loadRolesMap();
+    // 若请求失败则回退到硬编码列表
+    if (!allRoles.length) {
+        sel.add(new Option(__.t('user.role_deployer'), 'deployer'));
+        sel.add(new Option(__.t('user.role_viewer'), 'viewer'));
+        if (isAdminRole()) sel.add(new Option(__.t('user.role_admin'), 'admin'));
+        if (userPermissions.includes('ci.users.manage_admin')) sel.add(new Option(__.t('user.role_super_admin'), 'super_admin'));
+    } else {
+        allRoles.forEach(r => {
+            sel.add(new Option(r.description || r.name, r.name));
+        });
     }
     sel.value = selected;
 }
@@ -1083,7 +1133,7 @@ function populateSystemsSelect(selected) {
     var sel = document.getElementById('new-systems');
     sel.innerHTML = '';
     sel.add(new Option(__.t('user.systems_cd'), 'cd'));
-    if (isAdminRole(currentUserRole)) {
+    if (isAdminRole()) {
         sel.add(new Option(__.t('user.systems_ci'), 'ci'));
         sel.add(new Option(__.t('user.systems_cd_ci'), 'cd,ci'));
     }

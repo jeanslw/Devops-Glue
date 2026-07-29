@@ -238,7 +238,7 @@ class Database
         $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_ROLES . " (
             id {$PK},
             name {$VARCHAR} NOT NULL UNIQUE,
-            description TEXT DEFAULT '',
+            description VARCHAR(512) DEFAULT '',
             is_system TINYINT NOT NULL DEFAULT 0,
             created_at {$TS_TYPE} DEFAULT ({$NOW})
         ){$ENGINE}");
@@ -246,7 +246,7 @@ class Database
         if ($isMySQL) {
             $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_PERMISSIONS . " (
                 perm_key VARCHAR(128) PRIMARY KEY,
-                description TEXT DEFAULT ''
+                description VARCHAR(512) DEFAULT ''
             ){$ENGINE}");
         } else {
             $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_PERMISSIONS . " (
