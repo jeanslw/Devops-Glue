@@ -202,7 +202,7 @@ return [
     'index.feat_branch_viz_desc'    => 'Git 分支列表、Jenkins 构建参数直接透出，无需在各平台后台之间来回切换。',
     'index.feat_health_title'       => '服务健康自检',
     'index.feat_health_desc'        => '实时检测 Jenkins · Git 平台 · Harbor 连通性与版本号，故障快速定位，状态一目了然。',
-    'index.footer' => '© 2026 Blues.Inc | Devops-Glue',
+    'index.footer' => 'Copyright © 2026 jeanslw | Devops-Glue',
 
     // ── 表单标签 ──
     'form.job_name'         => 'Job 名称',

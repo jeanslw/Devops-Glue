@@ -202,7 +202,7 @@ return [
     'index.feat_branch_viz_desc'    => 'Git branches and Jenkins build params surfaced directly — no more switching between platform backends.',
     'index.feat_health_title'       => 'Service Health Check',
     'index.feat_health_desc'        => 'Real-time detection of Jenkins · Git Platform · Harbor connectivity and versions for quick troubleshooting.',
-    'index.footer' => '© 2026 Blues.Inc | Devops-Glue',
+    'index.footer' => 'Copyright © 2026 jeanslw | Devops-Glue',
 
     // ── Form Labels ──
     'form.job_name'         => 'Job Name',
