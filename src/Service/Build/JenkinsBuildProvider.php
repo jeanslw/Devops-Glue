@@ -105,7 +105,13 @@ class JenkinsBuildProvider implements BuildProviderInterface
             }
         }
 
-        // 3. 参数校验：调用方必须在 variables 里显式传参数名和值
+        // 3. 参数校验：缺失的参数自动用 defaultValue 填充
+        foreach ($allParams as $name => $def) {
+            if (!array_key_exists($name, $variables) && array_key_exists('defaultValue', $def) && $def['defaultValue'] !== null) {
+                $variables[$name] = $def['defaultValue'];
+            }
+        }
+
         if (empty($variables)) {
             return ['success' => false, 'message' => '缺少构建参数，可用参数: ' . implode(', ', array_keys($allParams))];
         }
