@@ -59,6 +59,10 @@ function doLogout() {
         var userMenuItem = document.querySelector('[data-tab="users"]');
         if (userMenuItem) userMenuItem.style.display = 'none';
     }
+    if (!userPermissions.includes('ci.users.manage_admin') && !currentUserIsRoot) {
+        var rolesMenuItem = document.querySelector('[data-tab="roles"]');
+        if (rolesMenuItem) rolesMenuItem.style.display = 'none';
+    }
 })();
 
 let _discovering = false;
@@ -109,6 +113,11 @@ async function doLogin() {
             if (userMenuItem) {
                 userMenuItem.style.display = isAdminRole() ? '' : 'none';
             }
+            // 非 manage_admin / root 隐藏角色管理菜单
+            if (!userPermissions.includes('ci.users.manage_admin') && !currentUserIsRoot) {
+                var rolesMenuItem = document.querySelector('[data-tab="roles"]');
+                if (rolesMenuItem) rolesMenuItem.style.display = 'none';
+            }
             document.getElementById('login-page').style.display = 'none';
             document.getElementById('app-page').style.display = 'block';
             document.getElementById('top-user').textContent = '👤 ' + currentUserName;
@@ -130,7 +139,7 @@ document.addEventListener('keydown', function(e) {
 function switchTab(name) {
     document.querySelectorAll('.sidebar .menu-item').forEach(el => el.classList.remove('active'));
     document.querySelector(`[data-tab="${name}"]`).classList.add('active');
-    ['monitor','mapping','security','versions','mode','users','password'].forEach(t => {
+    ['monitor','mapping','security','versions','mode','users','roles','password'].forEach(t => {
         document.getElementById('tab-' + t).style.display = name === t ? 'block' : 'none';
     });
     if (name === 'monitor') loadMonitor();
@@ -139,6 +148,7 @@ function switchTab(name) {
     if (name === 'versions') loadVersions();
     if (name === 'mode') loadSettings();
     if (name === 'users') loadUsers();
+    if (name === 'roles') loadRoles();
 }
 
 // ═══════════ Toast ═══════════
@@ -1195,6 +1205,134 @@ async function deleteUser(username) {
         if (res.ok) {
             toast(__.t('user.deleted'), true);
             loadUsers();
+        } else {
+            const data = await res.json();
+            alert(data.message || __.t('common.failed'));
+        }
+    } catch (e) {
+        alert(e.message);
+    }
+}
+
+// ═══════════ 角色管理 ═══════════
+async function loadRoles() {
+    try {
+        if (!allRoles.length) await loadRolesMap();
+        const res = await fetch('/api/admin/roles', { headers: authHeaders() });
+        if (handle401(res)) return;
+        const roles = await res.json();
+        const tbody = document.getElementById('role-tbody');
+        if (!roles.length) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#9ca3af;">' + __.t('role.no_roles') + '</td></tr>';
+            return;
+        }
+        tbody.innerHTML = roles.map(r => {
+            const isSys = r.is_system;
+            const permTags = (r.permissions || []).map(p => '<code class="perm-tag">' + esc(p) + '</code>').join(' ');
+            const editBtn = isSys
+                ? '<span style="color:#9ca3af;font-size:12px;">' + __.t('role.system_role') + '</span>'
+                : '<a href="#" onclick="editRoleById(' + r.id + ')" style="margin-right:8px;">✏️ ' + __.t('common.edit') + '</a>'
+                + '<a href="#" onclick="deleteRole(' + r.id + ',\'' + escJs(r.name) + '\')" class="text-red">🗑️ ' + __.t('common.delete') + '</a>';
+            const badge = isSys
+                ? '<span class="badge badge-sys">' + __.t('role.system_role') + '</span>'
+                : '<span class="badge badge-custom">' + __.t('role.custom_role') + '</span>';
+            return '<tr><td><strong>' + esc(r.name) + '</strong></td><td>' + esc(r.description || '') + '</td><td>' + badge + '</td><td>' + (permTags || '<span style="color:#9ca3af;">—</span>') + '</td><td>' + editBtn + '</td></tr>';
+        }).join('');
+    } catch (e) {
+        document.getElementById('role-tbody').innerHTML = '<tr><td colspan="5" style="text-align:center;color:#ef4444;">' + esc(e.message) + '</td></tr>';
+    }
+}
+
+let allPerms = []; // 可用权限定义
+
+async function loadAllPerms() {
+    if (allPerms.length) return;
+    try {
+        const res = await fetch('/api/admin/permissions', { headers: authHeaders() });
+        if (res.ok) allPerms = await res.json();
+    } catch (e) {}
+}
+
+function editRoleById(id) {
+    const r = allRoles.find(x => x.id == id);
+    if (r) showRoleForm(r.id, r.name, r.description, r.permissions);
+}
+
+async function showRoleForm(id, name, desc, perms) {
+    await loadAllPerms();
+    const isEdit = id !== undefined;
+    document.getElementById('edit-role-id').value = id || '';
+    document.getElementById('role-name').value = name || '';
+    document.getElementById('role-name').readOnly = isEdit;
+    document.getElementById('role-desc').value = desc || '';
+    document.getElementById('role-form-title').textContent = isEdit ? '✏️ ' + __.t('role.edit_role') : __.t('role.add_role');
+    document.getElementById('role-msg').textContent = '';
+    document.getElementById('role-form').style.display = 'block';
+    document.getElementById('role-add-btn').style.display = 'none';
+
+    // 权限复选框
+    const container = document.getElementById('role-perms-checkboxes');
+    const selectedPerms = perms || [];
+    container.innerHTML = allPerms.map(p => {
+        const checked = selectedPerms.includes(p.perm_key) ? ' checked' : '';
+        return '<label style="white-space:nowrap;font-size:13px;cursor:pointer;"><input type="checkbox" value="' + esc(p.perm_key) + '"' + checked + '> ' + esc(p.perm_key) + ' <span style="color:#9ca3af;">' + esc(p.description || '') + '</span></label>';
+    }).join('');
+}
+
+function hideRoleForm() {
+    document.getElementById('role-form').style.display = 'none';
+    document.getElementById('edit-role-id').value = '';
+    document.getElementById('role-name').readOnly = false;
+    document.getElementById('role-add-btn').style.display = '';
+}
+
+async function submitRoleForm(e) {
+    e.preventDefault();
+    const id = document.getElementById('edit-role-id').value;
+    const isEdit = !!id;
+    const name = document.getElementById('role-name').value.trim();
+    const description = document.getElementById('role-desc').value.trim();
+    const perms = Array.from(document.querySelectorAll('#role-perms-checkboxes input:checked')).map(cb => cb.value);
+    const msg = document.getElementById('role-msg');
+
+    if (!name || !description) { msg.textContent = __.t('form.required'); msg.style.color = '#ef4444'; return; }
+
+    try {
+        const url = isEdit ? '/api/admin/roles/' + id : '/api/admin/roles';
+        const body = isEdit ? { name, description, permissions: perms } : { name, description, permissions: perms };
+        const res = await fetch(url, {
+            method: isEdit ? 'PUT' : 'POST',
+            headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        if (handle401(res)) return;
+        const data = await res.json();
+        if (res.ok) {
+            hideRoleForm();
+            toast(isEdit ? __.t('role.updated') : __.t('role.created'), true);
+            allRoles = []; // 刷新缓存
+            await loadRolesMap();
+            loadRoles();
+        } else {
+            msg.textContent = data.message || __.t('common.failed');
+            msg.style.color = '#ef4444';
+        }
+    } catch (err) {
+        msg.textContent = err.message;
+        msg.style.color = '#ef4444';
+    }
+}
+
+async function deleteRole(id, name) {
+    if (!confirm(__.t('role.delete_confirm').replace('{name}', name))) return;
+    try {
+        const res = await fetch('/api/admin/roles/' + id, { method: 'DELETE', headers: authHeaders() });
+        if (handle401(res)) return;
+        if (res.ok) {
+            toast(__.t('role.deleted'), true);
+            allRoles = [];
+            await loadRolesMap();
+            loadRoles();
         } else {
             const data = await res.json();
             alert(data.message || __.t('common.failed'));

@@ -147,6 +147,9 @@
         .badge-gitee   { background:#fef3c7; color:#d97706; }
         .badge-gitea   { background:#dbeafe; color:#1d4ed8; }
         .badge-default { background:#f3f4f6; color:#6b7280; }
+        .badge-sys    { background:#dbeafe; color:#1d4ed8; }
+        .badge-custom { background:#fef3c7; color:#d97706; }
+        .perm-tag     { display:inline-block; padding:1px 6px; border-radius:4px; font-size:11px; background:#f3f4f6; color:#374151; margin:2px; }
 
         /* 表单面板 */
         .form-panel {
