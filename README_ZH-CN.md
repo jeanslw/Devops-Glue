@@ -16,7 +16,7 @@ Devops-Glue 是基于 Slim4 为小团队打造的 DevOps 工具链集成平台�
 - **安全扫描审计** — SAST、密钥扫描、依赖漏洞检测，通过 Commit Status 回写
 - **角色权限分级** — `super_admin` > `admin` > `deployer` > `viewer`，四级 RBAC
 - **管理面板** — 服务监控、映射配置、安全扫描、用户管理
-- **零配置启动** — 默认 SQLite，一行配置切换 MySQL / MariaDB
+- **零配置启动** — 默认 SQLite，一键切换 MySQL / MariaDB
 
 ## 快速开始
 

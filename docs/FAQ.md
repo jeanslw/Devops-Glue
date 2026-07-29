@@ -184,7 +184,7 @@ The system abstracts both through the `BuildProvider` interface. Each record in 
 
 ### Q: How to configure a Jenkins job to work with parameterized Git branches?
 
-passes branch info to Jenkins via build parameters. Your Jenkins job must be set up to accept them:
+Devops-Glue passes branch info to Jenkins via build parameters. Your Jenkins job must be set up to accept them:
 
 1. **Install Git Parameter plugin** in Jenkins (if not already installed)
 2. In the job configuration, add a **Git Parameter** build parameter:

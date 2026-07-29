@@ -245,11 +245,12 @@ Controller → AppConfig::getXxxConfig()
 
 ### 4.2 Database Sync Rules
 
-⚠️ **Important:** Table structure changes must be updated in three places simultaneously:
+⚠️ **Important:** Table structure changes must be updated in four places simultaneously:
 
-1. `src/Service/Database.php` → `ensureTables()` method
-2. `database/mysql_init.sql`
-3. `database/sqlite_init.sql`
+1. `config/AppConfig.php` → Add a `TABLE_*` constant
+2. `src/Service/Database.php` → `ensureTables()` method
+3. `database/mysql_init.sql`
+4. `database/sqlite_init.sql`
 
 ---
 
@@ -828,6 +829,7 @@ LOG_PATH=/applogs/                 # Log directory
 
 When adding/modifying table structures, simultaneously update the following files:
 
+- [ ] `config/AppConfig.php` → Add `TABLE_*` constant
 - [ ] `src/Service/Database.php` → `ensureTables()` method
 - [ ] `database/mysql_init.sql`
 - [ ] `database/sqlite_init.sql`

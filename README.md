@@ -18,7 +18,7 @@ Devops-Glue is a DevOps toolchain integration platform built on Slim4 for small 
 - **Security Scan Audit** — SAST, secret scanning, dependency vulns written back via Commit Status
 - **Role-Based Access** — `super_admin` > `admin` > `deployer` > `viewer`, 4-tier RBAC
 - **Admin Dashboard** — service monitoring, mapping config, security scan, user management
-- **Zero-Config Startup** — SQLite by default, MySQL / MariaDB with one-line switch
+- **Zero-Config Startup** — SQLite by default, MySQL / MariaDB with one-click switch
 
 ## Quick Start
 
