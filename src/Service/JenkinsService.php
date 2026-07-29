@@ -155,13 +155,13 @@ class JenkinsService
     }
 
     /**
-     * 获取 Job 参数定义，返回 name => [choices, _class] 映射
-     * @return array<string, array{choices: array, _class: string}>
+     * 获取 Job 参数定义，返回 name => [choices, _class, defaultValue, description] 映射
+     * @return array<string, array{choices: array, _class: string, defaultValue: mixed, description: string}>
      */
     public function getParameterDefinitions(string $jobPath): array
     {
         $jobUrl = $this->getJobUrl($jobPath);
-        $resp = $this->client->get("{$jobUrl}/api/json?tree=property[parameterDefinitions[name,choices,choiceListMetadata,value,defaultValue,_class]]");
+        $resp = $this->client->get("{$jobUrl}/api/json?tree=property[parameterDefinitions[name,choices,choiceListMetadata,value,defaultValue,description,_class]]");
         $data = json_decode($resp->getBody(), true);
         $params = [];
         foreach ($data['property'] ?? [] as $prop) {
@@ -179,7 +179,12 @@ class JenkinsService
                     $choices = [$def['defaultValue']];
                 }
                 if (!empty($name)) {
-                    $params[$name] = ['choices' => array_values($choices), '_class' => $class];
+                    $params[$name] = [
+                        'choices' => array_values($choices),
+                        '_class' => $class,
+                        'defaultValue' => $def['defaultValue'] ?? null,
+                        'description' => $def['description'] ?? '',
+                    ];
                 }
             }
         }

@@ -23,7 +23,7 @@ interface BuildProviderInterface
     /** 取消运行中的 pipeline；不支持时应返回明确的错误信息 */
     public function cancel(string $projectId, int $pipelineId): array;
 
-    /** CI 变量/构建参数列表，每项含 key, value（value 脱敏） */
+    /** CI 变量/构建参数列表，每项含 key, type（git|choice），choice 类型含 choices 数组 */
     public function getVariables(string $projectId): array;
 
     /** 获取 Git 分支列表（纯字符串数组，适配 Rundeck 等外部工具） */

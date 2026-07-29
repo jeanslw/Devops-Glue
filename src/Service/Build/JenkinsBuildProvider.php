@@ -149,8 +149,43 @@ class JenkinsBuildProvider implements BuildProviderInterface
             $result = [];
             foreach ($paramDefs as $key => $def) {
                 $class = $def['_class'] ?? '';
-                $type  = str_contains($class, 'GitParameterDefinition') ? 'git' : 'choice';
-                $result[] = ['key' => $key, 'type' => $type];
+                $item = ['key' => $key];
+
+                // 类型映射
+                if (str_contains($class, 'GitParameterDefinition')) {
+                    $item['type'] = 'git';
+                } elseif (str_contains($class, 'BooleanParameterDefinition')) {
+                    $item['type'] = 'boolean';
+                    $item['defaultValue'] = $def['defaultValue'] ?? false;
+                } elseif (str_contains($class, 'TextParameterDefinition')) {
+                    $item['type'] = 'text';
+                    $item['defaultValue'] = $def['defaultValue'] ?? '';
+                } elseif (str_contains($class, 'PasswordParameterDefinition')) {
+                    $item['type'] = 'password';
+                } elseif (str_contains($class, 'ChoiceParameterDefinition') || str_contains($class, 'ListStringParameterDefinition')) {
+                    $item['type'] = 'select';
+                    if (!empty($def['choices'])) {
+                        $item['choices'] = $def['choices'];
+                    }
+                    $item['defaultValue'] = $def['defaultValue'] ?? null;
+                } elseif (str_contains($class, 'StringParameterDefinition')) {
+                    $item['type'] = 'string';
+                    $item['defaultValue'] = $def['defaultValue'] ?? '';
+                } else {
+                    // 未知类型也返回 choices（如果有），CD 自行决定如何渲染
+                    $item['type'] = 'string';
+                    $item['defaultValue'] = $def['defaultValue'] ?? '';
+                    if (!empty($def['choices'])) {
+                        $item['choices'] = $def['choices'];
+                    }
+                }
+
+                // 描述信息
+                if (!empty($def['description'])) {
+                    $item['description'] = $def['description'];
+                }
+
+                $result[] = $item;
             }
             return $result;
         } catch (\Exception $e) {
