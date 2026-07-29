@@ -72,8 +72,8 @@ curl http://localhost:8080/api/health
 
 ## 相关项目
 
-- **Devops-CD** — 持续部署系统（ArgoCD / FluxCD / Helm / Kubectl）：  
-  https://github.com/jeanslw/Devops_CD
+- **Devops-CD** — 持续部署系统，依赖于本系统。
+  https://gitee.com/jeanslw/devops_cd
 
 ## 项目结构
 

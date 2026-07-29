@@ -74,7 +74,7 @@ See [docs/ADMIN_MANUAL.md](docs/ADMIN_MANUAL.md) for full environment variable r
 
 ## Related Projects
 
-- **Devops-CD** — Continuous Deployment system (ArgoCD / FluxCD / Helm / Kubectl):  
+- **Devops-CD** — Continuous Deployment system that can be used alongside this system:  
   https://github.com/jeanslw/Devops_CD
 
 ## Project Structure
