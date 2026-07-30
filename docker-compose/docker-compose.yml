@@ -60,6 +60,9 @@ volumes:
 #       PYTHONUNBUFFERED: "1"
 #       HOST: 0.0.0.0
 #       PORT: 8081
+#       CI_API_URL: http://devops-glue
+#       CI_ADMIN_USER: root
+#       CI_ADMIN_PASS: admin123
 #     ports:
 #       - "8081:8081"
 #     restart: unless-stopped
