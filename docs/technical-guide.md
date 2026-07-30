@@ -588,18 +588,46 @@ If only `ref` is present without other parameters, auto-convert to `{branches: r
 - If `.env` `ADMIN_PASSWORD` is empty → allow directly
 - Otherwise verify token (supports Bearer or Query String `?token=`)
 
-#### 5.9.4 Role System (v2.4.0)
+#### 5.9.4 RBAC Permission System (v2.4.1)
 
-Two roles supported:
+The system uses a role-based access control (RBAC) model with three database tables:
 
-| Role | Access |
+| Table | Purpose |
 |---|---|
-| `super_admin` | Full access, can manage users |
-| `admin` | All management features except user management |
+| `roles` | Role definitions: `id`, `name`, `description`, `is_system`, `created_at` |
+| `permissions` | Permission catalog: `id`, `key` (dot-delimited, e.g. `cd.deploy.k8s`), `parent_key`, `description`, `created_at` |
+| `role_permissions` | Many-to-many join: `role_id`, `permission_key` |
 
-- `super_admin` can create/delete `admin` accounts
-- `super_admin` cannot create another `super_admin`
-- Root user created by `seedAdmin()` defaults to `super_admin`
+**System role:**
+- `super_admin` is the only built-in system role (`is_system=1`) — cannot be edited or deleted from the UI
+- It uses `'*'` as a wildcard permission set (defined in `AppConfig::DEFAULT_ROLES`)
+- The root user from `seedAdmin()` defaults to `super_admin`
+
+**Permission catalog (23 total):**
+
+| Category | Count | Keys |
+|---|---|---|
+| CI | 8 | `ci.manage`, `ci.users.manage`, `ci.users.manage_admin`, `ci.mapping.edit`, `ci.platform.edit`, `ci.mode.edit`, `ci.discover`, `ci.trigger` |
+| CD Level 1 | 8 | `cd.build-manage`, `cd.deploy-manage`, `cd.server-manage`, `cd.webshell`, `cd.deploy-record`, `cd.image-registry`, `cd.resource-monitor`, `cd.notification-manage` |
+| CD Level 2 | 7 | `cd.deploy.single`/`docker`/`k8s`, `cd.monitor.app`/`system`/`custom`/`alert` |
+
+**Implied permissions** (`AppConfig::IMPLIED_PERMISSIONS` + frontend `IMPLIED_PERMISSIONS`):
+- `cd.build-manage` → `ci.trigger` (Build Management implies Trigger Build)
+
+**Database seeding:**
+- Built-in roles and permissions are seeded in `ensureTables()` via `REPLACE INTO`
+- `DEFAULT_PERMISSIONS` in `AppConfig.php` stores canonical English names (UI uses i18n keys for display)
+- When adding a new permission: insert into `permissions` table + add i18n keys in both lang files
+
+**API endpoint** (`v2.4.1`):
+- `GET /api/admin/me/permissions` — returns current user's role and permissions (valid token only, no admin required)
+- `super_admin` returns `permissions: "*"` (wildcard); other roles return an array of permission keys
+
+**Permission check logic** (`hasPermission($permKey)`):
+```php
+if ($role === 'super_admin') return true;  // hardcoded bypass
+// Otherwise: JOIN roles → role_permissions → permissions and check
+```
 
 ---
 
@@ -837,4 +865,4 @@ When adding/modifying table structures, simultaneously update the following file
 
 ---
 
-*Document version: v2.4.0 | Last updated: 2026-07-28*
+*Document version: v2.4.1 | Last updated: 2026-07-30*

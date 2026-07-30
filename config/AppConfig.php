@@ -3,7 +3,7 @@ namespace App\Config;
 
 class AppConfig
 {
-    public const APP_VERSION = '2.4.0';
+    public const APP_VERSION = '2.4.1';
 
     // ── 表名常量 ──
     public const TABLE_JOB_GIT_MAP       = 'ci_job_git_map';
@@ -44,34 +44,34 @@ class AppConfig
     public const PERM_CD_MONITOR = 'cd.resource-monitor';
     public const PERM_CD_NOTIFY  = 'cd.notification-manage';
 
-    /** 默认权限种子数据：key => ['name' => '显示名', 'parent' => null|parent_key] */
+    /** 默认权限种子数据：key => ['name' => '显示名', 'parent' => null|parent_key]（英文规范数据，UI 通过 i18n 翻译） */
     public const DEFAULT_PERMISSIONS = [
         // CI（8 个，无层级）
-        self::PERM_CI_MANAGE             => ['name' => '管理后台完整访问', 'parent' => null],
-        self::PERM_CI_USERS_MANAGE       => ['name' => '用户管理', 'parent' => null],
-        self::PERM_CI_USERS_MANAGE_ADMIN => ['name' => '管理管理员账号', 'parent' => null],
-        self::PERM_CI_MAPPING_EDIT       => ['name' => '编辑映射', 'parent' => null],
-        self::PERM_CI_PLATFORM_EDIT      => ['name' => '编辑平台版本', 'parent' => null],
-        self::PERM_CI_MODE_EDIT          => ['name' => '修改构建模式', 'parent' => null],
-        self::PERM_CI_DISCOVER           => ['name' => '自动发现', 'parent' => null],
-        self::PERM_CI_TRIGGER            => ['name' => '触发构建', 'parent' => null],
+        self::PERM_CI_MANAGE             => ['name' => 'Full Admin Access', 'parent' => null],
+        self::PERM_CI_USERS_MANAGE       => ['name' => 'User Management', 'parent' => null],
+        self::PERM_CI_USERS_MANAGE_ADMIN => ['name' => 'Manage Admin Accounts', 'parent' => null],
+        self::PERM_CI_MAPPING_EDIT       => ['name' => 'Edit Mappings', 'parent' => null],
+        self::PERM_CI_PLATFORM_EDIT      => ['name' => 'Edit Platform Versions', 'parent' => null],
+        self::PERM_CI_MODE_EDIT          => ['name' => 'Modify Build Mode', 'parent' => null],
+        self::PERM_CI_DISCOVER           => ['name' => 'Auto Discovery', 'parent' => null],
+        self::PERM_CI_TRIGGER            => ['name' => 'Trigger Build', 'parent' => null],
         // CD 一级菜单（8 个）
-        self::PERM_CD_BUILD              => ['name' => '构建管理', 'parent' => null],
-        self::PERM_CD_DEPLOY             => ['name' => '部署管理', 'parent' => null],
-        self::PERM_CD_SERVER             => ['name' => '服务器管理', 'parent' => null],
+        self::PERM_CD_BUILD              => ['name' => 'Build Management', 'parent' => null],
+        self::PERM_CD_DEPLOY             => ['name' => 'Deploy Management', 'parent' => null],
+        self::PERM_CD_SERVER             => ['name' => 'Server Management', 'parent' => null],
         self::PERM_CD_WEBSHELL           => ['name' => 'Web Shell', 'parent' => null],
-        self::PERM_CD_HISTORY            => ['name' => '部署记录', 'parent' => null],
-        self::PERM_CD_REGISTRY           => ['name' => '镜像仓库', 'parent' => null],
-        self::PERM_CD_MONITOR            => ['name' => '资源监控', 'parent' => null],
-        self::PERM_CD_NOTIFY             => ['name' => '通知管理', 'parent' => null],
+        self::PERM_CD_HISTORY            => ['name' => 'Deploy Records', 'parent' => null],
+        self::PERM_CD_REGISTRY           => ['name' => 'Image Registry', 'parent' => null],
+        self::PERM_CD_MONITOR            => ['name' => 'Resource Monitor', 'parent' => null],
+        self::PERM_CD_NOTIFY             => ['name' => 'Notification Management', 'parent' => null],
         // CD 二级菜单（7 个）
-        'cd.deploy.single'  => ['name' => '部署到单机', 'parent' => self::PERM_CD_DEPLOY],
-        'cd.deploy.docker'  => ['name' => '部署到 Docker', 'parent' => self::PERM_CD_DEPLOY],
-        'cd.deploy.k8s'     => ['name' => '部署到 K8S', 'parent' => self::PERM_CD_DEPLOY],
-        'cd.monitor.app'    => ['name' => '应用资源', 'parent' => self::PERM_CD_MONITOR],
-        'cd.monitor.system' => ['name' => '系统资源', 'parent' => self::PERM_CD_MONITOR],
-        'cd.monitor.custom' => ['name' => '自定义资源', 'parent' => self::PERM_CD_MONITOR],
-        'cd.monitor.alert'  => ['name' => '告警规则', 'parent' => self::PERM_CD_MONITOR],
+        'cd.deploy.single'  => ['name' => 'Deploy to Single Machine', 'parent' => self::PERM_CD_DEPLOY],
+        'cd.deploy.docker'  => ['name' => 'Deploy to Docker', 'parent' => self::PERM_CD_DEPLOY],
+        'cd.deploy.k8s'     => ['name' => 'Deploy to K8S', 'parent' => self::PERM_CD_DEPLOY],
+        'cd.monitor.app'    => ['name' => 'App Resources', 'parent' => self::PERM_CD_MONITOR],
+        'cd.monitor.system' => ['name' => 'System Resources', 'parent' => self::PERM_CD_MONITOR],
+        'cd.monitor.custom' => ['name' => 'Custom Resources', 'parent' => self::PERM_CD_MONITOR],
+        'cd.monitor.alert'  => ['name' => 'Alert Rules', 'parent' => self::PERM_CD_MONITOR],
     ];
 
     /**

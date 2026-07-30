@@ -287,9 +287,7 @@ class Database
         $roleUpsert = self::sqlUpsert(\App\Config\AppConfig::TABLE_ROLES, 'name, description, is_system', '?, ?, ?');
         $roleStmt = $pdo->prepare($roleUpsert);
         foreach (\App\Config\AppConfig::DEFAULT_ROLES as $roleName => $perms) {
-            $roleDesc = [
-                \App\Config\AppConfig::ROLE_SUPER_ADMIN => '超级管理员（系统内置）',
-            ][$roleName] ?? '';
+            $roleDesc = ''; // 不硬编码描述，由前端 i18n（user.role_{name}）渲染
             $isSystem = in_array($roleName, \App\Config\AppConfig::DEFAULT_SYSTEM_ROLES) ? 1 : 0;
             try { $roleStmt->execute([$roleName, $roleDesc, $isSystem]); } catch (\Exception $e) {}
         }

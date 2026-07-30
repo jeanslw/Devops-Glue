@@ -338,6 +338,7 @@ return [
     'user.role_admin'    => 'Admin',
     'user.role_ci_admin' => 'CI Admin',
     'user.role_cd_admin' => 'CD Admin',
+    'user.role_builder'  => 'Builder',
     'user.systems_cd'    => 'CD Only',
     'user.systems_ci'    => 'CI Only',
     'user.systems_cd_ci' => 'CD + CI',

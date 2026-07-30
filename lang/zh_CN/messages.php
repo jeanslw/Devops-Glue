@@ -338,6 +338,7 @@ return [
     'user.role_admin'    => '管理员',
     'user.role_ci_admin' => 'CI 管理员',
     'user.role_cd_admin' => 'CD 管理员',
+    'user.role_builder'  => '构建者',
     'user.systems_cd'    => '仅 CD',
     'user.systems_ci'    => '仅 CI',
     'user.systems_cd_ci' => 'CD + CI',

@@ -1333,9 +1333,10 @@ async function loadRoleList() {
                 actions = '<button class="btn btn-sm btn-edit" onclick="showRoleForm(' + r.id + ',\'' + escJs(esc(r.name)) + '\',\'' + escJs(esc(r.description||'')) + '\',' + js(rPerms) + ')" data-i18n-title="map.edit" title="编辑">✏️</button> '
                     + '<button class="btn btn-sm btn-del" onclick="deleteRole(' + r.id + ',\'' + escJs(esc(r.name)) + '\')" data-i18n-title="map.delete" title="删除">🗑</button>';
             }
+            var displayName = r.description || __.t('user.role_' + r.name) || r.name;
             html += '<tr>'
                 + '<td class="mono">' + esc(r.name) + '</td>'
-                + '<td>' + esc(r.description || '') + '</td>'
+                + '<td>' + esc(displayName) + '</td>'
                 + '<td>' + typeBadge + '</td>'
                 + '<td class="perm-col-ci">' + permTags(ciKeys, rPerms) + '</td>'
                 + '<td class="perm-col-cd">' + permTags(cdKeys, rPerms) + '</td>'

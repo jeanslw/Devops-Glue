@@ -85,7 +85,7 @@ CREATE TABLE IF NOT EXISTS roles (
 -- ── 9. permissions（权限定义；parent_key 用于二级菜单 eg. cd.deploy.single → cd.deploy-manage）──
 CREATE TABLE IF NOT EXISTS permissions (
     perm_key    TEXT PRIMARY KEY,
-    description TEXT DEFAULT '',
+    description TEXT,
     parent_key  TEXT DEFAULT NULL
 );
 

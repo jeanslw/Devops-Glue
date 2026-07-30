@@ -1,4 +1,4 @@
-# Devops-Glue FAQ v2.4.0
+# Devops-Glue FAQ v2.4.1
 
 ## Table of Contents
 
@@ -260,21 +260,93 @@ The password in `.env` and the password in `admin_users` table are out of sync.
 
 The login endpoint `POST /api/admin/login` returns a 64-character hex token valid for 24 hours. Re-login after expiration. Changing the password invalidates all existing tokens.
 
-### Q: What's the difference between admin and super_admin?
+### Q: What roles are available? (v2.4.1)
 
-| Role | Permissions |
-|---|---|
-| `super_admin` | Full access, including user management |
-| `admin` | All management features, but **cannot manage other users** |
+The system has a role-based access control (RBAC) system. There is only one built-in system role:
 
-The root user (created by `seedAdmin`) defaults to `super_admin`.
+| Role | Type | Editable | Description |
+|---|---|---|---|
+| `super_admin` | System | No | Full access to all CI and CD features, including user and role management |
+
+All other roles are custom roles created by administrators. You can create any number of roles and assign permissions to them.
+
+### Q: How are permissions organized?
+
+Permissions are divided into **CI** and **CD** categories with a two-level hierarchy:
+
+**CI (8 permissions — no hierarchy):**
+- Full Admin Access, User Management, Manage Admin Accounts
+- Edit Mappings, Edit Platform Versions, Modify Build Mode
+- Auto Discovery, Trigger Build
+
+**CD Level 1 (8 permissions — top-level menus):**
+- Build Management, Deploy Management, Server Management
+- Web Shell, Deploy Records, Image Registry
+- Resource Monitor, Notification Management
+
+**CD Level 2 (7 permissions — sub-items):**
+- Deploy: Deploy to Single Machine, Deploy to Docker, Deploy to K8S
+- Monitor: App Resources, System Resources, Custom Resources, Alert Rules
+
+Total: **23 permissions**. The list is data-driven — adding a new permission only requires inserting a row in the `permissions` table, no code changes needed.
+
+### Q: What are "implied permissions"?
+
+Some parent permissions automatically include their children. Currently:
+
+- `cd.build-manage` (Build Management) → automatically includes `ci.trigger` (Trigger Build)
+
+When you assign "Build Management" to a role, the user automatically gets the ability to trigger builds as well. This is handled by `AppConfig::IMPLIED_PERMISSIONS` (backend) and `IMPLIED_PERMISSIONS` (frontend) — both must be kept in sync.
+
+### Q: How to create a custom role?
+
+1. Log in as `super_admin`
+2. Go to "Role Management" (visible only to `super_admin`)
+3. Click "Create Role", enter a role name and display name
+4. Check the permissions you want to grant
+5. Save — the role appears immediately in the role list and user creation dropdown
+
+### Q: Why can't I edit or delete the super_admin role?
+
+`super_admin` is a system role (`is_system=1`). System roles:
+- Cannot be edited or deleted from the UI (locked with a padlock icon)
+- Have `'*'` as their permission set (always includes all permissions — no need to list all 23 individually)
+- Their description is rendered via i18n (`user.role_super_admin`), not stored in the database
+
+### Q: Why does a role show `user.role_xxx` instead of a readable name?
+
+The display name for system roles comes from i18n translation keys (`user.role_{name}`). If you see a raw key like `user.role_builder`, it means the translation is missing. Add the corresponding key in `lang/zh_CN/messages.php` and `lang/en/messages.php`. Custom roles use their `description` field from the database.
+
+### Q: What is `/api/admin/me/permissions`? (v2.4.1)
+
+`GET /api/admin/me/permissions` returns the current user's role and permission list. It only requires a valid Bearer token (no admin privileges needed).
+
+Response format:
+```json
+{
+  "role": "builder",
+  "permissions": ["ci.trigger", "cd.build-manage"]
+}
+```
+
+For `super_admin`, `permissions` is `"*"` (wildcard meaning all permissions).
+
+### Q: How does CD check user permissions?
+
+The CD frontend can call `GET /api/admin/me/permissions` to get the current user's permissions, then check if a given permission key is present. For example:
+```js
+var perms = await fetch('/api/admin/me/permissions');
+if (perms.permissions === '*' || perms.permissions.includes('cd.deploy.k8s')) {
+    // show K8S deploy button
+}
+```
 
 ### Q: How to create a new admin account?
 
 1. Log into the admin panel with a super_admin account
 2. Go to "User Management" → "Create User"
-3. Enter username, password, select role `admin`
-4. Only `super_admin` can create users
+3. Enter username, password, select a role
+4. Only `super_admin` can manage users and roles
 
 ### Q: Can't access Swagger UI (/api/docs)?
 
@@ -454,4 +526,4 @@ No. API responses always return raw data. i18n only affects the frontend UI and 
 
 ---
 
-*Document version: v2.4.0 | Last updated: 2026-07-28*
+*Document version: v2.4.1 | Last updated: 2026-07-30*
