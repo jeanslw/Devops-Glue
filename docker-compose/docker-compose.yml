@@ -36,39 +36,40 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
-      
-  # CD Service
-  # How to use:
-  #   1. In cd_service dir: cp .env.example .env → set DB_HOST=devops-mysql
-  #   2. docker compose up -d cd-service (start individually)
-  #   3. Or uncomment below to start together in the same compose:
-  #
-  # cd-service:
-  #   build:
-  #     context: ../cd_service
-  #     dockerfile: Dockerfile
-  #   container_name: cd-service
-  #   image: devops-cd:latest
-  #   env_file:
-  #     - ../cd_service/.env
-  #   environment:
-  #     PYTHONUNBUFFERED: "1"
-  #     HOST: 0.0.0.0
-  #     PORT: 8081
-  #   ports:
-  #     - "8081:8081"
-  #   restart: unless-stopped
-  #   healthcheck:
-  #     test: ["CMD", "python", "-c", "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8081/health', timeout=3).status == 200 else 1)"]
-  #     interval: 30s
-  #     timeout: 5s
-  #     retries: 3
-  #     start_period: 20s
-  #   depends_on:
-  #     mysql:
-  #       condition: service_healthy
-  #
 
 volumes:
   mysql-data:
+
+# ──────────────────────────────────────
+# CD Service (separate compose)
+# ──────────────────────────────────────
+# How to use:
+#   1. In cd_service dir: cp .env.example .env → set DB_HOST=devops-mysql
+#   2. docker compose up -d cd-service (start individually)
+#   3. Or uncomment below to start together in the same compose:
+#
+#   cd-service:
+#     build:
+#       context: ../cd_service
+#       dockerfile: Dockerfile
+#     container_name: cd-service
+#     image: devops-cd:latest
+#     env_file:
+#       - ../cd_service/.env
+#     environment:
+#       PYTHONUNBUFFERED: "1"
+#       HOST: 0.0.0.0
+#       PORT: 8081
+#     ports:
+#       - "8081:8081"
+#     restart: unless-stopped
+#     healthcheck:
+#       test: ["CMD", "python", "-c", "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8081/health', timeout=3).status == 200 else 1)"]
+#       interval: 30s
+#       timeout: 5s
+#       retries: 3
+#       start_period: 20s
+#     depends_on:
+#       mysql:
+#         condition: service_healthy
 
