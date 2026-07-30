@@ -3,7 +3,7 @@ namespace App\Config;
 
 class AppConfig
 {
-    public const APP_VERSION = '2.4.0';
+    public const APP_VERSION = '2.4.1';
 
     // ── 表名常量 ──
     public const TABLE_JOB_GIT_MAP       = 'ci_job_git_map';
@@ -20,6 +20,8 @@ class AppConfig
     // ── 角色常量 ──
     public const ROLE_SUPER_ADMIN = 'super_admin';
     public const ROLE_ADMIN       = 'admin';
+    public const ROLE_CI_ADMIN    = 'ci_admin';
+    public const ROLE_CD_ADMIN    = 'cd_admin';
     public const ROLE_DEPLOYER    = 'deployer';
     public const ROLE_VIEWER      = 'viewer';
 
@@ -31,39 +33,79 @@ class AppConfig
     public const PERM_CI_PLATFORM_EDIT      = 'ci.platform.edit';
     public const PERM_CI_MODE_EDIT          = 'ci.mode.edit';
     public const PERM_CI_DISCOVER           = 'ci.discover';
+    public const PERM_CI_TRIGGER            = 'ci.trigger';
+    // CD 权限（对应 CD 系统侧边栏菜单）
+    public const PERM_CD_BUILD   = 'cd.build-manage';
+    public const PERM_CD_DEPLOY  = 'cd.deploy-manage';
+    public const PERM_CD_SERVER  = 'cd.server-manage';
+    public const PERM_CD_WEBSHELL = 'cd.webshell';
+    public const PERM_CD_HISTORY = 'cd.deploy-record';
+    public const PERM_CD_REGISTRY = 'cd.image-registry';
+    public const PERM_CD_MONITOR = 'cd.resource-monitor';
+    public const PERM_CD_NOTIFY  = 'cd.notification-manage';
 
-    /** 默认权限种子数据：key => description */
+    /** 默认权限种子数据：key => ['name' => '显示名', 'parent' => null|parent_key]（英文规范数据，UI 通过 i18n 翻译） */
     public const DEFAULT_PERMISSIONS = [
-        self::PERM_CI_MANAGE             => '管理后台完整访问',
-        self::PERM_CI_USERS_MANAGE       => '用户管理（查看/创建/编辑/删除）',
-        self::PERM_CI_USERS_MANAGE_ADMIN => '管理管理员账号（仅 super_admin）',
-        self::PERM_CI_MAPPING_EDIT       => '编辑映射（新增/编辑/删除）',
-        self::PERM_CI_PLATFORM_EDIT      => '编辑平台版本',
-        self::PERM_CI_MODE_EDIT          => '修改构建模式',
-        self::PERM_CI_DISCOVER           => '自动发现',
+        // CI（8 个，无层级）
+        self::PERM_CI_MANAGE             => ['name' => 'Full Admin Access', 'parent' => null],
+        self::PERM_CI_USERS_MANAGE       => ['name' => 'User Management', 'parent' => null],
+        self::PERM_CI_USERS_MANAGE_ADMIN => ['name' => 'Manage Admin Accounts', 'parent' => null],
+        self::PERM_CI_MAPPING_EDIT       => ['name' => 'Edit Mappings', 'parent' => null],
+        self::PERM_CI_PLATFORM_EDIT      => ['name' => 'Edit Platform Versions', 'parent' => null],
+        self::PERM_CI_MODE_EDIT          => ['name' => 'Modify Build Mode', 'parent' => null],
+        self::PERM_CI_DISCOVER           => ['name' => 'Auto Discovery', 'parent' => null],
+        self::PERM_CI_TRIGGER            => ['name' => 'Trigger Build', 'parent' => null],
+        // CD 一级菜单（8 个）
+        self::PERM_CD_BUILD              => ['name' => 'Build Management', 'parent' => null],
+        self::PERM_CD_DEPLOY             => ['name' => 'Deploy Management', 'parent' => null],
+        self::PERM_CD_SERVER             => ['name' => 'Server Management', 'parent' => null],
+        self::PERM_CD_WEBSHELL           => ['name' => 'Web Shell', 'parent' => null],
+        self::PERM_CD_HISTORY            => ['name' => 'Deploy Records', 'parent' => null],
+        self::PERM_CD_REGISTRY           => ['name' => 'Image Registry', 'parent' => null],
+        self::PERM_CD_MONITOR            => ['name' => 'Resource Monitor', 'parent' => null],
+        self::PERM_CD_NOTIFY             => ['name' => 'Notification Management', 'parent' => null],
+        // CD 二级菜单（7 个）
+        'cd.deploy.single'  => ['name' => 'Deploy to Single Machine', 'parent' => self::PERM_CD_DEPLOY],
+        'cd.deploy.docker'  => ['name' => 'Deploy to Docker', 'parent' => self::PERM_CD_DEPLOY],
+        'cd.deploy.k8s'     => ['name' => 'Deploy to K8S', 'parent' => self::PERM_CD_DEPLOY],
+        'cd.monitor.app'    => ['name' => 'App Resources', 'parent' => self::PERM_CD_MONITOR],
+        'cd.monitor.system' => ['name' => 'System Resources', 'parent' => self::PERM_CD_MONITOR],
+        'cd.monitor.custom' => ['name' => 'Custom Resources', 'parent' => self::PERM_CD_MONITOR],
+        'cd.monitor.alert'  => ['name' => 'Alert Rules', 'parent' => self::PERM_CD_MONITOR],
     ];
 
-    /** 默认角色种子数据：name => permissions[] */
+    /**
+     * 权限隐含关系：选了一方自动拥有另一方
+     *   - 父→子：选了「构建管理」自动拥有「触发构建」
+     *   - 子→父：选了「部署到单机」自动拥有「部署管理」菜单
+     */
+    public const IMPLIED_PERMISSIONS = [
+        // 父→子
+        self::PERM_CD_BUILD => [self::PERM_CI_TRIGGER],
+        // 子→父（选了二级自动显示一级菜单）
+        'cd.deploy.single'  => [self::PERM_CD_DEPLOY],
+        'cd.deploy.docker'  => [self::PERM_CD_DEPLOY],
+        'cd.deploy.k8s'     => [self::PERM_CD_DEPLOY],
+        'cd.monitor.app'    => [self::PERM_CD_MONITOR],
+        'cd.monitor.system' => [self::PERM_CD_MONITOR],
+        'cd.monitor.custom' => [self::PERM_CD_MONITOR],
+        'cd.monitor.alert'  => [self::PERM_CD_MONITOR],
+    ];
+
+    /** 默认角色种子数据：只有 root 内置，'*' 表示拥有所有权限 */
     public const DEFAULT_ROLES = [
-        self::ROLE_SUPER_ADMIN => [
-            self::PERM_CI_MANAGE, self::PERM_CI_USERS_MANAGE,
-            self::PERM_CI_USERS_MANAGE_ADMIN, self::PERM_CI_MAPPING_EDIT,
-            self::PERM_CI_PLATFORM_EDIT, self::PERM_CI_MODE_EDIT,
-            self::PERM_CI_DISCOVER,
-        ],
-        self::ROLE_ADMIN => [
-            self::PERM_CI_MANAGE, self::PERM_CI_USERS_MANAGE,
-            self::PERM_CI_MAPPING_EDIT, self::PERM_CI_PLATFORM_EDIT,
-            self::PERM_CI_MODE_EDIT, self::PERM_CI_DISCOVER,
-        ],
-        self::ROLE_DEPLOYER => [],
-        self::ROLE_VIEWER   => [],
+        self::ROLE_SUPER_ADMIN => '*',
     ];
 
     // ── 状态常量 ──
     public const STATUS_ACTIVE   = 'active';
     public const STATUS_INACTIVE = 'inactive';
     public const STATUS_PENDING  = 'pending';
+
+    // ── 系统内置角色（不可删除）──
+    public const DEFAULT_SYSTEM_ROLES = [
+        self::ROLE_SUPER_ADMIN,
+    ];
 
     // ── 系统类型常量 ──
     public const SYSTEM_CI   = 'ci';

@@ -193,7 +193,7 @@ class AdminController extends BaseController
                 $sql = \App\Service\Database::sqlUpsert(AppConfig::TABLE_CACHE, 'cache_key, value, expires_at', '?, ?, ?');
                 $pdo->prepare($sql)->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . $token, $user . '|' . $loginRole, time() + AppConfig::TTL_TOKEN]);
             } catch (\Exception $e) {
-                // cache 不可用时仍返回 token（降级）
+                return $this->jsonError($response, 'auth.token_store_failed', 500);
             }
             // 查询该角色的权限列表
             $perms = [];
@@ -216,6 +216,24 @@ class AdminController extends BaseController
             ], $request);
         }
         return $this->jsonError($response, 'auth.wrong_credentials', 401);
+    }
+
+    /**
+     * POST /api/admin/logout — 退出登录，清理 token
+     */
+    public function logout(Request $request, Response $response): Response
+    {
+        $header = $request->getHeaderLine('Authorization');
+        if (preg_match('/^Bearer\s+(.+)$/i', $header, $m)) {
+            $token = $m[1];
+            try {
+                $pdo = \App\Service\Database::getPdo();
+                $pdo->prepare("DELETE FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key = ?")
+                    ->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . $token]);
+            } catch (\Exception $e) {
+            }
+        }
+        return $this->output($response, ['message' => 'logged_out'], $request);
     }
 
     /** PUT /api/admin/password — 修改密码 */
@@ -777,10 +795,11 @@ class AdminController extends BaseController
             }
             $pdo->prepare("INSERT INTO " . AppConfig::TABLE_ROLES . " (name, description, is_system, created_at) VALUES (?, ?, 0, " . \App\Service\Database::sqlNow() . ")")->execute([$name, $desc]);
             $roleId = $pdo->lastInsertId();
-            // 分配权限（只分配已定义的权限键）
+            // 展开隐含权限 + 只分配已定义的权限键
+            $expanded = $this->expandPermissions($perms);
             $validKeys = array_keys(AppConfig::DEFAULT_PERMISSIONS);
             $permInsert = $pdo->prepare("INSERT INTO " . AppConfig::TABLE_ROLE_PERMISSIONS . " (role_id, perm_key) VALUES (?, ?)");
-            foreach ($perms as $pk) {
+            foreach ($expanded as $pk) {
                 if (in_array($pk, $validKeys, true)) {
                     try { $permInsert->execute([$roleId, $pk]); } catch (\Exception $e) {}
                 }
@@ -818,9 +837,11 @@ class AdminController extends BaseController
             }
             if (is_array($perms)) {
                 $pdo->prepare("DELETE FROM " . AppConfig::TABLE_ROLE_PERMISSIONS . " WHERE role_id = ?")->execute([$roleId]);
+                // 展开隐含权限
+                $expanded = $this->expandPermissions($perms);
                 $validKeys = array_keys(AppConfig::DEFAULT_PERMISSIONS);
                 $permInsert = $pdo->prepare("INSERT INTO " . AppConfig::TABLE_ROLE_PERMISSIONS . " (role_id, perm_key) VALUES (?, ?)");
-                foreach ($perms as $pk) {
+                foreach ($expanded as $pk) {
                     if (in_array($pk, $validKeys, true)) {
                         try { $permInsert->execute([$roleId, $pk]); } catch (\Exception $e) {}
                     }
@@ -865,20 +886,64 @@ class AdminController extends BaseController
         }
     }
 
-    /** GET /api/admin/permissions — 列出所有可用权限 */
+    /** GET /api/admin/permissions — 列出所有可用权限（含 parent_key 层级） */
     public function permissionList(Request $request, Response $response): Response
     {
         if ($err = $this->authCheck($request, $response)) return $err;
         try {
             $pdo = \App\Service\Database::getPdo();
-            $rows = $pdo->query("SELECT perm_key, description FROM " . AppConfig::TABLE_PERMISSIONS . " ORDER BY perm_key")->fetchAll();
+            $rows = $pdo->query("SELECT perm_key, description, parent_key FROM " . AppConfig::TABLE_PERMISSIONS . " ORDER BY perm_key")->fetchAll();
             return $this->output($response, $rows, $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.query_failed') . ': ' . $e->getMessage(), 500);
         }
     }
 
+    // ────────────────────────── me/permissions ──────────────────────────
+
+    /**
+     * GET /api/admin/me/permissions — 用 token 查当前用户的权限列表
+     * 不需要 admin 权限，只需要有效的 Bearer token
+     * super_admin 返回 '*' 通配符表示拥有所有权限
+     */
+    public function mePermissions(Request $request, Response $response): Response
+    {
+        if ($err = $this->authCheck($request, $response)) return $err;
+
+        if ($this->currentRole === AppConfig::ROLE_SUPER_ADMIN) {
+            $permissions = '*';
+        } else {
+            $this->loadUserPermissions();
+            $permissions = $this->userPermissions;
+        }
+
+        $response->getBody()->write(json_encode([
+            'role'        => $this->currentRole,
+            'permissions' => $permissions,
+        ], JSON_UNESCAPED_UNICODE));
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
     // ────────────────────────── helpers ──────────────────────────
+
+    /**
+     * 展开权限列表：根据 IMPLIED_PERMISSIONS 自动添加隐含权限
+     */
+    private function expandPermissions(array $perms): array
+    {
+        $implied = AppConfig::IMPLIED_PERMISSIONS;
+        $result = $perms;
+        foreach ($perms as $pk) {
+            if (isset($implied[$pk])) {
+                foreach ($implied[$pk] as $child) {
+                    if (!in_array($child, $result, true)) {
+                        $result[] = $child;
+                    }
+                }
+            }
+        }
+        return $result;
+    }
 
     /**
      * 判断当前用户是否有指定权限

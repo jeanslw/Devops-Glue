@@ -8,10 +8,6 @@ let token = sessionStorage.getItem('admin_token') || '';
 let currentUserRole = sessionStorage.getItem('admin_role') || '';
 let currentUserName = sessionStorage.getItem('admin_user') || '';
 let currentUserIsRoot = sessionStorage.getItem('admin_is_root') === 'true';
-let userPermissions = JSON.parse(sessionStorage.getItem('admin_perms') || '[]');
-let allRoles = [];       // 完整角色列表（含权限）
-let allRolesMap = {};    // {name: label}
-let adminRoleNames = new Set(); // 含有 ci.manage 权限的角色名
 
 // ═══════════ Auth ═══════════
 function authHeaders() {
@@ -29,19 +25,19 @@ function goToDocs() {
 }
 
 function doLogout() {
+    // 通知服务端清理 token（异步，不阻塞页面切换）
+    if (token) {
+        fetch('/api/admin/logout', { method: 'POST', headers: authHeaders() })
+            .catch(function() {}); // 忽略网络错误
+    }
     token = '';
     currentUserRole = '';
     currentUserName = '';
     currentUserIsRoot = false;
-    userPermissions = [];
-    allRoles = [];
-    allRolesMap = {};
-    adminRoleNames = new Set();
     sessionStorage.removeItem('admin_token');
     sessionStorage.removeItem('admin_role');
     sessionStorage.removeItem('admin_user');
     sessionStorage.removeItem('admin_is_root');
-    sessionStorage.removeItem('admin_perms');
     document.getElementById('login-page').style.display = 'flex';
     document.getElementById('app-page').style.display = 'none';
 }
@@ -50,16 +46,13 @@ function doLogout() {
 (function initRoleMenu() {
     currentUserName = sessionStorage.getItem('admin_user') || '';
     currentUserIsRoot = sessionStorage.getItem('admin_is_root') === 'true';
-    userPermissions = JSON.parse(sessionStorage.getItem('admin_perms') || '[]');
     if (currentUserName) {
         var topUser = document.getElementById('top-user');
         if (topUser) topUser.textContent = '👤 ' + currentUserName;
     }
-    if (currentUserRole && !isAdminRole()) {
+    if (currentUserRole && !isAdminRole(currentUserRole)) {
         var userMenuItem = document.querySelector('[data-tab="users"]');
         if (userMenuItem) userMenuItem.style.display = 'none';
-    }
-    if (!userPermissions.includes('ci.users.manage_admin') && !currentUserIsRoot) {
         var rolesMenuItem = document.querySelector('[data-tab="roles"]');
         if (rolesMenuItem) rolesMenuItem.style.display = 'none';
     }
@@ -100,23 +93,18 @@ async function doLogin() {
             currentUserRole = data.role || '';
             currentUserName = data.user || '';
             currentUserIsRoot = data.is_root === true;
-            userPermissions = data.permissions || [];
             sessionStorage.setItem('admin_token', token);
             if (currentUserRole) sessionStorage.setItem('admin_role', currentUserRole);
             if (currentUserName) sessionStorage.setItem('admin_user', currentUserName);
             sessionStorage.setItem('admin_is_root', currentUserIsRoot ? 'true' : 'false');
-            sessionStorage.setItem('admin_perms', JSON.stringify(userPermissions));
-            // 预先加载角色列表用于显示
-            await loadRolesMap();
-            // 非 admin 隐藏用户管理菜单
+            // 非 admin 隐藏用户管理和角色管理菜单
             var userMenuItem = document.querySelector('[data-tab="users"]');
             if (userMenuItem) {
-                userMenuItem.style.display = isAdminRole() ? '' : 'none';
+                userMenuItem.style.display = isAdminRole(currentUserRole) ? '' : 'none';
             }
-            // 非 manage_admin / root 隐藏角色管理菜单
-            if (!userPermissions.includes('ci.users.manage_admin') && !currentUserIsRoot) {
-                var rolesMenuItem = document.querySelector('[data-tab="roles"]');
-                if (rolesMenuItem) rolesMenuItem.style.display = 'none';
+            var rolesMenuItem = document.querySelector('[data-tab="roles"]');
+            if (rolesMenuItem) {
+                rolesMenuItem.style.display = isAdminRole(currentUserRole) ? '' : 'none';
             }
             document.getElementById('login-page').style.display = 'none';
             document.getElementById('app-page').style.display = 'block';
@@ -148,7 +136,7 @@ function switchTab(name) {
     if (name === 'versions') loadVersions();
     if (name === 'mode') loadSettings();
     if (name === 'users') loadUsers();
-    if (name === 'roles') loadRoles();
+    if (name === 'roles') loadRoleList();
 }
 
 // ═══════════ Toast ═══════════
@@ -1003,51 +991,37 @@ async function loadSecurityChecks() {
 }
 
 // ═══════════ 用户管理 ═══════════
-function isAdminRole(roleName) {
-    // 检查指定角色名是否含 ci.manage 权限
-    if (roleName !== undefined) return roleName === 'super_admin' || adminRoleNames.has(roleName);
-    // 检查当前用户
-    return userPermissions.includes('ci.manage');
-}
+function isAdminRole(role) { return role === 'admin' || role === 'super_admin'; }
 
 function roleLabel(user) {
-    const role = user.role || '';
-    if (role === 'super_admin') return '👑 ' + (allRolesMap[role] || __.t('user.role_super_admin'));
-    // 优先用角色的 description，否则用翻译键，最后用角色名本身
-    return allRolesMap[role] || __.t('user.role_' + role) || role;
+    if (user.role === 'super_admin') return '👑 ' + __.t('user.role_super_admin');
+    return __.t('user.role_' + user.role) || user.role;
 }
 
-/** 加载角色列表，构建 name→label 映射 + admin 角色集合 */
-async function loadRolesMap() {
+// 角色缓存（动态从后端获取）
+var _rolesCache = null;
+async function loadRoles() {
+    if (_rolesCache) return _rolesCache;
     try {
-        const res = await fetch('/api/admin/roles', { headers: authHeaders() });
-        if (res.ok) {
-            const roles = await res.json();
-            allRoles = roles || [];
-            allRolesMap = {};
-            adminRoleNames = new Set();
-            allRoles.forEach(r => {
-                allRolesMap[r.name] = r.description || r.name;
-                if (r.permissions && r.permissions.includes('ci.manage')) {
-                    adminRoleNames.add(r.name);
-                }
-            });
-            // super_admin 始终算 admin
-            adminRoleNames.add('super_admin');
-        }
-    } catch (e) {}
+        var res = await fetch('/api/admin/roles', { headers: authHeaders() });
+        if (handle401(res)) return [];
+        _rolesCache = await res.json();
+        return _rolesCache;
+    } catch (e) {
+        console.error('loadRoles failed:', e);
+        return [];
+    }
 }
 
 async function loadUsers() {
     document.getElementById('user-msg').textContent = '';
     try {
-        if (!allRoles.length) await loadRolesMap();
         const res = await fetch('/api/admin/users', { headers: authHeaders() });
         if (!res.ok && res.status === 403) { alert(__.t('user.cannot_create_admin')); return; }
         if (handle401(res)) return;
         const result = await res.json();
         const allUsers = Array.isArray(result) ? result : (result.data || []);
-        const users = isAdminRole() ? allUsers : allUsers.filter(u => !isAdminRole(u.role));
+        const users = isAdminRole(currentUserRole) ? allUsers : allUsers.filter(u => !isAdminRole(u.role));
         const tbody = document.getElementById('user-tbody');
         if (!users.length) {
             tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#9ca3af;">' + __.t('user.no_users') + '</td></tr>';
@@ -1056,7 +1030,7 @@ async function loadUsers() {
         tbody.innerHTML = users.map(u => {
             const time = u.updated_at || '-';
             const isSuperAdmin = u.role === 'super_admin';
-            const isAdmin = isAdminRole(u.role);
+            const isAdmin = u.role === 'admin';
             const isSelf = u.username === currentUserName;
             let actions = '';
             if (isSuperAdmin) {
@@ -1086,7 +1060,7 @@ async function loadUsers() {
     }
 }
 
-function showUserForm() {
+async function showUserForm() {
     document.getElementById('user-form').style.display = 'block';
     document.getElementById('edit-target-username').value = '';
     document.getElementById('user-form-title').textContent = __.t('user.add_user');
@@ -1097,13 +1071,13 @@ function showUserForm() {
     document.getElementById('new-password').required = true;
     document.getElementById('new-password').placeholder = __.t('form.placeholder_password');
     document.getElementById('new-password-label').textContent = __.t('user.password');
-    populateRoleSelect('deployer');
+    await populateRoleSelect('deployer');
     document.getElementById('new-systems-wrap').style.display = 'block';
     populateSystemsSelect('cd');
     document.getElementById('user-msg').textContent = '';
 }
 
-function showUserEditForm(user) {
+async function showUserEditForm(user) {
     document.getElementById('user-form').style.display = 'block';
     document.getElementById('edit-target-username').value = user.username;
     document.getElementById('user-form-title').textContent = __.t('user.edit_user') + ': ' + user.username;
@@ -1114,28 +1088,29 @@ function showUserEditForm(user) {
     document.getElementById('new-password').required = false;
     document.getElementById('new-password').placeholder = __.t('user.password_keep_empty');
     document.getElementById('new-password-label').textContent = __.t('user.new_password_optional');
-    populateRoleSelect(user.role);
+    await populateRoleSelect(user.role);
     document.getElementById('new-systems-wrap').style.display = 'none';
     document.getElementById('user-msg').textContent = '';
 }
 
-// 根据当前用户角色动态填充角色下拉
+// 根据当前用户角色动态填充角色下拉（从后端 roles 表获取）
 async function populateRoleSelect(selected) {
     var sel = document.getElementById('new-role');
     sel.innerHTML = '';
-    if (!allRoles.length) await loadRolesMap();
-    // 若请求失败则回退到硬编码列表
-    if (!allRoles.length) {
-        sel.add(new Option(__.t('user.role_deployer'), 'deployer'));
-        sel.add(new Option(__.t('user.role_viewer'), 'viewer'));
-        if (isAdminRole()) sel.add(new Option(__.t('user.role_admin'), 'admin'));
-        if (userPermissions.includes('ci.users.manage_admin')) sel.add(new Option(__.t('user.role_super_admin'), 'super_admin'));
-    } else {
-        allRoles.forEach(r => {
-            sel.add(new Option(r.description || r.name, r.name));
-        });
+    var roles = await loadRoles();
+    var isSA = currentUserRole === 'super_admin';
+    roles.forEach(function(r) {
+        // super_admin 角色只能由 super_admin 分配
+        if (r.name === 'super_admin' && !isSA) return;
+        sel.add(new Option(r.description || __.t('user.role_' + r.name) || r.name, r.name));
+    });
+    // 确保 selected 值在选项中存在，否则选第一个
+    var found = Array.from(sel.options).some(function(o) { return o.value === selected; });
+    if (found) {
+        sel.value = selected;
+    } else if (sel.options.length > 0) {
+        sel.selectedIndex = 0;
     }
-    sel.value = selected;
 }
 
 // 根据当前用户角色动态填充系统下拉
@@ -1143,7 +1118,7 @@ function populateSystemsSelect(selected) {
     var sel = document.getElementById('new-systems');
     sel.innerHTML = '';
     sel.add(new Option(__.t('user.systems_cd'), 'cd'));
-    if (isAdminRole()) {
+    if (isAdminRole(currentUserRole)) {
         sel.add(new Option(__.t('user.systems_ci'), 'ci'));
         sel.add(new Option(__.t('user.systems_cd_ci'), 'cd,ci'));
     }
@@ -1214,131 +1189,290 @@ async function deleteUser(username) {
     }
 }
 
-// ═══════════ 角色管理 ═══════════
-async function loadRoles() {
+// ═══════════ 角色管理（数据驱动，权限从 API 动态加载） ═══════════
+var _allPerms = null;
+async function loadAllPerms() {
+    if (_allPerms) return _allPerms;
     try {
-        if (!allRoles.length) await loadRolesMap();
-        const res = await fetch('/api/admin/roles', { headers: authHeaders() });
-        if (handle401(res)) return;
-        const roles = await res.json();
-        const tbody = document.getElementById('role-tbody');
-        if (!roles.length) {
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#9ca3af;">' + __.t('role.no_roles') + '</td></tr>';
+        var res = await fetch('/api/admin/permissions', { headers: authHeaders() });
+        if (handle401(res)) return [];
+        _allPerms = await res.json();
+        return _allPerms;
+    } catch (e) { return []; }
+}
+
+function permLabel(key) {
+    var tkey = 'role.perm_' + key.replace(/\./g, '_');
+    return __.t(tkey) || key;
+}
+
+/** 权限隐含关系：勾选一方自动勾选另一方（与后端 AppConfig::IMPLIED_PERMISSIONS 同步） */
+var IMPLIED_PERMISSIONS = {
+    // 父→子
+    'cd.build-manage': ['ci.trigger'],
+    // 子→父
+    'cd.deploy.single': ['cd.deploy-manage'],
+    'cd.deploy.docker': ['cd.deploy-manage'],
+    'cd.deploy.k8s': ['cd.deploy-manage'],
+    'cd.monitor.app': ['cd.resource-monitor'],
+    'cd.monitor.system': ['cd.resource-monitor'],
+    'cd.monitor.custom': ['cd.resource-monitor'],
+    'cd.monitor.alert': ['cd.resource-monitor']
+};
+
+/** 勾选/取消权限时联动其隐含目标权限 */
+function cascadeImpliedCheck(sourceKey, checked, rootContainer) {
+    var targets = IMPLIED_PERMISSIONS[sourceKey];
+    if (!targets) return;
+    targets.forEach(function(targetKey) {
+        // 取消时检查是否有其它源仍需要这个目标；若有则保留
+        if (!checked) {
+            var hasOtherSource = Object.keys(IMPLIED_PERMISSIONS).some(function(otherKey) {
+                if (otherKey === sourceKey) return false;
+                if (IMPLIED_PERMISSIONS[otherKey].indexOf(targetKey) < 0) return false;
+                var otherCb = rootContainer.querySelector('input[value="' + otherKey + '"]');
+                return otherCb && otherCb.checked;
+            });
+            if (hasOtherSource) return;
+        }
+        var targetCb = rootContainer.querySelector('input[value="' + targetKey + '"]');
+        if (!targetCb) return;
+        targetCb.checked = checked;
+        var label = targetCb.closest('.perm-check');
+        if (label) label.classList.toggle('checked', checked);
+    });
+}
+
+/** 将权限列表分组为 CI/CD + CD 子分组 */
+function groupPermissions(allPerms) {
+    var ci = [], cdTop = [], childMap = {};
+    allPerms.forEach(function(p) {
+        var k = p.perm_key;
+        if (k.indexOf('ci.') === 0) {
+            ci.push(k);
+        } else if (k.indexOf('cd.') === 0) {
+            if (p.parent_key) {
+                if (!childMap[p.parent_key]) childMap[p.parent_key] = [];
+                childMap[p.parent_key].push(k);
+            } else {
+                cdTop.push(k);
+            }
+        }
+    });
+    var cdSubs = [];
+    for (var pk in childMap) {
+        cdSubs.push({ id: pk, label: permLabel(pk), perms: childMap[pk] });
+    }
+    return [
+        { id: 'ci', label: __.t('role.perm_ci_group'), perms: ci, subGroups: [] },
+        { id: 'cd', label: __.t('role.perm_cd_group'), perms: cdTop, subGroups: cdSubs }
+    ];
+}
+
+function getAllCiKeys(allPerms) { return allPerms.filter(function(p) { return p.perm_key.indexOf('ci.') === 0; }).map(function(p) { return p.perm_key; }); }
+function getAllCdKeys(allPerms) { return allPerms.filter(function(p) { return p.perm_key.indexOf('cd.') === 0; }).map(function(p) { return p.perm_key; }); }
+
+function permTags(allPerms, userPerms) {
+    var html = '';
+    allPerms.forEach(function(p) {
+        var has = userPerms.indexOf(p) >= 0;
+        html += '<span class="perm-tag' + (has ? ' on' : '') + '">' + esc(permLabel(p)) + '</span>';
+    });
+    return '<div class="perm-list">' + html + '</div>';
+}
+
+function togglePermGroup(containerId, btn) {
+    var container = document.getElementById(containerId);
+    var rootContainer = document.getElementById('perm-groups');
+    var cbs = container.querySelectorAll('input[type="checkbox"]');
+    var allChecked = Array.from(cbs).every(function(cb) { return cb.checked; });
+    var target = !allChecked;
+    cbs.forEach(function(cb) {
+        cb.checked = target;
+        cascadeImpliedCheck(cb.value, target, rootContainer || container);
+    });
+    container.querySelectorAll('.perm-check').forEach(function(el) {
+        el.classList.toggle('checked', target);
+    });
+    // 联动可能影响了其它分区的 label（如 CI 的触发构建），统一刷新一次
+    if (rootContainer) {
+        rootContainer.querySelectorAll('.perm-check input').forEach(function(cb) {
+            var label = cb.closest('.perm-check');
+            if (label) label.classList.toggle('checked', cb.checked);
+        });
+    }
+    btn.textContent = target ? __.t('role.deselect_all') : __.t('role.select_all');
+}
+
+async function loadRoleList() {
+    var tbody = document.getElementById('role-tbody');
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#9ca3af;">' + __.t('common.loading') + '</td></tr>';
+    try {
+        var [rolesRes, perms] = await Promise.all([
+            fetch('/api/admin/roles', { headers: authHeaders() }),
+            loadAllPerms()
+        ]);
+        if (handle401(rolesRes)) return;
+        var roles = await rolesRes.json();
+        if (!roles || roles.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#9ca3af;">' + __.t('role.no_roles') + '</td></tr>';
             return;
         }
-        tbody.innerHTML = roles.map(r => {
-            const isSys = r.is_system;
-            const permTags = (r.permissions || []).map(p => '<code class="perm-tag">' + esc(p) + '</code>').join(' ');
-            const editBtn = isSys
-                ? '<span style="color:#9ca3af;font-size:12px;">' + __.t('role.system_role') + '</span>'
-                : '<a href="#" onclick="editRoleById(' + r.id + ')" style="margin-right:8px;">✏️ ' + __.t('common.edit') + '</a>'
-                + '<a href="#" onclick="deleteRole(' + r.id + ',\'' + escJs(r.name) + '\')" class="text-red">🗑️ ' + __.t('common.delete') + '</a>';
-            const badge = isSys
+        var ciKeys = getAllCiKeys(perms);
+        var cdKeys = getAllCdKeys(perms);
+        var html = '';
+        roles.forEach(function(r) {
+            var rPerms = r.permissions || [];
+            var typeBadge = r.is_system
                 ? '<span class="badge badge-sys">' + __.t('role.system_role') + '</span>'
-                : '<span class="badge badge-custom">' + __.t('role.custom_role') + '</span>';
-            return '<tr><td><strong>' + esc(r.name) + '</strong></td><td>' + esc(r.description || '') + '</td><td>' + badge + '</td><td>' + (permTags || '<span style="color:#9ca3af;">—</span>') + '</td><td>' + editBtn + '</td></tr>';
-        }).join('');
+                : '<span class="badge badge-cus">' + __.t('role.custom_role') + '</span>';
+            var actions = '';
+            if (r.is_system) {
+                actions = '<span style="color:#9ca3af;font-size:12px;" title="' + __.t('role.sys_cannot_edit') + '">' + __.t('role.locked') + '</span>';
+            } else {
+                actions = '<button class="btn btn-sm btn-edit" onclick="showRoleForm(' + r.id + ',\'' + escJs(esc(r.name)) + '\',\'' + escJs(esc(r.description||'')) + '\',' + js(rPerms) + ')" data-i18n-title="map.edit" title="编辑">✏️</button> '
+                    + '<button class="btn btn-sm btn-del" onclick="deleteRole(' + r.id + ',\'' + escJs(esc(r.name)) + '\')" data-i18n-title="map.delete" title="删除">🗑</button>';
+            }
+            var displayName = r.description || __.t('user.role_' + r.name) || r.name;
+            html += '<tr>'
+                + '<td class="mono">' + esc(r.name) + '</td>'
+                + '<td>' + esc(displayName) + '</td>'
+                + '<td>' + typeBadge + '</td>'
+                + '<td class="perm-col-ci">' + permTags(ciKeys, rPerms) + '</td>'
+                + '<td class="perm-col-cd">' + permTags(cdKeys, rPerms) + '</td>'
+                + '<td>' + actions + '</td>'
+                + '</tr>';
+        });
+        tbody.innerHTML = html;
     } catch (e) {
-        document.getElementById('role-tbody').innerHTML = '<tr><td colspan="5" style="text-align:center;color:#ef4444;">' + esc(e.message) + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#ef4444;">' + __.t('js.network_error') + '</td></tr>';
     }
 }
 
-let allPerms = []; // 可用权限定义
-
-async function loadAllPerms() {
-    if (allPerms.length) return;
-    try {
-        const res = await fetch('/api/admin/permissions', { headers: authHeaders() });
-        if (res.ok) allPerms = await res.json();
-    } catch (e) {}
-}
-
-function editRoleById(id) {
-    const r = allRoles.find(x => x.id == id);
-    if (r) showRoleForm(r.id, r.name, r.description, r.permissions);
-}
-
 async function showRoleForm(id, name, desc, perms) {
-    await loadAllPerms();
-    const isEdit = id !== undefined;
+    var isEdit = !!id;
+    document.getElementById('role-form').style.display = 'block';
     document.getElementById('edit-role-id').value = id || '';
     document.getElementById('role-name').value = name || '';
-    document.getElementById('role-name').readOnly = isEdit;
+    document.getElementById('role-name').disabled = isEdit;
     document.getElementById('role-desc').value = desc || '';
-    document.getElementById('role-form-title').textContent = isEdit ? '✏️ ' + __.t('role.edit_role') : __.t('role.add_role');
+    document.getElementById('role-form-title').textContent = isEdit ? __.t('role.edit_role') + ': ' + name : __.t('role.add_role');
     document.getElementById('role-msg').textContent = '';
-    document.getElementById('role-form').style.display = 'block';
-    document.getElementById('role-add-btn').style.display = 'none';
 
-    // 权限复选框
-    const container = document.getElementById('role-perms-checkboxes');
-    const selectedPerms = perms || [];
-    container.innerHTML = allPerms.map(p => {
-        const checked = selectedPerms.includes(p.perm_key) ? ' checked' : '';
-        return '<label style="white-space:nowrap;font-size:13px;cursor:pointer;"><input type="checkbox" value="' + esc(p.perm_key) + '"' + checked + '> ' + esc(p.perm_key) + ' <span style="color:#9ca3af;">' + esc(p.description || '') + '</span></label>';
-    }).join('');
+    var selected = perms || [];
+    var allPerms = await loadAllPerms();
+    var groups = groupPermissions(allPerms);
+    var container = document.getElementById('perm-groups');
+    var html = '';
+
+    groups.forEach(function(g) {
+        html += '<div class="perm-sect">';
+        html += '<div class="perm-sect-hd"><span>' + esc(g.label) + '</span><a href="javascript:void(0)" onclick="togglePermGroup(\'' + g.id + '-perms\',this)" data-i18n="role.select_all">' + __.t('role.select_all') + '</a></div>';
+        html += '<div class="perm-sect-body" id="' + g.id + '-perms">';
+        // 一级权限
+        g.perms.forEach(function(key) {
+            var chk = selected.indexOf(key) >= 0;
+            html += '<label class="perm-check' + (chk ? ' checked' : '') + '">'
+                + '<input type="checkbox" value="' + esc(key) + '"' + (chk ? ' checked' : '') + '>'
+                + permLabel(key) + '</label>';
+        });
+        // 二级分组
+        g.subGroups.forEach(function(sg) {
+            html += '<div class="perm-sub">';
+            html += '<div class="perm-sub-hd">▸ ' + esc(sg.label) + '</div>';
+            html += '<div class="perm-sub-body">';
+            sg.perms.forEach(function(key) {
+                var chk = selected.indexOf(key) >= 0;
+                html += '<label class="perm-check perm-check-sub' + (chk ? ' checked' : '') + '">'
+                    + '<input type="checkbox" value="' + esc(key) + '"' + (chk ? ' checked' : '') + '>'
+                    + permLabel(key) + '</label>';
+            });
+            html += '</div></div>';
+        });
+        html += '</div></div>';
+    });
+
+    container.innerHTML = html;
+
+    // 点击 .perm-check 时切换 checkbox（联动隐含权限）
+    container.querySelectorAll('.perm-check').forEach(function(el) {
+        el.addEventListener('click', function(e) {
+            if (e.target.tagName === 'INPUT') return;
+            e.preventDefault(); // 阻止 label 原生行为导致的二次 toggle
+            var cb = this.querySelector('input');
+            cb.checked = !cb.checked;
+            this.classList.toggle('checked', cb.checked);
+            // 联动隐含权限
+            cascadeImpliedCheck(cb.value, cb.checked, container);
+        });
+    });
+    // checkbox 原生 change 也要联动（点击 input 本身时）
+    container.querySelectorAll('.perm-check input').forEach(function(cb) {
+        cb.addEventListener('change', function() {
+            var label = this.closest('.perm-check');
+            if (label) label.classList.toggle('checked', this.checked);
+            cascadeImpliedCheck(this.value, this.checked, container);
+        });
+    });
 }
 
 function hideRoleForm() {
     document.getElementById('role-form').style.display = 'none';
     document.getElementById('edit-role-id').value = '';
-    document.getElementById('role-name').readOnly = false;
-    document.getElementById('role-add-btn').style.display = '';
+    document.getElementById('role-name').disabled = false;
+    document.getElementById('role-msg').textContent = '';
 }
 
 async function submitRoleForm(e) {
     e.preventDefault();
-    const id = document.getElementById('edit-role-id').value;
-    const isEdit = !!id;
-    const name = document.getElementById('role-name').value.trim();
-    const description = document.getElementById('role-desc').value.trim();
-    const perms = Array.from(document.querySelectorAll('#role-perms-checkboxes input:checked')).map(cb => cb.value);
-    const msg = document.getElementById('role-msg');
+    var id = document.getElementById('edit-role-id').value;
+    var isEdit = !!id;
+    var name = document.getElementById('role-name').value.trim();
+    var desc = document.getElementById('role-desc').value.trim();
+    var cbs = document.querySelectorAll('#perm-groups input:checked');
+    var perms = Array.from(cbs).map(function(cb) { return cb.value; });
+    var msg = document.getElementById('role-msg');
 
-    if (!name || !description) { msg.textContent = __.t('form.required'); msg.style.color = '#ef4444'; return; }
+    if (!name) { msg.textContent = __.t('role.name_required'); msg.style.color = '#ef4444'; return; }
 
     try {
-        const url = isEdit ? '/api/admin/roles/' + id : '/api/admin/roles';
-        const body = isEdit ? { name, description, permissions: perms } : { name, description, permissions: perms };
-        const res = await fetch(url, {
-            method: isEdit ? 'PUT' : 'POST',
-            headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
-        });
+        var url = isEdit ? '/api/admin/roles/' + id : '/api/admin/roles';
+        var method = isEdit ? 'PUT' : 'POST';
+        var body = { name: name, permissions: perms };
+        if (desc) body.description = desc;
+        var res = await fetch(url, { method: method, headers: Object.assign({}, authHeaders(), {'Content-Type':'application/json'}), body: JSON.stringify(body) });
         if (handle401(res)) return;
-        const data = await res.json();
+        var data = await res.json();
         if (res.ok) {
+            _rolesCache = null;
             hideRoleForm();
-            toast(isEdit ? __.t('role.updated') : __.t('role.created'), true);
-            allRoles = []; // 刷新缓存
-            await loadRolesMap();
-            loadRoles();
+            loadRoleList();
+            toast(data.message || __.t('common.success'), true);
         } else {
-            msg.textContent = data.message || __.t('common.failed');
+            msg.textContent = data.message || __.t('js.operation_failed');
             msg.style.color = '#ef4444';
         }
-    } catch (err) {
-        msg.textContent = err.message;
+    } catch (e) {
+        msg.textContent = __.t('js.network_error') + ': ' + e.message;
         msg.style.color = '#ef4444';
     }
 }
 
 async function deleteRole(id, name) {
-    if (!confirm(__.t('role.delete_confirm').replace('{name}', name))) return;
+    if (!confirm(__.t('role.delete_confirm'))) return;
     try {
-        const res = await fetch('/api/admin/roles/' + id, { method: 'DELETE', headers: authHeaders() });
+        var res = await fetch('/api/admin/roles/' + id, { method: 'DELETE', headers: authHeaders() });
         if (handle401(res)) return;
         if (res.ok) {
-            toast(__.t('role.deleted'), true);
-            allRoles = [];
-            await loadRolesMap();
-            loadRoles();
+            _rolesCache = null;
+            loadRoleList();
+            toast(__.t('map.deleted'), true);
         } else {
-            const data = await res.json();
-            alert(data.message || __.t('common.failed'));
+            var data = await res.json();
+            toast(data.message || __.t('js.operation_failed'), false);
         }
     } catch (e) {
-        alert(e.message);
+        toast(__.t('js.network_error') + ': ' + e.message, false);
     }
 }
 
@@ -1374,6 +1508,7 @@ document.addEventListener('i18n-changed', function() {
         else if (tabName === 'security') loadSecurityChecks();
         else if (tabName === 'versions') loadVersions();
         else if (tabName === 'mode') loadSettings();
+        else if (tabName === 'roles') loadRoleList();
     }
 });
 if (token) {

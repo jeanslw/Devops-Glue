@@ -238,7 +238,7 @@ class Database
         $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_ROLES . " (
             id {$PK},
             name {$VARCHAR} NOT NULL UNIQUE,
-            description VARCHAR(512) DEFAULT '',
+            description TEXT,
             is_system TINYINT NOT NULL DEFAULT 0,
             created_at {$TS_TYPE} DEFAULT ({$NOW})
         ){$ENGINE}");
@@ -246,12 +246,14 @@ class Database
         if ($isMySQL) {
             $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_PERMISSIONS . " (
                 perm_key VARCHAR(128) PRIMARY KEY,
-                description VARCHAR(512) DEFAULT ''
+                description TEXT,
+                parent_key VARCHAR(128)
             ){$ENGINE}");
         } else {
             $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_PERMISSIONS . " (
                 perm_key TEXT PRIMARY KEY,
-                description TEXT DEFAULT ''
+                description TEXT,
+                parent_key TEXT
             )");
         }
         // role_permissions
@@ -269,31 +271,35 @@ class Database
             )");
         }
 
-        // 种子数据：权限定义
-        $permUpsert = self::sqlUpsert(\App\Config\AppConfig::TABLE_PERMISSIONS, 'perm_key, description', '?, ?');
+        // parent_key 列（用于权限层级，eg. cd.deploy.single → parent cd.deploy-manage）
+        try { $pdo->exec("ALTER TABLE " . \App\Config\AppConfig::TABLE_PERMISSIONS . " ADD COLUMN parent_key VARCHAR(128)"); } catch (\Exception $e) {}
+
+        // 种子数据：权限定义（含 parent_key）
+        $permUpsert = self::sqlUpsert(\App\Config\AppConfig::TABLE_PERMISSIONS, 'perm_key, description, parent_key', '?, ?, ?');
         $permStmt = $pdo->prepare($permUpsert);
-        foreach (\App\Config\AppConfig::DEFAULT_PERMISSIONS as $key => $desc) {
-            try { $permStmt->execute([$key, $desc]); } catch (\Exception $e) {}
+        foreach (\App\Config\AppConfig::DEFAULT_PERMISSIONS as $key => $def) {
+            $desc = is_array($def) ? $def['name'] : $def;
+            $parent = is_array($def) ? ($def['parent'] ?? null) : null;
+            try { $permStmt->execute([$key, $desc, $parent]); } catch (\Exception $e) {}
         }
 
-        // 种子数据：系统角色（幂等）
-        $roleUpsert = self::sqlUpsert(\App\Config\AppConfig::TABLE_ROLES, 'name, description, is_system', '?, ?, 1');
+        // 种子数据：系统角色（幂等，is_system 由 DEFAULT_SYSTEM_ROLES 决定）
+        $roleUpsert = self::sqlUpsert(\App\Config\AppConfig::TABLE_ROLES, 'name, description, is_system', '?, ?, ?');
         $roleStmt = $pdo->prepare($roleUpsert);
         foreach (\App\Config\AppConfig::DEFAULT_ROLES as $roleName => $perms) {
-            $roleDesc = [
-                \App\Config\AppConfig::ROLE_SUPER_ADMIN => '超级管理员',
-                \App\Config\AppConfig::ROLE_ADMIN       => '管理员',
-                \App\Config\AppConfig::ROLE_DEPLOYER    => '部署者',
-                \App\Config\AppConfig::ROLE_VIEWER      => '只读',
-            ][$roleName] ?? '';
-            try { $roleStmt->execute([$roleName, $roleDesc]); } catch (\Exception $e) {}
+            $roleDesc = ''; // 不硬编码描述，由前端 i18n（user.role_{name}）渲染
+            $isSystem = in_array($roleName, \App\Config\AppConfig::DEFAULT_SYSTEM_ROLES) ? 1 : 0;
+            try { $roleStmt->execute([$roleName, $roleDesc, $isSystem]); } catch (\Exception $e) {}
         }
 
-        // 种子数据：角色↔权限（先清再插，确保与 DEFAULT_ROLES 一致）
-        try { $pdo->exec("DELETE FROM " . \App\Config\AppConfig::TABLE_ROLE_PERMISSIONS); } catch (\Exception $e) {}
+        // 种子数据：角色↔权限（只同步系统角色，不碰自定义角色）
+        $allPermKeys = array_keys(\App\Config\AppConfig::DEFAULT_PERMISSIONS);
+        $delRpStmt = $pdo->prepare("DELETE FROM " . \App\Config\AppConfig::TABLE_ROLE_PERMISSIONS . " WHERE role_id = (SELECT id FROM " . \App\Config\AppConfig::TABLE_ROLES . " WHERE name = ?)");
         $rpStmt = $pdo->prepare("INSERT INTO " . \App\Config\AppConfig::TABLE_ROLE_PERMISSIONS . " (role_id, perm_key) VALUES ((SELECT id FROM " . \App\Config\AppConfig::TABLE_ROLES . " WHERE name = ?), ?)");
         foreach (\App\Config\AppConfig::DEFAULT_ROLES as $roleName => $perms) {
-            foreach ($perms as $permKey) {
+            try { $delRpStmt->execute([$roleName]); } catch (\Exception $e) {}
+            $permKeys = ($perms === '*') ? $allPermKeys : $perms;
+            foreach ($permKeys as $permKey) {
                 try { $rpStmt->execute([$roleName, $permKey]); } catch (\Exception $e) {}
             }
         }

@@ -266,6 +266,48 @@ class AppConfigTest extends TestCase
         $this->assertEquals('/var/log/app', $appConfig->getLogPath());
     }
 
+    // ── IMPLIED_PERMISSIONS ──
+
+    public function testImpliedPermissionsKeysAreValid(): void
+    {
+        $validKeys = array_keys(AppConfig::DEFAULT_PERMISSIONS);
+        foreach (AppConfig::IMPLIED_PERMISSIONS as $key => $children) {
+            $this->assertContains($key, $validKeys, "隐含权限键 '{$key}' 必须在 DEFAULT_PERMISSIONS 中");
+            $this->assertIsArray($children, "'{$key}' 的值必须是数组");
+            foreach ($children as $child) {
+                $this->assertContains($child, $validKeys, "隐含权限 '{$key}' 的子键 '{$child}' 必须在 DEFAULT_PERMISSIONS 中");
+            }
+        }
+    }
+
+    public function testImpliedPermissionsNoKeyImpliesItself(): void
+    {
+        foreach (AppConfig::IMPLIED_PERMISSIONS as $key => $children) {
+            $this->assertNotContains($key, $children, "隐含权限 '{$key}' 不能隐含自身");
+        }
+    }
+
+    public function testImpliedPermissionsNoCyclicDependency(): void
+    {
+        // 简单检测：A→B 且 B→A 构成循环
+        $implied = AppConfig::IMPLIED_PERMISSIONS;
+        foreach ($implied as $key => $children) {
+            foreach ($children as $child) {
+                if (isset($implied[$child])) {
+                    $this->assertNotContains($key, $implied[$child], "隐含权限循环：'{$key}' → '{$child}' → '{$key}'");
+                }
+            }
+        }
+    }
+
+    public function testParentChildRelationship(): void
+    {
+        // 验证常见的父子关系存在
+        $implied = AppConfig::IMPLIED_PERMISSIONS;
+        $this->assertArrayHasKey(AppConfig::PERM_CD_BUILD, $implied, 'cd.build-manage 必须有隐含子权限');
+        $this->assertContains(AppConfig::PERM_CI_TRIGGER, $implied[AppConfig::PERM_CD_BUILD], 'cd.build-manage 必须隐含 ci.trigger');
+    }
+
     // ── getHarborConfig ──
 
     public function testGetHarborConfigDefault(): void

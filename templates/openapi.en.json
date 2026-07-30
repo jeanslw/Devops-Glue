@@ -266,6 +266,18 @@
           "has_jenkins": { "type": "boolean" },
           "has_gitlab_ci": { "type": "boolean" }
         }
+      },
+      "MePermissionsResult": {
+        "type": "object",
+        "properties": {
+          "role": { "type": "string", "description": "Current user role name", "example": "builder" },
+          "permissions": {
+            "oneOf": [
+              { "type": "string", "const": "*", "description": "super_admin wildcard, means all permissions" },
+              { "type": "array", "items": { "type": "string" }, "description": "Permission key list for current role", "example": ["ci.trigger", "cd.build-manage"] }
+            ]
+          }
+        }
       }
     }
   },
@@ -1037,6 +1049,26 @@
         "responses": {
           "200": { "description": "Updated successfully, returns {success, versions}" },
           "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" }
+        }
+      }
+    },
+    "/api/admin/me/permissions": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "Get current user's permissions",
+        "description": "Query current user's role and permissions using Bearer token. Only requires a valid token, does not need admin privileges. super_admin role returns \"*\" wildcard.",
+        "operationId": "adminMePermissions",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Current user permissions",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MePermissionsResult" }
+              }
+            }
+          },
           "401": { "$ref": "#/components/responses/401" }
         }
       }

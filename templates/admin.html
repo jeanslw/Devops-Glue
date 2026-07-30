@@ -384,29 +384,31 @@
             <div id="tab-roles" style="display:none;">
                 <div class="toolbar">
                     <h3 data-i18n="admin.sidebar_roles">🔐 角色管理</h3>
-                    <button class="btn btn-pri" id="role-add-btn" onclick="showRoleForm()" data-i18n="role.add_role">＋ 新增角色</button>
+                    <button class="btn btn-pri" onclick="showRoleForm()" data-i18n="role.add_role">＋ 新增角色</button>
                 </div>
-                <div id="role-form" class="card" style="display:none;max-width:640px;">
+                <div id="role-form" class="card" style="display:none;max-width:780px;">
                     <form onsubmit="submitRoleForm(event)">
                         <input type="hidden" id="edit-role-id">
                         <h4 id="role-form-title" data-i18n="role.add_role" style="margin-top:0;margin-bottom:14px;">＋ 新增角色</h4>
-                        <div style="display:flex;gap:10px;margin-bottom:10px;">
-                            <div style="flex:1;">
-                                <label data-i18n="role.name">角色标识</label>
-                                <input type="text" id="role-name" required data-i18n-placeholder="role.name_placeholder" placeholder="英文标识，如 auditor" style="width:100%;">
+                        <div class="form-grid">
+                            <div>
+                                <label data-i18n="role.name">角色标识 <span class="req">*</span></label>
+                                <input type="text" id="role-name" required pattern="[a-z0-9_]+" data-i18n-placeholder="role.name_placeholder" placeholder="仅小写字母、数字和下划线">
                             </div>
-                            <div style="flex:1;">
+                            <div>
                                 <label data-i18n="role.description">显示名称</label>
-                                <input type="text" id="role-desc" required data-i18n-placeholder="role.desc_placeholder" placeholder="如：安全审计员" style="width:100%;">
+                                <input type="text" id="role-desc" data-i18n-placeholder="role.desc_placeholder" placeholder="例：构建者">
                             </div>
                         </div>
-                        <div style="margin-bottom:10px;">
+                        <div style="margin-top:12px;">
                             <label data-i18n="role.permissions">权限</label>
-                            <div id="role-perms-checkboxes" style="display:flex;flex-wrap:wrap;gap:6px 18px;padding:10px;border:1px solid #e5e7eb;border-radius:6px;max-height:260px;overflow-y:auto;"></div>
+                            <div id="perm-groups"></div>
                         </div>
-                        <button type="submit" class="btn btn-save">💾 <span data-i18n="role.save_role">保存</span></button>
-                        <button type="button" class="btn" onclick="hideRoleForm()" data-i18n="user.cancel">取消</button>
-                        <span id="role-msg" style="margin-left:12px;font-size:13px;"></span>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-save">💾 <span data-i18n="common.save">保存</span></button>
+                            <button type="button" class="btn" onclick="hideRoleForm()" data-i18n="common.cancel">取消</button>
+                            <span id="role-msg" style="margin-left:12px;font-size:13px;"></span>
+                        </div>
                     </form>
                 </div>
                 <div class="card" style="margin-top:12px;overflow-x:auto;">
@@ -416,12 +418,13 @@
                                 <th data-i18n="role.name">角色标识</th>
                                 <th data-i18n="role.description">显示名称</th>
                                 <th data-i18n="role.type">类型</th>
-                                <th data-i18n="role.permissions">权限</th>
+                                <th class="perm-col-ci" data-i18n="role.perm_ci_group">CI 权限</th>
+                                <th class="perm-col-cd" data-i18n="role.perm_cd_group">CD 权限</th>
                                 <th data-i18n="user.actions">操作</th>
                             </tr>
                         </thead>
                         <tbody id="role-tbody">
-                            <tr><td colspan="5" style="text-align:center;color:#9ca3af;" data-i18n="common.loading">加载中...</td></tr>
+                            <tr><td colspan="6" style="text-align:center;color:#9ca3af;" data-i18n="common.loading">加载中…</td></tr>
                         </tbody>
                     </table>
                 </div>
