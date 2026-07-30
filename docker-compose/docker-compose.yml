@@ -44,18 +44,18 @@ volumes:
 # CD Service (separate compose)
 # ──────────────────────────────────────
 # How to use:
-#   1. In cd_service dir: cp .env.example .env → set DB_HOST=devops-mysql
-#   2. docker compose up -d cd-service (start individually)
+#   1. In devops_cd dir: cp .env.example .env → set DB_HOST=devops-mysql
+#   2. cd devops_cd && docker compose up -d (start individually)
 #   3. Or uncomment below to start together in the same compose:
 #
 #   cd-service:
 #     build:
-#       context: ../cd_service
+#       context: ../../devops_cd
 #       dockerfile: Dockerfile
 #     container_name: cd-service
 #     image: devops-cd:latest
 #     env_file:
-#       - ../cd_service/.env
+#       - ../../devops_cd/.env
 #     environment:
 #       PYTHONUNBUFFERED: "1"
 #       HOST: 0.0.0.0
