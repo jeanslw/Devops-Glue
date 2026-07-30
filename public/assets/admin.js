@@ -225,7 +225,7 @@ async function loadMonitor() {
 }
 
 // ═══════════ 映射管理 ═══════════
-let mapPage = 1, mapPerPage = 20;
+let mapPage = 1, mapPerPage = 20, mapTotalPages = 1;
 let mapDebounceTimer = null;
 let currentMapView = 'table';  // 'table' | 'topology'
 
@@ -301,7 +301,8 @@ async function loadMaps() {
 
         // 分页以过滤后的实际可见数量为准（API 返回的是原始数据库总数，前端 dedup/provider 过滤后不可见）
         const displayTotal = maps.length;
-        const displayTotalPages = Math.ceil(displayTotal / mapPerPage);
+        mapTotalPages = Math.max(1, Math.ceil(displayTotal / mapPerPage));
+        if (mapPage > mapTotalPages) mapPage = mapTotalPages;
 
         platforms = data.platforms || [];
 
@@ -356,9 +357,9 @@ async function loadMaps() {
             let pagHtml = '<span style="color:#6b7280;">' + __.t('js.total_items', {total: displayTotal}) + '</span>';
             pagHtml += '<button class="btn btn-sm" onclick="mapPage=1;loadMaps()" ' + (mapPage<=1?'disabled':'') + '>« ' + __.t('js.page_first') + '</button>';
             pagHtml += '<button class="btn btn-sm" onclick="mapPage=Math.max(1,mapPage-1);loadMaps()" ' + (mapPage<=1?'disabled':'') + '>‹ ' + __.t('js.page_prev') + '</button>';
-            pagHtml += '<span style="color:#374151;font-weight:600;">' + mapPage + ' / ' + displayTotalPages + '</span>';
-            pagHtml += '<button class="btn btn-sm" onclick="mapPage=Math.min(displayTotalPages,mapPage+1);loadMaps()" ' + (mapPage>=displayTotalPages?'disabled':'') + '>' + __.t('js.page_next') + ' ›</button>';
-            pagHtml += '<button class="btn btn-sm" onclick="mapPage=displayTotalPages;loadMaps()" ' + (mapPage>=displayTotalPages?'disabled':'') + '>' + __.t('js.page_last') + ' »</button>';
+            pagHtml += '<span style="color:#374151;font-weight:600;">' + mapPage + ' / ' + mapTotalPages + '</span>';
+            pagHtml += '<button class="btn btn-sm" onclick="mapPage=Math.min(mapTotalPages,mapPage+1);loadMaps()" ' + (mapPage>=mapTotalPages?'disabled':'') + '>' + __.t('js.page_next') + ' ›</button>';
+            pagHtml += '<button class="btn btn-sm" onclick="mapPage=mapTotalPages;loadMaps()" ' + (mapPage>=mapTotalPages?'disabled':'') + '>' + __.t('js.page_last') + ' »</button>';
             pagination.innerHTML = pagHtml;
         }
     } catch(e) {
@@ -369,6 +370,7 @@ async function loadMaps() {
 // ═══════════ 项目拓扑 ═══════════
 let topoEntries = [];   // 已加载的拓扑数据
 let topoPage    = 1;    // 当前页
+let topoTotalPages = 1; // 总页数（全局，供内联 onclick 使用）
 const TOPO_PER_PAGE = 10;
 let topoPlatformUrls = {};  // { jenkins_url, harbor_url } 从 /api/main/git/platforms 获取
 
@@ -429,8 +431,8 @@ function renderTopology() {
     empty.style.display = 'none';
 
     const total = topoEntries.length;
-    const totalPages = Math.max(1, Math.ceil(total / TOPO_PER_PAGE));
-    if (topoPage > totalPages) topoPage = totalPages;
+    topoTotalPages = Math.max(1, Math.ceil(total / TOPO_PER_PAGE));
+    if (topoPage > topoTotalPages) topoPage = topoTotalPages;
     const offset = (topoPage - 1) * TOPO_PER_PAGE;
     const slice  = topoEntries.slice(offset, offset + TOPO_PER_PAGE);
 
@@ -499,16 +501,16 @@ function renderTopology() {
         }).join('');
 
     // 分页控件
-    if (totalPages <= 1) {
+    if (topoTotalPages <= 1) {
         pagination.style.display = 'none';
     } else {
         pagination.style.display = 'flex';
         let pagHtml = '<span style="color:#6b7280;">' + __.t('js.topo_total_items', {total: total}) + '</span>';
         pagHtml += '<button class="btn btn-sm" onclick="topoPage=1;renderTopology()" ' + (topoPage<=1?'disabled':'') + '>« ' + __.t('js.page_first') + '</button>';
         pagHtml += '<button class="btn btn-sm" onclick="topoPage=Math.max(1,topoPage-1);renderTopology()" ' + (topoPage<=1?'disabled':'') + '>‹ ' + __.t('js.page_prev') + '</button>';
-        pagHtml += '<span style="color:#374151;font-weight:600;">' + topoPage + ' / ' + totalPages + '</span>';
-        pagHtml += '<button class="btn btn-sm" onclick="topoPage=Math.min(totalPages,topoPage+1);renderTopology()" ' + (topoPage>=totalPages?'disabled':'') + '>' + __.t('js.page_next') + ' ›</button>';
-        pagHtml += '<button class="btn btn-sm" onclick="topoPage=totalPages;renderTopology()" ' + (topoPage>=totalPages?'disabled':'') + '>' + __.t('js.page_last') + ' »</button>';
+        pagHtml += '<span style="color:#374151;font-weight:600;">' + topoPage + ' / ' + topoTotalPages + '</span>';
+        pagHtml += '<button class="btn btn-sm" onclick="topoPage=Math.min(topoTotalPages,topoPage+1);renderTopology()" ' + (topoPage>=topoTotalPages?'disabled':'') + '>' + __.t('js.page_next') + ' ›</button>';
+        pagHtml += '<button class="btn btn-sm" onclick="topoPage=topoTotalPages;renderTopology()" ' + (topoPage>=topoTotalPages?'disabled':'') + '>' + __.t('js.page_last') + ' »</button>';
         pagination.innerHTML = pagHtml;
     }
 }
@@ -913,9 +915,9 @@ async function deleteMap(jobName) {
     } catch(e) { toast(__.t('js.network_error') + ': ' + e.message, false); }
 }
 
-// ═══════════ 安全扫描 ═══════════
+// ═══════════ 安全审计 ═══════════
 const SEC_API = '/api/admin/security_checks';
-let secPage = 1, secDebounce = null;
+let secPage = 1, secTotalPages = 1, secDebounce = null;
 const STATE_ICONS = {success:'✅',failed:'❌',error:'⚠️',pending:'⏳'};
 const STATE_LABELS = {success:__.t('security.passed'),failed:__.t('security.failed'),error:__.t('security.error'),pending:__.t('security.pending')};
 
@@ -941,7 +943,10 @@ async function loadSecurityChecks() {
         const data = await res.json();
         const checks = data.checks || [];
         const total = data.total || 0;
-        const totalPages = data.total_pages || 1;
+        secTotalPages = data.total_pages || 1;
+
+        // Ensure page is valid
+        if (secPage > secTotalPages) secPage = secTotalPages;
 
         // 更新类型下拉（合并现有选项）
         if (data.filter_opts?.check_types) {
@@ -980,9 +985,9 @@ async function loadSecurityChecks() {
             let pag = '<span style="color:#6b7280;">' + __.t('js.total_items', {total: total}) + '</span>';
             pag += '<button class="btn btn-sm" onclick="secPage=1;loadSecurityChecks()" ' + (secPage<=1?'disabled':'') + '>« ' + __.t('js.page_first') + '</button>';
             pag += '<button class="btn btn-sm" onclick="secPage=Math.max(1,secPage-1);loadSecurityChecks()" ' + (secPage<=1?'disabled':'') + '>‹ ' + __.t('js.page_prev') + '</button>';
-            pag += '<span style="color:#374151;font-weight:600;">' + secPage + ' / ' + totalPages + '</span>';
-            pag += '<button class="btn btn-sm" onclick="secPage=Math.min(totalPages,secPage+1);loadSecurityChecks()" ' + (secPage>=totalPages?'disabled':'') + '>' + __.t('js.page_next') + ' ›</button>';
-            pag += '<button class="btn btn-sm" onclick="secPage=totalPages;loadSecurityChecks()" ' + (secPage>=totalPages?'disabled':'') + '>' + __.t('js.page_last') + ' »</button>';
+            pag += '<span style="color:#374151;font-weight:600;">' + secPage + ' / ' + secTotalPages + '</span>';
+            pag += '<button class="btn btn-sm" onclick="secPage=Math.min(secTotalPages,secPage+1);loadSecurityChecks()" ' + (secPage>=secTotalPages?'disabled':'') + '>' + __.t('js.page_next') + ' ›</button>';
+            pag += '<button class="btn btn-sm" onclick="secPage=secTotalPages;loadSecurityChecks()" ' + (secPage>=secTotalPages?'disabled':'') + '>' + __.t('js.page_last') + ' »</button>';
             document.getElementById('sec-pagination').innerHTML = pag;
         }
     } catch(e) {

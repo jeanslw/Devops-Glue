@@ -46,6 +46,10 @@ class HarborController extends BaseController
             return $this->jsonError($response, $this->__('harbor.scan_not_enabled'), 503);
         }
 
+        if (isset($result['error']) && strpos($result['error'], '409') !== false) {
+            return $this->jsonError($response, $this->__('harbor.scan_in_progress'), 409);
+        }
+
         return $this->handleResult($response, $result, $request);
     }
 

@@ -122,6 +122,7 @@ return [
     // ── Harbor ──
     'harbor.trigger_failed' => 'Failed to trigger scan',
     'harbor.report_failed'  => 'Failed to get scan report',
+    'harbor.scan_in_progress'        => 'Scan is already in progress, please check the report later',
     'harbor.scan_not_enabled'        => 'Image scanning is not enabled, please contact administrator',
     'harbor.scan_report_not_enabled' => 'Image scanning is not enabled, cannot get report',
 
@@ -140,10 +141,10 @@ return [
     'platform.gitea_desc'   => 'API v1, self-hosted platform',
     'platform.harbor_desc'  => 'Supports v1.10 / v2.0 auto-detection',
 
-    // ── Security Scan ──
-    'security.scan_results' => 'Security Scan Results',
+    // ── Security Audit ──
+    'security.scan_results' => 'Security Audit Results',
     'security.search_placeholder' => 'Search projects…',
-    'security.no_records'  => 'No scan records',
+    'security.no_records'  => 'No audit records',
     'security.passed'      => 'Passed',
     'security.failed'      => 'Failed',
     'security.error'       => 'Error',
@@ -175,7 +176,7 @@ return [
     'admin.api_docs'        => 'API Docs',
     'admin.sidebar_monitor' => 'Service Monitor',
     'admin.sidebar_mapping' => 'Mapping Config',
-    'admin.sidebar_security'=> 'Security Scan',
+    'admin.sidebar_security'=> 'Security Audit',
     'admin.sidebar_versions'=> 'API Versions',
     'admin.sidebar_mode'    => 'Build Mode',
     'admin.sidebar_users'   => 'Users',

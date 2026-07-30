@@ -122,6 +122,7 @@ return [
     // ── Harbor ──
     'harbor.trigger_failed' => '触发扫描失败',
     'harbor.report_failed'  => '获取扫描报告失败',
+    'harbor.scan_in_progress'        => '扫描已在运行中，请稍后查看报告',
     'harbor.scan_not_enabled'        => '镜像扫描功能未启用，请联系管理员',
     'harbor.scan_report_not_enabled' => '镜像扫描功能未启用，无法获取报告',
 
@@ -140,10 +141,10 @@ return [
     'platform.gitea_desc'   => 'API v1，自建平台',
     'platform.harbor_desc'  => '支持 v1.10 / v2.0 自动探测',
 
-    // ── 安全扫描 ──
-    'security.scan_results' => '安全扫描结果',
+    // ── 安全审计 ──
+    'security.scan_results' => '安全审计结果',
     'security.search_placeholder' => '搜索项目…',
-    'security.no_records'  => '暂无扫描记录',
+    'security.no_records'  => '暂无审计记录',
     'security.passed'      => '通过',
     'security.failed'      => '失败',
     'security.error'       => '错误',
@@ -175,7 +176,7 @@ return [
     'admin.api_docs'        => 'API 文档',
     'admin.sidebar_monitor' => '服务监测',
     'admin.sidebar_mapping' => '映射管理',
-    'admin.sidebar_security'=> '安全扫描',
+    'admin.sidebar_security'=> '安全审计',
     'admin.sidebar_versions'=> '对接版本',
     'admin.sidebar_mode'    => '配置模式',
     'admin.sidebar_users'   => '用户管理',
