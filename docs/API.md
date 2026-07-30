@@ -178,6 +178,7 @@ All admin endpoints require Bearer Token (obtained via `POST /api/admin/login`).
 | `/api/admin/platform_versions` | GET/PUT | Platform API version config |
 | `/api/admin/build_mode` | GET/PUT | Build mode (jenkins/gitlab_ci/both) |
 | `/api/admin/users` | GET/POST/PUT/DELETE | User management (v2.4.0) |
+| `/api/admin/me/permissions` | GET | Get current user's permissions (v2.4.1) |
 
 ---
 

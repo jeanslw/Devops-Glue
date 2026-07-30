@@ -78,15 +78,16 @@ CREATE TABLE IF NOT EXISTS `ci_security_checks` (
 CREATE TABLE IF NOT EXISTS `roles` (
     `id`          INT AUTO_INCREMENT PRIMARY KEY,
     `name`        VARCHAR(255) NOT NULL UNIQUE,
-    `description` TEXT DEFAULT '',
+    `description` TEXT,
     `is_system`   TINYINT NOT NULL DEFAULT 0,
     `created_at`  DATETIME DEFAULT (NOW())
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- ── 9. permissions（权限定义）──
+-- ── 9. permissions（权限定义；parent_key 用于二级菜单 eg. cd.deploy.single → cd.deploy-manage）──
 CREATE TABLE IF NOT EXISTS `permissions` (
     `perm_key`    VARCHAR(128) PRIMARY KEY,
-    `description` TEXT DEFAULT ''
+    `description` TEXT,
+    `parent_key`  VARCHAR(128) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ── 10. role_permissions（角色↔权限）──

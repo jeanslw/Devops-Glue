@@ -803,6 +803,7 @@ LOG_PATH=/applogs/                 # Log directory
 | GET | `/api/admin/security_checks` | Token | Security scan list (filter/pagination) |
 | GET | `/api/admin/build_mode` | Token | Get build mode |
 | PUT | `/api/admin/build_mode` | Token | Update build mode |
+| GET | `/api/admin/me/permissions` | Token | Get current user permissions |
 | **Build** | | | |
 | GET/POST | `/api/build/jobs/list` | No | Job list (with ci_provider) |
 | GET | `/api/build/config-mode` | No | Build mode status |

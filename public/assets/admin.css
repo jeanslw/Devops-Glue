@@ -147,6 +147,43 @@
         .badge-gitee   { background:#fef3c7; color:#d97706; }
         .badge-gitea   { background:#dbeafe; color:#1d4ed8; }
         .badge-default { background:#f3f4f6; color:#6b7280; }
+        .badge-sys   { background:#eef2ff; color:#4f46e5; }
+        .badge-cus   { background:#fef3c7; color:#d97706; }
+
+        /* 权限标签 */
+        .perm-check {
+            display:inline-flex; align-items:center; gap:4px;
+            padding:4px 10px; border:1.5px solid #d1d5db; border-radius:8px;
+            font-size:12px; cursor:pointer; user-select:none;
+            transition:all .15s;
+        }
+        .perm-check:hover { border-color:#667eea; }
+        .perm-check.checked { background:#eef2ff; border-color:#6366f1; color:#4f46e5; }
+        .perm-check input { display:none; }
+        .perm-check-sub { margin-left:20px; }
+        .perm-list { display:flex; gap:4px; flex-wrap:wrap; }
+        .perm-tag {
+            display:inline-block; padding:1px 6px; border-radius:4px;
+            font-size:11px; white-space:nowrap; border:1px solid #e5e7eb;
+            color:#9ca3af; background:#f9fafb;
+        }
+        .perm-tag.on { color:#4f46e5; background:#eef2ff; border-color:#c7d2fe; }
+        .perm-col-ci { min-width:160px; }
+        .perm-col-cd { min-width:220px; }
+
+        /* 动态权限分组 */
+        .perm-sect { margin-bottom:10px; }
+        .perm-sect-hd {
+            display:flex; align-items:center; justify-content:space-between;
+            padding:6px 0 4px; border-bottom:1px solid #e5e7eb; margin-bottom:6px;
+            font-size:13px; font-weight:600; color:#374151;
+        }
+        .perm-sect-hd a { font-size:12px; font-weight:400; color:#6366f1; text-decoration:none; }
+        .perm-sect-hd a:hover { text-decoration:underline; }
+        .perm-sect-body { display:flex; flex-wrap:wrap; gap:6px; }
+        .perm-sub { width:100%; margin:4px 0 2px; border-left:3px solid #e5e7eb; padding-left:10px; }
+        .perm-sub-hd { font-size:12px; font-weight:600; color:#6b7280; margin-bottom:4px; }
+        .perm-sub-body { display:flex; flex-wrap:wrap; gap:6px; }
 
         /* 表单面板 */
         .form-panel {

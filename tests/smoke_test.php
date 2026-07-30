@@ -400,9 +400,49 @@ $tc = apiT('登录（错误密码）', "{$baseUrl}/api/admin/login", 'POST', ['u
 $tc->assertHttpIs(401, '错误密码返回 401');
 echo "  [Admin] 错误密码 ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
 
+// ─── me/permissions 接口（无需 admin 权限，只需 token）───
+
+// 无 token 应 401
+$tc = apiT('me/permissions（无认证）', "{$baseUrl}/api/admin/me/permissions");
+$tc->assertHttpIs(401, '无 token 返回 401');
+echo "  [Admin] me/permissions(无认证) ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
+
 // 带 token 的认证接口
 if ($globalToken) {
     $authHeader = ["Authorization: Bearer {$globalToken}"];
+
+    // --- me/permissions 接口 ---
+    $tc = apiT('me/permissions（认证）', "{$baseUrl}/api/admin/me/permissions", 'GET', null, $authHeader);
+    $tc->assertHttpOk('me/permissions 返回 200');
+    $tc->assertJson();
+    $meData = json_decode($tc->rawBody, true) ?? [];
+    $tc->assertHasKeys($meData, ['role', 'permissions'], '包含 role 和 permissions');
+    if (isset($meData['role'])) {
+        $tc->assertIsType('string', $meData['role'], 'role 是字符串');
+        $tc->assertNotEmpty($meData['role'], 'role 非空');
+    }
+    if (isset($meData['permissions'])) {
+        if ($meData['permissions'] === '*') {
+            $tc->assert(true, 'super_admin 通配符 * 正确');
+        } else {
+            $tc->assert(is_array($meData['permissions']), 'permissions 是数组或 *', '类型：' . gettype($meData['permissions']));
+            if (is_array($meData['permissions']) && count($meData['permissions']) > 0) {
+                // 数组中每个元素都应是合法 perm_key 字符串
+                $validKeys = array_keys([
+                    'ci.manage', 'ci.users.manage', 'ci.users.manage_admin', 'ci.mapping.edit',
+                    'ci.platform.edit', 'ci.mode.edit', 'ci.discover', 'ci.trigger',
+                    'cd.build-manage', 'cd.deploy-manage', 'cd.server-manage', 'cd.webshell',
+                    'cd.deploy-record', 'cd.image-registry', 'cd.resource-monitor', 'cd.notification-manage',
+                    'cd.deploy.single', 'cd.deploy.docker', 'cd.deploy.k8s',
+                    'cd.monitor.app', 'cd.monitor.system', 'cd.monitor.custom', 'cd.monitor.alert',
+                ]);
+                foreach ($meData['permissions'] as $pk) {
+                    $tc->assert(in_array($pk, $validKeys, true), "权限键 '{$pk}' 合法", "'{$pk}' 不在已知权限列表中");
+                }
+            }
+        }
+    }
+    echo "  [Admin] me/permissions ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
 
     $tc = apiT('映射列表(认证)', "{$baseUrl}/api/admin/job_git_map", 'GET', null, $authHeader);
     $tc->assertHttpOk();

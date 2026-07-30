@@ -266,6 +266,18 @@
           "has_jenkins": { "type": "boolean" },
           "has_gitlab_ci": { "type": "boolean" }
         }
+      },
+      "MePermissionsResult": {
+        "type": "object",
+        "properties": {
+          "role": { "type": "string", "description": "当前用户角色名", "example": "builder" },
+          "permissions": {
+            "oneOf": [
+              { "type": "string", "const": "*", "description": "super_admin 通配符，表示拥有所有权限" },
+              { "type": "array", "items": { "type": "string" }, "description": "当前角色的权限键列表", "example": ["ci.trigger", "cd.build-manage"] }
+            ]
+          }
+        }
       }
     }
   },
@@ -1037,6 +1049,26 @@
         "responses": {
           "200": { "description": "更新成功，返回 {success, versions}" },
           "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" }
+        }
+      }
+    },
+    "/api/admin/me/permissions": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "获取当前用户的权限列表",
+        "description": "使用 Bearer token 查询当前用户的角色和权限。仅需有效 token，不需要 admin 权限。super_admin 角色返回 \"*\" 通配符。",
+        "operationId": "adminMePermissions",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "当前用户权限",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MePermissionsResult" }
+              }
+            }
+          },
           "401": { "$ref": "#/components/responses/401" }
         }
       }

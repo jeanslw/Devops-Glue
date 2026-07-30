@@ -131,6 +131,7 @@ $app->group('/api', function (RouteCollectorProxy $api) use ($app) {
 
     $api->group('/admin', function (RouteCollectorProxy $admin) {
         $admin->map(['POST'], '/login', [AdminController::class, 'login']);
+        $admin->map(['POST'], '/logout', [AdminController::class, 'logout']);
         $admin->map(['PUT'], '/password', [AdminController::class, 'changePassword']);
         $admin->map(['GET'], '/job_git_map', [AdminController::class, 'jobGitMapList']);
         $admin->map(['POST'], '/job_git_map', [AdminController::class, 'jobGitMapSave']);
@@ -151,6 +152,7 @@ $app->group('/api', function (RouteCollectorProxy $api) use ($app) {
         $admin->map(['PUT'], '/roles/{id}', [AdminController::class, 'roleUpdate']);
         $admin->map(['DELETE'], '/roles/{id}', [AdminController::class, 'roleDelete']);
         $admin->map(['GET'], '/permissions', [AdminController::class, 'permissionList']);
+        $admin->map(['GET'], '/me/permissions', [AdminController::class, 'mePermissions']);
     });
 
     $api->group('/build', function (RouteCollectorProxy $build) {
