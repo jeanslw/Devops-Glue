@@ -12,7 +12,7 @@ $app->get('/admin', function ($request, $response) {
     $htmlFile = __DIR__ . '/../templates/admin.html';
     $response->getBody()->write(file_exists($htmlFile)
         ? file_get_contents($htmlFile)
-        : '<h1>管理页面丢失</h1>');
+        : '<h1>Page Not Found / 页面丢失</h1>');
     return $response->withHeader('Content-Type', 'text/html; charset=utf-8');
 });
 
@@ -58,7 +58,7 @@ $app->group('/api', function (RouteCollectorProxy $api) use ($app) {
     // API 文档 (Swagger UI) —— 需登录
     $api->get('/docs', function ($request, $response) use ($checkAuth) {
         $htmlFile = __DIR__ . '/../templates/swagger.html';
-        $swaggerHtml = file_exists($htmlFile) ? file_get_contents($htmlFile) : '<h1>文档文件丢失</h1>';
+        $swaggerHtml = file_exists($htmlFile) ? file_get_contents($htmlFile) : '<h1>Swagger file missing / 文档文件丢失</h1>';
 
         if ($checkAuth($request)) {
             $response->getBody()->write($swaggerHtml);
@@ -67,7 +67,7 @@ $app->group('/api', function (RouteCollectorProxy $api) use ($app) {
 
         // 未登录 → 登录页
         $loginFile = __DIR__ . '/../templates/swagger-auth.html';
-        $response->getBody()->write(file_exists($loginFile) ? file_get_contents($loginFile) : '<h1>登录页丢失</h1>');
+        $response->getBody()->write(file_exists($loginFile) ? file_get_contents($loginFile) : '<h1>Login page missing / 登录页丢失</h1>');
         return $response->withHeader('Content-Type', 'text/html; charset=utf-8');
     });
 

@@ -28,11 +28,11 @@ class GitProviderFactory
      * @param array  $githubConfig  已废弃
      * @return GitProviderInterface
      */
-    public function create(string $platform, array $gitlabConfig = [], array $giteeConfig = [], array $githubConfig = []): GitProviderInterface
+    public function create(string $platform, array $gitlabConfig = [], array $giteeConfig = [], array $githubConfig = [], array $giteaConfig = []): GitProviderInterface
     {
         if ($this->registry === null) {
             // 降级：直接构造（兼容未注入 Registry 的场景）
-            return $this->createFallback($platform, $gitlabConfig, $giteeConfig, $githubConfig);
+            return $this->createFallback($platform, $gitlabConfig, $giteeConfig, $githubConfig, $giteaConfig);
         }
         return $this->registry->create($platform);
     }
@@ -40,7 +40,7 @@ class GitProviderFactory
     /**
      * 降级模式：Registry 未注入时直接构造 Provider
      */
-    private function createFallback(string $platform, array $gitlabConfig, array $giteeConfig, array $githubConfig): GitProviderInterface
+    private function createFallback(string $platform, array $gitlabConfig, array $giteeConfig, array $githubConfig, array $giteaConfig): GitProviderInterface
     {
         return match ($platform) {
             'gitlab' => new GitlabService(
@@ -56,8 +56,8 @@ class GitProviderFactory
                 $githubConfig['token'] ?? ''
             ),
             'gitea'  => new GiteaService(
-                $githubConfig['base_url'] ?? '',
-                $githubConfig['token'] ?? ''
+                $giteaConfig['base_url'] ?? '',
+                $giteaConfig['token'] ?? ''
             ),
             default => throw new \InvalidArgumentException("不支持的 Git 平台: {$platform}，当前支持: gitlab, gitee, github, gitea"),
         };

@@ -38,36 +38,22 @@
         },
 
         init: function (lang) {
-            var self = this;
             lang = lang || localStorage.getItem(STORAGE_KEY) || 'zh-CN';
             if (!LANGS[lang]) lang = 'zh-CN';
             currentLang = lang;
             localStorage.setItem(STORAGE_KEY, lang);
-
-            // 异步加载语言包，不阻塞页面
-            var xhr = new XMLHttpRequest();
-            xhr.open('GET', '/api/i18n/' + LANGS[lang], true);
-            xhr.onload = function () {
-                if (xhr.status === 200) {
-                    try { messages = JSON.parse(xhr.responseText); } catch (e) {}
-                }
-                self._applyToDOM();
-                document.dispatchEvent(new CustomEvent('i18n-changed', { detail: { lang: currentLang } }));
-            };
-            xhr.onerror = function () {
-                self._applyToDOM();
-                document.dispatchEvent(new CustomEvent('i18n-changed', { detail: { lang: currentLang } }));
-            };
-            xhr.send();
+            this._load(currentLang);
         },
 
         switchTo: function (lang) {
-            var self = this;
             if (!LANGS[lang]) lang = 'zh-CN';
             currentLang = lang;
             localStorage.setItem(STORAGE_KEY, lang);
+            this._load(currentLang);
+        },
 
-            // 异步加载语言包
+        _load: function (lang) {
+            var self = this;
             var xhr = new XMLHttpRequest();
             xhr.open('GET', '/api/i18n/' + LANGS[lang], true);
             xhr.onload = function () {

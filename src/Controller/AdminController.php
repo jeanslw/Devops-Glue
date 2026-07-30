@@ -601,7 +601,7 @@ class AdminController extends BaseController
         $role     = trim($body['role'] ?? AppConfig::ROLE_DEPLOYER);
         $systems  = trim($body['systems'] ?? AppConfig::SYSTEM_CD);
 
-        if ($username === '' || strlen($password) < 6) {
+        if ($username === '' || strlen($password) < 8) {
             return $this->jsonError($response, 'auth.new_password_short', 400);
         }
 
@@ -685,7 +685,7 @@ class AdminController extends BaseController
             }
 
             if ($password !== null && $password !== '') {
-                if (strlen($password) < 6) {
+                if (strlen($password) < 8) {
                     return $this->jsonError($response, 'auth.new_password_short', 400);
                 }
                 $fields[] = 'password_hash = ?';

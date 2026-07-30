@@ -37,7 +37,7 @@ return [
     'auth.wrong_credentials'  => 'Invalid username or password',
     'auth.password_updated'   => 'Password updated, please login again',
     'auth.old_password_wrong' => 'Old password is incorrect',
-    'auth.new_password_short' => 'New password must be at least 6 characters',
+    'auth.new_password_short' => 'New password must be at least 8 characters',
     'auth.please_enter_credentials' => 'Please enter username and password',
     'auth.no_cd_access'       => 'This account has no CD access',
     'auth.no_ci_access'       => 'This account has no CI access',

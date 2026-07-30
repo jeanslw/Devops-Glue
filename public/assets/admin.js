@@ -301,7 +301,7 @@ async function loadMaps() {
 
         // 分页以过滤后的实际可见数量为准（API 返回的是原始数据库总数，前端 dedup/provider 过滤后不可见）
         const displayTotal = maps.length;
-        const displayTotalPages = 1;
+        const displayTotalPages = Math.ceil(displayTotal / mapPerPage);
 
         platforms = data.platforms || [];
 
@@ -775,7 +775,7 @@ async function changePassword(e) {
     const new2 = document.getElementById('new-pass2').value;
     const msg  = document.getElementById('pwd-msg');
     if (newP !== new2) { msg.textContent = __.t('js.password_mismatch'); msg.style.color = '#dc2626'; return; }
-    if (newP.length < 6) { msg.textContent = __.t('auth.new_password_short'); msg.style.color = '#dc2626'; return; }
+    if (newP.length < 8) { msg.textContent = __.t('auth.new_password_short'); msg.style.color = '#dc2626'; return; }
     try {
         const res = await fetch('/api/admin/password', {
             method: 'PUT',
@@ -1141,9 +1141,9 @@ async function submitUserForm(e) {
     const systems = document.getElementById('new-systems').value;
     const msg = document.getElementById('user-msg');
 
-    if (!isEdit && password.length < 6) { msg.textContent = __.t('auth.new_password_short'); msg.style.color = '#ef4444'; return; }
+    if (!isEdit && password.length < 8) { msg.textContent = __.t('auth.new_password_short'); msg.style.color = '#ef4444'; return; }
     if (!isEdit && !username) { msg.textContent = __.t('js.username_required'); msg.style.color = '#ef4444'; return; }
-    if (isEdit && password && password.length < 6) { msg.textContent = __.t('auth.new_password_short'); msg.style.color = '#ef4444'; return; }
+    if (isEdit && password && password.length < 8) { msg.textContent = __.t('auth.new_password_short'); msg.style.color = '#ef4444'; return; }
 
     try {
         const url = isEdit ? '/api/admin/users/' + encodeURIComponent(targetUser) : '/api/admin/users';

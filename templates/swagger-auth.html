@@ -1,6 +1,6 @@
 <!DOCTYPE html>
-<html lang="zh">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>API 文档登录</title>
+<html data-lang="zh">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>API Docs Login</title>
 <link rel="icon" href="/favicon.ico" type="image/x-icon">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}body{font-family:Segoe UI,Microsoft YaHei,sans-serif;background:linear-gradient(135deg,#667eea,#764ba2);min-height:100vh;display:flex;align-items:center;justify-content:center}
@@ -13,12 +13,15 @@
 .err{color:#dc2626;font-size:13px;margin-top:8px;display:none}
 .back{margin-top:16px;font-size:13px}.back a{color:#4f46e5;text-decoration:none}
 </style></head><body>
-<div class="box"><h3>📖 API 文档</h3><p class="sub">请使用管理后台账号登录</p>
-<input id="u" placeholder="账号" autocomplete="username"><input id="p" type="password" placeholder="密码" autocomplete="current-password">
-<button class="btn" onclick="login()">登 录</button><div class="err" id="e"></div>
-<div class="back"><a href="/">🏠 回首页</a></div></div>
+<div class="box"><h3 data-t="title">📖 API 文档</h3><p class="sub" data-t="subtitle">请使用管理后台账号登录</p>
+<input id="u" data-t-placeholder="account" placeholder="账号" autocomplete="username">
+<input id="p" type="password" data-t-placeholder="password" placeholder="密码" autocomplete="current-password">
+<button class="btn" onclick="login()" data-t="login_btn">登 录</button><div class="err" id="e"></div>
+<div class="back"><a href="/" data-t="back_home">🏠 回首页</a></div></div>
 <script>
-async function login(){var u=document.getElementById("u").value.trim(),p=document.getElementById("p").value,e=document.getElementById("e");e.style.display="none";if(!u||!p){e.textContent="请输入账号密码";e.style.display="block";return}
-try{var r=await fetch("/api/admin/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user:u,password:p})});var d=await r.json();if(r.ok&&d.token){location.href="/api/docs?token="+d.token}else{e.textContent=d.message||"登录失败";e.style.display="block"}}catch(x){e.textContent="网络错误: "+x.message;e.style.display="block"}}
+var l={zh:{title:"📖 API 文档",subtitle:"请使用管理后台账号登录",account:"账号",password:"密码",login_btn:"登 录",back_home:"🏠 回首页",empty_user_pass:"请输入账号密码",login_fail:"登录失败",net_error:"网络错误: "},en:{title:"📖 API Docs",subtitle:"Login with your admin credentials",account:"Username",password:"Password",login_btn:"Sign In",back_home:"🏠 Home",empty_user_pass:"Please enter username and password",login_fail:"Login failed",net_error:"Network error: "}};
+(function(){var q=(new URLSearchParams(location.search)).get("lang");var b=navigator.language||"";var t=l.en,n="en";if(q==="zh"||q==="zh-CN"||(!q&&b&&b.toLowerCase().startsWith("zh"))){t=l.zh;n="zh"}document.documentElement.lang=n;document.querySelectorAll("[data-t]").forEach(function(e){e.textContent=t[e.getAttribute("data-t")]||e.textContent});document.querySelectorAll("[data-t-placeholder]").forEach(function(e){e.placeholder=t[e.getAttribute("data-t-placeholder")]||e.placeholder});window._i18n=t})();
+async function login(){var u=document.getElementById("u").value.trim(),p=document.getElementById("p").value,e=document.getElementById("e");e.style.display="none";if(!u||!p){e.textContent=window._i18n.empty_user_pass;e.style.display="block";return}
+try{var r=await fetch("/api/admin/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user:u,password:p})});var d=await r.json();if(r.ok&&d.token){location.href="/api/docs?token="+d.token}else{e.textContent=d.message||window._i18n.login_fail;e.style.display="block"}}catch(x){e.textContent=window._i18n.net_error+x.message;e.style.display="block"}}
 document.addEventListener("keydown",function(ev){if(ev.key==="Enter")login()});
 </script></body></html>

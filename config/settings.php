@@ -84,6 +84,13 @@ return [
         'password' => env('ADMIN_PASSWORD', ''),
     ],
 
+    // ==================== CORS ====================
+    'cors' => [
+        'allowed_origins' => env('CORS_ORIGIN', '*') === '*'
+            ? ['*']
+            : array_map('trim', explode(',', env('CORS_ORIGIN', '*'))),
+    ],
+
     // ==================== App ====================
     'app' => [
         'env'           => env('APP_ENV', 'production'),

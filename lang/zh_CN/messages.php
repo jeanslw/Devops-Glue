@@ -38,7 +38,7 @@ return [
     'auth.wrong_credentials'  => '账号或密码错误',
     'auth.password_updated'   => '密码已更新，请重新登录',
     'auth.old_password_wrong' => '旧密码错误',
-    'auth.new_password_short' => '新密码至少 6 位',
+    'auth.new_password_short' => '新密码至少 8 位',
     'auth.please_enter_credentials' => '请输入账号和密码',
     'auth.no_cd_access'       => '该账号无 CD 系统权限',
     'auth.no_ci_access'       => '该账号无 CI 系统权限',
