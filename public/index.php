@@ -72,54 +72,144 @@ $appDebug = ($_ENV['APP_DEBUG'] ?? 'false') === 'true';
 $errorMiddleware = $app->addErrorMiddleware($appDebug, true, true);
 
 // ── 判断是否 API 请求 ──
+// 浏览器直接访问（Accept 包含 text/html）时返回友好 HTML 页面；
+// AJAX/Fetch（Accept: application/json 或 X-Requested-With: XMLHttpRequest）或显式 API 路径返回 JSON。
 $isApiRequest = function ($request): bool {
+    $accept = $request->getHeaderLine('Accept');
+    if (str_contains($accept, 'text/html')) {
+        return false;
+    }
     $path = $request->getUri()->getPath();
-    return str_starts_with($path, '/api') || str_contains($request->getHeaderLine('Accept'), 'application/json');
+    return str_starts_with($path, '/api')
+        || str_contains($accept, 'application/json')
+        || strtolower($request->getHeaderLine('X-Requested-With')) === 'xmlhttprequest';
+};
+
+// ── 错误页面语言检测：URL ?lang= > Accept-Language > 默认中文 ──
+$resolveErrorLocale = function ($request): string {
+    $query = $request->getUri()->getQuery();
+    parse_str($query, $params);
+    if (isset($params['lang'])) {
+        $lang = strtolower($params['lang']);
+        if ($lang === 'zh' || $lang === 'zh_cn') return 'zh';
+        if ($lang === 'en') return 'en';
+    }
+    $accept = strtolower($request->getHeaderLine('Accept-Language'));
+    if (str_starts_with($accept, 'zh')) return 'zh';
+    if (str_starts_with($accept, 'en')) return 'en';
+    return 'zh';
+};
+
+// ── 友好错误文案 ──
+$errorMessages = [
+    'zh' => [
+        400 => '请求参数错误',
+        401 => '未授权',
+        403 => '禁止访问',
+        404 => '页面不存在',
+        405 => '请求方法不允许',
+        408 => '请求超时',
+        429 => '请求过于频繁',
+        500 => '服务器内部错误',
+        502 => '网关错误',
+        503 => '服务不可用',
+        504 => '网关超时',
+    ],
+    'en' => [
+        400 => 'Bad Request',
+        401 => 'Unauthorized',
+        403 => 'Forbidden',
+        404 => 'Not Found',
+        405 => 'Method Not Allowed',
+        408 => 'Request Timeout',
+        429 => 'Too Many Requests',
+        500 => 'Internal Server Error',
+        502 => 'Bad Gateway',
+        503 => 'Service Unavailable',
+        504 => 'Gateway Timeout',
+    ],
+];
+
+// ── 渲染友好 HTML 错误页 ──
+$renderErrorHtml = function ($request, int $code, ?string $detail = null) use ($resolveErrorLocale): \Slim\Psr7\Response {
+    $response = new \Slim\Psr7\Response();
+    $lang = $resolveErrorLocale($request);
+    $htmlFile = __DIR__ . '/../templates/error.html';
+    if (file_exists($htmlFile)) {
+        $html = file_get_contents($htmlFile);
+        $html = str_replace('{{CODE}}', (string) $code, $html);
+        $html = str_replace('{{LANG}}', $lang, $html);
+        $html = str_replace('{{DETAIL}}', $detail ? htmlspecialchars($detail, ENT_QUOTES, 'UTF-8') : '', $html);
+        $response->getBody()->write($html);
+        return $response->withStatus($code)->withHeader('Content-Type', 'text/html; charset=utf-8');
+    }
+    $fallback = '<!doctype html><html lang="' . ($lang === 'en' ? 'en' : 'zh-CN') . '"><head><meta charset="utf-8"><title>' . $code . '</title></head><body style="font-family:sans-serif;padding:40px;text-align:center;"><h1>' . $code . '</h1><p>' . ($detail ?: 'Error') . '</p></body></html>';
+    $response->getBody()->write($fallback);
+    return $response->withStatus($code)->withHeader('Content-Type', 'text/html; charset=utf-8');
 };
 
 // ── 通用错误 → API 请求返回 JSON，否则 HTML ──
-$errorMiddleware->setDefaultErrorHandler(function ($request, $exception, $displayErrorDetails) use ($isApiRequest) {
+$errorMiddleware->setDefaultErrorHandler(function ($request, $exception, $displayErrorDetails) use ($isApiRequest, $renderErrorHtml, $errorMessages, $resolveErrorLocale) {
     $response = new \Slim\Psr7\Response();
+    $code = 500;
+    if ($exception instanceof \Slim\Exception\HttpException) {
+        $code = $exception->getCode();
+    }
+    $lang = $resolveErrorLocale($request);
+    $message = $errorMessages[$lang][$code] ?? $errorMessages[$lang][500];
+
     if ($isApiRequest($request)) {
-        $payload = ['code' => 500, 'message' => '服务器内部错误'];
-        if ($displayErrorDetails) {
+        $payload = ['code' => $code, 'message' => $message];
+        if ($displayErrorDetails && $exception instanceof \Throwable) {
             $payload['error'] = $exception->getMessage();
             $payload['file']  = $exception->getFile() . ':' . $exception->getLine();
             $payload['trace'] = explode("\n", $exception->getTraceAsString());
         }
         $response->getBody()->write(json_encode($payload, JSON_UNESCAPED_UNICODE));
-        return $response->withStatus(500)->withHeader('Content-Type', 'application/json; charset=utf-8');
+        return $response->withStatus($code)->withHeader('Content-Type', 'application/json; charset=utf-8');
     }
-    $html = '<!doctype html><html lang="zh"><head><meta charset="utf-8"><title>服务器错误</title></head><body style="font-family:sans-serif;padding:40px;">';
-    $html .= '<h1>⚠️ 500 服务器错误</h1>';
-    if ($displayErrorDetails) {
-        $html .= '<p><b>' . htmlspecialchars($exception->getMessage()) . '</b></p>';
-        $html .= '<pre>' . htmlspecialchars($exception->getFile() . ':' . $exception->getLine()) . '</pre>';
-        $html .= '<pre>' . htmlspecialchars($exception->getTraceAsString()) . '</pre>';
+
+    $detail = null;
+    if ($displayErrorDetails && $exception instanceof \Throwable) {
+        $detail = $exception->getMessage();
     }
-    $html .= '</body></html>';
-    $response->getBody()->write($html);
-    return $response->withStatus(500)->withHeader('Content-Type', 'text/html; charset=utf-8');
+    return $renderErrorHtml($request, $code, $detail);
 });
 
-// ── 自定义 404 ──
-$errorMiddleware->setErrorHandler(
-    \Slim\Exception\HttpNotFoundException::class,
-    function ($request, $exception, $displayErrorDetails) use ($isApiRequest) {
+// ── 注册常见 HTTP 异常的友好处理 ──
+// 注：Slim 4 仅内置了常用 HTTP 异常类，其余状态码走默认错误处理器
+$httpExceptions = [
+    \Slim\Exception\HttpBadRequestException::class          => 400,
+    \Slim\Exception\HttpUnauthorizedException::class        => 401,
+    \Slim\Exception\HttpForbiddenException::class           => 403,
+    \Slim\Exception\HttpNotFoundException::class            => 404,
+    \Slim\Exception\HttpMethodNotAllowedException::class    => 405,
+    \Slim\Exception\HttpTooManyRequestsException::class     => 429,
+    \Slim\Exception\HttpInternalServerErrorException::class => 500,
+    \Slim\Exception\HttpNotImplementedException::class      => 501,
+];
+
+foreach ($httpExceptions as $exceptionClass => $statusCode) {
+    $errorMiddleware->setErrorHandler($exceptionClass, function ($request, $exception, $displayErrorDetails) use ($isApiRequest, $renderErrorHtml, $errorMessages, $resolveErrorLocale, $statusCode) {
         $response = new \Slim\Psr7\Response();
+        $lang = $resolveErrorLocale($request);
+        $message = $errorMessages[$lang][$statusCode] ?? $errorMessages[$lang][500];
+
         if ($isApiRequest($request)) {
-            $payload = json_encode(['code' => 404, 'message' => 'API 路由不存在', 'data' => null]);
-            $response->getBody()->write($payload);
-            return $response->withStatus(404)->withHeader('Content-Type', 'application/json; charset=utf-8');
+            $payload = ['code' => $statusCode, 'message' => $message];
+            if ($displayErrorDetails && $exception instanceof \Throwable) {
+                $payload['error'] = $exception->getMessage();
+            }
+            $response->getBody()->write(json_encode($payload, JSON_UNESCAPED_UNICODE));
+            return $response->withStatus($statusCode)->withHeader('Content-Type', 'application/json; charset=utf-8');
         }
-        $htmlFile = __DIR__ . '/../templates/404.html';
-        if (file_exists($htmlFile)) {
-            $response->getBody()->write(file_get_contents($htmlFile));
-        } else {
-            $response->getBody()->write('<h1>404 页面丢失啦</h1>');
+
+        $detail = null;
+        if ($displayErrorDetails && $exception instanceof \Throwable) {
+            $detail = $exception->getMessage();
         }
-        return $response->withStatus(404)->withHeader('Content-Type', 'text/html; charset=utf-8');
-    }
-);
+        return $renderErrorHtml($request, $statusCode, $detail);
+    });
+}
 
 $app->run();

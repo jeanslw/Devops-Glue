@@ -27,6 +27,22 @@ return [
     'common.network_error' => 'Network Error',
     'common.detecting' => 'Detecting…',
 
+    // ── HTTP Error Pages ──
+    'error.400' => 'Bad Request',
+    'error.401' => 'Unauthorized',
+    'error.403' => 'Forbidden',
+    'error.404' => 'Not Found',
+    'error.405' => 'Method Not Allowed',
+    'error.408' => 'Request Timeout',
+    'error.429' => 'Too Many Requests',
+    'error.500' => 'Internal Server Error',
+    'error.502' => 'Bad Gateway',
+    'error.503' => 'Service Unavailable',
+    'error.504' => 'Gateway Timeout',
+    'error.back_home' => 'Back to Home',
+    'error.go_back'   => 'Go Back',
+    'error.refresh'   => 'Refresh Page',
+
     // ── Auth ──
     'auth.login'              => 'Login',
     'auth.logout'             => 'Logout',

@@ -1490,7 +1490,15 @@ function escJs(s) { return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").r
 function js(obj) { return JSON.stringify(obj).replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
 
 // ═══════════ Init ═══════════
-__.init();
+// 支持 URL 参数 ?lang=zh|en 覆盖 localStorage
+(function() {
+    var urlLang = new URLSearchParams(location.search).get('lang');
+    if (urlLang === 'zh' || urlLang === 'zh_CN' || urlLang === 'zh-CN') urlLang = 'zh-CN';
+    else if (urlLang === 'en') urlLang = 'en';
+    else urlLang = null;
+    if (urlLang) localStorage.setItem('dg_lang', urlLang);
+    __.init(urlLang);
+})();
 // 同步语言选择器
 document.addEventListener('DOMContentLoaded', function() {
     var sel = document.getElementById('lang-select');

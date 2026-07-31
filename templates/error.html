@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Error</title>
+    <link rel="icon" href="/favicon.ico" type="image/x-icon">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .error-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 60px;
+            text-align: center;
+            max-width: 600px;
+            width: 100%;
+            animation: fadeIn 0.6s ease-out;
+            position: relative;
+            z-index: 1;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .error-number {
+            font-size: 120px;
+            font-weight: 800;
+            color: #667eea;
+            line-height: 1;
+            margin-bottom: 20px;
+            text-shadow: 4px 4px 0 rgba(102, 126, 234, 0.1);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.05);
+            }
+        }
+
+        .error-title {
+            font-size: 32px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        .error-message {
+            font-size: 18px;
+            color: #666;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+
+        .error-detail {
+            font-size: 14px;
+            color: #999;
+            margin-bottom: 30px;
+            padding: 12px 16px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            word-break: break-word;
+            display: none;
+        }
+
+        .error-detail.visible {
+            display: block;
+        }
+
+        .error-buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-bottom: 25px;
+        }
+
+        .btn {
+            padding: 12px 28px;
+            border-radius: 50px;
+            font-size: 15px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            border: none;
+            outline: none;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        .btn-secondary {
+            background: #f8f9fa;
+            color: #667eea;
+            border: 2px solid #667eea;
+        }
+
+        .btn-secondary:hover {
+            background: #667eea;
+            color: white;
+            transform: translateY(-3px);
+        }
+
+        .lang-switch {
+            display: inline-flex;
+            gap: 8px;
+            background: #f0f2f5;
+            border-radius: 50px;
+            padding: 4px;
+        }
+
+        .lang-switch button {
+            border: none;
+            background: transparent;
+            padding: 8px 16px;
+            border-radius: 50px;
+            font-size: 14px;
+            cursor: pointer;
+            color: #666;
+            transition: all 0.2s;
+        }
+
+        .lang-switch button.active {
+            background: white;
+            color: #667eea;
+            font-weight: 600;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+
+        .error-decoration {
+            position: fixed;
+            width: 300px;
+            height: 300px;
+            border-radius: 50%;
+            opacity: 0.1;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .circle-1 {
+            background: #667eea;
+            top: -100px;
+            left: -100px;
+        }
+
+        .circle-2 {
+            background: #764ba2;
+            bottom: -100px;
+            right: -100px;
+        }
+
+        @media (max-width: 768px) {
+            .error-container {
+                padding: 40px 25px;
+            }
+
+            .error-number {
+                font-size: 80px;
+            }
+
+            .error-title {
+                font-size: 24px;
+            }
+
+            .error-message {
+                font-size: 16px;
+            }
+
+            .error-buttons {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .btn {
+                width: 100%;
+                max-width: 300px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="circle-1 error-decoration"></div>
+    <div class="circle-2 error-decoration"></div>
+
+    <div class="error-container" data-code="{{CODE}}" data-lang="{{LANG}}" data-detail="{{DETAIL}}">
+        <div class="error-number" id="error-code">500</div>
+        <h1 class="error-title" id="error-title">服务器错误</h1>
+        <p class="error-message" id="error-message">抱歉，服务器遇到了意外情况，请稍后再试。</p>
+        <div class="error-detail" id="error-detail"></div>
+
+        <div class="error-buttons">
+            <a href="/" class="btn btn-primary" id="btn-home">返回首页</a>
+            <button type="button" class="btn btn-secondary" id="btn-back">返回上一页</button>
+            <button type="button" class="btn btn-secondary" id="btn-reload">刷新页面</button>
+        </div>
+
+        <div class="lang-switch">
+            <button type="button" data-lang="zh" id="lang-zh">中文</button>
+            <button type="button" data-lang="en" id="lang-en">English</button>
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            const translations = {
+                zh: {
+                    title: '出错了',
+                    home: '返回首页',
+                    back: '返回上一页',
+                    reload: '刷新页面',
+                    errors: {
+                        400: { title: '请求参数错误', message: '抱歉，您的请求包含无效参数，请检查后再试。' },
+                        401: { title: '未授权', message: '抱歉，您需要先登录才能访问此页面。' },
+                        403: { title: '禁止访问', message: '抱歉，您没有权限访问此页面。' },
+                        404: { title: '页面未找到', message: '抱歉，您访问的页面不存在或已被删除。<br>请检查 URL 是否正确，或返回首页重新浏览。' },
+                        405: { title: '请求方法不允许', message: '抱歉，当前 URL 不支持您使用的请求方式。' },
+                        408: { title: '请求超时', message: '抱歉，服务器等待请求时间过长，请稍后重试。' },
+                        429: { title: '请求过于频繁', message: '抱歉，您的操作过于频繁，请稍后再试。' },
+                        500: { title: '服务器内部错误', message: '抱歉，服务器遇到了意外情况，请稍后再试。' },
+                        502: { title: '网关错误', message: '抱歉，服务器暂时无法响应，请稍后再试。' },
+                        503: { title: '服务不可用', message: '抱歉，服务器正在维护或过载，请稍后再试。' },
+                        504: { title: '网关超时', message: '抱歉，服务器响应超时，请稍后再试。' }
+                    }
+                },
+                en: {
+                    title: 'Error',
+                    home: 'Back to Home',
+                    back: 'Go Back',
+                    reload: 'Refresh Page',
+                    errors: {
+                        400: { title: 'Bad Request', message: 'Sorry, your request contains invalid parameters. Please check and try again.' },
+                        401: { title: 'Unauthorized', message: 'Sorry, you need to log in first to access this page.' },
+                        403: { title: 'Forbidden', message: 'Sorry, you do not have permission to access this page.' },
+                        404: { title: 'Page Not Found', message: 'Sorry, the page you visited does not exist or has been removed.<br>Please check the URL or return to the home page.' },
+                        405: { title: 'Method Not Allowed', message: 'Sorry, the request method is not supported for this URL.' },
+                        408: { title: 'Request Timeout', message: 'Sorry, the server waited too long for the request. Please try again later.' },
+                        429: { title: 'Too Many Requests', message: 'Sorry, you have sent too many requests. Please try again later.' },
+                        500: { title: 'Internal Server Error', message: 'Sorry, the server encountered an unexpected condition. Please try again later.' },
+                        502: { title: 'Bad Gateway', message: 'Sorry, the server temporarily cannot respond. Please try again later.' },
+                        503: { title: 'Service Unavailable', message: 'Sorry, the server is under maintenance or overloaded. Please try again later.' },
+                        504: { title: 'Gateway Timeout', message: 'Sorry, the server response timed out. Please try again later.' }
+                    }
+                }
+            };
+
+            const container = document.querySelector('.error-container');
+            const injectedCode = container.getAttribute('data-code');
+            const injectedLang = container.getAttribute('data-lang');
+            const injectedDetail = container.getAttribute('data-detail');
+
+            function getParam(name) {
+                const params = new URLSearchParams(window.location.search);
+                return params.get(name);
+            }
+
+            function detectLang() {
+                const urlLang = getParam('lang');
+                if (urlLang === 'zh' || urlLang === 'en') return urlLang;
+                if (injectedLang === 'zh' || injectedLang === 'en') return injectedLang;
+                const browserLang = (navigator.language || navigator.userLanguage || '').toLowerCase();
+                return browserLang.startsWith('zh') ? 'zh' : 'en';
+            }
+
+            function getCode() {
+                const urlCode = getParam('code');
+                if (urlCode && /^\d+$/.test(urlCode)) return parseInt(urlCode, 10);
+                if (injectedCode && /^\d+$/.test(injectedCode)) return parseInt(injectedCode, 10);
+                return 500;
+            }
+
+            function getDetail() {
+                return getParam('detail') || injectedDetail || '';
+            }
+
+            function setLang(lang) {
+                const t = translations[lang];
+                const code = getCode();
+                const detail = getDetail();
+                const error = t.errors[code] || t.errors[500];
+
+                document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+                document.title = code + ' - ' + error.title;
+
+                document.getElementById('error-code').textContent = code;
+                document.getElementById('error-title').textContent = error.title;
+                document.getElementById('error-message').innerHTML = error.message;
+
+                document.getElementById('btn-home').textContent = t.home;
+                document.getElementById('btn-back').textContent = t.back;
+                document.getElementById('btn-reload').textContent = t.reload;
+
+                const detailEl = document.getElementById('error-detail');
+                if (detail) {
+                    detailEl.textContent = detail;
+                    detailEl.classList.add('visible');
+                } else {
+                    detailEl.classList.remove('visible');
+                }
+
+                document.getElementById('lang-zh').classList.toggle('active', lang === 'zh');
+                document.getElementById('lang-en').classList.toggle('active', lang === 'en');
+
+                // Update URL without reloading
+                const url = new URL(window.location.href);
+                url.searchParams.set('lang', lang);
+                window.history.replaceState({}, '', url);
+            }
+
+            const lang = detectLang();
+            setLang(lang);
+
+            document.getElementById('lang-zh').addEventListener('click', function() { setLang('zh'); });
+            document.getElementById('lang-en').addEventListener('click', function() { setLang('en'); });
+            document.getElementById('btn-back').addEventListener('click', function() { history.back(); });
+            document.getElementById('btn-reload').addEventListener('click', function() { location.reload(); });
+        })();
+    </script>
+</body>
+</html>
