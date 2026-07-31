@@ -3,7 +3,8 @@ Devops-Glue is a DevOps toolchain integration platform built on Slim4 for small 
 
 > **Not a big-company remote control — a Swiss Army knife for small teams.**
 
-[Chinese](README_ZH-CN.md)
+> ** [Chinese](README_ZH-CN.md) **
+
 ![System Overview](system_info.png)
 ![System Status](system_running.png)
 

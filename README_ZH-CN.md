@@ -3,7 +3,8 @@ Devops-Glue 是基于 Slim4 为小团队打造的 DevOps 工具链集成平台�
 
 > **不是大厂遥控器——是小团队的瑞士军刀。**
 
-[英文版](README.md)
+> **[英文版](README.md) **
+
 ![系统概览](system_info.png)
 ![运行状态](system_running.png)
 
