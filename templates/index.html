@@ -131,7 +131,7 @@
 <footer class="footer" data-i18n="index.footer">Copyright &copy; 2026 jeanslw &nbsp;|&nbsp; Devops-Glue</footer>
 
 <script src="/assets/i18n.js"></script>
-<script>__.init();</script>
+<script>(function(){var l=new URLSearchParams(location.search).get('lang');if(l==='zh'||l==='zh_CN'||l==='zh-CN')l='zh-CN';else if(l==='en')l='en';else l=null;if(l)localStorage.setItem('dg_lang',l);__.init(l);})();</script>
 
 </body>
 </html>

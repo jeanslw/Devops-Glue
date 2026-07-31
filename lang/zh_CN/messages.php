@@ -28,6 +28,22 @@ return [
     'common.network_error' => '网络错误',
     'common.detecting' => '检测中…',
 
+    // ── HTTP 错误页面 ──
+    'error.400' => '请求参数错误',
+    'error.401' => '未授权',
+    'error.403' => '禁止访问',
+    'error.404' => '页面不存在',
+    'error.405' => '请求方法不允许',
+    'error.408' => '请求超时',
+    'error.429' => '请求过于频繁',
+    'error.500' => '服务器内部错误',
+    'error.502' => '网关错误',
+    'error.503' => '服务不可用',
+    'error.504' => '网关超时',
+    'error.back_home' => '返回首页',
+    'error.go_back'   => '返回上一页',
+    'error.refresh'   => '刷新页面',
+
     // ── 认证 ──
     'auth.login'              => '登录',
     'auth.logout'             => '退出',
