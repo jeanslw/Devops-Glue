@@ -810,7 +810,7 @@
       "put": {
         "tags": ["Admin"],
         "summary": "修改管理员密码",
-        "description": "需旧密码验证。密码变更后自动清除所有旧 token，强制重新登录。新密码至少 6 位。",
+        "description": "需旧密码验证。密码变更后自动清除所有旧 token，强制重新登录。新密码至少 8 位。",
         "operationId": "adminChangePassword",
         "security": [{ "bearerAuth": [] }],
         "requestBody": {
@@ -822,7 +822,7 @@
                 "required": ["old_password", "new_password"],
                 "properties": {
                   "old_password": { "type": "string", "example": "admin123" },
-                  "new_password": { "type": "string", "example": "newpass456", "minLength": 6 }
+                  "new_password": { "type": "string", "example": "newpass456", "minLength": 8 }
                 }
               }
             }

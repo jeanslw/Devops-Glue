@@ -72,11 +72,24 @@
 
         _applyToDOM: function () {
             var self = this;
-            // data-i18n: 设置 textContent
+            // data-i18n: 设置 textContent（只对纯文本元素，有子元素的跳过避免破坏 DOM 结构）
             document.querySelectorAll('[data-i18n]').forEach(function (el) {
                 var key = el.getAttribute('data-i18n');
                 var translated = self.t(key);
-                if (translated !== key) el.textContent = translated;
+                if (translated === key) return;
+                // 如果元素有子元素节点（如按钮内的 <span>），只替换第一个文本节点，不破坏结构
+                if (el.children.length > 0) {
+                    for (var i = 0; i < el.childNodes.length; i++) {
+                        if (el.childNodes[i].nodeType === 3) { // Text node
+                            el.childNodes[i].nodeValue = translated;
+                            return;
+                        }
+                    }
+                    // 没有文本节点则在最前面插入
+                    el.insertBefore(document.createTextNode(translated), el.firstChild);
+                    return;
+                }
+                el.textContent = translated;
             });
             // data-i18n-placeholder: 设置 placeholder
             document.querySelectorAll('[data-i18n-placeholder]').forEach(function (el) {

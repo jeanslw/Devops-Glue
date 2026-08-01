@@ -241,9 +241,9 @@ return [
     'form.placeholder_web_url'       => '项目主页链接',
     'form.placeholder_harbor'    => '例: project/repo',
     'form.placeholder_username'  => 'username',
-    'form.placeholder_password'  => '至少 6 位',
+    'form.placeholder_password'  => '至少 8 位',
     'form.placeholder_current_password' => '输入当前密码',
-    'form.placeholder_new_password'     => '至少 6 位',
+    'form.placeholder_new_password'     => '至少 8 位',
     'form.placeholder_confirm_password' => '再输入一次',
     'form.commit_sha'            => 'Commit SHA',
 

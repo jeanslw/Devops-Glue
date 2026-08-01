@@ -818,12 +818,22 @@ class AdminController extends BaseController
             return $this->jsonError($response, 'user.cannot_create_admin', 403);
         }
         $roleId = (int)($args['id'] ?? 0);
-        $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
+
+        $parsedBody = $request->getParsedBody();
+        // 兜底：如果中间件没解析（某些环境下 PUT 的 body 可能不被解析），手动读 raw body
+        if (!is_array($parsedBody) && !is_object($parsedBody)) {
+            $rawBody = (string) $request->getBody();
+            $parsedBody = json_decode($rawBody, true);
+        }
+        $body  = is_array($parsedBody) ? $parsedBody : [];
+        $name  = trim($body['name'] ?? '');
         $desc  = trim($body['description'] ?? '');
-        $perms = $body['permissions'] ?? null;
+        // 前端始终发送 permissions（至少为空数组），null 表示 key 不存在（理论上不会发生）
+        $perms = array_key_exists('permissions', $body) ? $body['permissions'] : null;
+
         try {
             $pdo = \App\Service\Database::getPdo();
-            $role = $pdo->prepare("SELECT id, is_system FROM " . AppConfig::TABLE_ROLES . " WHERE id = ?");
+            $role = $pdo->prepare("SELECT id, is_system, name FROM " . AppConfig::TABLE_ROLES . " WHERE id = ?");
             $role->execute([$roleId]);
             $r = $role->fetch();
             if (!$r) {
@@ -832,9 +842,32 @@ class AdminController extends BaseController
             if ($r['is_system']) {
                 return $this->jsonError($response, 'user.cannot_create_admin', 403);
             }
-            if ($desc !== '') {
-                $pdo->prepare("UPDATE " . AppConfig::TABLE_ROLES . " SET description = ? WHERE id = ?")->execute([$desc, $roleId]);
+
+            // 动态构建 UPDATE：只更新实际传入的字段
+            $fields = [];
+            $params = [];
+            if ($name !== '' && $name !== $r['name']) {
+                // 检查名称冲突
+                $dup = $pdo->prepare("SELECT id FROM " . AppConfig::TABLE_ROLES . " WHERE name = ? AND id != ?");
+                $dup->execute([$name, $roleId]);
+                if ($dup->fetch()) {
+                    return $this->jsonError($response, 'user.username_exists', 409);
+                }
+                // 同步更新 admin_users 表中引用该角色的用户
+                $pdo->prepare("UPDATE " . AppConfig::TABLE_ADMIN_USERS . " SET role = ? WHERE role = ?")->execute([$name, $r['name']]);
+                $fields[] = 'name = ?';
+                $params[] = $name;
             }
+            if ($desc !== '' && $desc !== ($r['description'] ?? '')) {
+                $fields[] = 'description = ?';
+                $params[] = $desc;
+            }
+            if (!empty($fields)) {
+                $params[] = $roleId;
+                $pdo->prepare("UPDATE " . AppConfig::TABLE_ROLES . " SET " . implode(', ', $fields) . " WHERE id = ?")->execute($params);
+            }
+
+            // 权限更新：只要有 permissions key 就全量替换（含空数组 = 清空所有权限）
             if (is_array($perms)) {
                 $pdo->prepare("DELETE FROM " . AppConfig::TABLE_ROLE_PERMISSIONS . " WHERE role_id = ?")->execute([$roleId]);
                 // 展开隐含权限
@@ -847,6 +880,7 @@ class AdminController extends BaseController
                     }
                 }
             }
+
             return $this->output($response, ['success' => true], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.modify_failed') . ': ' . $e->getMessage(), 500);

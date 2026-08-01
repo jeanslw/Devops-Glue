@@ -241,9 +241,9 @@ return [
     'form.placeholder_web_url'       => 'Project homepage URL',
     'form.placeholder_harbor'    => 'e.g. project/repo',
     'form.placeholder_username'  => 'username',
-    'form.placeholder_password'  => 'At least 6 characters',
+    'form.placeholder_password'  => 'At least 8 characters',
     'form.placeholder_current_password' => 'Enter current password',
-    'form.placeholder_new_password'     => 'At least 6 characters',
+    'form.placeholder_new_password'     => 'At least 8 characters',
     'form.placeholder_confirm_password' => 'Enter again',
     'form.commit_sha'            => 'Commit SHA',
 

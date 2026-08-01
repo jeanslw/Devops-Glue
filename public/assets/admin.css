@@ -95,9 +95,11 @@
         .toolbar h3 { font-size:18px; }
 
         .btn {
-            display:inline-block; padding:8px 18px; border-radius:8px;
+            display:inline-flex; align-items:center; justify-content:center; gap:4px;
+            padding:8px 18px; border-radius:8px;
             font-size:13px; font-weight:600; cursor:pointer; border:none;
             line-height:1.5; transition:all .2s;
+            user-select:none; white-space:nowrap; min-height:34px;
         }
         .btn-pri { background:#4f46e5; color:#fff; }
         .btn-pri:hover { background:#4338ca; }
@@ -210,6 +212,7 @@
             position:fixed; top:68px; right:24px; padding:12px 24px;
             border-radius:10px; font-size:14px; z-index:99;
             opacity:0; transform:translateX(40px); transition:all .3s;
+            pointer-events:none;
         }
         .toast.show { opacity:1; transform:translateX(0); }
         .toast-ok  { background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; }
@@ -222,7 +225,6 @@
         .toast.toast-center.show {
             transform:translate(-50%,-50%) scale(1);
         }
-        .toast.toast-center { pointer-events:none; }
 
         /* ── 登录页 ── */
         .login-wrap {

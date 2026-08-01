@@ -1,4 +1,4 @@
-# Devops-Glue Technical Guide v2.4.0
+# Devops-Glue Technical Guide v2.4.2
 
 > This document is intended for developers, operations engineers, and troubleshooting. It covers all business logic, data flows, database table structures, and common issues.
 
@@ -865,4 +865,4 @@ When adding/modifying table structures, simultaneously update the following file
 
 ---
 
-*Document version: v2.4.1 | Last updated: 2026-07-30*
+*Document version: v2.4.2 | Last updated: 2026-07-30*

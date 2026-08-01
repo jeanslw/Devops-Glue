@@ -810,7 +810,7 @@
       "put": {
         "tags": ["Admin"],
         "summary": "Change admin password",
-        "description": "Requires old password verification. Clears all old tokens upon change, forcing re-login. New password must be at least 6 characters.",
+        "description": "Requires old password verification. Clears all old tokens upon change, forcing re-login. New password must be at least 8 characters.",
         "operationId": "adminChangePassword",
         "security": [{ "bearerAuth": [] }],
         "requestBody": {
@@ -822,7 +822,7 @@
                 "required": ["old_password", "new_password"],
                 "properties": {
                   "old_password": { "type": "string", "example": "admin123" },
-                  "new_password": { "type": "string", "example": "newpass456", "minLength": 6 }
+                  "new_password": { "type": "string", "example": "newpass456", "minLength": 8 }
                 }
               }
             }

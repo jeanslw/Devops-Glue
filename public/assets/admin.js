@@ -1076,7 +1076,13 @@ async function showUserForm() {
     document.getElementById('new-password').required = true;
     document.getElementById('new-password').placeholder = __.t('form.placeholder_password');
     document.getElementById('new-password-label').textContent = __.t('user.password');
-    await populateRoleSelect('deployer');
+    try {
+        await populateRoleSelect('deployer');
+    } catch (e) {
+        document.getElementById('user-msg').textContent = __.t('js.network_error') + ': ' + (e.message || '');
+        document.getElementById('user-msg').style.color = '#ef4444';
+        return;
+    }
     document.getElementById('new-systems-wrap').style.display = 'block';
     populateSystemsSelect('cd');
     document.getElementById('user-msg').textContent = '';
@@ -1093,7 +1099,13 @@ async function showUserEditForm(user) {
     document.getElementById('new-password').required = false;
     document.getElementById('new-password').placeholder = __.t('user.password_keep_empty');
     document.getElementById('new-password-label').textContent = __.t('user.new_password_optional');
-    await populateRoleSelect(user.role);
+    try {
+        await populateRoleSelect(user.role);
+    } catch (e) {
+        document.getElementById('user-msg').textContent = __.t('js.network_error') + ': ' + (e.message || '');
+        document.getElementById('user-msg').style.color = '#ef4444';
+        return;
+    }
     document.getElementById('new-systems-wrap').style.display = 'none';
     document.getElementById('user-msg').textContent = '';
 }
@@ -1150,6 +1162,10 @@ async function submitUserForm(e) {
     if (!isEdit && !username) { msg.textContent = __.t('js.username_required'); msg.style.color = '#ef4444'; return; }
     if (isEdit && password && password.length < 8) { msg.textContent = __.t('auth.new_password_short'); msg.style.color = '#ef4444'; return; }
 
+    // 防止重复提交
+    const saveBtn = document.querySelector('#user-form button[type="submit"]');
+    if (saveBtn) saveBtn.disabled = true;
+
     try {
         const url = isEdit ? '/api/admin/users/' + encodeURIComponent(targetUser) : '/api/admin/users';
         const body = isEdit
@@ -1161,12 +1177,12 @@ async function submitUserForm(e) {
             headers: { ...authHeaders(), 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
         });
-        if (handle401(res)) return;
+        if (handle401(res)) { if (saveBtn) saveBtn.disabled = false; return; }
         const data = await res.json();
         if (res.ok) {
             hideUserForm();
+            await loadUsers();
             toast(isEdit ? __.t('user.updated') : __.t('user.created'), true);
-            loadUsers();
         } else {
             msg.textContent = data.message || __.t('common.failed');
             msg.style.color = '#ef4444';
@@ -1175,6 +1191,7 @@ async function submitUserForm(e) {
         msg.textContent = e.message;
         msg.style.color = '#ef4444';
     }
+    if (saveBtn) saveBtn.disabled = false;
 }
 
 async function deleteUser(username) {
@@ -1183,8 +1200,8 @@ async function deleteUser(username) {
         const res = await fetch('/api/admin/users/' + encodeURIComponent(username), { method: 'DELETE', headers: authHeaders() });
         if (handle401(res)) return;
         if (res.ok) {
+            await loadUsers();
             toast(__.t('user.deleted'), true);
-            loadUsers();
         } else {
             const data = await res.json();
             alert(data.message || __.t('common.failed'));
@@ -1365,7 +1382,14 @@ async function showRoleForm(id, name, desc, perms) {
     document.getElementById('role-msg').textContent = '';
 
     var selected = perms || [];
-    var allPerms = await loadAllPerms();
+    var allPerms;
+    try {
+        allPerms = await loadAllPerms();
+    } catch (e) {
+        document.getElementById('role-msg').textContent = __.t('js.network_error') + ': ' + (e.message || '');
+        document.getElementById('role-msg').style.color = '#ef4444';
+        return;
+    }
     var groups = groupPermissions(allPerms);
     var container = document.getElementById('perm-groups');
     var html = '';
@@ -1440,18 +1464,23 @@ async function submitRoleForm(e) {
 
     if (!name) { msg.textContent = __.t('role.name_required'); msg.style.color = '#ef4444'; return; }
 
+    // 防止重复提交
+    var saveBtn = document.querySelector('#role-form button[type="submit"]');
+    var saveBtnText = saveBtn ? saveBtn.textContent : '';
+    if (saveBtn) saveBtn.disabled = true;
+
     try {
         var url = isEdit ? '/api/admin/roles/' + id : '/api/admin/roles';
         var method = isEdit ? 'PUT' : 'POST';
         var body = { name: name, permissions: perms };
         if (desc) body.description = desc;
         var res = await fetch(url, { method: method, headers: Object.assign({}, authHeaders(), {'Content-Type':'application/json'}), body: JSON.stringify(body) });
-        if (handle401(res)) return;
+        if (handle401(res)) { if (saveBtn) saveBtn.disabled = false; return; }
         var data = await res.json();
         if (res.ok) {
             _rolesCache = null;
             hideRoleForm();
-            loadRoleList();
+            await loadRoleList();
             toast(data.message || __.t('common.success'), true);
         } else {
             msg.textContent = data.message || __.t('js.operation_failed');
@@ -1461,6 +1490,7 @@ async function submitRoleForm(e) {
         msg.textContent = __.t('js.network_error') + ': ' + e.message;
         msg.style.color = '#ef4444';
     }
+    if (saveBtn) saveBtn.disabled = false;
 }
 
 async function deleteRole(id, name) {
@@ -1470,7 +1500,7 @@ async function deleteRole(id, name) {
         if (handle401(res)) return;
         if (res.ok) {
             _rolesCache = null;
-            loadRoleList();
+            await loadRoleList();
             toast(__.t('map.deleted'), true);
         } else {
             var data = await res.json();
