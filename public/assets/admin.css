@@ -66,6 +66,15 @@
         .monitor-time { text-align:right; font-size:11px; color:#9ca3af; margin-top:12px; }
 
         /* ── 系统监测卡片 ── */
+        @keyframes pulse-dot {
+            0%,100% { opacity:1; box-shadow:0 0 4px #00ff00; }
+            50%     { opacity:.4; box-shadow:0 0 10px #00ff00; }
+        }
+        .sys-pulse-dot {
+            display:inline-block; width:10px; height:10px; border-radius:50%;
+            background:#00ff00; vertical-align:middle; margin-right:6px;
+            animation: pulse-dot 2s ease-in-out infinite;
+        }
         .system-monitor { display:flex; flex-wrap:wrap; align-items:center; gap:8px 20px; padding:14px 16px; }
         .sys-row { display:inline-flex; align-items:center; gap:6px; font-size:13px; line-height:1.4; }
         .sys-label { color:#6b7280; font-weight:500; white-space:nowrap; }

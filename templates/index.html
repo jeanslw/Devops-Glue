@@ -37,11 +37,18 @@
             display:inline-flex; align-items:center; gap:6px;
             background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.25);
             border-radius:999px; padding:4px 10px; font-size:12px; color:#fff;
-            backdrop-filter:blur(4px); vertical-align:middle;
+            backdrop-filter:blur(4px); vertical-align:middle; text-decoration:none;
+            transition:background .2s;
+        }
+        .status-badge:hover { background:rgba(255,255,255,.28); }
+        @keyframes pulse-dot {
+            0%,100% { opacity:1; box-shadow:0 0 4px #00ff00; }
+            50%     { opacity:.4; box-shadow:0 0 10px #00ff00; }
         }
         .status-dot {
             width:8px; height:8px; border-radius:50%;
-            background:#22c55e; box-shadow:0 0 6px #22c55e;
+            background:#00ff00; box-shadow:0 0 6px #00ff00;
+            animation: pulse-dot 2s ease-in-out infinite;
         }
 
         /* ── 功能卡片：3x2 网格 ── */
@@ -96,7 +103,7 @@
     <div class="hero">
         <div class="hero-title">
             <h1 data-i18n="index.title">Devops-Glue</h1>
-            <span class="status-badge"><span class="status-dot"></span><span data-i18n="index.running">运行中</span></span>
+            <a href="/admin" class="status-badge"><span class="status-dot"></span><span data-i18n="index.running">运行中</span></a>
         </div>
         <p data-i18n="index.subtitle">Jenkins · Git · Harbor 一站式 DevOps 工具链集成平台</p>
     </div>
