@@ -195,8 +195,8 @@ async function loadMonitor() {
         const sysAppVer    = document.getElementById('sys-app-version');
         const sysEnvType   = document.getElementById('sys-env-type');
         const sysTime      = document.getElementById('sys-system-time');
-        if (sysBuildMode) sysBuildMode.textContent = __.t(bmKey, null, data.build_mode) || data.build_mode || '—';
-        if (sysDbType)    sysDbType.textContent    = __.t(dbKey, null, data.db_driver) || data.db_driver || '—';
+        if (sysBuildMode) sysBuildMode.textContent = __.t(bmKey, null, data.build_mode || '—');
+        if (sysDbType)    sysDbType.textContent    = __.t(dbKey, null, data.db_driver || '—');
         if (sysAppVer)    sysAppVer.textContent    = data.app_version ? 'v' + data.app_version : '—';
         if (sysEnvType)   sysEnvType.textContent   = data.app_env || '—';
         if (sysTime)      sysTime.textContent      = data.time || '—';

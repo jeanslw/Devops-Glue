@@ -1,0 +1,5 @@
+/* Shared pulse animation — used by homepage & admin panel */
+@keyframes pulse-dot {
+    0%,100% { opacity:1; box-shadow:0 0 4px #00ff00; }
+    50%     { opacity:.4; box-shadow:0 0 10px #00ff00; }
+}

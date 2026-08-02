@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title data-i18n="index.title">Devops-Glue</title>
     <link rel="icon" href="/favicon.ico" type="image/x-icon">
+    <link rel="stylesheet" href="/assets/pulse.css">
     <style>
         * { margin:0; padding:0; box-sizing:border-box; }
         body {
@@ -41,10 +42,6 @@
             transition:background .2s;
         }
         .status-badge:hover { background:rgba(255,255,255,.28); }
-        @keyframes pulse-dot {
-            0%,100% { opacity:1; box-shadow:0 0 4px #00ff00; }
-            50%     { opacity:.4; box-shadow:0 0 10px #00ff00; }
-        }
         .status-dot {
             width:8px; height:8px; border-radius:50%;
             background:#00ff00; box-shadow:0 0 6px #00ff00;
