@@ -181,6 +181,16 @@ return [
     'monitor.git_unreachable'=> 'API Unreachable',
     'monitor.git_no_ref'  => 'No Runtime Reference',
     'monitor.harbor'       => 'Harbor',
+    'monitor.system_check' => 'System Health',
+    'monitor.build_mode'   => 'Build Mode',
+    'monitor.db_type'      => 'Database Type',
+    'monitor.app_version'  => 'App Version',
+    'monitor.env_type'     => 'Environment',
+    'monitor.system_time'  => 'System Time',
+
+    // ── System / Common Enums ──
+    'system.db_mysql'      => 'MySQL',
+    'system.db_sqlite'     => 'SQLite',
 
     // ── Admin Panel ──
     'admin.title'           => 'Admin Panel — Devops-Glue',
@@ -205,6 +215,7 @@ return [
 
     // ── Index Page ──
     'index.title'     => 'Devops-Glue',
+    'index.running'   => 'Running',
     'index.subtitle'  => 'One-stop DevOps Toolchain Integration — Jenkins · Git · Harbor',
     'index.admin'     => 'Admin',
     'index.docs'      => 'Docs',

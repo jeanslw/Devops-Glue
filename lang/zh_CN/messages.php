@@ -181,6 +181,16 @@ return [
     'monitor.git_unreachable'=> 'API 不可达',
     'monitor.git_no_ref'  => '无运行时引用',
     'monitor.harbor'       => 'Harbor',
+    'monitor.system_check' => '系统监测',
+    'monitor.build_mode'   => '构建模式',
+    'monitor.db_type'      => '数据库类型',
+    'monitor.app_version'  => 'APP版本',
+    'monitor.env_type'     => '环境类型',
+    'monitor.system_time'  => '系统时间',
+
+    // ── 系统/公共枚举 ──
+    'system.db_mysql'      => 'MySQL',
+    'system.db_sqlite'     => 'SQLite',
 
     // ── 管理后台通用 ──
     'admin.title'           => '管理后台 — Devops-Glue',
@@ -205,6 +215,7 @@ return [
 
     // ── 首页 ──
     'index.title'     => 'Devops-Glue',
+    'index.running'   => '运行中',
     'index.subtitle'  => 'Jenkins · Git · Harbor 一站式 DevOps 工具链集成平台',
     'index.admin'     => '管理',
     'index.docs'      => '文档',

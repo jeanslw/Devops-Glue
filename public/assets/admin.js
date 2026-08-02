@@ -178,6 +178,29 @@ async function loadMonitor() {
         document.getElementById('stat-platforms').textContent = st.git_platforms ?? '—';
         document.getElementById('stat-repos').textContent = st.harbor_repos ?? '—';
 
+        // 系统监测
+        const buildModeMap = {
+            'jenkins':    'build.mode_jenkins',
+            'gitlab_ci':  'build.mode_gitlab_ci',
+            'both':       'build.mode_both'
+        };
+        const dbMap = {
+            'mysql':  'system.db_mysql',
+            'sqlite': 'system.db_sqlite'
+        };
+        const bmKey = buildModeMap[data.build_mode] || 'common.unknown';
+        const dbKey = dbMap[(data.db_driver || '').toLowerCase()] || 'common.unknown';
+        const sysBuildMode = document.getElementById('sys-build-mode');
+        const sysDbType    = document.getElementById('sys-db-type');
+        const sysAppVer    = document.getElementById('sys-app-version');
+        const sysEnvType   = document.getElementById('sys-env-type');
+        const sysTime      = document.getElementById('sys-system-time');
+        if (sysBuildMode) sysBuildMode.textContent = __.t(bmKey, null, data.build_mode) || data.build_mode || '—';
+        if (sysDbType)    sysDbType.textContent    = __.t(dbKey, null, data.db_driver) || data.db_driver || '—';
+        if (sysAppVer)    sysAppVer.textContent    = data.app_version ? 'v' + data.app_version : '—';
+        if (sysEnvType)   sysEnvType.textContent   = data.app_env || '—';
+        if (sysTime)      sysTime.textContent      = data.time || '—';
+
         // Jenkins
         const jRaw = chk.jenkins;
         const jOk  = jRaw === true;

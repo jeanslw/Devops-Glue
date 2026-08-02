@@ -30,8 +30,19 @@
         .main { max-width:960px; margin:0 auto; padding:32px 20px; }
 
         .hero { text-align:center; color:#fff; padding-bottom:28px; }
-        .hero h1 { font-size:28px; font-weight:700; margin-bottom:8px; }
+        .hero-title { display:inline-flex; align-items:center; justify-content:center; gap:12px; flex-wrap:wrap; }
+        .hero h1 { font-size:28px; font-weight:700; margin-bottom:8px; display:inline-block; }
         .hero p  { font-size:15px; opacity:.8; }
+        .status-badge {
+            display:inline-flex; align-items:center; gap:6px;
+            background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.25);
+            border-radius:999px; padding:4px 10px; font-size:12px; color:#fff;
+            backdrop-filter:blur(4px); vertical-align:middle;
+        }
+        .status-dot {
+            width:8px; height:8px; border-radius:50%;
+            background:#22c55e; box-shadow:0 0 6px #22c55e;
+        }
 
         /* ── 功能卡片：3x2 网格 ── */
         .features { display:grid; grid-template-columns:1fr 1fr 1fr; gap:20px; }
@@ -83,7 +94,10 @@
 <div class="main">
 
     <div class="hero">
-        <h1 data-i18n="index.title">Devops-Glue</h1>
+        <div class="hero-title">
+            <h1 data-i18n="index.title">Devops-Glue</h1>
+            <span class="status-badge"><span class="status-dot"></span><span data-i18n="index.running">运行中</span></span>
+        </div>
         <p data-i18n="index.subtitle">Jenkins · Git · Harbor 一站式 DevOps 工具链集成平台</p>
     </div>
 
