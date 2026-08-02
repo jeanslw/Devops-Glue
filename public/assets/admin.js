@@ -8,6 +8,27 @@ let token = sessionStorage.getItem('admin_token') || '';
 let currentUserRole = sessionStorage.getItem('admin_role') || '';
 let currentUserName = sessionStorage.getItem('admin_user') || '';
 let currentUserIsRoot = sessionStorage.getItem('admin_is_root') === 'true';
+let currentPermissions = [];
+try {
+    var _raw = JSON.parse(sessionStorage.getItem('admin_perms') || '[]');
+    // 后端对 super_admin 返回字符串 '*', 普通用户返回数组 ['ci.manage', ...] ，统一归一化为数组
+    currentPermissions = Array.isArray(_raw) ? _raw : (_raw === '*' ? ['*'] : []);
+} catch(e) { currentPermissions = []; }
+
+/** 判断当前用户是否拥有指定权限（super_admin 的 '*' 通配始终返回 true） */
+function hasPermission(permKey) {
+    if (currentPermissions === '*') return true;
+    if (Array.isArray(currentPermissions) && currentPermissions[0] === '*') return true;
+    if (!Array.isArray(currentPermissions)) return false;
+    return currentPermissions.includes(permKey);
+}
+
+/** 将后端返回的权限数据归一化为数组（super_admin 返回字符串 '*') */
+function _normalizePerms(raw) {
+    if (Array.isArray(raw)) return raw;
+    if (raw === '*') return ['*'];
+    return [];
+}
 
 // ═══════════ Auth ═══════════
 function authHeaders() {
@@ -34,29 +55,50 @@ function doLogout() {
     currentUserRole = '';
     currentUserName = '';
     currentUserIsRoot = false;
+    currentPermissions = [];
     sessionStorage.removeItem('admin_token');
     sessionStorage.removeItem('admin_role');
     sessionStorage.removeItem('admin_user');
     sessionStorage.removeItem('admin_is_root');
+    sessionStorage.removeItem('admin_perms');
     document.getElementById('login-page').style.display = 'flex';
     document.getElementById('app-page').style.display = 'none';
 }
 
-// 刷新后恢复角色菜单可见性及用户名显示
-(function initRoleMenu() {
+// 刷新后恢复角色菜单可见性及用户名显示，并加载最新权限
+(async function initRoleMenu() {
     currentUserName = sessionStorage.getItem('admin_user') || '';
     currentUserIsRoot = sessionStorage.getItem('admin_is_root') === 'true';
     if (currentUserName) {
         var topUser = document.getElementById('top-user');
         if (topUser) topUser.textContent = '👤 ' + currentUserName;
+        // 从后端拉取最新权限（sessionStorage 可能过期）
+        try {
+            var mr = await fetch('/api/admin/me/permissions', { headers: authHeaders() });
+            if (mr.ok) {
+                var md = await mr.json();
+                currentPermissions = _normalizePerms(md.permissions);
+                sessionStorage.setItem('admin_perms', JSON.stringify(currentPermissions));
+            }
+        } catch(e) {}
     }
-    if (currentUserRole && !isAdminRole(currentUserRole)) {
-        var userMenuItem = document.querySelector('[data-tab="users"]');
-        if (userMenuItem) userMenuItem.style.display = 'none';
-        var rolesMenuItem = document.querySelector('[data-tab="roles"]');
-        if (rolesMenuItem) rolesMenuItem.style.display = 'none';
-    }
+    // 角色管理子菜单仅拥有 ci.users.manage_admin 权限的用户可见
+    applyRoleMenuVisibility();
 })();
+
+/** 根据权限控制用户管理分组及子菜单显隐 */
+function applyRoleMenuVisibility() {
+    var group = document.getElementById('menu-group-users');
+    var listItem = document.querySelector('.submenu .menu-item[data-tab="users"]');
+    var rolesItem = document.querySelector('.submenu .menu-item[data-tab="roles"]');
+    var passwordItem = document.querySelector('.submenu .menu-item[data-tab="password"]');
+    if (listItem) listItem.style.display = hasPermission('ci.users.list') ? '' : 'none';
+    if (rolesItem) rolesItem.style.display = hasPermission('ci.users.manage_admin') ? '' : 'none';
+    if (passwordItem) passwordItem.style.display = hasPermission('ci.users.password') ? '' : 'none';
+    // 父菜单组可见条件：至少有一个子菜单项可见；任一子权限都会通过 IMPLIED_PERMISSIONS 自动带上 ci.users.manage
+    var showGroup = hasPermission('ci.users.list') || hasPermission('ci.users.manage_admin') || hasPermission('ci.users.password');
+    if (group) group.style.display = showGroup ? '' : 'none';
+}
 
 let _discovering = false;
 async function doDiscover() {
@@ -97,15 +139,16 @@ async function doLogin() {
             if (currentUserRole) sessionStorage.setItem('admin_role', currentUserRole);
             if (currentUserName) sessionStorage.setItem('admin_user', currentUserName);
             sessionStorage.setItem('admin_is_root', currentUserIsRoot ? 'true' : 'false');
-            // 非 admin 隐藏用户管理和角色管理菜单
-            var userMenuItem = document.querySelector('[data-tab="users"]');
-            if (userMenuItem) {
-                userMenuItem.style.display = isAdminRole(currentUserRole) ? '' : 'none';
-            }
-            var rolesMenuItem = document.querySelector('[data-tab="roles"]');
-            if (rolesMenuItem) {
-                rolesMenuItem.style.display = isAdminRole(currentUserRole) ? '' : 'none';
-            }
+            // 拉取权限列表，驱动菜单显隐
+            try {
+                var pr = await fetch('/api/admin/me/permissions', { headers: authHeaders() });
+                if (pr.ok) {
+                    var pd = await pr.json();
+                    currentPermissions = _normalizePerms(pd.permissions);
+                    sessionStorage.setItem('admin_perms', JSON.stringify(currentPermissions));
+                }
+            } catch(e) {}
+            applyRoleMenuVisibility();
             document.getElementById('login-page').style.display = 'none';
             document.getElementById('app-page').style.display = 'block';
             document.getElementById('top-user').textContent = '👤 ' + currentUserName;
@@ -126,9 +169,22 @@ document.addEventListener('keydown', function(e) {
 
 function switchTab(name) {
     document.querySelectorAll('.sidebar .menu-item').forEach(el => el.classList.remove('active'));
-    document.querySelector(`[data-tab="${name}"]`).classList.add('active');
+    var mi = document.querySelector('.menu-item[data-tab="' + name + '"]');
+    if (mi) {
+        mi.classList.add('active');
+        var group = mi.closest('.menu-group');
+        if (group) {
+            if (mi.classList.contains('menu-group-title')) {
+                // 点击标题：由 toggleUserMenu() 控制展开/收起，这里只负责高亮
+            } else {
+                // 点击子菜单项：强制展开分组
+                group.classList.add('expanded');
+            }
+        }
+    }
     ['monitor','mapping','security','versions','mode','users','roles','password'].forEach(t => {
-        document.getElementById('tab-' + t).style.display = name === t ? 'block' : 'none';
+        var tabEl = document.getElementById('tab-' + t);
+        if (tabEl) tabEl.style.display = name === t ? 'block' : 'none';
     });
     if (name === 'monitor') loadMonitor();
     if (name === 'mapping') { if (currentMapView === 'topology') loadTopology(); else loadMaps(); }
@@ -137,6 +193,11 @@ function switchTab(name) {
     if (name === 'mode') loadSettings();
     if (name === 'users') loadUsers();
     if (name === 'roles') loadRoleList();
+}
+
+function toggleUserMenu() {
+    var group = document.getElementById('menu-group-users');
+    if (group) group.classList.toggle('expanded');
 }
 
 // ═══════════ Toast ═══════════
@@ -199,7 +260,7 @@ async function loadMonitor() {
         if (sysDbType)    sysDbType.textContent    = __.t(dbKey, null, data.db_driver || '—');
         if (sysAppVer)    sysAppVer.textContent    = data.app_version ? 'v' + data.app_version : '—';
         if (sysEnvType)   sysEnvType.textContent   = data.app_env || '—';
-        if (sysTime)      sysTime.textContent      = data.time || '—';
+        if (sysTime)      sysTime.textContent      = (data.time ? String(data.time).substring(0, 16) : '—');
 
         // Jenkins
         const jRaw = chk.jenkins;
@@ -1138,10 +1199,10 @@ async function populateRoleSelect(selected) {
     var sel = document.getElementById('new-role');
     sel.innerHTML = '';
     var roles = await loadRoles();
-    var isSA = currentUserRole === 'super_admin';
+    var canManageAdmin = hasPermission('ci.users.manage_admin');
     roles.forEach(function(r) {
-        // super_admin 角色只能由 super_admin 分配
-        if (r.name === 'super_admin' && !isSA) return;
+        // super_admin 角色只能由拥有 ci.users.manage_admin 权限的用户分配
+        if (r.name === 'super_admin' && !canManageAdmin) return;
         sel.add(new Option(r.description || __.t('user.role_' + r.name) || r.name, r.name));
     });
     // 确保 selected 值在选项中存在，否则选第一个
@@ -1256,6 +1317,9 @@ var IMPLIED_PERMISSIONS = {
     // 父→子
     'cd.build-manage': ['ci.trigger'],
     // 子→父
+    'ci.users.list': ['ci.users.manage'],
+    'ci.users.password': ['ci.users.manage'],
+    'ci.users.manage_admin': ['ci.users.manage'],
     'cd.deploy.single': ['cd.deploy-manage'],
     'cd.deploy.docker': ['cd.deploy-manage'],
     'cd.deploy.k8s': ['cd.deploy-manage'],
@@ -1288,28 +1352,37 @@ function cascadeImpliedCheck(sourceKey, checked, rootContainer) {
     });
 }
 
-/** 将权限列表分组为 CI/CD + CD 子分组 */
+/** 将权限列表分组为 CI 一级/CD 一级 + 各自子分组 */
 function groupPermissions(allPerms) {
-    var ci = [], cdTop = [], childMap = {};
+    var ciTop = [], ciChildMap = {}, cdTop = [], cdChildMap = {};
     allPerms.forEach(function(p) {
         var k = p.perm_key;
         if (k.indexOf('ci.') === 0) {
-            ci.push(k);
+            if (p.parent_key) {
+                if (!ciChildMap[p.parent_key]) ciChildMap[p.parent_key] = [];
+                ciChildMap[p.parent_key].push(k);
+            } else {
+                ciTop.push(k);
+            }
         } else if (k.indexOf('cd.') === 0) {
             if (p.parent_key) {
-                if (!childMap[p.parent_key]) childMap[p.parent_key] = [];
-                childMap[p.parent_key].push(k);
+                if (!cdChildMap[p.parent_key]) cdChildMap[p.parent_key] = [];
+                cdChildMap[p.parent_key].push(k);
             } else {
                 cdTop.push(k);
             }
         }
     });
+    var ciSubs = [];
+    for (var pk in ciChildMap) {
+        ciSubs.push({ id: pk, label: permLabel(pk), perms: ciChildMap[pk] });
+    }
     var cdSubs = [];
-    for (var pk in childMap) {
-        cdSubs.push({ id: pk, label: permLabel(pk), perms: childMap[pk] });
+    for (var pk in cdChildMap) {
+        cdSubs.push({ id: pk, label: permLabel(pk), perms: cdChildMap[pk] });
     }
     return [
-        { id: 'ci', label: __.t('role.perm_ci_group'), perms: ci, subGroups: [] },
+        { id: 'ci', label: __.t('role.perm_ci_group'), perms: ciTop, subGroups: ciSubs },
         { id: 'cd', label: __.t('role.perm_cd_group'), perms: cdTop, subGroups: cdSubs }
     ];
 }

@@ -53,7 +53,7 @@
 
         .feat-card {
             background:rgba(255,255,255,.13); backdrop-filter:blur(8px);
-            border-radius:16px; padding:32px 28px; color:#fff;
+            border-radius:16px; padding:24px 28px; color:#fff;
             border:1px solid rgba(255,255,255,.16);
             transition:transform .2s,box-shadow .2s;
         }
@@ -61,9 +61,9 @@
             transform:translateY(-4px);
             box-shadow:0 8px 30px rgba(0,0,0,.2);
         }
-        .feat-icon { font-size:40px; margin-bottom:16px; line-height:1; }
-        .feat-card h4 { font-size:17px; margin-bottom:10px; font-weight:700; }
-        .feat-card p  { font-size:13px; opacity:.82; line-height:1.7; }
+        .feat-icon { font-size:40px; margin-bottom:10px; line-height:1; }
+        .feat-card h4 { font-size:17px; margin-bottom:6px; font-weight:700; }
+        .feat-card p  { font-size:13px; opacity:.82; line-height:1.6; }
 
         .footer { text-align:center; padding:16px; color:rgba(255,255,255,.35); font-size:11px; border-top:1px solid rgba(255,255,255,.06); margin-top:32px; }
 
@@ -74,7 +74,17 @@
         }
         @media (max-width:480px) {
             .features { grid-template-columns:1fr; }
-            .navbar { padding:10px 16px; }
+            .navbar { padding:10px 12px; flex-direction:column; gap:8px; }
+            .nav-links { gap:10px; flex-wrap:wrap; justify-content:center; }
+            .nav-links a { font-size:13px; }
+            .main { padding:20px 12px; }
+            .hero { padding-bottom:18px; }
+            .hero h1 { font-size:20px; }
+            .hero p  { font-size:13px; }
+            .feat-card { padding:18px 16px; }
+            .feat-icon { font-size:32px; margin-bottom:8px; }
+            .feat-card h4 { font-size:15px; margin-bottom:4px; }
+            .feat-card p  { font-size:12px; line-height:1.5; }
         }
     </style>
 </head>

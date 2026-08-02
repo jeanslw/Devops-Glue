@@ -306,6 +306,10 @@ class AppConfigTest extends TestCase
         $implied = AppConfig::IMPLIED_PERMISSIONS;
         $this->assertArrayHasKey(AppConfig::PERM_CD_BUILD, $implied, 'cd.build-manage 必须有隐含子权限');
         $this->assertContains(AppConfig::PERM_CI_TRIGGER, $implied[AppConfig::PERM_CD_BUILD], 'cd.build-manage 必须隐含 ci.trigger');
+        // CI 用户管理子权限选中时自动带上父权限
+        $this->assertContains(AppConfig::PERM_CI_USERS_MANAGE, $implied[AppConfig::PERM_CI_USERS_LIST], 'ci.users.list 必须隐含 ci.users.manage');
+        $this->assertContains(AppConfig::PERM_CI_USERS_MANAGE, $implied[AppConfig::PERM_CI_USERS_PASSWORD], 'ci.users.password 必须隐含 ci.users.manage');
+        $this->assertContains(AppConfig::PERM_CI_USERS_MANAGE, $implied[AppConfig::PERM_CI_USERS_MANAGE_ADMIN], 'ci.users.manage_admin 必须隐含 ci.users.manage');
     }
 
     // ── getHarborConfig ──

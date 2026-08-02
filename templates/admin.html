@@ -51,7 +51,7 @@
         <!-- 侧栏 -->
         <div class="sidebar">
             <div class="menu-item active" data-tab="monitor" onclick="switchTab('monitor')">
-                <span class="menu-icon">📡</span> <span data-i18n="admin.sidebar_monitor">服务监测</span>
+                <span class="menu-icon">📡</span> <span data-i18n="admin.sidebar_monitor">监测概览</span>
             </div>
             <div class="menu-item" data-tab="mapping" onclick="switchTab('mapping')">
                 <span class="menu-icon">📋</span> <span data-i18n="admin.sidebar_mapping">映射管理</span>
@@ -66,14 +66,23 @@
             <div class="menu-item" data-tab="mode" onclick="switchTab('mode')">
                 <span class="menu-icon">🔧</span> <span data-i18n="admin.sidebar_mode">配置模式</span>
             </div>
-            <div class="menu-item" data-tab="users" onclick="switchTab('users')">
-                <span class="menu-icon">👤</span> <span data-i18n="admin.sidebar_users">用户管理</span>
-            </div>
-            <div class="menu-item" data-tab="roles" onclick="switchTab('roles')">
-                <span class="menu-icon">🔐</span> <span data-i18n="admin.sidebar_roles">角色管理</span>
-            </div>
-            <div class="menu-item" data-tab="password" onclick="switchTab('password')">
-                <span class="menu-icon">🔑</span> <span data-i18n="admin.sidebar_password">修改密码</span>
+            <div class="menu-group" id="menu-group-users">
+                <div class="menu-item menu-group-title" onclick="toggleUserMenu()">
+                    <span class="menu-icon">👥</span>
+                    <span data-i18n="admin.sidebar_users">用户管理</span>
+                    <span class="menu-arrow">▼</span>
+                </div>
+                <div class="submenu">
+                    <div class="menu-item submenu-item" data-tab="users" onclick="switchTab('users')">
+                        <span class="menu-icon">👤</span> <span data-i18n="admin.sidebar_user_list">用户列表</span>
+                    </div>
+                    <div class="menu-item submenu-item" data-tab="roles" onclick="switchTab('roles')">
+                        <span class="menu-icon">🔐</span> <span data-i18n="admin.sidebar_roles">角色管理</span>
+                    </div>
+                    <div class="menu-item submenu-item" data-tab="password" onclick="switchTab('password')">
+                        <span class="menu-icon">🔑</span> <span data-i18n="admin.sidebar_password">修改密码</span>
+                    </div>
+                </div>
             </div>
         </div>
 

@@ -429,7 +429,7 @@ if ($globalToken) {
             if (is_array($meData['permissions']) && count($meData['permissions']) > 0) {
                 // 数组中每个元素都应是合法 perm_key 字符串
                 $validKeys = array_keys([
-                    'ci.manage', 'ci.users.manage', 'ci.users.manage_admin', 'ci.mapping.edit',
+                    'ci.manage', 'ci.users.manage', 'ci.users.list', 'ci.users.password', 'ci.users.manage_admin', 'ci.mapping.edit',
                     'ci.platform.edit', 'ci.mode.edit', 'ci.discover', 'ci.trigger',
                     'cd.build-manage', 'cd.deploy-manage', 'cd.server-manage', 'cd.webshell',
                     'cd.deploy-record', 'cd.image-registry', 'cd.resource-monitor', 'cd.notification-manage',

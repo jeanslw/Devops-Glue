@@ -28,6 +28,8 @@ class AppConfig
     // ── 权限键常量 ──
     public const PERM_CI_MANAGE             = 'ci.manage';
     public const PERM_CI_USERS_MANAGE       = 'ci.users.manage';
+    public const PERM_CI_USERS_LIST         = 'ci.users.list';
+    public const PERM_CI_USERS_PASSWORD     = 'ci.users.password';
     public const PERM_CI_USERS_MANAGE_ADMIN = 'ci.users.manage_admin';
     public const PERM_CI_MAPPING_EDIT       = 'ci.mapping.edit';
     public const PERM_CI_PLATFORM_EDIT      = 'ci.platform.edit';
@@ -46,26 +48,28 @@ class AppConfig
 
     /** 默认权限种子数据：key => ['name' => '显示名', 'parent' => null|parent_key]（英文规范数据，UI 通过 i18n 翻译） */
     public const DEFAULT_PERMISSIONS = [
-        // CI（8 个，无层级）
-        self::PERM_CI_MANAGE             => ['name' => 'Full Admin Access', 'parent' => null],
+        // CI（10 个：1 个父菜单 + 3 个子菜单 + 6 个独立权限）
+        self::PERM_CI_MANAGE             => ['name' => 'CI Config', 'parent' => null],
         self::PERM_CI_USERS_MANAGE       => ['name' => 'User Management', 'parent' => null],
-        self::PERM_CI_USERS_MANAGE_ADMIN => ['name' => 'Manage Admin Accounts', 'parent' => null],
-        self::PERM_CI_MAPPING_EDIT       => ['name' => 'Edit Mappings', 'parent' => null],
-        self::PERM_CI_PLATFORM_EDIT      => ['name' => 'Edit Platform Versions', 'parent' => null],
-        self::PERM_CI_MODE_EDIT          => ['name' => 'Modify Build Mode', 'parent' => null],
-        self::PERM_CI_DISCOVER           => ['name' => 'Auto Discovery', 'parent' => null],
+        self::PERM_CI_USERS_LIST         => ['name' => 'User List', 'parent' => self::PERM_CI_USERS_MANAGE],
+        self::PERM_CI_USERS_PASSWORD     => ['name' => 'Change Password', 'parent' => self::PERM_CI_USERS_MANAGE],
+        self::PERM_CI_USERS_MANAGE_ADMIN => ['name' => 'Roles', 'parent' => self::PERM_CI_USERS_MANAGE],
+        self::PERM_CI_MAPPING_EDIT       => ['name' => 'Edit Mapping', 'parent' => null],
+        self::PERM_CI_PLATFORM_EDIT      => ['name' => 'Edit Platform', 'parent' => null],
+        self::PERM_CI_MODE_EDIT          => ['name' => 'Edit Build Mode', 'parent' => null],
+        self::PERM_CI_DISCOVER           => ['name' => 'View Discovery', 'parent' => null],
         self::PERM_CI_TRIGGER            => ['name' => 'Trigger Build', 'parent' => null],
         // CD 一级菜单（8 个）
         self::PERM_CD_BUILD              => ['name' => 'Build Management', 'parent' => null],
         self::PERM_CD_DEPLOY             => ['name' => 'Deploy Management', 'parent' => null],
         self::PERM_CD_SERVER             => ['name' => 'Server Management', 'parent' => null],
         self::PERM_CD_WEBSHELL           => ['name' => 'Web Shell', 'parent' => null],
-        self::PERM_CD_HISTORY            => ['name' => 'Deploy Records', 'parent' => null],
+        self::PERM_CD_HISTORY            => ['name' => 'Deploy History', 'parent' => null],
         self::PERM_CD_REGISTRY           => ['name' => 'Image Registry', 'parent' => null],
         self::PERM_CD_MONITOR            => ['name' => 'Resource Monitor', 'parent' => null],
         self::PERM_CD_NOTIFY             => ['name' => 'Notification Management', 'parent' => null],
         // CD 二级菜单（7 个）
-        'cd.deploy.single'  => ['name' => 'Deploy to Single Machine', 'parent' => self::PERM_CD_DEPLOY],
+        'cd.deploy.single'  => ['name' => 'Deploy to SSH', 'parent' => self::PERM_CD_DEPLOY],
         'cd.deploy.docker'  => ['name' => 'Deploy to Docker', 'parent' => self::PERM_CD_DEPLOY],
         'cd.deploy.k8s'     => ['name' => 'Deploy to K8S', 'parent' => self::PERM_CD_DEPLOY],
         'cd.monitor.app'    => ['name' => 'App Resources', 'parent' => self::PERM_CD_MONITOR],
@@ -83,6 +87,9 @@ class AppConfig
         // 父→子
         self::PERM_CD_BUILD => [self::PERM_CI_TRIGGER],
         // 子→父（选了二级自动显示一级菜单）
+        self::PERM_CI_USERS_LIST         => [self::PERM_CI_USERS_MANAGE],
+        self::PERM_CI_USERS_PASSWORD     => [self::PERM_CI_USERS_MANAGE],
+        self::PERM_CI_USERS_MANAGE_ADMIN => [self::PERM_CI_USERS_MANAGE],
         'cd.deploy.single'  => [self::PERM_CD_DEPLOY],
         'cd.deploy.docker'  => [self::PERM_CD_DEPLOY],
         'cd.deploy.k8s'     => [self::PERM_CD_DEPLOY],
