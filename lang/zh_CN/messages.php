@@ -422,4 +422,11 @@ return [
     'role.select_all'                 => '全选',
     'role.deselect_all'               => '取消全选',
     'role.locked'                     => '系统内置',
+
+    // 权限注册/管理 API（数据驱动 RBAC）
+    'auth.forbidden'                   => '无权限访问',
+    'validation.required'              => '必填字段缺失',
+    'validation.invalid_perm_key'      => '权限键格式不合法（应为 xx.yyy 形式）',
+    'validation.perm_not_found'        => '权限键不存在于 permissions 表',
+    'permission.builtin_protected'     => '系统内置权限不可删除',
 ];

@@ -274,6 +274,21 @@ class Database
         // parent_key 列（用于权限层级，eg. cd.deploy.single → parent cd.deploy-manage）
         try { $pdo->exec("ALTER TABLE " . \App\Config\AppConfig::TABLE_PERMISSIONS . " ADD COLUMN parent_key VARCHAR(128)"); } catch (\Exception $e) {}
 
+        // implied_rules 表：权限隐含关系（source_key → target_key），数据驱动，运行时可由 CD 项目通过 API 注册
+        if ($isMySQL) {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_IMPLIED_RULES . " (
+                source_key VARCHAR(128) NOT NULL,
+                target_key VARCHAR(128) NOT NULL,
+                PRIMARY KEY (source_key, target_key)
+            ){$ENGINE}");
+        } else {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_IMPLIED_RULES . " (
+                source_key TEXT NOT NULL,
+                target_key TEXT NOT NULL,
+                PRIMARY KEY (source_key, target_key)
+            )");
+        }
+
         // 种子数据：权限定义（含 parent_key）
         $permUpsert = self::sqlUpsert(\App\Config\AppConfig::TABLE_PERMISSIONS, 'perm_key, description, parent_key', '?, ?, ?');
         $permStmt = $pdo->prepare($permUpsert);
@@ -281,6 +296,15 @@ class Database
             $desc = is_array($def) ? $def['name'] : $def;
             $parent = is_array($def) ? ($def['parent'] ?? null) : null;
             try { $permStmt->execute([$key, $desc, $parent]); } catch (\Exception $e) {}
+        }
+
+        // 种子数据：隐含规则（与 DEFAULT_PERMISSIONS 一样作 bootstrap，运行时可被 API 覆盖/扩展）
+        $ruleUpsert = self::sqlUpsert(\App\Config\AppConfig::TABLE_IMPLIED_RULES, 'source_key, target_key', '?, ?');
+        $ruleStmt = $pdo->prepare($ruleUpsert);
+        foreach (\App\Config\AppConfig::IMPLIED_PERMISSIONS as $src => $targets) {
+            foreach ($targets as $tgt) {
+                try { $ruleStmt->execute([$src, $tgt]); } catch (\Exception $e) {}
+            }
         }
 
         // 种子数据：系统角色（幂等，is_system 由 DEFAULT_SYSTEM_ROLES 决定）

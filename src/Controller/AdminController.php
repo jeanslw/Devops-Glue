@@ -795,9 +795,9 @@ class AdminController extends BaseController
             }
             $pdo->prepare("INSERT INTO " . AppConfig::TABLE_ROLES . " (name, description, is_system, created_at) VALUES (?, ?, 0, " . \App\Service\Database::sqlNow() . ")")->execute([$name, $desc]);
             $roleId = $pdo->lastInsertId();
-            // 展开隐含权限 + 只分配已定义的权限键
+            // 展开隐含权限 + 只分配已定义的权限键（数据驱动，从 DB 读）
             $expanded = $this->expandPermissions($perms);
-            $validKeys = array_keys(AppConfig::DEFAULT_PERMISSIONS);
+            $validKeys = $this->allPermissionKeys();
             $permInsert = $pdo->prepare("INSERT INTO " . AppConfig::TABLE_ROLE_PERMISSIONS . " (role_id, perm_key) VALUES (?, ?)");
             foreach ($expanded as $pk) {
                 if (in_array($pk, $validKeys, true)) {
@@ -872,7 +872,7 @@ class AdminController extends BaseController
                 $pdo->prepare("DELETE FROM " . AppConfig::TABLE_ROLE_PERMISSIONS . " WHERE role_id = ?")->execute([$roleId]);
                 // 展开隐含权限
                 $expanded = $this->expandPermissions($perms);
-                $validKeys = array_keys(AppConfig::DEFAULT_PERMISSIONS);
+                $validKeys = $this->allPermissionKeys();
                 $permInsert = $pdo->prepare("INSERT INTO " . AppConfig::TABLE_ROLE_PERMISSIONS . " (role_id, perm_key) VALUES (?, ?)");
                 foreach ($expanded as $pk) {
                     if (in_array($pk, $validKeys, true)) {
@@ -920,16 +920,145 @@ class AdminController extends BaseController
         }
     }
 
-    /** GET /api/admin/permissions — 列出所有可用权限（含 parent_key 层级） */
+    /** GET /api/admin/permissions — 列出所有可用权限（含 parent_key 层级 + implied 隐含规则） */
     public function permissionList(Request $request, Response $response): Response
     {
         if ($err = $this->authCheck($request, $response)) return $err;
         try {
             $pdo = \App\Service\Database::getPdo();
             $rows = $pdo->query("SELECT perm_key, description, parent_key FROM " . AppConfig::TABLE_PERMISSIONS . " ORDER BY perm_key")->fetchAll();
-            return $this->output($response, $rows, $request);
+            // 附带 implied 关系（数据驱动，前端可直接用）
+            $implied = [];
+            try {
+                $ruleRows = $pdo->query("SELECT source_key, target_key FROM " . AppConfig::TABLE_IMPLIED_RULES)->fetchAll();
+                foreach ($ruleRows as $r) {
+                    $implied[$r['source_key']][] = $r['target_key'];
+                }
+            } catch (\Exception $e) {}
+            return $this->output($response, [
+                'permissions' => $rows,
+                'implied'     => $implied,
+            ], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.query_failed') . ': ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * POST /api/admin/permissions — 注册新权限（数据驱动，CD 项目通过此 API 注册自己的权限 key）
+     * Body: { perm_key, description, parent_key? }
+     * 权限：super_admin 限定（避免普通 admin 误注册）
+     */
+    public function permissionRegister(Request $request, Response $response): Response
+    {
+        if ($err = $this->authCheck($request, $response)) return $err;
+        if ($this->currentRole !== AppConfig::ROLE_SUPER_ADMIN) {
+            return $this->jsonError($response, 'auth.forbidden', 403);
+        }
+        $body = json_decode((string)$request->getBody(), true) ?: [];
+        $permKey = trim($body['perm_key'] ?? '');
+        $desc    = trim($body['description'] ?? '');
+        $parent  = trim($body['parent_key'] ?? '') ?: null;
+        if ($permKey === '' || $desc === '') {
+            return $this->jsonError($response, 'validation.required', 400);
+        }
+        if (!preg_match('/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_-]*)+$/i', $permKey)) {
+            return $this->jsonError($response, 'validation.invalid_perm_key', 400);
+        }
+        try {
+            $pdo = \App\Service\Database::getPdo();
+            $sql = \App\Service\Database::sqlUpsert(AppConfig::TABLE_PERMISSIONS, 'perm_key, description, parent_key', '?, ?, ?');
+            $pdo->prepare($sql)->execute([$permKey, $desc, $parent]);
+            return $this->output($response, ['perm_key' => $permKey, 'description' => $desc, 'parent_key' => $parent], $request);
+        } catch (\Exception $e) {
+            return $this->jsonError($response, $this->__('build.save_failed') . ': ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * DELETE /api/admin/permissions/{perm_key} — 删除权限（super_admin 限定）
+     * 系统内置 key（DEFAULT_PERMISSIONS 中的）不可删，避免误删核心权限
+     */
+    public function permissionDelete(Request $request, Response $response, array $args): Response
+    {
+        if ($err = $this->authCheck($request, $response)) return $err;
+        if ($this->currentRole !== AppConfig::ROLE_SUPER_ADMIN) {
+            return $this->jsonError($response, 'auth.forbidden', 403);
+        }
+        $permKey = $args['perm_key'] ?? '';
+        if ($permKey === '') {
+            return $this->jsonError($response, 'validation.required', 400);
+        }
+        // 防误删系统内置权限
+        if (array_key_exists($permKey, AppConfig::DEFAULT_PERMISSIONS)) {
+            return $this->jsonError($response, 'permission.builtin_protected', 400);
+        }
+        try {
+            $pdo = \App\Service\Database::getPdo();
+            $pdo->prepare("DELETE FROM " . AppConfig::TABLE_PERMISSIONS . " WHERE perm_key = ?")->execute([$permKey]);
+            $pdo->prepare("DELETE FROM " . AppConfig::TABLE_ROLE_PERMISSIONS . " WHERE perm_key = ?")->execute([$permKey]);
+            $pdo->prepare("DELETE FROM " . AppConfig::TABLE_IMPLIED_RULES . " WHERE source_key = ? OR target_key = ?")->execute([$permKey, $permKey]);
+            return $this->output($response, ['deleted' => $permKey], $request);
+        } catch (\Exception $e) {
+            return $this->jsonError($response, $this->__('build.save_failed') . ': ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * POST /api/admin/implied_rules — 注册隐含规则（CD 项目可通过此 API 添加新规则）
+     * Body: { source_key, target_key }
+     * 权限：super_admin 限定
+     */
+    public function impliedRuleCreate(Request $request, Response $response): Response
+    {
+        if ($err = $this->authCheck($request, $response)) return $err;
+        if ($this->currentRole !== AppConfig::ROLE_SUPER_ADMIN) {
+            return $this->jsonError($response, 'auth.forbidden', 403);
+        }
+        $body = json_decode((string)$request->getBody(), true) ?: [];
+        $src = trim($body['source_key'] ?? '');
+        $tgt = trim($body['target_key'] ?? '');
+        if ($src === '' || $tgt === '') {
+            return $this->jsonError($response, 'validation.required', 400);
+        }
+        try {
+            $pdo = \App\Service\Database::getPdo();
+            // 校验 source/target 在 permissions 表中存在
+            $check = $pdo->prepare("SELECT COUNT(*) FROM " . AppConfig::TABLE_PERMISSIONS . " WHERE perm_key IN (?, ?)");
+            $check->execute([$src, $tgt]);
+            if ((int)$check->fetchColumn() < 2) {
+                return $this->jsonError($response, 'validation.perm_not_found', 400);
+            }
+            $sql = \App\Service\Database::sqlUpsert(AppConfig::TABLE_IMPLIED_RULES, 'source_key, target_key', '?, ?');
+            $pdo->prepare($sql)->execute([$src, $tgt]);
+            return $this->output($response, ['source_key' => $src, 'target_key' => $tgt], $request);
+        } catch (\Exception $e) {
+            return $this->jsonError($response, $this->__('build.save_failed') . ': ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * DELETE /api/admin/implied_rules — 删除隐含规则（super_admin 限定）
+     * Query: ?source=xxx&target=yyy
+     */
+    public function impliedRuleDelete(Request $request, Response $response): Response
+    {
+        if ($err = $this->authCheck($request, $response)) return $err;
+        if ($this->currentRole !== AppConfig::ROLE_SUPER_ADMIN) {
+            return $this->jsonError($response, 'auth.forbidden', 403);
+        }
+        $params = $request->getQueryParams();
+        $src = trim($params['source'] ?? '');
+        $tgt = trim($params['target'] ?? '');
+        if ($src === '' || $tgt === '') {
+            return $this->jsonError($response, 'validation.required', 400);
+        }
+        try {
+            $pdo = \App\Service\Database::getPdo();
+            $pdo->prepare("DELETE FROM " . AppConfig::TABLE_IMPLIED_RULES . " WHERE source_key = ? AND target_key = ?")->execute([$src, $tgt]);
+            return $this->output($response, ['deleted' => ['source' => $src, 'target' => $tgt]], $request);
+        } catch (\Exception $e) {
+            return $this->jsonError($response, $this->__('build.save_failed') . ': ' . $e->getMessage(), 500);
         }
     }
 
@@ -961,12 +1090,23 @@ class AdminController extends BaseController
     // ────────────────────────── helpers ──────────────────────────
 
     /**
-     * 展开权限列表：根据 IMPLIED_PERMISSIONS 自动添加隐含权限
+     * 展开权限列表：根据 implied_rules 表自动添加隐含权限（数据驱动，不再读常量）
      */
     private function expandPermissions(array $perms): array
     {
-        $implied = AppConfig::IMPLIED_PERMISSIONS;
         $result = $perms;
+        try {
+            $pdo = \App\Service\Database::getPdo();
+            // 一次性把所有 source_key 的目标拉出来，避免 N+1
+            $implied = [];
+            $rows = $pdo->query("SELECT source_key, target_key FROM " . AppConfig::TABLE_IMPLIED_RULES)->fetchAll();
+            foreach ($rows as $r) {
+                $implied[$r['source_key']][] = $r['target_key'];
+            }
+        } catch (\Exception $e) {
+            // DB 不可用时回退到常量（避免硬故障）
+            $implied = AppConfig::IMPLIED_PERMISSIONS;
+        }
         foreach ($perms as $pk) {
             if (isset($implied[$pk])) {
                 foreach ($implied[$pk] as $child) {
@@ -977,6 +1117,19 @@ class AdminController extends BaseController
             }
         }
         return $result;
+    }
+
+    /**
+     * 取所有已注册的权限 key（数据驱动，从 DB 读；DB 异常时回退常量）
+     */
+    private function allPermissionKeys(): array
+    {
+        try {
+            $pdo = \App\Service\Database::getPdo();
+            return $pdo->query("SELECT perm_key FROM " . AppConfig::TABLE_PERMISSIONS)->fetchAll(\PDO::FETCH_COLUMN);
+        } catch (\Exception $e) {
+            return array_keys(AppConfig::DEFAULT_PERMISSIONS);
+        }
     }
 
     /**

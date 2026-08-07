@@ -1297,41 +1297,38 @@ async function deleteUser(username) {
 
 // ═══════════ 角色管理（数据驱动，权限从 API 动态加载） ═══════════
 var _allPerms = null;
+var _permDescMap = {}; // perm_key -> description，用于 i18n 兜底
+var IMPLIED_PERMISSIONS = {}; // 启动时从 API 拉取，不再硬编码
+
 async function loadAllPerms() {
     if (_allPerms) return _allPerms;
     try {
         var res = await fetch('/api/admin/permissions', { headers: authHeaders() });
         if (handle401(res)) return [];
-        _allPerms = await res.json();
+        var data = await res.json();
+        // 兼容旧格式（纯数组）和新格式（{permissions, implied}）
+        if (Array.isArray(data)) {
+            _allPerms = data;
+        } else {
+            _allPerms = data.permissions || [];
+            // 隐含规则数据驱动：API 返回什么用什么
+            IMPLIED_PERMISSIONS = data.implied || {};
+        }
+        _permDescMap = {};
+        _allPerms.forEach(function(p) { _permDescMap[p.perm_key] = p.description || ''; });
         return _allPerms;
     } catch (e) { return []; }
 }
 
 function permLabel(key) {
     var tkey = 'role.perm_' + key.replace(/\./g, '_');
-    return __.t(tkey) || key;
+    var translated = __.t(tkey);
+    // i18n 兜底：找不到翻译时优先显示 description（数据驱动），最后回退到 key 本身
+    if (translated && translated !== tkey) return translated;
+    return _permDescMap[key] || key;
 }
 
-/** 权限隐含关系：勾选一方自动勾选另一方（与后端 AppConfig::IMPLIED_PERMISSIONS 同步） */
-var IMPLIED_PERMISSIONS = {
-    // 父→子
-    'cd.build-manage': ['ci.trigger'],
-    // 子→父
-    'ci.users.list': ['ci.users.manage'],
-    'ci.users.password': ['ci.users.manage'],
-    'ci.users.manage_admin': ['ci.users.manage'],
-    'cd.deploy.single': ['cd.deploy-manage'],
-    'cd.deploy.docker': ['cd.deploy-manage'],
-    'cd.deploy.k8s': ['cd.deploy-manage'],
-    'cd.monitor.app': ['cd.resource-monitor'],
-    'cd.monitor.system': ['cd.resource-monitor'],
-    'cd.monitor.custom': ['cd.resource-monitor'],
-    'cd.monitor.alert': ['cd.resource-monitor'],
-    // 通知管理 ↔ Bot/WebHook 双向
-    'cd.bot': ['cd.notification-manage'],
-    'cd.webhook': ['cd.notification-manage'],
-    'cd.notification-manage': ['cd.bot', 'cd.webhook']
-};
+/** 勾选/取消权限时联动其隐含目标权限（数据驱动，IMPLIED_PERMISSIONS 启动时从 API 加载） */
 
 /** 勾选/取消权限时联动其隐含目标权限 */
 function cascadeImpliedCheck(sourceKey, checked, rootContainer) {

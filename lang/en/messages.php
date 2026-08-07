@@ -424,4 +424,11 @@ return [
     'role.select_all'                 => 'Select All',
     'role.deselect_all'               => 'Deselect All',
     'role.locked'                     => 'Locked',
+
+    // Permission register/manage API (data-driven RBAC)
+    'auth.forbidden'                   => 'Access forbidden',
+    'validation.required'              => 'Required field missing',
+    'validation.invalid_perm_key'      => 'Invalid permission key format (expected xx.yyy)',
+    'validation.perm_not_found'        => 'Permission key not found in permissions table',
+    'permission.builtin_protected'     => 'Built-in permission cannot be deleted',
 ];

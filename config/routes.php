@@ -152,6 +152,10 @@ $app->group('/api', function (RouteCollectorProxy $api) use ($app) {
         $admin->map(['PUT'], '/roles/{id}', [AdminController::class, 'roleUpdate']);
         $admin->map(['DELETE'], '/roles/{id}', [AdminController::class, 'roleDelete']);
         $admin->map(['GET'], '/permissions', [AdminController::class, 'permissionList']);
+        $admin->map(['POST'], '/permissions', [AdminController::class, 'permissionRegister']);
+        $admin->map(['DELETE'], '/permissions/{perm_key}', [AdminController::class, 'permissionDelete']);
+        $admin->map(['POST'], '/implied_rules', [AdminController::class, 'impliedRuleCreate']);
+        $admin->map(['DELETE'], '/implied_rules', [AdminController::class, 'impliedRuleDelete']);
         $admin->map(['GET'], '/me/permissions', [AdminController::class, 'mePermissions']);
     });
 

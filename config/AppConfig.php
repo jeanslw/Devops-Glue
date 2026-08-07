@@ -16,6 +16,7 @@ class AppConfig
     public const TABLE_ROLES             = 'roles';
     public const TABLE_PERMISSIONS       = 'permissions';
     public const TABLE_ROLE_PERMISSIONS  = 'role_permissions';
+    public const TABLE_IMPLIED_RULES     = 'implied_rules';
 
     // ── 角色常量 ──
     public const ROLE_SUPER_ADMIN = 'super_admin';
