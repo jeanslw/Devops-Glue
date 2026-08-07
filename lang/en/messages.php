@@ -431,4 +431,46 @@ return [
     'validation.invalid_perm_key'      => 'Invalid permission key format (expected xx.yyy)',
     'validation.perm_not_found'        => 'Permission key not found in permissions table',
     'permission.builtin_protected'     => 'Built-in permission cannot be deleted',
+
+    // Permission Management UI
+    'admin.sidebar_permissions'        => 'Permissions',
+    'admin.sidebar_perm_list'          => 'Permission List',
+    'admin.sidebar_perm_register'      => 'Register Permission',
+    'admin.sidebar_implied_rules'      => 'Implied Rules',
+
+    // Permission List
+    'perm.list_title'      => '📋 Permission List',
+    'perm.list_hint'       => 'All permission keys currently supported by the system. Permissions are dynamically registered by subsystems (CI/CD) via API; admins can view them here.',
+    'perm.key'             => 'Permission Key',
+    'perm.description'     => 'Description',
+    'perm.parent_key'      => 'Parent Key',
+    'perm.created_at'      => 'Created At',
+    'perm.no_permissions'  => 'No permissions found',
+
+    // Permission Registration
+    'perm.register_title'  => '➕ Register Permission',
+    'perm.register_hint'   => 'Manually register a new permission (normally auto-registered by CD projects; this UI is for special cases).',
+    'perm.key_placeholder' => 'e.g. cd.deploy',
+    'perm.desc_placeholder'=> 'e.g. Deploy Management',
+    'perm.parent_placeholder'=> 'e.g. cd.deploy-manage (optional)',
+    'perm.key_format'      => 'Format: lowercase letters, numbers, dots, underscores',
+    'perm.register_btn'    => 'Register',
+    'perm.key_required'    => 'Permission key is required',
+    'perm.desc_required'   => 'Description is required',
+    'perm.register_ok'     => 'Permission registered successfully',
+
+    // Implied Rules
+    'implied.title'        => '🔗 Implied Rules Management',
+    'implied.add_rule'     => '+ Add Rule',
+    'implied.list_hint'    => 'Permission implication rules: when the source permission is granted, the target permission is automatically granted.',
+    'implied.source_key'   => 'Source Permission',
+    'implied.target_key'   => 'Target Permission',
+    'implied.source_hint'  => 'When this permission is held',
+    'implied.target_hint'  => 'Automatically grant this permission',
+    'implied.no_rules'     => 'No implied rules',
+    'implied.both_required'=> 'Both source and target permissions are required',
+    'implied.cannot_same'  => 'Source and target cannot be the same',
+    'implied.confirm_delete'=> 'Delete this implied rule?',
+    'implied.add_ok'       => 'Implied rule added successfully',
+    'implied.delete_ok'    => 'Implied rule deleted',
 ];

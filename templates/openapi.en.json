@@ -278,6 +278,80 @@
             ]
           }
         }
+      },
+      "BuildModeResult": {
+        "type": "object",
+        "description": "Build mode and actual Provider availability",
+        "properties": {
+          "mode": { "type": "string", "enum": ["jenkins", "gitlab_ci", "both"], "description": "Currently active build mode", "example": "both" },
+          "source": { "type": "string", "enum": ["config_file", "env", "cache"], "description": "Source of the mode value", "example": "config_file" },
+          "has_jenkins": { "type": "boolean", "description": "Whether Jenkins has a usable base URL configured" },
+          "has_gitlab_ci": { "type": "boolean", "description": "Whether GitLab CI has usable base_url + token" }
+        }
+      },
+      "AdminUserEntry": {
+        "type": "object",
+        "description": "Admin user entry (without password hash)",
+        "properties": {
+          "username": { "type": "string", "example": "deployer" },
+          "role": { "type": "string", "description": "Associated role name, foreign key to roles.name", "example": "deployer" },
+          "systems": { "type": "string", "description": "Comma-separated system flags: ci/cd", "example": "cd,ci" },
+          "updated_at": { "type": "string", "format": "date-time", "nullable": true },
+          "is_root": { "type": "boolean", "description": "Whether this is the built-in root account from .env ADMIN_USER; root cannot be deleted" }
+        }
+      },
+      "RoleEntry": {
+        "type": "object",
+        "description": "Role and its permissions",
+        "properties": {
+          "id": { "type": "integer", "example": 3 },
+          "name": { "type": "string", "description": "Unique role name, referenced as foreign key by admin_users.role", "example": "deployer" },
+          "description": { "type": "string", "example": "Deployment Operator" },
+          "is_system": { "type": "boolean", "description": "Built-in system role; built-in roles cannot be deleted or have permissions modified" },
+          "created_at": { "type": "string", "format": "date-time", "nullable": true },
+          "permissions": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Expanded permission keys owned by this role (implied rules already resolved)",
+            "example": ["cd.build-manage", "cd.deploy-manage", "cd.notification-manage"]
+          }
+        }
+      },
+      "PermissionEntry": {
+        "type": "object",
+        "description": "Permission definition (data-driven, can be registered by CD projects via API)",
+        "properties": {
+          "perm_key": { "type": "string", "description": "Permission key, format: xx.yyy", "example": "cd.deploy-manage" },
+          "description": { "type": "string", "description": "Permission description (i18n fallback)", "example": "Deploy Management" },
+          "parent_key": { "type": "string", "nullable": true, "description": "Parent permission key for hierarchical menu display", "example": "cd.notification-manage" },
+          "created_at": { "type": "string", "format": "date-time", "nullable": true, "example": "2026-08-07 12:34:56" }
+        }
+      },
+      "ImpliedRule": {
+        "type": "object",
+        "description": "Permission implication: having source_key automatically grants target_key",
+        "properties": {
+          "source_key": { "type": "string", "example": "cd.bot" },
+          "target_key": { "type": "string", "example": "cd.notification-manage" }
+        }
+      },
+      "PermissionListResult": {
+        "type": "object",
+        "properties": {
+          "permissions": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/PermissionEntry" }
+          },
+          "implied": {
+            "type": "object",
+            "description": "Implication map: source_key → [target_key,...]",
+            "additionalProperties": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "example": { "cd.bot": ["cd.notification-manage"], "cd.deploy.single": ["cd.deploy-manage"] }
+          }
+        }
       }
     }
   },
@@ -1070,6 +1144,578 @@
             }
           },
           "401": { "$ref": "#/components/responses/401" }
+        }
+      }
+    },
+    "/api/admin/permissions": {
+      "get": {
+        "tags": ["Admin", "RBAC"],
+        "summary": "List all permissions and implication rules",
+        "description": "Returns all registered permission definitions (with parent_key hierarchy) and the permission implication map. Permissions are data-driven and can be registered by CD projects via the POST endpoint.",
+        "operationId": "adminPermissionList",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Permission list + implication rules",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PermissionListResult" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/401" },
+          "500": { "$ref": "#/components/responses/500" }
+        }
+      },
+      "post": {
+        "tags": ["Admin", "RBAC"],
+        "summary": "Register a new permission",
+        "description": "Register a new permission key for menu visibility and hasPermission checks. super_admin only; typically auto-registered by CD projects rather than manually. description is required (used as i18n fallback).",
+        "operationId": "adminPermissionRegister",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["perm_key", "description"],
+                "properties": {
+                  "perm_key": { "type": "string", "description": "Permission key, regex ^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_-]*)+$", "example": "cd.bot" },
+                  "description": { "type": "string", "description": "Permission description (required, i18n fallback)", "example": "Bot Config" },
+                  "parent_key": { "type": "string", "nullable": true, "description": "Parent permission key for hierarchical menu", "example": "cd.notification-manage" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Registered successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "perm_key": { "type": "string" },
+                    "description": { "type": "string" },
+                    "parent_key": { "type": "string", "nullable": true }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "description": "Not super_admin" }
+        }
+      }
+    },
+    "/api/admin/permissions/{perm_key}": {
+      "delete": {
+        "tags": ["Admin", "RBAC"],
+        "summary": "Delete a permission",
+        "description": "Delete the specified permission key, cascading cleanup of role_permissions and implied_rules associations. super_admin only. Built-in permissions (keys in AppConfig::DEFAULT_PERMISSIONS) are protected and cannot be deleted.",
+        "operationId": "adminPermissionDelete",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "perm_key",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Permission key",
+            "example": "cd.bot"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "deleted": { "type": "string" } }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "description": "Not super_admin" }
+        }
+      }
+    },
+    "/api/admin/implied_rules": {
+      "post": {
+        "tags": ["Admin", "RBAC"],
+        "summary": "Register an implication rule",
+        "description": "Register a permission implication: having source_key automatically grants target_key. super_admin only. Both source_key and target_key must already exist in the permissions table.",
+        "operationId": "adminImpliedRuleCreate",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["source_key", "target_key"],
+                "properties": {
+                  "source_key": { "type": "string", "example": "cd.bot" },
+                  "target_key": { "type": "string", "example": "cd.notification-manage" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Registered successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ImpliedRule" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "description": "Not super_admin" }
+        }
+      },
+      "delete": {
+        "tags": ["Admin", "RBAC"],
+        "summary": "Delete an implication rule",
+        "description": "Delete a permission implication rule. super_admin only.",
+        "operationId": "adminImpliedRuleDelete",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "source_key",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Source permission key"
+          },
+          {
+            "name": "target_key",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Target permission key"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deleted": {
+                      "type": "object",
+                      "properties": {
+                        "source": { "type": "string" },
+                        "target": { "type": "string" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "description": "Not super_admin" }
+        }
+      }
+    },
+    "/api/admin/logout": {
+      "post": {
+        "tags": ["Admin", "Auth"],
+        "summary": "Logout (invalidate current Bearer token)",
+        "description": "Delete the current Bearer token from the cache table so it is rejected on subsequent requests. Returns success even if no valid token is provided.",
+        "operationId": "adminLogout",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Logged out",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "message": { "type": "string", "const": "logged_out" } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/build_mode": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "Get build mode and Provider availability",
+        "description": "Returns the currently active build mode (jenkins/gitlab_ci/both), where the mode came from, and whether the Jenkins / GitLab CI providers are actually configured and usable.",
+        "operationId": "adminGetBuildMode",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Build mode info",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BuildModeResult" } } }
+          },
+          "401": { "$ref": "#/components/responses/401" }
+        }
+      },
+      "put": {
+        "tags": ["Admin"],
+        "summary": "Update build mode",
+        "description": "Switch the global build mode. When switching to a single provider, active job mappings of the other provider are automatically downgraded to pending to prevent unexpected participation. The target provider must be configured and available; otherwise the switch is rejected.",
+        "operationId": "adminUpdateBuildMode",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["mode"],
+                "properties": {
+                  "mode": { "type": "string", "enum": ["jenkins", "gitlab_ci", "both"], "example": "both" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "const": true },
+                    "mode": { "type": "string", "enum": ["jenkins", "gitlab_ci", "both"] }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "500": { "$ref": "#/components/responses/500" }
+        }
+      }
+    },
+    "/api/admin/users": {
+      "get": {
+        "tags": ["Admin", "Users"],
+        "summary": "List all admin users",
+        "description": "admin and above see all users; regular roles cannot see admin/super_admin users. Response does not include password hashes.",
+        "operationId": "adminUserList",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "User list",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/AdminUserEntry" } }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/401" },
+          "500": { "$ref": "#/components/responses/500" }
+        }
+      },
+      "post": {
+        "tags": ["Admin", "Users"],
+        "summary": "Create a new admin user",
+        "description": "Create a new admin user. ci.users.manage_admin permission is required to create admin/super_admin roles. Users created by non-admins may not have systems containing ci. Password must be at least 8 characters.",
+        "operationId": "adminUserCreate",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["username", "password"],
+                "properties": {
+                  "username": { "type": "string", "description": "Unique login username", "example": "alice" },
+                  "password": { "type": "string", "minLength": 8, "description": "Plain-text password, stored as bcrypt hash", "example": "MyPassw0rd!" },
+                  "role": { "type": "string", "description": "Role name, default deployer", "example": "deployer", "default": "deployer" },
+                  "systems": { "type": "string", "description": "Comma-separated: ci/cd, default cd", "example": "cd", "default": "cd" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "const": true },
+                    "username": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "description": "Forbidden: promoting to admin without manage_admin perm, or assigning ci to non-admin creator" },
+          "409": { "description": "Username already exists" }
+        }
+      }
+    },
+    "/api/admin/users/{username}": {
+      "put": {
+        "tags": ["Admin", "Users"],
+        "summary": "Update user (change password / change role)",
+        "description": "Only provided fields are updated: password is changed if non-empty; role is changed if provided. Modifying or promoting to admin/super_admin requires ci.users.manage_admin. password min length is 8.",
+        "operationId": "adminUserUpdate",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "username",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Target username",
+            "example": "alice"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "minProperties": 1,
+                "properties": {
+                  "password": { "type": "string", "minLength": 8, "description": "New password (plaintext, optional; empty means do not change)" },
+                  "role": { "type": "string", "description": "New role name (optional, omitted means do not change)" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "success": { "type": "boolean", "const": true } }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "description": "Forbidden: editing admin or promoting without sufficient permission" },
+          "404": { "description": "User not found" }
+        }
+      },
+      "delete": {
+        "tags": ["Admin", "Users"],
+        "summary": "Delete a user",
+        "description": "Delete the specified admin user. Restrictions: 1) Root account (.env ADMIN_USER) cannot be deleted by anyone; 2) Cannot delete yourself; 3) Deleting admin/super_admin role users requires ci.users.manage_admin permission.",
+        "operationId": "adminUserDelete",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "username",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Target username",
+            "example": "alice"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "success": { "type": "boolean", "const": true } }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "description": "Forbidden: delete admin / self / root" },
+          "404": { "description": "User not found" }
+        }
+      }
+    },
+    "/api/admin/roles": {
+      "get": {
+        "tags": ["Admin", "RBAC"],
+        "summary": "List all roles and their permissions",
+        "description": "Returns the role list; each role includes the expanded permission key array. is_system=true means a built-in role that cannot be deleted or have its permissions changed.",
+        "operationId": "adminRoleList",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Role list",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/RoleEntry" } }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/401" },
+          "500": { "$ref": "#/components/responses/500" }
+        }
+      },
+      "post": {
+        "tags": ["Admin", "RBAC"],
+        "summary": "Create a new role",
+        "description": "Create a custom role. Only users with ci.users.manage_admin permission can create. When permissions are provided, the backend auto-expands implied rules and keeps only keys already defined in the permissions table. is_system is always 0 (not built-in).",
+        "operationId": "adminRoleCreate",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name"],
+                "properties": {
+                  "name": { "type": "string", "description": "Unique role name", "example": "custom_viewer" },
+                  "description": { "type": "string", "description": "Role description", "example": "Read-only viewer" },
+                  "permissions": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Permission key array (no need to pass implied ones; backend expands automatically)",
+                    "example": ["cd.build-manage", "ci.trigger"]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "const": true },
+                    "id": { "type": "integer" },
+                    "name": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "description": "Not ci.users.manage_admin" },
+          "409": { "description": "Role name already exists" }
+        }
+      }
+    },
+    "/api/admin/roles/{id}": {
+      "put": {
+        "tags": ["Admin", "RBAC"],
+        "summary": "Update role (name / description / permissions, full replace)",
+        "description": "ci.users.manage_admin permission only. Only custom roles (is_system=0) can be modified. When name changes, admin_users.role rows referencing the old name are cascaded. If the permissions key is present (even empty array), the role's permissions are fully replaced with the new set after auto-expanding implied rules.",
+        "operationId": "adminRoleUpdate",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer" },
+            "description": "Role ID",
+            "example": 5
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "minProperties": 1,
+                "properties": {
+                  "name": { "type": "string", "description": "New name (optional, must be unique; change cascades to user role references)" },
+                  "description": { "type": "string", "description": "New description (optional, empty leaves unchanged)" },
+                  "permissions": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Permission keys (presence of this key triggers full replace; empty array clears all permissions)"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "success": { "type": "boolean", "const": true } }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "description": "Not ci.users.manage_admin or modifying built-in role" },
+          "404": { "description": "Role not found" },
+          "409": { "description": "New name collides with another role" }
+        }
+      },
+      "delete": {
+        "tags": ["Admin", "RBAC"],
+        "summary": "Delete a role",
+        "description": "ci.users.manage_admin permission only. Only custom roles (is_system=0) can be deleted. If any user still references the role, the request is rejected with 400 role.in_use. Deletion cascades and cleans up role_permissions links.",
+        "operationId": "adminRoleDelete",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer" },
+            "description": "Role ID",
+            "example": 5
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "success": { "type": "boolean", "const": true } }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "description": "Not ci.users.manage_admin or deleting built-in role" },
+          "404": { "description": "Role not found" }
         }
       }
     }

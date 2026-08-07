@@ -245,7 +245,7 @@ class AdminController extends BaseController
         $oldPass = $body['old_password'] ?? '';
         $newPass = $body['new_password'] ?? '';
 
-        if (strlen($newPass) < 6) {
+        if (strlen($newPass) < 8) {
             return $this->jsonError($response, 'auth.new_password_short', 400);
         }
 
@@ -1048,8 +1048,8 @@ class AdminController extends BaseController
             return $this->jsonError($response, 'auth.forbidden', 403);
         }
         $params = $request->getQueryParams();
-        $src = trim($params['source'] ?? '');
-        $tgt = trim($params['target'] ?? '');
+        $src = trim($params['source_key'] ?? '');
+        $tgt = trim($params['target_key'] ?? '');
         if ($src === '' || $tgt === '') {
             return $this->jsonError($response, 'validation.required', 400);
         }

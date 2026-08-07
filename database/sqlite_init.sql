@@ -96,6 +96,13 @@ CREATE TABLE IF NOT EXISTS role_permissions (
     PRIMARY KEY (role_id, perm_key)
 );
 
+-- ── 11. implied_rules（权限隐含关系；数据驱动，CD 可通过 API 注册）──
+CREATE TABLE IF NOT EXISTS implied_rules (
+    source_key TEXT NOT NULL,
+    target_key TEXT NOT NULL,
+    PRIMARY KEY (source_key, target_key)
+);
+
 -- ── 索引 ──
 CREATE INDEX IF NOT EXISTS idx_pipeline_tags_project     ON ci_pipeline_tags(project);
 CREATE INDEX IF NOT EXISTS idx_pipeline_tags_created      ON ci_pipeline_tags(created_at);

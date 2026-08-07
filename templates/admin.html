@@ -84,6 +84,24 @@
                     </div>
                 </div>
             </div>
+            <div class="menu-group" id="menu-group-perms">
+                <div class="menu-item menu-group-title" onclick="togglePermMenu()">
+                    <span class="menu-icon">🔐</span>
+                    <span data-i18n="admin.sidebar_permissions">权限管理</span>
+                    <span class="menu-arrow">▼</span>
+                </div>
+                <div class="submenu">
+                    <div class="menu-item submenu-item" data-tab="perm-list" onclick="switchTab('perm-list')">
+                        <span class="menu-icon">📋</span> <span data-i18n="admin.sidebar_perm_list">权限列表</span>
+                    </div>
+                    <div class="menu-item submenu-item" data-tab="perm-register" onclick="switchTab('perm-register')">
+                        <span class="menu-icon">➕</span> <span data-i18n="admin.sidebar_perm_register">权限注册</span>
+                    </div>
+                    <div class="menu-item submenu-item" data-tab="implied-rules" onclick="switchTab('implied-rules')">
+                        <span class="menu-icon">🔗</span> <span data-i18n="admin.sidebar_implied_rules">隐含规则</span>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- 内容 -->
@@ -485,6 +503,107 @@
                         <button type="submit" class="btn btn-save">💾 <span data-i18n="auth.update_password">更新密码</span></button>
                         <span id="pwd-msg" style="margin-left:12px;font-size:13px;"></span>
                     </form>
+                </div>
+            </div>
+
+            <!-- ═══ 权限列表 Tab ═══ -->
+            <div id="tab-perm-list" style="display:none;">
+                <div class="toolbar"><h3 data-i18n="perm.list_title">📋 权限列表</h3></div>
+                <div class="card">
+                    <p style="font-size:13px;color:#6b7280;margin-bottom:16px;" data-i18n="perm.list_hint">
+                        系统当前支持的所有权限键。权限由各子系统（CI/CD）通过 API 动态注册，管理员在此查看即可。
+                    </p>
+                    <div id="perm-list-loading" style="text-align:center;padding:40px;color:#9ca3af;" data-i18n="common.loading">加载中…</div>
+                    <div id="perm-list-table-wrap" style="display:none;overflow-x:auto;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th data-i18n="perm.key">权限键</th>
+                                    <th data-i18n="perm.description">描述</th>
+                                    <th data-i18n="perm.parent_key">父级键</th>
+                                    <th data-i18n="perm.created_at">创建时间</th>
+                                </tr>
+                            </thead>
+                            <tbody id="perm-list-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div id="perm-list-empty" style="display:none;text-align:center;padding:40px;color:#9ca3af;" data-i18n="perm.no_permissions">
+                        暂无权限数据
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══ 权限注册 Tab ═══ -->
+            <div id="tab-perm-register" style="display:none;">
+                <div class="toolbar"><h3 data-i18n="perm.register_title">➕ 权限注册</h3></div>
+                <div class="card" style="max-width:600px;">
+                    <p style="font-size:13px;color:#6b7280;margin-bottom:16px;" data-i18n="perm.register_hint">
+                        手动注册新权限（通常由 CD 项目自动注册，此界面用于特殊情况）。
+                    </p>
+                    <form onsubmit="registerPermission(event)">
+                        <div style="margin-bottom:10px;">
+                            <label><span class="req">*</span> <span data-i18n="perm.key">权限键</span></label>
+                            <input type="text" id="new-perm-key" required pattern="[a-z0-9._]+" data-i18n-placeholder="perm.key_placeholder" placeholder="例: cd.deploy">
+                            <p style="font-size:12px;color:#9ca3af;margin:4px 0 0 0;" data-i18n="perm.key_format">格式：小写字母、数字、点号、下划线</p>
+                        </div>
+                        <div style="margin-bottom:10px;">
+                            <label><span class="req">*</span> <span data-i18n="perm.description">描述</span></label>
+                            <input type="text" id="new-perm-desc" required data-i18n-placeholder="perm.desc_placeholder" placeholder="例：部署管理">
+                        </div>
+                        <div style="margin-bottom:10px;">
+                            <label data-i18n="perm.parent_key">父级键</label>
+                            <input type="text" id="new-perm-parent" data-i18n-placeholder="perm.parent_placeholder" placeholder="例：cd.deploy-manage（可选）">
+                        </div>
+                        <button type="submit" class="btn btn-save">💾 <span data-i18n="perm.register_btn">注册</span></button>
+                        <span id="perm-register-msg" style="margin-left:12px;font-size:13px;"></span>
+                    </form>
+                </div>
+            </div>
+
+            <!-- ═══ 隐含规则 Tab ═══ -->
+            <div id="tab-implied-rules" style="display:none;">
+                <div class="toolbar">
+                    <h3 data-i18n="implied.title">🔗 隐含规则管理</h3>
+                    <button class="btn btn-pri" onclick="showImpliedForm()" data-i18n="implied.add_rule">＋ 新增规则</button>
+                </div>
+                <div id="implied-form" class="card" style="display:none;max-width:600px;">
+                    <form onsubmit="submitImpliedForm(event)">
+                        <h4 id="implied-form-title" data-i18n="implied.add_rule" style="margin-top:0;margin-bottom:14px;">＋ 新增规则</h4>
+                        <div style="margin-bottom:10px;">
+                            <label><span class="req">*</span> <span data-i18n="implied.source_key">源权限</span></label>
+                            <select id="implied-source" required style="width:100%;"></select>
+                            <p style="font-size:12px;color:#9ca3af;margin:4px 0 0 0;" data-i18n="implied.source_hint">拥有此权限时</p>
+                        </div>
+                        <div style="margin-bottom:10px;">
+                            <label><span class="req">*</span> <span data-i18n="implied.target_key">目标权限</span></label>
+                            <select id="implied-target" required style="width:100%;"></select>
+                            <p style="font-size:12px;color:#9ca3af;margin:4px 0 0 0;" data-i18n="implied.target_hint">自动拥有此权限</p>
+                        </div>
+                        <button type="submit" class="btn btn-save">💾 <span data-i18n="common.save">保存</span></button>
+                        <button type="button" class="btn" onclick="hideImpliedForm()" data-i18n="common.cancel">取消</button>
+                        <span id="implied-msg" style="margin-left:12px;font-size:13px;"></span>
+                    </form>
+                </div>
+                <div class="card" style="margin-top:12px;overflow-x:auto;">
+                    <p style="font-size:13px;color:#6b7280;margin-bottom:12px;" data-i18n="implied.list_hint">
+                        权限隐含关系：勾选源权限时自动拥有目标权限。
+                    </p>
+                    <div id="implied-loading" style="text-align:center;padding:40px;color:#9ca3af;" data-i18n="common.loading">加载中…</div>
+                    <div id="implied-table-wrap" style="display:none;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th data-i18n="implied.source_key">源权限</th>
+                                    <th data-i18n="implied.target_key">目标权限</th>
+                                    <th data-i18n="user.actions">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="implied-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div id="implied-empty" style="display:none;text-align:center;padding:40px;color:#9ca3af;" data-i18n="implied.no_rules">
+                        暂无隐含规则
+                    </div>
                 </div>
             </div>
 

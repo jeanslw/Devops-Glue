@@ -103,12 +103,10 @@ class AppConfig
         'cd.monitor.system' => [self::PERM_CD_MONITOR],
         'cd.monitor.custom' => [self::PERM_CD_MONITOR],
         'cd.monitor.alert'  => [self::PERM_CD_MONITOR],
-        // 通知管理 ↔ Bot/WebHook 双向
+        // 通知管理 ↔ Bot/WebHook
         //   子→父：选了 Bot/WebHook 自动显示「通知管理」一级菜单
-        //   父→子：选了「通知管理」自动拥有 Bot + WebHook 子权限
         self::PERM_CD_BOT     => [self::PERM_CD_NOTIFY],
         self::PERM_CD_WEBHOOK => [self::PERM_CD_NOTIFY],
-        self::PERM_CD_NOTIFY  => [self::PERM_CD_BOT, self::PERM_CD_WEBHOOK],
     ];
 
     /** 默认角色种子数据：只有 root 内置，'*' 表示拥有所有权限 */

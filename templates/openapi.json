@@ -278,6 +278,80 @@
             ]
           }
         }
+      },
+      "BuildModeResult": {
+        "type": "object",
+        "description": "构建模式及实际 Provider 可用性",
+        "properties": {
+          "mode": { "type": "string", "enum": ["jenkins", "gitlab_ci", "both"], "description": "当前生效的构建模式", "example": "both" },
+          "source": { "type": "string", "enum": ["config_file", "env", "cache"], "description": "模式值的来源", "example": "config_file" },
+          "has_jenkins": { "type": "boolean", "description": "Jenkins 是否配置了可用地址" },
+          "has_gitlab_ci": { "type": "boolean", "description": "GitLab CI 是否配置了可用 base_url + token" }
+        }
+      },
+      "AdminUserEntry": {
+        "type": "object",
+        "description": "管理员用户条目（不含密码哈希）",
+        "properties": {
+          "username": { "type": "string", "example": "deployer" },
+          "role": { "type": "string", "description": "关联角色名（对应 roles.name）", "example": "deployer" },
+          "systems": { "type": "string", "description": "逗号分隔的系统标识：ci/cd", "example": "cd,ci" },
+          "updated_at": { "type": "string", "format": "date-time", "nullable": true },
+          "is_root": { "type": "boolean", "description": "是否为 .env ADMIN_USER 指定的内置根账号，根账号不可删除" }
+        }
+      },
+      "RoleEntry": {
+        "type": "object",
+        "description": "角色及其权限定义",
+        "properties": {
+          "id": { "type": "integer", "example": 3 },
+          "name": { "type": "string", "description": "角色唯一名称，同时作为 admin_users.role 外键引用", "example": "deployer" },
+          "description": { "type": "string", "example": "部署人员" },
+          "is_system": { "type": "boolean", "description": "是否为系统内置角色，内置角色不可删除/改权限" },
+          "created_at": { "type": "string", "format": "date-time", "nullable": true },
+          "permissions": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "该角色拥有的权限键列表（已展开隐含权限）",
+            "example": ["cd.build-manage", "cd.deploy-manage", "cd.notification-manage"]
+          }
+        }
+      },
+      "PermissionEntry": {
+        "type": "object",
+        "description": "权限定义项（数据驱动，可由 CD 项目通过 API 注册）",
+        "properties": {
+          "perm_key": { "type": "string", "description": "权限键，格式：xx.yyy", "example": "cd.deploy-manage" },
+          "description": { "type": "string", "description": "权限描述（i18n 兜底用）", "example": "Deploy Management" },
+          "parent_key": { "type": "string", "nullable": true, "description": "父级权限键，用于层级菜单展示", "example": "cd.notification-manage" },
+          "created_at": { "type": "string", "format": "date-time", "nullable": true, "example": "2026-08-07 12:34:56" }
+        }
+      },
+      "ImpliedRule": {
+        "type": "object",
+        "description": "权限隐含关系：拥有 source_key 时自动拥有 target_key",
+        "properties": {
+          "source_key": { "type": "string", "example": "cd.bot" },
+          "target_key": { "type": "string", "example": "cd.notification-manage" }
+        }
+      },
+      "PermissionListResult": {
+        "type": "object",
+        "properties": {
+          "permissions": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/PermissionEntry" }
+          },
+          "implied": {
+            "type": "object",
+            "description": "隐含规则映射：source_key → [target_key,...]",
+            "additionalProperties": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "example": { "cd.bot": ["cd.notification-manage"], "cd.deploy.single": ["cd.deploy-manage"] }
+          }
+        }
       }
     }
   },
@@ -1070,6 +1144,578 @@
             }
           },
           "401": { "$ref": "#/components/responses/401" }
+        }
+      }
+    },
+    "/api/admin/permissions": {
+      "get": {
+        "tags": ["Admin", "RBAC"],
+        "summary": "列出所有权限及隐含规则",
+        "description": "返回系统中所有已注册的权限定义（含 parent_key 层级）以及权限隐含关系映射。权限数据驱动，可由 CD 项目通过 POST 接口注册。",
+        "operationId": "adminPermissionList",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "权限列表 + 隐含规则",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PermissionListResult" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/401" },
+          "500": { "$ref": "#/components/responses/500" }
+        }
+      },
+      "post": {
+        "tags": ["Admin", "RBAC"],
+        "summary": "注册新权限",
+        "description": "注册一个新的权限键，供菜单显隐和 hasPermission 校验使用。仅 super_admin 可调用，通常由 CD 项目自动注册而非人工操作。description 必填（作为 i18n 兜底文案）。",
+        "operationId": "adminPermissionRegister",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["perm_key", "description"],
+                "properties": {
+                  "perm_key": { "type": "string", "description": "权限键，正则 ^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_-]*)+$", "example": "cd.bot" },
+                  "description": { "type": "string", "description": "权限描述（必填，i18n 兜底用）", "example": "Bot Config" },
+                  "parent_key": { "type": "string", "nullable": true, "description": "父级权限键，用于层级菜单", "example": "cd.notification-manage" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "注册成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "perm_key": { "type": "string" },
+                    "description": { "type": "string" },
+                    "parent_key": { "type": "string", "nullable": true }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "description": "非 super_admin" }
+        }
+      }
+    },
+    "/api/admin/permissions/{perm_key}": {
+      "delete": {
+        "tags": ["Admin", "RBAC"],
+        "summary": "删除权限",
+        "description": "删除指定权限键，同时级联清理 role_permissions 和 implied_rules 中的关联记录。仅 super_admin 可调用。系统内置权限（AppConfig::DEFAULT_PERMISSIONS 中的 key）受保护不可删。",
+        "operationId": "adminPermissionDelete",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "perm_key",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "权限键",
+            "example": "cd.bot"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "删除成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "deleted": { "type": "string" } }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "description": "非 super_admin" }
+        }
+      }
+    },
+    "/api/admin/implied_rules": {
+      "post": {
+        "tags": ["Admin", "RBAC"],
+        "summary": "注册隐含规则",
+        "description": "注册一条权限隐含关系：拥有 source_key 时自动拥有 target_key。仅 super_admin 可调用。source_key 和 target_key 必须已存在于 permissions 表中。",
+        "operationId": "adminImpliedRuleCreate",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["source_key", "target_key"],
+                "properties": {
+                  "source_key": { "type": "string", "example": "cd.bot" },
+                  "target_key": { "type": "string", "example": "cd.notification-manage" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "注册成功",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ImpliedRule" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "description": "非 super_admin" }
+        }
+      },
+      "delete": {
+        "tags": ["Admin", "RBAC"],
+        "summary": "删除隐含规则",
+        "description": "删除一条权限隐含关系。仅 super_admin 可调用。",
+        "operationId": "adminImpliedRuleDelete",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "source_key",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "源权限键"
+          },
+          {
+            "name": "target_key",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "目标权限键"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "删除成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deleted": {
+                      "type": "object",
+                      "properties": {
+                        "source": { "type": "string" },
+                        "target": { "type": "string" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "description": "非 super_admin" }
+        }
+      }
+    },
+    "/api/admin/logout": {
+      "post": {
+        "tags": ["Admin", "Auth"],
+        "summary": "登出（失效当前 Bearer token）",
+        "description": "从 cache 表删除当前 Bearer token，使之后续请求被拒绝。无 token 的调用也返回成功。",
+        "operationId": "adminLogout",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "登出成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "message": { "type": "string", "const": "logged_out" } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/build_mode": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "查询构建模式及 Provider 可用性",
+        "description": "返回当前生效的构建模式（jenkins/gitlab_ci/both）、模式来源，以及 Jenkins/GitLabCI 两个 Provider 是否已实际配置可用。",
+        "operationId": "adminGetBuildMode",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "构建模式",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BuildModeResult" } } }
+          },
+          "401": { "$ref": "#/components/responses/401" }
+        }
+      },
+      "put": {
+        "tags": ["Admin"],
+        "summary": "更新构建模式",
+        "description": "切换全局构建模式。切换到单 Provider 时，另一个 Provider 的 active job 映射会自动降级为 pending，避免意外参与构建。需目标 Provider 已配置可用才允许切换。",
+        "operationId": "adminUpdateBuildMode",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["mode"],
+                "properties": {
+                  "mode": { "type": "string", "enum": ["jenkins", "gitlab_ci", "both"], "example": "both" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "const": true },
+                    "mode": { "type": "string", "enum": ["jenkins", "gitlab_ci", "both"] }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "500": { "$ref": "#/components/responses/500" }
+        }
+      }
+    },
+    "/api/admin/users": {
+      "get": {
+        "tags": ["Admin", "Users"],
+        "summary": "列出所有管理员用户",
+        "description": "admin 及以上角色看到所有用户；普通角色看不到 admin/super_admin 角色的用户。返回值不含密码哈希。",
+        "operationId": "adminUserList",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "用户列表",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/AdminUserEntry" } }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/401" },
+          "500": { "$ref": "#/components/responses/500" }
+        }
+      },
+      "post": {
+        "tags": ["Admin", "Users"],
+        "summary": "新增管理员用户",
+        "description": "创建新的后台用户。需要 ci.users.manage_admin 权限才能创建 admin/super_admin 角色；非管理员创建的账号 systems 不允许包含 ci。密码至少 8 位。",
+        "operationId": "adminUserCreate",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["username", "password"],
+                "properties": {
+                  "username": { "type": "string", "description": "登录用户名（唯一）", "example": "alice" },
+                  "password": { "type": "string", "minLength": 8, "description": "明文密码，后端 bcrypt 哈希存储", "example": "MyPassw0rd!" },
+                  "role": { "type": "string", "description": "角色名，默认 deployer", "example": "deployer", "default": "deployer" },
+                  "systems": { "type": "string", "description": "逗号分隔：ci/cd，默认 cd", "example": "cd", "default": "cd" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "创建成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "const": true },
+                    "username": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "description": "越权：提升为管理员或给非管理员分配 ci 权限" },
+          "409": { "description": "用户名已存在" }
+        }
+      }
+    },
+    "/api/admin/users/{username}": {
+      "put": {
+        "tags": ["Admin", "Users"],
+        "summary": "更新用户（改密码 / 改角色）",
+        "description": "仅更新传入字段：password 非空时改密码；role 传入时改角色。修改或升为 admin/super_admin 需要 ci.users.manage_admin 权限。password 至少 8 位。",
+        "operationId": "adminUserUpdate",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "username",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "目标用户名",
+            "example": "alice"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "minProperties": 1,
+                "properties": {
+                  "password": { "type": "string", "minLength": 8, "description": "新密码（明文，可选，为空则不改）" },
+                  "role": { "type": "string", "description": "新角色名（可选，不传则不改）" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "success": { "type": "boolean", "const": true } }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "description": "越权：改管理员/升管理员权限不足" },
+          "404": { "description": "用户不存在" }
+        }
+      },
+      "delete": {
+        "tags": ["Admin", "Users"],
+        "summary": "删除用户",
+        "description": "删除指定后台用户。限制：1) 根账号（.env ADMIN_USER）任何人都不可删；2) 不能删除自己；3) 删除 admin/super_admin 角色需要 ci.users.manage_admin 权限。",
+        "operationId": "adminUserDelete",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "username",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "目标用户名",
+            "example": "alice"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "删除成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "success": { "type": "boolean", "const": true } }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "description": "越权：删管理员/删自己/删根账号" },
+          "404": { "description": "用户不存在" }
+        }
+      }
+    },
+    "/api/admin/roles": {
+      "get": {
+        "tags": ["Admin", "RBAC"],
+        "summary": "列出所有角色及权限",
+        "description": "返回角色列表，每个角色附带展开后的权限键数组。is_system=true 表示系统内置角色，不可删除、不可修改权限。",
+        "operationId": "adminRoleList",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "角色列表",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/RoleEntry" } }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/401" },
+          "500": { "$ref": "#/components/responses/500" }
+        }
+      },
+      "post": {
+        "tags": ["Admin", "RBAC"],
+        "summary": "新建角色",
+        "description": "创建自定义角色。仅 ci.users.manage_admin 权限可创建。permissions 传入时后端会自动展开隐含权限，并只保留权限表中已定义的 key。is_system 始终为 0（非内置）。",
+        "operationId": "adminRoleCreate",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name"],
+                "properties": {
+                  "name": { "type": "string", "description": "角色名称（唯一）", "example": "custom_viewer" },
+                  "description": { "type": "string", "description": "角色描述", "example": "只读查看人员" },
+                  "permissions": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "权限键数组（无需传隐含权限，后端自动展开）",
+                    "example": ["cd.build-manage", "ci.trigger"]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "创建成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "const": true },
+                    "id": { "type": "integer" },
+                    "name": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "description": "非 ci.users.manage_admin 权限" },
+          "409": { "description": "角色名已存在" }
+        }
+      }
+    },
+    "/api/admin/roles/{id}": {
+      "put": {
+        "tags": ["Admin", "RBAC"],
+        "summary": "更新角色（名称 / 描述 / 权限，权限全量替换）",
+        "description": "仅 ci.users.manage_admin 权限可调用。仅允许修改自定义角色（is_system=0）。name 改了会级联同步 admin_users.role 中引用该旧名称的记录。只要传入 permissions key（即使是空数组）就会全量替换该角色的权限，且后端自动展开隐含权限。",
+        "operationId": "adminRoleUpdate",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer" },
+            "description": "角色 ID",
+            "example": 5
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "minProperties": 1,
+                "properties": {
+                  "name": { "type": "string", "description": "新名称（可选，需唯一，修改会级联更新用户角色引用）" },
+                  "description": { "type": "string", "description": "新描述（可选，空则不改）" },
+                  "permissions": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "权限键数组（存在此 key 即全量替换，含空数组 = 清空所有权限）"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "success": { "type": "boolean", "const": true } }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "description": "非 ci.users.manage_admin 或修改系统内置角色" },
+          "404": { "description": "角色不存在" },
+          "409": { "description": "新名称与其他角色冲突" }
+        }
+      },
+      "delete": {
+        "tags": ["Admin", "RBAC"],
+        "summary": "删除角色",
+        "description": "仅 ci.users.manage_admin 权限可调用。仅允许删除自定义角色（is_system=0）。仍有用户绑定此角色时拒绝删除，返回 400 role.in_use。删除时级联清理 role_permissions 关联记录。",
+        "operationId": "adminRoleDelete",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer" },
+            "description": "角色 ID",
+            "example": 5
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "删除成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "success": { "type": "boolean", "const": true } }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "description": "非 ci.users.manage_admin 或删除系统内置角色" },
+          "404": { "description": "角色不存在" }
         }
       }
     }

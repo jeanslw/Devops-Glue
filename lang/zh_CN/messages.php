@@ -429,4 +429,46 @@ return [
     'validation.invalid_perm_key'      => '权限键格式不合法（应为 xx.yyy 形式）',
     'validation.perm_not_found'        => '权限键不存在于 permissions 表',
     'permission.builtin_protected'     => '系统内置权限不可删除',
+
+    // 权限管理界面
+    'admin.sidebar_permissions'        => '权限管理',
+    'admin.sidebar_perm_list'          => '权限列表',
+    'admin.sidebar_perm_register'      => '权限注册',
+    'admin.sidebar_implied_rules'      => '隐含规则',
+
+    // 权限列表
+    'perm.list_title'      => '📋 权限列表',
+    'perm.list_hint'       => '系统当前支持的所有权限键。权限由各子系统（CI/CD）通过 API 动态注册，管理员在此查看即可。',
+    'perm.key'             => '权限键',
+    'perm.description'     => '描述',
+    'perm.parent_key'      => '父级键',
+    'perm.created_at'      => '创建时间',
+    'perm.no_permissions'  => '暂无权限数据',
+
+    // 权限注册
+    'perm.register_title'  => '➕ 权限注册',
+    'perm.register_hint'   => '手动注册新权限（通常由 CD 项目自动注册，此界面用于特殊情况）。',
+    'perm.key_placeholder' => '例: cd.deploy',
+    'perm.desc_placeholder'=> '例：部署管理',
+    'perm.parent_placeholder'=> '例：cd.deploy-manage（可选）',
+    'perm.key_format'      => '格式：小写字母、数字、点号、下划线',
+    'perm.register_btn'    => '注册',
+    'perm.key_required'    => '权限键不能为空',
+    'perm.desc_required'   => '描述不能为空',
+    'perm.register_ok'     => '权限注册成功',
+
+    // 隐含规则
+    'implied.title'        => '🔗 隐含规则管理',
+    'implied.add_rule'     => '＋ 新增规则',
+    'implied.list_hint'    => '权限隐含关系：勾选源权限时自动拥有目标权限。',
+    'implied.source_key'   => '源权限',
+    'implied.target_key'   => '目标权限',
+    'implied.source_hint'  => '拥有此权限时',
+    'implied.target_hint'  => '自动拥有此权限',
+    'implied.no_rules'     => '暂无隐含规则',
+    'implied.both_required'=> '源权限和目标权限都必须选择',
+    'implied.cannot_same'  => '源权限和目标权限不能相同',
+    'implied.confirm_delete'=> '确定删除此隐含规则？',
+    'implied.add_ok'       => '隐含规则添加成功',
+    'implied.delete_ok'    => '隐含规则已删除',
 ];

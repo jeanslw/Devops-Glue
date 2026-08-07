@@ -97,6 +97,13 @@ CREATE TABLE IF NOT EXISTS `role_permissions` (
     PRIMARY KEY (`role_id`, `perm_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- ── 11. implied_rules（权限隐含关系；数据驱动，CD 可通过 API 注册）──
+CREATE TABLE IF NOT EXISTS `implied_rules` (
+    `source_key` VARCHAR(128) NOT NULL,
+    `target_key` VARCHAR(128) NOT NULL,
+    PRIMARY KEY (`source_key`, `target_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- ── 索引 ──
 -- 注：首次建库和迁移都通过下方 _add_index 过程处理（兼容 DATETIME / TEXT 两种列类型）
 -- 这里不放裸 CREATE INDEX，避免重复执行时报 1061（重复键名）
