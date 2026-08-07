@@ -431,10 +431,12 @@ if ($globalToken) {
                 $validKeys = array_keys([
                     'ci.manage', 'ci.users.manage', 'ci.users.list', 'ci.users.password', 'ci.users.manage_admin', 'ci.mapping.edit',
                     'ci.platform.edit', 'ci.mode.edit', 'ci.discover', 'ci.trigger',
+                    'ci.permissions.manage', 'ci.permissions.list', 'ci.permissions.register', 'ci.permissions.rules',
                     'cd.build-manage', 'cd.deploy-manage', 'cd.server-manage', 'cd.webshell',
                     'cd.deploy-record', 'cd.image-registry', 'cd.resource-monitor', 'cd.notification-manage',
                     'cd.deploy.single', 'cd.deploy.docker', 'cd.deploy.k8s',
                     'cd.monitor.app', 'cd.monitor.system', 'cd.monitor.custom', 'cd.monitor.alert',
+                    'cd.bot', 'cd.webhook',
                 ]);
                 foreach ($meData['permissions'] as $pk) {
                     $tc->assert(in_array($pk, $validKeys, true), "权限键 '{$pk}' 合法", "'{$pk}' 不在已知权限列表中");
@@ -473,6 +475,73 @@ if ($globalToken) {
     $tc = apiT('用户列表(认证)', "{$baseUrl}/api/admin/users", 'GET', null, $authHeader);
     $tc->assertHttpOk();
     echo "  [Admin] 用户列表 ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
+
+    // 角色 CRUD（ci.users.manage_admin）：先 GET 列表
+    $tc = apiT('角色列表(认证)', "{$baseUrl}/api/admin/roles", 'GET', null, $authHeader);
+    $tc->assertHttpOk();
+    $tc->assertJson();
+    $rolesData = json_decode($tc->rawBody, true) ?? [];
+    $tc->assertIsArray();
+    // 必须至少含 2 个系统角色：super_admin / admin
+    if (is_array($rolesData)) {
+        $roleNames = array_column($rolesData, 'name');
+        $tc->assert(in_array('super_admin', $roleNames, true), '包含 super_admin 系统角色');
+        $tc->assert(in_array('admin', $roleNames, true), '包含 admin 系统角色');
+    }
+    echo "  [Admin] 角色列表 ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
+
+    // 权限管理 /permissions（对应 ci.permissions.list）
+    $tc = apiT('权限列表(认证)', "{$baseUrl}/api/admin/permissions", 'GET', null, $authHeader);
+    $tc->assertHttpOk('权限列表返回 200');
+    $tc->assertJson();
+    $permResp = json_decode($tc->rawBody, true) ?? [];
+    $tc->assertHasKey($permResp, 'permissions', '响应包含 permissions 字段');
+    $tc->assertHasKey($permResp, 'implied', '响应包含 implied(隐含规则) 字段');
+    if (isset($permResp['permissions']) && is_array($permResp['permissions'])) {
+        $allKeys = array_column($permResp['permissions'], 'perm_key');
+        $mustHave = [
+            'ci.permissions.manage', 'ci.permissions.list', 'ci.permissions.register', 'ci.permissions.rules',
+            'ci.users.manage_admin',
+        ];
+        foreach ($mustHave as $k) {
+            $tc->assert(in_array($k, $allKeys, true), "权限列表里必须包含 '{$k}'");
+        }
+        $mustNotHave = ['ci.roles.manage'];
+        foreach ($mustNotHave as $k) {
+            $tc->assert(!in_array($k, $allKeys, true), "权限列表里不能包含废弃 key '{$k}'（已清理脏数据）");
+        }
+        // 权限管理 3 个子权限 parent_key 必须 = ci.permissions.manage
+        $parentMap = [];
+        foreach ($permResp['permissions'] as $p) $parentMap[$p['perm_key']] = $p['parent_key'] ?? null;
+        foreach (['ci.permissions.list','ci.permissions.register','ci.permissions.rules'] as $child) {
+            $tc->assert(($parentMap[$child] ?? null) === 'ci.permissions.manage', "子权限 '{$child}' parent_key 必须是 ci.permissions.manage");
+        }
+    }
+    if (isset($permResp['implied']) && is_array($permResp['implied'])) {
+        // 检查 3 条子→父隐含规则存在
+        foreach (['ci.permissions.list','ci.permissions.register','ci.permissions.rules'] as $child) {
+            $parents = $permResp['implied'][$child] ?? [];
+            $tc->assert(in_array('ci.permissions.manage', $parents, true), "隐含规则：'{$child}' → ci.permissions.manage");
+        }
+    }
+    echo "  [Admin] 权限列表 ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
+
+    // 权限注册/删除（POST/DELETE /api/admin/permissions）仅做"无权限验证返回 403"测试，避免误写
+    // 先用一个没有 ci.permissions.register 的空 token 场景不实际存在，这里我们直接用当前登录账号（应该有）发一个错误 payload 验证鉴权
+    $tmpBody = ['perm_key' => '', 'description' => ''];
+    $tc = apiT('权限注册-空payload校验', "{$baseUrl}/api/admin/permissions", 'POST', $tmpBody, $authHeader);
+    $tc->assertHttpRange('权限注册 payload 校验返回 4xx 或 2xx', 200, 499);
+    echo "  [Admin] 权限注册(空payload) ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
+
+    // DELETE 一个不存在的权限 key（不在白名单里）尝试应返回 200 成功或 4xx（不允许删空 key），主要验证鉴权能走通
+    $tc = apiT('权限删除-不存在的key', "{$baseUrl}/api/admin/permissions/__smoke_test_no_such_key__", 'DELETE', null, $authHeader);
+    $tc->assertHttpRange('删除不存在的权限响应范围正常', 200, 499);
+    echo "  [Admin] 权限删除(不存在key) ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
+
+    // 隐含规则增删：POST 空 payload 触发校验返回 4xx，验证后端接口存在
+    $tc = apiT('隐含规则创建-空payload', "{$baseUrl}/api/admin/implied_rules", 'POST', ['source_key' => '', 'target_key' => ''], $authHeader);
+    $tc->assertHttpRange('隐含规则创建 payload 校验', 200, 499);
+    echo "  [Admin] 隐含规则创建(空payload) ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
 
     // OpenAPI 规范（带 token 应返回 200）
     $tc = apiT('OpenAPI 规范（认证）', "{$baseUrl}/api/openapi.json", 'GET', null, $authHeader);

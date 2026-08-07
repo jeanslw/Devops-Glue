@@ -20,7 +20,8 @@
     { "name": "Build", "description": "Build / Pipeline (Jenkins + GitLab CI)" },
     { "name": "Git", "description": "Code Repository Branches" },
     { "name": "Harbor", "description": "Image Registry & Security Scan" },
-    { "name": "Admin", "description": "Admin Panel (Bearer Token required)" }
+    { "name": "Admin", "description": "Admin Panel (Bearer Token required)" },
+    { "name": "RBAC", "description": "Role & Permission Management (data-driven; includes permission registration, implied rules, role CRUD)" }
   ],
   "components": {
     "securitySchemes": {

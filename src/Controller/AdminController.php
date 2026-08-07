@@ -920,10 +920,13 @@ class AdminController extends BaseController
         }
     }
 
-    /** GET /api/admin/permissions — 列出所有可用权限（含 parent_key 层级 + implied 隐含规则） */
+    /** GET /api/admin/permissions — 列出所有可用权限（含 parent_key 层级 + implied 隐含规则），对应权限列表子菜单 */
     public function permissionList(Request $request, Response $response): Response
     {
         if ($err = $this->authCheck($request, $response)) return $err;
+        if (!$this->hasPermission(AppConfig::PERM_CI_PERMISSIONS_LIST)) {
+            return $this->jsonError($response, 'auth.forbidden', 403);
+        }
         try {
             $pdo = \App\Service\Database::getPdo();
             $rows = $pdo->query("SELECT perm_key, description, parent_key FROM " . AppConfig::TABLE_PERMISSIONS . " ORDER BY perm_key")->fetchAll();
@@ -952,7 +955,7 @@ class AdminController extends BaseController
     public function permissionRegister(Request $request, Response $response): Response
     {
         if ($err = $this->authCheck($request, $response)) return $err;
-        if ($this->currentRole !== AppConfig::ROLE_SUPER_ADMIN) {
+        if (!$this->hasPermission(AppConfig::PERM_CI_PERMISSIONS_REGISTER)) {
             return $this->jsonError($response, 'auth.forbidden', 403);
         }
         $body = json_decode((string)$request->getBody(), true) ?: [];
@@ -982,7 +985,7 @@ class AdminController extends BaseController
     public function permissionDelete(Request $request, Response $response, array $args): Response
     {
         if ($err = $this->authCheck($request, $response)) return $err;
-        if ($this->currentRole !== AppConfig::ROLE_SUPER_ADMIN) {
+        if (!$this->hasPermission(AppConfig::PERM_CI_PERMISSIONS_REGISTER)) {
             return $this->jsonError($response, 'auth.forbidden', 403);
         }
         $permKey = $args['perm_key'] ?? '';
@@ -1012,7 +1015,7 @@ class AdminController extends BaseController
     public function impliedRuleCreate(Request $request, Response $response): Response
     {
         if ($err = $this->authCheck($request, $response)) return $err;
-        if ($this->currentRole !== AppConfig::ROLE_SUPER_ADMIN) {
+        if (!$this->hasPermission(AppConfig::PERM_CI_PERMISSIONS_RULES)) {
             return $this->jsonError($response, 'auth.forbidden', 403);
         }
         $body = json_decode((string)$request->getBody(), true) ?: [];
@@ -1044,7 +1047,7 @@ class AdminController extends BaseController
     public function impliedRuleDelete(Request $request, Response $response): Response
     {
         if ($err = $this->authCheck($request, $response)) return $err;
-        if ($this->currentRole !== AppConfig::ROLE_SUPER_ADMIN) {
+        if (!$this->hasPermission(AppConfig::PERM_CI_PERMISSIONS_RULES)) {
             return $this->jsonError($response, 'auth.forbidden', 403);
         }
         $params = $request->getQueryParams();

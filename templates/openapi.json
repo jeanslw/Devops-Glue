@@ -20,7 +20,8 @@
     { "name": "Build", "description": "构建/Pipeline（Jenkins + GitLab CI）" },
     { "name": "Git", "description": "代码仓库分支" },
     { "name": "Harbor", "description": "镜像仓库与安全扫描" },
-    { "name": "Admin", "description": "管理后台（需 Bearer Token）" }
+    { "name": "Admin", "description": "管理后台（需 Bearer Token）" },
+    { "name": "RBAC", "description": "权限与角色管理（数据驱动，含权限注册、隐含规则、角色管理）" }
   ],
   "components": {
     "securitySchemes": {

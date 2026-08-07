@@ -1,4 +1,4 @@
-# Devops-Glue Admin Manual v2.4.2
+# Devops-Glue API Admin Manual v2.4
 
 ## Table of Contents
 

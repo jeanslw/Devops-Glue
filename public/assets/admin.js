@@ -82,8 +82,9 @@ function doLogout() {
             }
         } catch(e) {}
     }
-    // 角色管理子菜单仅拥有 ci.users.manage_admin 权限的用户可见
+    // 按权限显隐：用户管理分组 + 角色管理（独立） + 权限管理分组
     applyRoleMenuVisibility();
+    applyPermMenuVisibility();
 })();
 
 /** 根据权限控制用户管理分组及子菜单显隐 */
@@ -93,10 +94,30 @@ function applyRoleMenuVisibility() {
     var rolesItem = document.querySelector('.submenu .menu-item[data-tab="roles"]');
     var passwordItem = document.querySelector('.submenu .menu-item[data-tab="password"]');
     if (listItem) listItem.style.display = hasPermission('ci.users.list') ? '' : 'none';
+    // 角色管理回到上一版：权限为 ci.users.manage_admin（含管理员用户 + 角色CRUD）
     if (rolesItem) rolesItem.style.display = hasPermission('ci.users.manage_admin') ? '' : 'none';
     if (passwordItem) passwordItem.style.display = hasPermission('ci.users.password') ? '' : 'none';
     // 父菜单组可见条件：至少有一个子菜单项可见；任一子权限都会通过 IMPLIED_PERMISSIONS 自动带上 ci.users.manage
-    var showGroup = hasPermission('ci.users.list') || hasPermission('ci.users.manage_admin') || hasPermission('ci.users.password');
+    var showGroup = hasPermission('ci.users.list')
+        || hasPermission('ci.users.manage_admin')
+        || hasPermission('ci.users.password');
+    if (group) group.style.display = showGroup ? '' : 'none';
+}
+
+/** 根据权限控制「权限管理」分组及子菜单显隐（细粒度，每个子菜单独立权限） */
+function applyPermMenuVisibility() {
+    var group = document.getElementById('menu-group-perms');
+    var listItem = document.querySelector('#menu-group-perms .submenu .menu-item[data-tab="perm-list"]');
+    var registerItem = document.querySelector('#menu-group-perms .submenu .menu-item[data-tab="perm-register"]');
+    var rulesItem = document.querySelector('#menu-group-perms .submenu .menu-item[data-tab="implied-rules"]');
+    var listOk = hasPermission('ci.permissions.list');
+    var registerOk = hasPermission('ci.permissions.register');
+    var rulesOk = hasPermission('ci.permissions.rules');
+    if (listItem) listItem.style.display = listOk ? '' : 'none';
+    if (registerItem) registerItem.style.display = registerOk ? '' : 'none';
+    if (rulesItem) rulesItem.style.display = rulesOk ? '' : 'none';
+    // 父菜单组可见条件：至少有一个子菜单项可见
+    var showGroup = listOk || registerOk || rulesOk;
     if (group) group.style.display = showGroup ? '' : 'none';
 }
 
@@ -149,6 +170,7 @@ async function doLogin() {
                 }
             } catch(e) {}
             applyRoleMenuVisibility();
+            applyPermMenuVisibility();
             document.getElementById('login-page').style.display = 'none';
             document.getElementById('app-page').style.display = 'block';
             document.getElementById('top-user').textContent = '👤 ' + currentUserName;

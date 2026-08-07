@@ -1,4 +1,4 @@
-# Devops-Glue Technical Guide v2.4.2
+# Devops-Glue API Technical Guide v2.4
 
 > This document is intended for developers, operations engineers, and troubleshooting. It covers all business logic, data flows, database table structures, and common issues.
 
@@ -588,46 +588,85 @@ If only `ref` is present without other parameters, auto-convert to `{branches: r
 - If `.env` `ADMIN_PASSWORD` is empty → allow directly
 - Otherwise verify token (supports Bearer or Query String `?token=`)
 
-#### 5.9.4 RBAC Permission System (v2.4.1)
+#### 5.9.4 RBAC Permission System (v2.4, Data-Driven)
 
-The system uses a role-based access control (RBAC) model with three database tables:
+The system uses a role-based access control (RBAC) model with **all tables stored in the database and fully manageable from the admin UI** (no code changes required when CD adds new menus/modules).
 
 | Table | Purpose |
 |---|---|
 | `roles` | Role definitions: `id`, `name`, `description`, `is_system`, `created_at` |
-| `permissions` | Permission catalog: `id`, `key` (dot-delimited, e.g. `cd.deploy.k8s`), `parent_key`, `description`, `created_at` |
-| `role_permissions` | Many-to-many join: `role_id`, `permission_key` |
+| `permissions` | Permission catalog: `perm_key` (dot/hyphen-delimited, e.g. `cd.deploy.k8s` / `cd.build-manage`), `description`, `parent_key`, `created_at` |
+| `role_permissions` | Many-to-many join: `role_id`, `perm_key` |
+| `implied_rules` | **Implied permission rules** (separate table): `source_key`, `target_key` — having `source_key` automatically grants `target_key` |
 
 **System role:**
 - `super_admin` is the only built-in system role (`is_system=1`) — cannot be edited or deleted from the UI
 - It uses `'*'` as a wildcard permission set (defined in `AppConfig::DEFAULT_ROLES`)
 - The root user from `seedAdmin()` defaults to `super_admin`
 
-**Permission catalog (23 total):**
+**Built-in permission catalog (seeded into DB on first boot):**
 
 | Category | Count | Keys |
 |---|---|---|
 | CI | 8 | `ci.manage`, `ci.users.manage`, `ci.users.manage_admin`, `ci.mapping.edit`, `ci.platform.edit`, `ci.mode.edit`, `ci.discover`, `ci.trigger` |
-| CD Level 1 | 8 | `cd.build-manage`, `cd.deploy-manage`, `cd.server-manage`, `cd.webshell`, `cd.deploy-record`, `cd.image-registry`, `cd.resource-monitor`, `cd.notification-manage` |
-| CD Level 2 | 7 | `cd.deploy.single`/`docker`/`k8s`, `cd.monitor.app`/`system`/`custom`/`alert` |
+| CD Level-1 menus | 8 | `cd.build-manage`, `cd.deploy-manage`, `cd.server-manage`, `cd.webshell`, `cd.deploy-record`, `cd.image-registry`, `cd.resource-monitor`, `cd.notification-manage` |
+| CD Level-2 submenus | 9 | `cd.deploy.single`/`docker`/`k8s`, `cd.monitor.app`/`system`/`custom`/`alert`, `cd.bot` (Bot Config), `cd.webhook` (WebHook Config) |
 
-**Implied permissions** (`AppConfig::IMPLIED_PERMISSIONS` + frontend `IMPLIED_PERMISSIONS`):
-- `cd.build-manage` → `ci.trigger` (Build Management implies Trigger Build)
+> **Permission key naming convention**
+> - Level-1 menus: `{module}.{menu-name}` (hyphens, e.g. `cd.build-manage`)
+> - Level-2 menus: `{module}.{group}.{menu-name}` (underscores/hyphens mixed, e.g. `cd.deploy.single`)
+> - Regex validation: `^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_-]*)+$`
 
-**Database seeding:**
-- Built-in roles and permissions are seeded in `ensureTables()` via `REPLACE INTO`
-- `DEFAULT_PERMISSIONS` in `AppConfig.php` stores canonical English names (UI uses i18n keys for display)
-- When adding a new permission: insert into `permissions` table + add i18n keys in both lang files
+**Implied rules (correct direction):**
+- Only **child → parent** direction is allowed (tick a level-2 menu → its level-1 menu is automatically visible)
+  - `cd.deploy.*` → `cd.deploy-manage`
+  - `cd.monitor.*` → `cd.resource-monitor`
+  - `cd.bot` / `cd.webhook` → `cd.notification-manage`
+- ❌ **Never** add parent → child direction (this causes a reverse-dependency bug: "cannot revoke child permissions while parent menu is kept")
+- One special rule: `cd.build-manage` → `ci.trigger` (Build Mgmt implies Trigger Build)
 
-**API endpoint** (`v2.4.1`):
-- `GET /api/admin/me/permissions` — returns current user's role and permissions (valid token only, no admin required)
-- `super_admin` returns `permissions: "*"` (wildcard); other roles return an array of permission keys
+**Database seeding & fallback:**
+- On first boot, `seedAdmin()` UPSERTs `AppConfig::DEFAULT_PERMISSIONS` and `IMPLIED_PERMISSIONS` into DB
+- **All read paths go through DB** (permission list, implied-relation expansion, role permissions); only when DB is broken do we fall back to the PHP constants (avoid hard failures)
+- Dynamically-registered permissions (via admin UI) go into DB the same way; built-in keys (in `DEFAULT_PERMISSIONS`) are protected and cannot be deleted
+- When CD adds a new menu permission:
+  - Way 1 (preferred): Admin UI → Permission Registration → Implied Rules page add child→parent → done (**zero code change**)
+  - Way 2 (persistent seed): Update `AppConfig.php` constants + sync i18n `role.perm_{key}` in `lang/*/messages.php` (dots become underscores), restart backend for auto-UPSERT
+
+**API endpoints (v2.4, grouped under RBAC tag in Swagger UI):**
+
+| Method | Path | Description | Permission Required |
+|---|---|---|---|
+| GET | `/api/admin/permissions` | List all permissions (perm_key + parent_key + description) + implied-relations dict | Bearer Token + admin login |
+| POST | `/api/admin/permissions` | Register new permission (body: `{ perm_key, description, parent_key? }`) | super_admin |
+| DELETE | `/api/admin/permissions/{perm_key}` | Delete permission (cascades `role_permissions` + `implied_rules`; built-in keys are protected) | super_admin |
+| POST | `/api/admin/implied_rules` | Register implied rule (body: `{ source_key, target_key }`) | super_admin |
+| DELETE | `/api/admin/implied_rules` | Delete implied rule (query: `source_key=&target_key=`) | super_admin |
+| GET | `/api/admin/roles` | Role list — each role carries its `permissions` array | Bearer Token + admin login |
+| POST | `/api/admin/roles` | Create custom role (body: `{ name, description, permissions }`; backend auto-expands implied keys) | `ci.users.manage_admin` |
+| PUT | `/api/admin/roles/{id}` | Update custom role (name/description/permissions; `is_system=1` is locked) | `ci.users.manage_admin` |
+| DELETE | `/api/admin/roles/{id}` | Delete custom role (400 `role.in_use` when any user still binds it) | `ci.users.manage_admin` |
+| PUT | `/api/admin/users/{username}/role` | Change user's role (admin role change requires higher privilege) | `ci.users.manage` |
+| GET | `/api/admin/me/permissions` | Current user's role + permission list (super_admin → `permissions: "*"` wildcard; others → implied-expanded array) | Valid Bearer Token only |
+
+**Implied-relation expansion logic** (`expandPermissions()`):
+```php
+// Pull implied_rules table in one shot
+foreach ($perms as $pk) {
+    if (isset($implied[$pk])) {
+        $result = array_merge($result, $implied[$pk]);
+    }
+}
+```
+Primary path: DB; falls back to `AppConfig::IMPLIED_PERMISSIONS` constants on DB failure.
 
 **Permission check logic** (`hasPermission($permKey)`):
 ```php
 if ($role === 'super_admin') return true;  // hardcoded bypass
-// Otherwise: JOIN roles → role_permissions → permissions and check
+// Otherwise: loadUserPermissions() JOINs role_permissions → fetches perm_keys,
+//            expandPermissions() unfolds implied keys, then in_array() compares
 ```
+The expanded permission array is cached in `$this->userPermissions` and reused within a single request.
 
 ---
 
@@ -865,4 +904,4 @@ When adding/modifying table structures, simultaneously update the following file
 
 ---
 
-*Document version: v2.4.2 | Last updated: 2026-07-30*
+*Document version: v2.4 | Last updated: 2026-08-08*

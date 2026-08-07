@@ -304,13 +304,17 @@ class AppConfigTest extends TestCase
             return false;
         };
         $implied = AppConfig::IMPLIED_PERMISSIONS;
+        $checkedPairs = 0;
         foreach ($implied as $key => $children) {
             foreach ($children as $child) {
                 if (isset($implied[$child]) && in_array($key, $implied[$child], true)) {
                     $this->assertTrue($isAllowed($key, $child), "隐含权限循环：'{$key}' → '{$child}' → '{$key}'");
+                    $checkedPairs++;
                 }
             }
         }
+        // 至少要验证过一次空断言，避免 risky（如果真没循环，显式 assertTrue 一次记录检查次数）
+        $this->assertTrue(true, "未发现非法隐含循环（已检查 {$checkedPairs} 对双向边）");
     }
 
     public function testParentChildRelationship(): void
@@ -323,6 +327,77 @@ class AppConfigTest extends TestCase
         $this->assertContains(AppConfig::PERM_CI_USERS_MANAGE, $implied[AppConfig::PERM_CI_USERS_LIST], 'ci.users.list 必须隐含 ci.users.manage');
         $this->assertContains(AppConfig::PERM_CI_USERS_MANAGE, $implied[AppConfig::PERM_CI_USERS_PASSWORD], 'ci.users.password 必须隐含 ci.users.manage');
         $this->assertContains(AppConfig::PERM_CI_USERS_MANAGE, $implied[AppConfig::PERM_CI_USERS_MANAGE_ADMIN], 'ci.users.manage_admin 必须隐含 ci.users.manage');
+        // CI 权限管理：1 父 3 子，子 → 父隐含
+        $this->assertArrayHasKey(AppConfig::PERM_CI_PERMISSIONS_LIST, $implied);
+        $this->assertArrayHasKey(AppConfig::PERM_CI_PERMISSIONS_REGISTER, $implied);
+        $this->assertArrayHasKey(AppConfig::PERM_CI_PERMISSIONS_RULES, $implied);
+        $this->assertContains(AppConfig::PERM_CI_PERMISSIONS_MANAGE, $implied[AppConfig::PERM_CI_PERMISSIONS_LIST], 'ci.permissions.list 必须隐含 ci.permissions.manage');
+        $this->assertContains(AppConfig::PERM_CI_PERMISSIONS_MANAGE, $implied[AppConfig::PERM_CI_PERMISSIONS_REGISTER], 'ci.permissions.register 必须隐含 ci.permissions.manage');
+        $this->assertContains(AppConfig::PERM_CI_PERMISSIONS_MANAGE, $implied[AppConfig::PERM_CI_PERMISSIONS_RULES], 'ci.permissions.rules 必须隐含 ci.permissions.manage');
+    }
+
+    // ── 权限 key 结构一致性：本次改动的专项测试 ──
+
+    public function testDeprecatedRolesManageKeyIsGone(): void
+    {
+        // v2.4.2 撤销 ci.roles.manage，不能再出现在 DEFAULT_PERMISSIONS / 常量 / IMPLIED_PERMISSIONS 里
+        $defaultKeys = array_keys(AppConfig::DEFAULT_PERMISSIONS);
+        $this->assertNotContains('ci.roles.manage', $defaultKeys, "废弃 key 'ci.roles.manage' 不能存在于 DEFAULT_PERMISSIONS");
+        // 反射所有 PERM_* 公共常量，确认没有值为 ci.roles.manage
+        $r = new \ReflectionClass(AppConfig::class);
+        foreach ($r->getConstants(\ReflectionClassConstant::IS_PUBLIC) as $name => $value) {
+            if (str_starts_with($name, 'PERM_') && is_string($value)) {
+                $this->assertNotSame('ci.roles.manage', $value, "常量 {$name} 不能指向废弃 key 'ci.roles.manage'");
+            }
+        }
+        foreach (AppConfig::IMPLIED_PERMISSIONS as $src => $targets) {
+            $this->assertNotSame('ci.roles.manage', $src, "IMPLIED 源 key 不能是废弃的 'ci.roles.manage'");
+            $this->assertNotContains('ci.roles.manage', $targets, "IMPLIED 目标 key 里不能包含废弃的 'ci.roles.manage'");
+        }
+    }
+
+    public function testPermissionsManagementOneParentThreeChildren(): void
+    {
+        $defaults = AppConfig::DEFAULT_PERMISSIONS;
+        $defaultKeys = array_keys($defaults);
+        $children = [
+            AppConfig::PERM_CI_PERMISSIONS_LIST,
+            AppConfig::PERM_CI_PERMISSIONS_REGISTER,
+            AppConfig::PERM_CI_PERMISSIONS_RULES,
+        ];
+        // 1) 四个权限都在白名单里
+        $this->assertContains(AppConfig::PERM_CI_PERMISSIONS_MANAGE, $defaultKeys, 'ci.permissions.manage 必须在 DEFAULT_PERMISSIONS');
+        foreach ($children as $c) $this->assertContains($c, $defaultKeys, "子权限 '{$c}' 必须在 DEFAULT_PERMISSIONS");
+        // 2) 父级 parent_key 为 null；三个子级 parent_key 均为 ci.permissions.manage
+        $this->assertNull($this->extractParent($defaults, AppConfig::PERM_CI_PERMISSIONS_MANAGE), 'ci.permissions.manage parent_key 必须为 null');
+        foreach ($children as $c) {
+            $this->assertSame(AppConfig::PERM_CI_PERMISSIONS_MANAGE, $this->extractParent($defaults, $c), "子权限 '{$c}' 的 parent_key 必须是 ci.permissions.manage");
+        }
+        // 3) 三个子权限都定义了子 → 父隐含关系
+        foreach ($children as $c) {
+            $this->assertArrayHasKey($c, AppConfig::IMPLIED_PERMISSIONS, "子权限 '{$c}' 必须在 IMPLIED_PERMISSIONS 中定义子→父隐含");
+        }
+    }
+
+    public function testCiUsersManageAdminStillCoversRoles(): void
+    {
+        // 撤销 ci.roles.manage 后，ci.users.manage_admin 必须：仍在 DEFAULT_PERMISSIONS，parent 指向 ci.users.manage
+        $defaults = AppConfig::DEFAULT_PERMISSIONS;
+        $this->assertArrayHasKey(AppConfig::PERM_CI_USERS_MANAGE_ADMIN, $defaults, 'ci.users.manage_admin 必须存在（已恢复上一版）');
+        $this->assertSame(AppConfig::PERM_CI_USERS_MANAGE, $this->extractParent($defaults, AppConfig::PERM_CI_USERS_MANAGE_ADMIN), 'ci.users.manage_admin parent 必须是 ci.users.manage');
+    }
+
+    public function testNoDuplicatePermissionsInDefaults(): void
+    {
+        $keys = array_keys(AppConfig::DEFAULT_PERMISSIONS);
+        $this->assertCount(count(array_unique($keys)), $keys, 'DEFAULT_PERMISSIONS 里不能有重复 key');
+    }
+
+    private function extractParent(array $defaults, string $key): mixed
+    {
+        $def = $defaults[$key];
+        if (is_array($def)) return $def['parent'] ?? null;
+        return null;
     }
 
     // ── getHarborConfig ──

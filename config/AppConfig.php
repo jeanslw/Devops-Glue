@@ -32,6 +32,10 @@ class AppConfig
     public const PERM_CI_USERS_LIST         = 'ci.users.list';
     public const PERM_CI_USERS_PASSWORD     = 'ci.users.password';
     public const PERM_CI_USERS_MANAGE_ADMIN = 'ci.users.manage_admin';
+    public const PERM_CI_PERMISSIONS_MANAGE   = 'ci.permissions.manage';    // 权限管理一级父（权限管理分组）
+    public const PERM_CI_PERMISSIONS_LIST     = 'ci.permissions.list';      // 权限列表查看
+    public const PERM_CI_PERMISSIONS_REGISTER = 'ci.permissions.register';  // 权限注册/删除
+    public const PERM_CI_PERMISSIONS_RULES    = 'ci.permissions.rules';     // 隐含规则增删
     public const PERM_CI_MAPPING_EDIT       = 'ci.mapping.edit';
     public const PERM_CI_PLATFORM_EDIT      = 'ci.platform.edit';
     public const PERM_CI_MODE_EDIT          = 'ci.mode.edit';
@@ -51,12 +55,16 @@ class AppConfig
 
     /** 默认权限种子数据：key => ['name' => '显示名', 'parent' => null|parent_key]（英文规范数据，UI 通过 i18n 翻译） */
     public const DEFAULT_PERMISSIONS = [
-        // CI（10 个：1 个父菜单 + 3 个子菜单 + 6 个独立权限）
+        // CI（18 个：用户管理1父4子 + 权限管理1父3子 + 6 个独立权限 + 权限管理父）
         self::PERM_CI_MANAGE             => ['name' => 'CI Config', 'parent' => null],
         self::PERM_CI_USERS_MANAGE       => ['name' => 'User Management', 'parent' => null],
         self::PERM_CI_USERS_LIST         => ['name' => 'User List', 'parent' => self::PERM_CI_USERS_MANAGE],
         self::PERM_CI_USERS_PASSWORD     => ['name' => 'Change Password', 'parent' => self::PERM_CI_USERS_MANAGE],
         self::PERM_CI_USERS_MANAGE_ADMIN => ['name' => 'Roles', 'parent' => self::PERM_CI_USERS_MANAGE],
+        self::PERM_CI_PERMISSIONS_MANAGE   => ['name' => 'Permission Management', 'parent' => null],
+        self::PERM_CI_PERMISSIONS_LIST     => ['name' => 'Permission List', 'parent' => self::PERM_CI_PERMISSIONS_MANAGE],
+        self::PERM_CI_PERMISSIONS_REGISTER => ['name' => 'Permission Register', 'parent' => self::PERM_CI_PERMISSIONS_MANAGE],
+        self::PERM_CI_PERMISSIONS_RULES    => ['name' => 'Implied Rules', 'parent' => self::PERM_CI_PERMISSIONS_MANAGE],
         self::PERM_CI_MAPPING_EDIT       => ['name' => 'Edit Mapping', 'parent' => null],
         self::PERM_CI_PLATFORM_EDIT      => ['name' => 'Edit Platform', 'parent' => null],
         self::PERM_CI_MODE_EDIT          => ['name' => 'Edit Build Mode', 'parent' => null],
@@ -96,6 +104,9 @@ class AppConfig
         self::PERM_CI_USERS_LIST         => [self::PERM_CI_USERS_MANAGE],
         self::PERM_CI_USERS_PASSWORD     => [self::PERM_CI_USERS_MANAGE],
         self::PERM_CI_USERS_MANAGE_ADMIN => [self::PERM_CI_USERS_MANAGE],
+        self::PERM_CI_PERMISSIONS_LIST     => [self::PERM_CI_PERMISSIONS_MANAGE],
+        self::PERM_CI_PERMISSIONS_REGISTER => [self::PERM_CI_PERMISSIONS_MANAGE],
+        self::PERM_CI_PERMISSIONS_RULES    => [self::PERM_CI_PERMISSIONS_MANAGE],
         'cd.deploy.single'  => [self::PERM_CD_DEPLOY],
         'cd.deploy.docker'  => [self::PERM_CD_DEPLOY],
         'cd.deploy.k8s'     => [self::PERM_CD_DEPLOY],

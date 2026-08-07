@@ -1,4 +1,4 @@
-# Devops-Glue FAQ v2.4.2
+# Devops-Glue API FAQ v2.4
 
 ## Table of Contents
 
@@ -260,9 +260,9 @@ The password in `.env` and the password in `admin_users` table are out of sync.
 
 The login endpoint `POST /api/admin/login` returns a 64-character hex token valid for 24 hours. Re-login after expiration. Changing the password invalidates all existing tokens.
 
-### Q: What roles are available? (v2.4.1)
+### Q: What roles are available? (v2.4)
 
-The system has a role-based access control (RBAC) system. There is only one built-in system role:
+The system has a role-based access control (RBAC) system. **Everything is data-driven: permission keys and implied rules are stored in DB and fully manageable from the admin UI.** There is only one built-in system role:
 
 | Role | Type | Editable | Description |
 |---|---|---|---|
@@ -272,7 +272,7 @@ All other roles are custom roles created by administrators. You can create any n
 
 ### Q: How are permissions organized?
 
-Permissions are divided into **CI** and **CD** categories with a two-level hierarchy:
+Permissions are divided into **CI** and **CD** categories with a two-level hierarchy (parent/child menus):
 
 **CI (8 permissions — no hierarchy):**
 - Full Admin Access, User Management, Manage Admin Accounts
@@ -284,62 +284,86 @@ Permissions are divided into **CI** and **CD** categories with a two-level hiera
 - Web Shell, Deploy Records, Image Registry
 - Resource Monitor, Notification Management
 
-**CD Level 2 (7 permissions — sub-items):**
-- Deploy: Deploy to Single Machine, Deploy to Docker, Deploy to K8S
+**CD Level 2 (9 permissions — sub-items):**
+- Deploy: Single Machine, Docker, K8S
 - Monitor: App Resources, System Resources, Custom Resources, Alert Rules
+- Notification: Bot Config (`cd.bot`), WebHook Config (`cd.webhook`)
 
-Total: **23 permissions**. The list is data-driven — adding a new permission only requires inserting a row in the `permissions` table, no code changes needed.
+Total: **25 built-in permissions**. The permission system is fully data-driven. Adding a new CD menu permission can be done two ways:
+
+- **Recommended (no code):** Admin UI → Permission Registration → fill in `perm_key` + `description` + `parent_key` → on Implied Rules page add a child→parent rule → done, not a single line of code changed
+- **Persistent seed (with code):** Update `DEFAULT_PERMISSIONS` + `IMPLIED_PERMISSIONS` in `AppConfig.php` + i18n `role.perm_{key}` (dots become underscores) in both `lang/*/messages.php`, restart backend for auto-UPSERT
 
 ### Q: What are "implied permissions"?
 
-Some parent permissions automatically include their children. Currently:
+Implied rules live in the dedicated `implied_rules` table (`source_key` → `target_key`), meaning "having A automatically grants B". Direction **MUST strictly follow**:
 
-- `cd.build-manage` (Build Management) → automatically includes `ci.trigger` (Trigger Build)
+- ✅ **Child → Parent**: e.g. having `cd.bot` automatically shows the parent `cd.notification-manage` menu
+- ❌ **Parent → Child (prohibited)**: adding this direction causes a reverse-dependency bug: "child permissions cannot be revoked while the parent menu is retained"
 
-When you assign "Build Management" to a role, the user automatically gets the ability to trigger builds as well. This is handled by `AppConfig::IMPLIED_PERMISSIONS` (backend) and `IMPLIED_PERMISSIONS` (frontend) — both must be kept in sync.
+**Built-in implied rules:**
+- All `cd.deploy.*` → `cd.deploy-manage`
+- All `cd.monitor.*` → `cd.resource-monitor`
+- `cd.bot` / `cd.webhook` → `cd.notification-manage`
+- `cd.build-manage` → `ci.trigger` (Build Management implies Trigger Build — a special cross-module rule)
+
+Implied rules can be added/removed dynamically via the Admin UI → Implied Rules page. No code changes required.
 
 ### Q: How to create a custom role?
 
-1. Log in as `super_admin`
-2. Go to "Role Management" (visible only to `super_admin`)
-3. Click "Create Role", enter a role name and display name
-4. Check the permissions you want to grant
-5. Save — the role appears immediately in the role list and user creation dropdown
+1. Log in with an account that has `ci.users.manage_admin` (typically `super_admin`)
+2. Go to "Role Management"
+3. Click "Create Role", enter a role name and description, check the permissions you want to grant
+4. Save — the backend **auto-expands implied permissions** before writing; the role appears immediately in the role list and user creation dropdown
+5. When updating later, any `permissions` array (even empty) passed in fully replaces the role's permission set
 
 ### Q: Why can't I edit or delete the super_admin role?
 
 `super_admin` is a system role (`is_system=1`). System roles:
 - Cannot be edited or deleted from the UI (locked with a padlock icon)
-- Have `'*'` as their permission set (always includes all permissions — no need to list all 23 individually)
+- Have `'*'` as their permission set (always includes all permissions — no need to list every key)
 - Their description is rendered via i18n (`user.role_super_admin`), not stored in the database
 
 ### Q: Why does a role show `user.role_xxx` instead of a readable name?
 
 The display name for system roles comes from i18n translation keys (`user.role_{name}`). If you see a raw key like `user.role_builder`, it means the translation is missing. Add the corresponding key in `lang/zh_CN/messages.php` and `lang/en/messages.php`. Custom roles use their `description` field from the database.
 
-### Q: What is `/api/admin/me/permissions`? (v2.4.1)
+> **Permission display names** follow the same pattern: the permission picker reads Chinese labels from the `role.perm_{key}` (dots → underscores) i18n key. For permissions dynamically registered via Admin UI's "Permission Registration", the `description` field is used first, then falls back to the raw key if the i18n entry is missing.
 
-`GET /api/admin/me/permissions` returns the current user's role and permission list. It only requires a valid Bearer token (no admin privileges needed).
+### Q: What is `/api/admin/me/permissions`? (v2.4)
+
+`GET /api/admin/me/permissions` returns the current user's role and permission list. It only requires a valid Bearer token — **no admin privileges needed** (this is exactly how the CD frontend retrieves permissions).
 
 Response format:
 ```json
 {
-  "role": "builder",
+  "role": "deployer",
   "permissions": ["ci.trigger", "cd.build-manage"]
 }
 ```
 
-For `super_admin`, `permissions` is `"*"` (wildcard meaning all permissions).
+For `super_admin`, `permissions` is `"*"` (wildcard meaning all permissions). **For all other roles, the returned array is already the final implied-expanded set** — callers can just use `includes()`, no client-side expansion needed.
 
 ### Q: How does CD check user permissions?
 
-The CD frontend can call `GET /api/admin/me/permissions` to get the current user's permissions, then check if a given permission key is present. For example:
+The CD frontend calls `GET /api/admin/me/permissions` to get the current user's permissions, then checks if a given permission key is present. For example:
 ```js
-var perms = await fetch('/api/admin/me/permissions');
+var perms = await fetch('/api/admin/me/permissions').then(r=>r.json());
 if (perms.permissions === '*' || perms.permissions.includes('cd.deploy.k8s')) {
     // show K8S deploy button
 }
 ```
+
+For CI's own admin panel (`admin.html`), the built-in helper `hasPermission('xxx')` does the same check.
+
+### Q: CD added a new menu. What must I do to bring it under permission management?
+
+**No code changes required.** As `super_admin`, just do two steps in the Admin UI:
+
+1. **Permission Registration** → fill `perm_key` (e.g. `cd.your-new-menu`) + `description` + `parent_key` (for level-2 menus, point to the level-1 parent key)
+2. **Implied Rules** → if it has a parent menu, add one rule `source_key=cd.your-new-menu, target_key=<parent_key>` (child→parent direction)
+
+After that, the new permission appears in Role Edit screens and you can assign it to any role. Only when you also need a persistent DB seed or Chinese display label do you need to touch the code.
 
 ### Q: How to create a new admin account?
 
@@ -526,4 +550,4 @@ No. API responses always return raw data. i18n only affects the frontend UI and 
 
 ---
 
-*Document version: v2.4.2 | Last updated: 2026-07-30*
+*Document version: v2.4 | Last updated: 2026-08-08*

@@ -1,4 +1,4 @@
-# Devops-Glue API Reference v2.4.2
+# Devops-Glue API Reference v2.4
 
 Base URL: `http://your-domain.com/api`
 
@@ -178,7 +178,13 @@ All admin endpoints require Bearer Token (obtained via `POST /api/admin/login`).
 | `/api/admin/platform_versions` | GET/PUT | Platform API version config |
 | `/api/admin/build_mode` | GET/PUT | Build mode (jenkins/gitlab_ci/both) |
 | `/api/admin/users` | GET/POST/PUT/DELETE | User management (v2.4.0) |
-| `/api/admin/me/permissions` | GET | Get current user's permissions (v2.4.1) |
+| `/api/admin/users/{username}/role` | PUT | Change user's role |
+| `/api/admin/roles` | GET/POST | Role list / Create custom role |
+| `/api/admin/roles/{id}` | PUT/DELETE | Update / Delete custom role |
+| `/api/admin/permissions` | GET/POST | Permission catalog / Register new permission |
+| `/api/admin/permissions/{perm_key}` | DELETE | Delete permission |
+| `/api/admin/implied_rules` | POST/DELETE | Create / Delete implied permission rule |
+| `/api/admin/me/permissions` | GET | Get current user's permissions (super_admin returns wildcard `"*"`) |
 
 ---
 

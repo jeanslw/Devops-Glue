@@ -65,7 +65,10 @@
         .feat-card h4 { font-size:17px; margin-bottom:6px; font-weight:700; }
         .feat-card p  { font-size:13px; opacity:.82; line-height:1.6; }
 
-        .footer { text-align:center; padding:16px; color:rgba(255,255,255,.35); font-size:11px; border-top:1px solid rgba(255,255,255,.06); margin-top:32px; }
+        .footer { text-align:center; padding:16px; color:rgba(255,255,255,.55); font-size:12px; border-top:1px solid rgba(255,255,255,.08); margin-top:32px; line-height:1.8; }
+        .footer a { color:rgba(255,255,255,.75); text-decoration:none; }
+        .footer a:hover { color:#fff; text-decoration:underline; }
+        .footer-sep { color:rgba(255,255,255,.3); margin:0 6px; }
 
         @media (max-width:768px) {
             .features { grid-template-columns:1fr 1fr; gap:14px; }
@@ -99,9 +102,8 @@
                 <option value="en" data-i18n="lang.en">English</option>
             </select>
         </span>
-        <a href="/admin" data-i18n="index.admin">⚙️ 管理</a>
+        <a href="/admin" data-i18n="index.admin">🔑 登录</a>
         <a href="#" onclick="var t=sessionStorage.getItem('admin_token');location.href='/api/docs'+(t?'?token='+t:'')" data-i18n="index.docs">📖 文档</a>
-        <a href="mailto:jeanslw@qq.com" data-i18n="index.support">💬 技术支持</a>
     </div>
 </nav>
 
@@ -156,7 +158,15 @@
 
 </div>
 
-<footer class="footer" data-i18n="index.footer">Copyright &copy; 2026 jeanslw &nbsp;|&nbsp; Devops-Glue</footer>
+<footer class="footer">
+    Copyright &copy; 2026 jeanslw
+    <span class="footer-sep">|</span>
+    <a href="https://github.com/jeanslw/Devops-Glue" target="_blank" rel="noopener">Devops-Glue</a>
+    <span class="footer-sep">|</span>
+    <a href="https://github.com/jeanslw/Devops_CD" target="_blank" rel="noopener">Devops-CD</a>
+    <span class="footer-sep">|</span>
+    💬 <a href="mailto:jeanslw@qq.com"><span data-i18n="index.support">技术支持</span></a>
+</footer>
 
 <script src="/assets/i18n.js"></script>
 <script>(function(){var l=new URLSearchParams(location.search).get('lang');if(l==='zh'||l==='zh_CN'||l==='zh-CN')l='zh-CN';else if(l==='en')l='en';else l=null;if(l)localStorage.setItem('dg_lang',l);__.init(l);})();</script>

@@ -1,12 +1,12 @@
-# Devops-Glue API v2.4.0
-Devops-Glue 是基于 Slim4 为小团队打造的 DevOps 工具链集成平台。统一 API 管理 Jenkins + GitLab CI 双通道构建、GitLab / Gitee / GitHub / Gitea 多平台代码、以及 Harbor 镜像仓库——覆盖从 CI 到 CD 的完整流程。双语界面，角色权限分级。
+# Devops-Glue API v2.4
+Devops-Glue API 是基于 Slim4 为小团队打造的 DevOps 工具链集成平台。统一 API 管理 Jenkins + GitLab CI 双通道构建、GitLab / Gitee / GitHub / Gitea 多平台代码、以及 Harbor 镜像仓库——覆盖从 CI 到 CD 的完整流程。双语界面，数据驱动的角色权限分级（RBAC）。
 
 > **不是大厂遥控器——是小团队的瑞士军刀。**
 
 > **[英文版](README.md)**
 
-![系统概览](system_info.png)
-![运行状态](system_running.png)
+![系统概览](system_info_zh.png)
+![运行状态](system_running_zh.png)
 
 ## 功能特性
 
@@ -15,7 +15,7 @@ Devops-Glue 是基于 Slim4 为小团队打造的 DevOps 工具链集成平台�
 - **多平台 Git** — GitLab · GitHub · Gitee · Gitea，自托管或 SaaS 均可
 - **全链路映射** — Job ↔ Git 仓库 ↔ Harbor 镜像，构建→代码→产物自动关联
 - **安全扫描审计** — SAST、密钥扫描、依赖漏洞检测，通过 Commit Status 回写
-- **角色权限分级** — `super_admin` > `admin` > `deployer` > `viewer`，四级 RBAC
+- **角色权限分级（数据驱动 RBAC）** — `super_admin` > `admin` > `deployer` > `viewer`，权限键与隐含规则全部存数据库，后台 UI 直接管理；新增 CD 菜单/模块时无需改代码。
 - **管理面板** — 服务监控、映射配置、安全扫描、用户管理
 - **零配置启动** — 默认 SQLite，一键切换 MySQL / MariaDB
 

@@ -1,5 +1,5 @@
-# Devops-Glue API v2.4.0
-Devops-Glue is a DevOps toolchain integration platform built on Slim4 for small teams. A unified API to manage Jenkins + GitLab CI dual-channel builds, GitLab / Gitee / GitHub / Gitea multi-platform code, and Harbor image registry — covering the full CI-to-CD workflow. Bilingual interface, role-based access control.
+# Devops-Glue API v2.4
+Devops-Glue API is a DevOps toolchain integration platform built on Slim4 for small teams. A unified API to manage Jenkins + GitLab CI dual-channel builds, GitLab / Gitee / GitHub / Gitea multi-platform code, and Harbor image registry — covering the full CI-to-CD workflow. Bilingual interface, data-driven role-based access control (RBAC).
 
 > **Not a big-company remote control — a Swiss Army knife for small teams.**
 
@@ -15,7 +15,7 @@ Devops-Glue is a DevOps toolchain integration platform built on Slim4 for small 
 - **Multi-Platform Git** — GitLab · GitHub · Gitee · Gitea, self-hosted or SaaS
 - **Full-Chain Mapping** — Job ↔ Git repo ↔ Harbor image, build→code→artifact auto-association
 - **Security Scan Audit** — SAST, secret scanning, dependency vulns written back via Commit Status
-- **Role-Based Access** — `super_admin` > `admin` > `deployer` > `viewer`, 4-tier RBAC
+- **Role-Based Access (Data-Driven RBAC)** — `super_admin` > `admin` > `deployer` > `viewer`. Permission keys and implied rules are stored in DB and fully managed via the admin UI; no code change required when new menus/modules are added.
 - **Admin Dashboard** — service monitoring, mapping config, security scan, user management
 - **Zero-Config Startup** — SQLite by default, MySQL / MariaDB with one-click switch
 
