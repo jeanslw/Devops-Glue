@@ -1326,7 +1326,11 @@ var IMPLIED_PERMISSIONS = {
     'cd.monitor.app': ['cd.resource-monitor'],
     'cd.monitor.system': ['cd.resource-monitor'],
     'cd.monitor.custom': ['cd.resource-monitor'],
-    'cd.monitor.alert': ['cd.resource-monitor']
+    'cd.monitor.alert': ['cd.resource-monitor'],
+    // 通知管理 ↔ Bot/WebHook 双向
+    'cd.bot': ['cd.notification-manage'],
+    'cd.webhook': ['cd.notification-manage'],
+    'cd.notification-manage': ['cd.bot', 'cd.webhook']
 };
 
 /** 勾选/取消权限时联动其隐含目标权限 */

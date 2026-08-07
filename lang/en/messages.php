@@ -410,6 +410,8 @@ return [
     'role.perm_cd_image-registry'     => 'Image Registry',
     'role.perm_cd_resource-monitor'   => 'Resource Monitor',
     'role.perm_cd_notification-manage' => 'Notification Management',
+    'role.perm_cd_bot'                => 'Bot Config',
+    'role.perm_cd_webhook'            => 'WebHook Config',
     'role.perm_cd_deploy_single'       => 'Deploy to SSH',
     'role.perm_cd_deploy_docker'       => 'Deploy to Docker',
     'role.perm_cd_deploy_k8s'          => 'Deploy to K8S',

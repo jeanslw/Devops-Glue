@@ -408,6 +408,8 @@ return [
     'role.perm_cd_image-registry'     => '镜像仓库',
     'role.perm_cd_resource-monitor'   => '资源监控',
     'role.perm_cd_notification-manage' => '通知管理',
+    'role.perm_cd_bot'                => '机器人配置',
+    'role.perm_cd_webhook'            => 'WebHook 配置',
     'role.perm_cd_deploy_single'       => 'SSH 部署',
     'role.perm_cd_deploy_docker'       => '部署到 Docker',
     'role.perm_cd_deploy_k8s'          => '部署到 K8S',

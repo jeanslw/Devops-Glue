@@ -290,11 +290,24 @@ class AppConfigTest extends TestCase
     public function testImpliedPermissionsNoCyclicDependency(): void
     {
         // 简单检测：A→B 且 B→A 构成循环
+        // 例外：cd.notification-manage ↔ cd.bot / cd.webhook 是有意设计的双向（勾父自动有子，勾子自动显示父菜单）
+        $allowedCyclic = [
+            [AppConfig::PERM_CD_NOTIFY, AppConfig::PERM_CD_BOT],
+            [AppConfig::PERM_CD_NOTIFY, AppConfig::PERM_CD_WEBHOOK],
+        ];
+        $isAllowed = function($a, $b) use ($allowedCyclic) {
+            foreach ($allowedCyclic as $pair) {
+                if (($pair[0] === $a && $pair[1] === $b) || ($pair[0] === $b && $pair[1] === $a)) {
+                    return true;
+                }
+            }
+            return false;
+        };
         $implied = AppConfig::IMPLIED_PERMISSIONS;
         foreach ($implied as $key => $children) {
             foreach ($children as $child) {
-                if (isset($implied[$child])) {
-                    $this->assertNotContains($key, $implied[$child], "隐含权限循环：'{$key}' → '{$child}' → '{$key}'");
+                if (isset($implied[$child]) && in_array($key, $implied[$child], true)) {
+                    $this->assertTrue($isAllowed($key, $child), "隐含权限循环：'{$key}' → '{$child}' → '{$key}'");
                 }
             }
         }

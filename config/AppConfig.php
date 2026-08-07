@@ -45,6 +45,8 @@ class AppConfig
     public const PERM_CD_REGISTRY = 'cd.image-registry';
     public const PERM_CD_MONITOR = 'cd.resource-monitor';
     public const PERM_CD_NOTIFY  = 'cd.notification-manage';
+    public const PERM_CD_BOT     = 'cd.bot';
+    public const PERM_CD_WEBHOOK = 'cd.webhook';
 
     /** 默认权限种子数据：key => ['name' => '显示名', 'parent' => null|parent_key]（英文规范数据，UI 通过 i18n 翻译） */
     public const DEFAULT_PERMISSIONS = [
@@ -68,6 +70,9 @@ class AppConfig
         self::PERM_CD_REGISTRY           => ['name' => 'Image Registry', 'parent' => null],
         self::PERM_CD_MONITOR            => ['name' => 'Resource Monitor', 'parent' => null],
         self::PERM_CD_NOTIFY             => ['name' => 'Notification Management', 'parent' => null],
+        // CD 三级菜单（通知管理下挂 Bot / WebHook，2 个）
+        self::PERM_CD_BOT                => ['name' => 'Bot Config', 'parent' => self::PERM_CD_NOTIFY],
+        self::PERM_CD_WEBHOOK            => ['name' => 'WebHook Config', 'parent' => self::PERM_CD_NOTIFY],
         // CD 二级菜单（7 个）
         'cd.deploy.single'  => ['name' => 'Deploy to SSH', 'parent' => self::PERM_CD_DEPLOY],
         'cd.deploy.docker'  => ['name' => 'Deploy to Docker', 'parent' => self::PERM_CD_DEPLOY],
@@ -97,6 +102,12 @@ class AppConfig
         'cd.monitor.system' => [self::PERM_CD_MONITOR],
         'cd.monitor.custom' => [self::PERM_CD_MONITOR],
         'cd.monitor.alert'  => [self::PERM_CD_MONITOR],
+        // 通知管理 ↔ Bot/WebHook 双向
+        //   子→父：选了 Bot/WebHook 自动显示「通知管理」一级菜单
+        //   父→子：选了「通知管理」自动拥有 Bot + WebHook 子权限
+        self::PERM_CD_BOT     => [self::PERM_CD_NOTIFY],
+        self::PERM_CD_WEBHOOK => [self::PERM_CD_NOTIFY],
+        self::PERM_CD_NOTIFY  => [self::PERM_CD_BOT, self::PERM_CD_WEBHOOK],
     ];
 
     /** 默认角色种子数据：只有 root 内置，'*' 表示拥有所有权限 */
