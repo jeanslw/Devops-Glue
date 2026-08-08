@@ -2,6 +2,11 @@ name: Security Check
 
 on: [push, pull_request]
 
+# 显式声明最小权限，避免 workflow 获得默认的 write-all 令牌
+# 此 workflow 仅做本地只读检查（lint + grep 密钥扫描），无任何写入操作
+permissions:
+  contents: read
+
 jobs:
   security:
     runs-on: ubuntu-latest
