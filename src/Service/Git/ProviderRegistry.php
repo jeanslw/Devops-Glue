@@ -11,6 +11,11 @@ class ProviderRegistry
 
     private ?Logger $logger = null;
 
+    public function __construct(?Logger $logger = null)
+    {
+        $this->logger = $logger;
+    }
+
     /**
      * 注册一个 Git 平台 Provider
      *
@@ -24,11 +29,6 @@ class ProviderRegistry
             'matcher' => $matcher,
             'factory' => $factory,
         ];
-    }
-
-    public function setLogger(Logger $logger): void
-    {
-        $this->logger = $logger;
     }
 
     /**

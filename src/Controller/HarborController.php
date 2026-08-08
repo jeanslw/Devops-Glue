@@ -4,13 +4,15 @@ namespace App\Controller;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Service\HarborService;
+use App\Service\I18nService;
 
 class HarborController extends BaseController
 {
     private HarborService $harbor;
 
-    public function __construct(HarborService $harbor)
+    public function __construct(I18nService $i18n, HarborService $harbor)
     {
+        parent::__construct($i18n);
         $this->harbor = $harbor;
     }
 

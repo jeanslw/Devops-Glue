@@ -12,14 +12,16 @@ class AutoDiscover
     private AppConfig $config;
     private MappingManager $mapping;
     private ?Logger $logger;
+    private ?Client $gitlabClient = null;
 
-    public function __construct(JenkinsService $jenkins, ProviderRegistry $gitRegistry, AppConfig $config, MappingManager $mapping, ?Logger $logger = null)
+    public function __construct(JenkinsService $jenkins, ProviderRegistry $gitRegistry, AppConfig $config, MappingManager $mapping, ?Logger $logger = null, ?Client $gitlabClient = null)
     {
         $this->jenkins     = $jenkins;
         $this->gitRegistry = $gitRegistry;
         $this->config      = $config;
         $this->mapping     = $mapping;
         $this->logger      = $logger;
+        $this->gitlabClient = $gitlabClient;
     }
 
     public function discover(): array
@@ -141,23 +143,18 @@ class AutoDiscover
         $found = [];
         $glCfg = $this->config->getGitlabConfig();
         $base  = rtrim($glCfg['base_url'] ?? '', '/');
-        $token = $glCfg['token'] ?? '';
-        if (empty($base) || empty($token)) return $found;
+        if (empty($base) || !$this->gitlabClient) return $found;
 
         try {
-            $client = new Client([
-                'headers' => ['PRIVATE-TOKEN' => $token],
-                'timeout' => 10, 'connect_timeout' => 5, 'http_errors' => false,
-            ]);
             // 快速验证认证
-            $test = $client->get("{$base}/api/v4/user");
+            $test = $this->gitlabClient->get("{$base}/api/v4/user");
             if ($test->getStatusCode() === 401) {
                 throw new \RuntimeException('GitLab Token 无效，请检查 GITLAB_TOKEN');
             }
             $page = 1;
             $seen = [];  // 归一化 key，仅本 provider 内去重
             while ($page <= 10) {
-                $resp = $client->get("{$base}/api/v4/projects?per_page=100&page={$page}&membership=true&order_by=last_activity_at");
+                $resp = $this->gitlabClient->get("{$base}/api/v4/projects?per_page=100&page={$page}&membership=true&order_by=last_activity_at");
                 $data = json_decode($resp->getBody(), true);
                 if (!is_array($data) || empty($data)) break;
 

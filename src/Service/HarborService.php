@@ -9,14 +9,12 @@ class HarborService
     private Client $client;
     private ?string $apiVersion = null;
     private ?Logger $logger = null;
+    private \PDO $pdo;
 
-    public function __construct(Client $harborClient)
+    public function __construct(Client $harborClient, \PDO $pdo, ?Logger $logger = null)
     {
         $this->client = $harborClient;
-    }
-
-    public function setLogger(Logger $logger): void
-    {
+        $this->pdo    = $pdo;
         $this->logger = $logger;
     }
 
@@ -50,7 +48,7 @@ class HarborService
 
         // 从缓存读取（1h TTL），避免每次请求都探测
         try {
-            $pdo = \App\Service\Database::getPdo();
+            $pdo = $this->pdo;
             $row = $pdo->prepare("SELECT value FROM " . \App\Config\AppConfig::TABLE_CACHE . " WHERE cache_key = '" . \App\Config\AppConfig::CACHE_KEY_HARBOR_VERSION . "' AND expires_at > ?");
             $row->execute([time()]);
             $cached = $row->fetch();
@@ -94,7 +92,7 @@ class HarborService
         }
         // 缓存探测结果（1h TTL），避免后续请求重复 API 调用
         try {
-            $pdo = \App\Service\Database::getPdo();
+            $pdo = $this->pdo;
             $sql = \App\Service\Database::sqlUpsert(\App\Config\AppConfig::TABLE_CACHE, 'cache_key, value, expires_at', '?, ?, ?');
             $pdo->prepare($sql)->execute([\App\Config\AppConfig::CACHE_KEY_HARBOR_VERSION, $this->apiVersion, time() + \App\Config\AppConfig::TTL_CACHE]);
         } catch (\Exception $e) {}

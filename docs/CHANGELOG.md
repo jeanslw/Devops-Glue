@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.4.3 (2026-08-08)
+- **安全加固** — `/api/build/*`、`/api/git/*`、`/api/harbor/*` 路由组全部纳入 AuthMiddleware 认证，消除未鉴权调用风险
+- **Slim 4 最佳实践重构** — 鉴权逻辑从 Controller 移至 AuthMiddleware 中间件；PDO、Logger 等依赖统一改为构造函数注入；消除服务定位器反模式、setter 注入
+- **TokenService 抽取** — 统一封装 token 验证、权限查询、token 撤销逻辑，消除 AuthMiddleware / AdminController / MainController 三处重复 SQL
+- **Admin 接口性能优化** — AuthMiddleware 一次性查询并注入 userPermissions，消除 AdminController 每次权限检查的冗余 DB 查询
+- **前端适配** — admin.js 中 build 接口的 `<a>` 链接改为 fetch + authHeaders + 剪贴板复制
+
 ## v2.4.2 (2026-07-31)
 - **权限管理重构（数据驱动 RBAC）** — 权限 key、父级层级、隐含关系全部存 DB，后台 UI 可直接注册/删除。
 - **RBAC 角色/权限编辑 UI** — 角色编辑支持可视化权限分组。

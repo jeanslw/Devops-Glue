@@ -8,6 +8,7 @@ use App\Service\AutoDiscover;
 use App\Service\HarborService;
 use App\Service\MappingManager;
 use App\Service\I18nService;
+use App\Service\TokenService;
 use App\Service\Git\ProviderRegistry;
 use App\Service\Git\GitProviderFactory;
 use App\Service\Build\BuildProviderRegistry;
@@ -19,6 +20,7 @@ use App\Controller\HarborController;
 use App\Controller\AdminController;
 use App\Controller\BuildController;
 use App\Middleware\CorsMiddleware;
+use App\Middleware\AuthMiddleware;
 use App\Service\Logger;
 use GuzzleHttp\Client;
 use Psr\Http\Message\ResponseFactoryInterface;
@@ -30,6 +32,11 @@ return [
     // PSR-17 工厂
     ResponseFactoryInterface::class => function () {
         return new ResponseFactory();
+    },
+
+    // PDO 数据库连接（委托给 Database 单例，由 DI 容器管理注入）
+    \PDO::class => function () {
+        return \App\Service\Database::getPdo();
     },
 
     // 全局配置
@@ -51,7 +58,8 @@ return [
             $c->get(ProviderRegistry::class),
             $c->get(AppConfig::class),
             $c->get(MappingManager::class),
-            $c->get(Logger::class)
+            $c->get(Logger::class),
+            $c->get('gitlabHttpClient')
         );
     },
 
@@ -76,13 +84,29 @@ return [
         return new CorsMiddleware($config->getCorsConfig());
     },
 
+    // Token 验证服务（统一封装 cache token / 旧版 base64 token 验证逻辑）
+    TokenService::class => function (\Psr\Container\ContainerInterface $c) {
+        return new TokenService(
+            $c->get(\PDO::class),
+            $c->get(AppConfig::class)
+        );
+    },
+
+    // 鉴权中间件
+    AuthMiddleware::class => function (\Psr\Container\ContainerInterface $c) {
+        return new AuthMiddleware(
+            $c->get(I18nService::class),
+            $c->get(ResponseFactoryInterface::class),
+            $c->get(TokenService::class)
+        );
+    },
+
     // ---------- Git Provider 注册表 ----------
 
     ProviderRegistry::class => function (\Psr\Container\ContainerInterface $c) {
         $config = $c->get(AppConfig::class);
         $logger  = $c->get(Logger::class);
-        $registry = new ProviderRegistry();
-        $registry->setLogger($logger);
+        $registry = new ProviderRegistry($logger);
 
         // ---- 内置平台（仅已配置的才注册，未配置的不可用也不展示）----
 
@@ -184,9 +208,7 @@ return [
 
     // GitProviderFactory（向后兼容封装）
     GitProviderFactory::class => function (\Psr\Container\ContainerInterface $c) {
-        $factory = new GitProviderFactory();
-        $factory->setRegistry($c->get(ProviderRegistry::class));
-        return $factory;
+        return new GitProviderFactory($c->get(ProviderRegistry::class));
     },
 
     // ---------- Build Provider 注册表 ----------
@@ -194,8 +216,7 @@ return [
     BuildProviderRegistry::class => function (\Psr\Container\ContainerInterface $c) {
         $config   = $c->get(AppConfig::class);
         $logger   = $c->get(Logger::class);
-        $registry = new BuildProviderRegistry();
-        $registry->setLogger($logger);
+        $registry = new BuildProviderRegistry($logger);
 
         // 始终注册已配置的 Provider（BUILD_MODE 仅影响展示/偏好，不再限制注册）
         // 这样 UI 切换模式时无需重启即可生效
@@ -221,90 +242,112 @@ return [
 
     // ---------- Jenkins ----------
     JenkinsService::class => function (\Psr\Container\ContainerInterface $c) {
-        $service = new JenkinsService(
-            $c->get(AppConfig::class)->getJenkinsConfig()
-        );
         try {
-            $service->setLogger($c->get(Logger::class));
+            $logger = $c->get(Logger::class);
         } catch (\Throwable $e) {
-            // Logger 不可用时静默降级
+            $logger = null;
         }
-        return $service;
+        return new JenkinsService(
+            $c->get(AppConfig::class)->getJenkinsConfig(),
+            $logger
+        );
     },
 
     // Git remote 解析
     GitRemoteResolver::class => function (\Psr\Container\ContainerInterface $c) {
         $config = $c->get(AppConfig::class);
-        $service = new GitRemoteResolver(
+        try {
+            $logger = $c->get(Logger::class);
+        } catch (\Throwable $e) {
+            $logger = null;
+        }
+        return new GitRemoteResolver(
             $c->get(JenkinsService::class),
             $c->get(ProviderRegistry::class),
             $config->getJobGitMap(),
             $config->getGitlabConfig(),
             __DIR__ . '/gitlab_id_cache.php',
-            $config->getDefaultGitPlatform()
+            $config->getDefaultGitPlatform(),
+            $logger,
+            $c->get('gitlabHttpClient')
         );
-        try {
-            $service->setLogger($c->get(Logger::class));
-        } catch (\Throwable $e) {
-            // Logger 不可用时静默降级
-        }
-        return $service;
     },
 
     // Git 服务
     GitService::class => function (\Psr\Container\ContainerInterface $c) {
-        $service = new GitService(
-            $c->get(GitRemoteResolver::class),
-            $c->get(ProviderRegistry::class)
-        );
         try {
-            $service->setLogger($c->get(Logger::class));
+            $logger = $c->get(Logger::class);
         } catch (\Throwable $e) {
-            // Logger 不可用时静默降级
+            $logger = null;
         }
-        return $service;
+        return new GitService(
+            $c->get(GitRemoteResolver::class),
+            $c->get(ProviderRegistry::class),
+            $logger
+        );
     },
 
     // Main 控制器
     MainController::class => function (\Psr\Container\ContainerInterface $c) {
-        $ctrl = new \App\Controller\MainController(
+        return new \App\Controller\MainController(
+            $c->get(I18nService::class),
             $c->get(JenkinsService::class),
             $c->get(AppConfig::class),
             $c->get(MappingManager::class),
-            $c->get(HarborService::class)
+            $c->get(\PDO::class),
+            $c->get(HarborService::class),
+            $c->get(TokenService::class)
         );
-        $ctrl->setI18n($c->get(I18nService::class));
-        return $ctrl;
     },
 
     // Admin 控制器
     AdminController::class => function (\Psr\Container\ContainerInterface $c) {
-        $ctrl = new AdminController(
+        return new AdminController(
+            $c->get(I18nService::class),
             $c->get(AppConfig::class),
-            $c->get(AutoDiscover::class)
+            $c->get(\PDO::class),
+            $c->get(AutoDiscover::class),
+            $c->get(TokenService::class)
         );
-        $ctrl->setI18n($c->get(I18nService::class));
-        return $ctrl;
     },
 
     // Build 控制器
     BuildController::class => function (\Psr\Container\ContainerInterface $c) {
-        $ctrl = new BuildController(
+        return new BuildController(
+            $c->get(I18nService::class),
             $c->get(BuildProviderRegistry::class),
             $c->get(AppConfig::class),
             $c->get(MappingManager::class),
+            $c->get(\PDO::class),
             $c->get(HarborService::class),
             $c->get(ProviderRegistry::class)
         );
-        $ctrl->setI18n($c->get(I18nService::class));
-        return $ctrl;
     },
 
     // Git 控制器
     GitController::class => function (\Psr\Container\ContainerInterface $c) {
-        $ctrl = new GitController($c->get(GitService::class));
-        $ctrl->setI18n($c->get(I18nService::class));
-        return $ctrl;
+        return new GitController(
+            $c->get(I18nService::class),
+            $c->get(GitService::class)
+        );
+    },
+
+    // ---------- GitLab HTTP 客户端（共享，供 AutoDiscover / GitRemoteResolver 复用）----------
+
+    'gitlabHttpClient' => function (\Psr\Container\ContainerInterface $c) {
+        $config = $c->get(AppConfig::class);
+        $glCfg  = $config->getGitlabConfig();
+        $base   = rtrim($glCfg['base_url'] ?? '', '/');
+        $token  = $glCfg['token'] ?? '';
+        if (empty($base) || empty($token)) {
+            return null; // GitLab 未配置时返回 null，消费者自行降级
+        }
+        return new Client([
+            'headers'         => ['PRIVATE-TOKEN' => $token],
+            'timeout'         => 10,
+            'connect_timeout' => 5,
+            'http_errors'     => false,
+        ]);
     },
 
     // ---------- Harbor 模块 ----------
@@ -326,18 +369,18 @@ return [
     },
 
     HarborService::class => function (\Psr\Container\ContainerInterface $c) {
-        $service = new HarborService($c->get('harborClient'));
         try {
-            $service->setLogger($c->get(Logger::class));
+            $logger = $c->get(Logger::class);
         } catch (\Throwable $e) {
-            // Logger 不可用时静默降级
+            $logger = null;
         }
-        return $service;
+        return new HarborService($c->get('harborClient'), $c->get(\PDO::class), $logger);
     },
 
     HarborController::class => function (\Psr\Container\ContainerInterface $c) {
-        $ctrl = new HarborController($c->get(HarborService::class));
-        $ctrl->setI18n($c->get(I18nService::class));
-        return $ctrl;
+        return new HarborController(
+            $c->get(I18nService::class),
+            $c->get(HarborService::class)
+        );
     },
 ];

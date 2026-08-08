@@ -5,25 +5,32 @@ use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Config\AppConfig;
 use App\Service\AutoDiscover;
+use App\Service\I18nService;
+use App\Service\TokenService;
 
 class AdminController extends BaseController
 {
     private AppConfig $config;
+    private \PDO $pdo;
     private ?AutoDiscover $autoDiscover;
+    private ?TokenService $tokenService = null;
     private string $currentUser = '';
     private string $currentRole = AppConfig::ROLE_ADMIN;
     private array $userPermissions = [];
 
-    public function __construct(AppConfig $config, ?AutoDiscover $autoDiscover = null)
+    public function __construct(I18nService $i18n, AppConfig $config, \PDO $pdo, ?AutoDiscover $autoDiscover = null, ?TokenService $tokenService = null)
     {
+        parent::__construct($i18n);
         $this->config       = $config;
+        $this->pdo          = $pdo;
         $this->autoDiscover = $autoDiscover;
+        $this->tokenService = $tokenService;
     }
 
     /** POST /api/admin/discover — 自动扫描并保存未入库的项目 */
     public function discover(Request $request, Response $response): Response
     {
-        if ($err = $this->authCheck($request, $response)) return $err;
+        $this->initAuthFromRequest($request);
         if (!$this->autoDiscover) {
             return $this->jsonError($response, 'map.discover_disabled', 503);
         }
@@ -54,7 +61,7 @@ class AdminController extends BaseController
      */
     public function securityChecksList(Request $request, Response $response): Response
     {
-        if ($err = $this->authCheck($request, $response)) return $err;
+        $this->initAuthFromRequest($request);
 
         $params = array_merge(
             $request->getQueryParams(),
@@ -68,7 +75,7 @@ class AdminController extends BaseController
         $perPage   = max(1, min(100, (int)($params['per_page'] ?? 20)));
 
         try {
-            $pdo = \App\Service\Database::getPdo();
+            $pdo = $this->pdo;
 
             $where = [];
             $bind  = [];
@@ -148,7 +155,7 @@ class AdminController extends BaseController
 
         // 优先查数据库
         try {
-            $pdo = \App\Service\Database::getPdo();
+            $pdo = $this->pdo;
             $row = $pdo->prepare("SELECT password_hash, systems, role FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE username = ?");
             $row->execute([$user]);
             $dbUser = $row->fetch();
@@ -189,23 +196,14 @@ class AdminController extends BaseController
             $token = bin2hex(random_bytes(32));
             // 持久化 token，24h 过期
             try {
-                $pdo = \App\Service\Database::getPdo();
+                $pdo = $this->pdo;
                 $sql = \App\Service\Database::sqlUpsert(AppConfig::TABLE_CACHE, 'cache_key, value, expires_at', '?, ?, ?');
                 $pdo->prepare($sql)->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . $token, $user . '|' . $loginRole, time() + AppConfig::TTL_TOKEN]);
             } catch (\Exception $e) {
                 return $this->jsonError($response, 'auth.token_store_failed', 500);
             }
-            // 查询该角色的权限列表
-            $perms = [];
-            try {
-                $permStmt = $pdo->prepare("
-                    SELECT rp.perm_key FROM " . AppConfig::TABLE_ROLE_PERMISSIONS . " rp
-                    JOIN " . AppConfig::TABLE_ROLES . " r ON r.id = rp.role_id
-                    WHERE r.name = ?
-                ");
-                $permStmt->execute([$loginRole]);
-                $perms = $permStmt->fetchAll(\PDO::FETCH_COLUMN);
-            } catch (\Exception $e) {}
+            // 查询该角色的权限列表（复用 TokenService，避免重复 SQL）
+            $perms = $this->tokenService?->loadPermissions($loginRole) ?? [];
 
             return $this->output($response, [
                 'token'       => $token,
@@ -225,13 +223,7 @@ class AdminController extends BaseController
     {
         $header = $request->getHeaderLine('Authorization');
         if (preg_match('/^Bearer\s+(.+)$/i', $header, $m)) {
-            $token = $m[1];
-            try {
-                $pdo = \App\Service\Database::getPdo();
-                $pdo->prepare("DELETE FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key = ?")
-                    ->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . $token]);
-            } catch (\Exception $e) {
-            }
+            $this->tokenService?->revoke($m[1]);
         }
         return $this->output($response, ['message' => 'logged_out'], $request);
     }
@@ -239,7 +231,7 @@ class AdminController extends BaseController
     /** PUT /api/admin/password — 修改密码 */
     public function changePassword(Request $request, Response $response): Response
     {
-        if ($err = $this->authCheck($request, $response)) return $err;
+        $this->initAuthFromRequest($request);
 
         $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
         $oldPass = $body['old_password'] ?? '';
@@ -250,7 +242,7 @@ class AdminController extends BaseController
         }
 
         try {
-            $pdo = \App\Service\Database::getPdo();
+            $pdo = $this->pdo;
             $cred = $this->config->getAdminCredentials();
             $username = $cred['user'];
 
@@ -274,11 +266,11 @@ class AdminController extends BaseController
             // 更新密码
             $hash = password_hash($newPass, PASSWORD_BCRYPT);
             $sql = \App\Service\Database::sqlUpsert(AppConfig::TABLE_ADMIN_USERS, 'username, password_hash, updated_at', '?, ?, ' . \App\Service\Database::sqlNow());
-            \App\Service\Database::getPdo()->prepare($sql)->execute([$username, $hash]);
+            $this->pdo->prepare($sql)->execute([$username, $hash]);
 
             // 密码变更后清除所有旧 token
             try {
-                \App\Service\Database::getPdo()->exec("DELETE FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key LIKE '" . AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . "%'");
+                $this->pdo->exec("DELETE FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key LIKE '" . AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . "%'");
             } catch (\Exception $e) {}
 
             return $this->output($response, ['success' => true, 'message' => $this->__('auth.password_updated')], $request);
@@ -294,7 +286,7 @@ class AdminController extends BaseController
      */
     public function jobGitMapList(Request $request, Response $response): Response
     {
-        if ($err = $this->authCheck($request, $response)) return $err;
+        $this->initAuthFromRequest($request);
 
         $params = array_merge(
             $request->getQueryParams(),
@@ -353,7 +345,7 @@ class AdminController extends BaseController
      */
     public function jobGitMapSave(Request $request, Response $response): Response
     {
-        if ($err = $this->authCheck($request, $response)) return $err;
+        $this->initAuthFromRequest($request);
 
         $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
 
@@ -383,7 +375,7 @@ class AdminController extends BaseController
      */
     public function jobGitMapUpdate(Request $request, Response $response): Response
     {
-        if ($err = $this->authCheck($request, $response)) return $err;
+        $this->initAuthFromRequest($request);
 
         $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
 
@@ -416,7 +408,7 @@ class AdminController extends BaseController
      */
     public function jobGitMapDelete(Request $request, Response $response): Response
     {
-        if ($err = $this->authCheck($request, $response)) return $err;
+        $this->initAuthFromRequest($request);
 
         $jobName = trim($request->getQueryParams()['job_name'] ?? '');
         if ($jobName === '') {
@@ -448,7 +440,7 @@ class AdminController extends BaseController
      */
     public function platformVersionsList(Request $request, Response $response): Response
     {
-        if ($err = $this->authCheck($request, $response)) return $err;
+        $this->initAuthFromRequest($request);
         $versions = $this->config->getPlatformApiVersionsWithSource();
 
         // 附加配置状态
@@ -468,7 +460,7 @@ class AdminController extends BaseController
      */
     public function platformVersionsUpdate(Request $request, Response $response): Response
     {
-        if ($err = $this->authCheck($request, $response)) return $err;
+        $this->initAuthFromRequest($request);
         $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
 
         $versions = $body['versions'] ?? [];
@@ -487,7 +479,7 @@ class AdminController extends BaseController
      */
     public function getBuildMode(Request $request, Response $response): Response
     {
-        if ($err = $this->authCheck($request, $response)) return $err;
+        $this->initAuthFromRequest($request);
         $mode = $this->config->getBuildMode();
 
         // 检查实际可用性（由配置决定，不是模式）
@@ -510,7 +502,7 @@ class AdminController extends BaseController
      */
     public function updateBuildMode(Request $request, Response $response): Response
     {
-        if ($err = $this->authCheck($request, $response)) return $err;
+        $this->initAuthFromRequest($request);
         $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
         $mode = trim($body['mode'] ?? '');
         if (!in_array($mode, [AppConfig::BUILD_MODE_JENKINS, AppConfig::BUILD_MODE_GITLAB_CI, AppConfig::BUILD_MODE_BOTH])) {
@@ -567,10 +559,10 @@ class AdminController extends BaseController
      */
     public function userList(Request $request, Response $response): Response
     {
-        if ($err = $this->authCheck($request, $response)) return $err;
+        $this->initAuthFromRequest($request);
 
         try {
-            $pdo = \App\Service\Database::getPdo();
+            $pdo = $this->pdo;
             if ($this->isAdminRole()) {
                 $rows = $pdo->query("SELECT username, role, systems, updated_at FROM " . AppConfig::TABLE_ADMIN_USERS . " ORDER BY username")->fetchAll();
             } else {
@@ -593,7 +585,7 @@ class AdminController extends BaseController
      */
     public function userCreate(Request $request, Response $response): Response
     {
-        if ($err = $this->authCheck($request, $response)) return $err;
+        $this->initAuthFromRequest($request);
 
         $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
         $username = trim($body['username'] ?? '');
@@ -622,7 +614,7 @@ class AdminController extends BaseController
         }
 
         try {
-            $pdo = \App\Service\Database::getPdo();
+            $pdo = $this->pdo;
             // 检查重名
             $exists = $pdo->prepare("SELECT 1 FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE username = ?");
             $exists->execute([$username]);
@@ -645,7 +637,7 @@ class AdminController extends BaseController
      */
     public function userUpdate(Request $request, Response $response, array $args): Response
     {
-        if ($err = $this->authCheck($request, $response)) return $err;
+        $this->initAuthFromRequest($request);
 
         $targetUser = $args['username'] ?? '';
         if ($targetUser === '') {
@@ -657,7 +649,7 @@ class AdminController extends BaseController
         $role     = isset($body['role']) ? trim($body['role']) : null;
 
         try {
-            $pdo = \App\Service\Database::getPdo();
+            $pdo = $this->pdo;
 
             // 查目标用户信息
             $row = $pdo->prepare("SELECT username, role FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE username = ?");
@@ -712,7 +704,7 @@ class AdminController extends BaseController
      */
     public function userDelete(Request $request, Response $response, array $args): Response
     {
-        if ($err = $this->authCheck($request, $response)) return $err;
+        $this->initAuthFromRequest($request);
 
         $targetUser = $args['username'] ?? '';
         if ($targetUser === '') {
@@ -720,7 +712,7 @@ class AdminController extends BaseController
         }
 
         try {
-            $pdo = \App\Service\Database::getPdo();
+            $pdo = $this->pdo;
 
             // 查目标用户信息
             $row = $pdo->prepare("SELECT username, role FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE username = ?");
@@ -756,9 +748,9 @@ class AdminController extends BaseController
     /** GET /api/admin/roles — 列出所有角色及权限 */
     public function roleList(Request $request, Response $response): Response
     {
-        if ($err = $this->authCheck($request, $response)) return $err;
+        $this->initAuthFromRequest($request);
         try {
-            $pdo = \App\Service\Database::getPdo();
+            $pdo = $this->pdo;
             $roles = $pdo->query("SELECT id, name, description, is_system, created_at FROM " . AppConfig::TABLE_ROLES . " ORDER BY id")->fetchAll();
             $permStmt = $pdo->prepare("SELECT perm_key FROM " . AppConfig::TABLE_ROLE_PERMISSIONS . " WHERE role_id = ?");
             foreach ($roles as &$r) {
@@ -775,7 +767,7 @@ class AdminController extends BaseController
     /** POST /api/admin/roles — 新建角色 */
     public function roleCreate(Request $request, Response $response): Response
     {
-        if ($err = $this->authCheck($request, $response)) return $err;
+        $this->initAuthFromRequest($request);
         if (!$this->hasPermission(AppConfig::PERM_CI_USERS_MANAGE_ADMIN)) {
             return $this->jsonError($response, 'user.cannot_create_admin', 403);
         }
@@ -787,7 +779,7 @@ class AdminController extends BaseController
             return $this->jsonError($response, 'user.invalid_username', 400);
         }
         try {
-            $pdo = \App\Service\Database::getPdo();
+            $pdo = $this->pdo;
             $exists = $pdo->prepare("SELECT 1 FROM " . AppConfig::TABLE_ROLES . " WHERE name = ?");
             $exists->execute([$name]);
             if ($exists->fetch()) {
@@ -813,7 +805,7 @@ class AdminController extends BaseController
     /** PUT /api/admin/roles/{id} — 更新角色（权限列表全覆盖） */
     public function roleUpdate(Request $request, Response $response, array $args): Response
     {
-        if ($err = $this->authCheck($request, $response)) return $err;
+        $this->initAuthFromRequest($request);
         if (!$this->hasPermission(AppConfig::PERM_CI_USERS_MANAGE_ADMIN)) {
             return $this->jsonError($response, 'user.cannot_create_admin', 403);
         }
@@ -832,7 +824,7 @@ class AdminController extends BaseController
         $perms = array_key_exists('permissions', $body) ? $body['permissions'] : null;
 
         try {
-            $pdo = \App\Service\Database::getPdo();
+            $pdo = $this->pdo;
             $role = $pdo->prepare("SELECT id, is_system, name FROM " . AppConfig::TABLE_ROLES . " WHERE id = ?");
             $role->execute([$roleId]);
             $r = $role->fetch();
@@ -890,13 +882,13 @@ class AdminController extends BaseController
     /** DELETE /api/admin/roles/{id} — 删除角色（仅自定义角色） */
     public function roleDelete(Request $request, Response $response, array $args): Response
     {
-        if ($err = $this->authCheck($request, $response)) return $err;
+        $this->initAuthFromRequest($request);
         if (!$this->hasPermission(AppConfig::PERM_CI_USERS_MANAGE_ADMIN)) {
             return $this->jsonError($response, 'user.cannot_create_admin', 403);
         }
         $roleId = (int)($args['id'] ?? 0);
         try {
-            $pdo = \App\Service\Database::getPdo();
+            $pdo = $this->pdo;
             $role = $pdo->prepare("SELECT id, is_system, name FROM " . AppConfig::TABLE_ROLES . " WHERE id = ?");
             $role->execute([$roleId]);
             $r = $role->fetch();
@@ -923,12 +915,12 @@ class AdminController extends BaseController
     /** GET /api/admin/permissions — 列出所有可用权限（含 parent_key 层级 + implied 隐含规则），对应权限列表子菜单 */
     public function permissionList(Request $request, Response $response): Response
     {
-        if ($err = $this->authCheck($request, $response)) return $err;
+        $this->initAuthFromRequest($request);
         if (!$this->hasPermission(AppConfig::PERM_CI_PERMISSIONS_LIST)) {
             return $this->jsonError($response, 'auth.forbidden', 403);
         }
         try {
-            $pdo = \App\Service\Database::getPdo();
+            $pdo = $this->pdo;
             $rows = $pdo->query("SELECT perm_key, description, parent_key FROM " . AppConfig::TABLE_PERMISSIONS . " ORDER BY perm_key")->fetchAll();
             // 附带 implied 关系（数据驱动，前端可直接用）
             $implied = [];
@@ -954,7 +946,7 @@ class AdminController extends BaseController
      */
     public function permissionRegister(Request $request, Response $response): Response
     {
-        if ($err = $this->authCheck($request, $response)) return $err;
+        $this->initAuthFromRequest($request);
         if (!$this->hasPermission(AppConfig::PERM_CI_PERMISSIONS_REGISTER)) {
             return $this->jsonError($response, 'auth.forbidden', 403);
         }
@@ -969,7 +961,7 @@ class AdminController extends BaseController
             return $this->jsonError($response, 'validation.invalid_perm_key', 400);
         }
         try {
-            $pdo = \App\Service\Database::getPdo();
+            $pdo = $this->pdo;
             $sql = \App\Service\Database::sqlUpsert(AppConfig::TABLE_PERMISSIONS, 'perm_key, description, parent_key', '?, ?, ?');
             $pdo->prepare($sql)->execute([$permKey, $desc, $parent]);
             return $this->output($response, ['perm_key' => $permKey, 'description' => $desc, 'parent_key' => $parent], $request);
@@ -984,7 +976,7 @@ class AdminController extends BaseController
      */
     public function permissionDelete(Request $request, Response $response, array $args): Response
     {
-        if ($err = $this->authCheck($request, $response)) return $err;
+        $this->initAuthFromRequest($request);
         if (!$this->hasPermission(AppConfig::PERM_CI_PERMISSIONS_REGISTER)) {
             return $this->jsonError($response, 'auth.forbidden', 403);
         }
@@ -997,7 +989,7 @@ class AdminController extends BaseController
             return $this->jsonError($response, 'permission.builtin_protected', 400);
         }
         try {
-            $pdo = \App\Service\Database::getPdo();
+            $pdo = $this->pdo;
             $pdo->prepare("DELETE FROM " . AppConfig::TABLE_PERMISSIONS . " WHERE perm_key = ?")->execute([$permKey]);
             $pdo->prepare("DELETE FROM " . AppConfig::TABLE_ROLE_PERMISSIONS . " WHERE perm_key = ?")->execute([$permKey]);
             $pdo->prepare("DELETE FROM " . AppConfig::TABLE_IMPLIED_RULES . " WHERE source_key = ? OR target_key = ?")->execute([$permKey, $permKey]);
@@ -1014,7 +1006,7 @@ class AdminController extends BaseController
      */
     public function impliedRuleCreate(Request $request, Response $response): Response
     {
-        if ($err = $this->authCheck($request, $response)) return $err;
+        $this->initAuthFromRequest($request);
         if (!$this->hasPermission(AppConfig::PERM_CI_PERMISSIONS_RULES)) {
             return $this->jsonError($response, 'auth.forbidden', 403);
         }
@@ -1025,7 +1017,7 @@ class AdminController extends BaseController
             return $this->jsonError($response, 'validation.required', 400);
         }
         try {
-            $pdo = \App\Service\Database::getPdo();
+            $pdo = $this->pdo;
             // 校验 source/target 在 permissions 表中存在
             $check = $pdo->prepare("SELECT COUNT(*) FROM " . AppConfig::TABLE_PERMISSIONS . " WHERE perm_key IN (?, ?)");
             $check->execute([$src, $tgt]);
@@ -1046,7 +1038,7 @@ class AdminController extends BaseController
      */
     public function impliedRuleDelete(Request $request, Response $response): Response
     {
-        if ($err = $this->authCheck($request, $response)) return $err;
+        $this->initAuthFromRequest($request);
         if (!$this->hasPermission(AppConfig::PERM_CI_PERMISSIONS_RULES)) {
             return $this->jsonError($response, 'auth.forbidden', 403);
         }
@@ -1057,7 +1049,7 @@ class AdminController extends BaseController
             return $this->jsonError($response, 'validation.required', 400);
         }
         try {
-            $pdo = \App\Service\Database::getPdo();
+            $pdo = $this->pdo;
             $pdo->prepare("DELETE FROM " . AppConfig::TABLE_IMPLIED_RULES . " WHERE source_key = ? AND target_key = ?")->execute([$src, $tgt]);
             return $this->output($response, ['deleted' => ['source' => $src, 'target' => $tgt]], $request);
         } catch (\Exception $e) {
@@ -1074,12 +1066,11 @@ class AdminController extends BaseController
      */
     public function mePermissions(Request $request, Response $response): Response
     {
-        if ($err = $this->authCheck($request, $response)) return $err;
+        $this->initAuthFromRequest($request);
 
         if ($this->currentRole === AppConfig::ROLE_SUPER_ADMIN) {
             $permissions = '*';
         } else {
-            $this->loadUserPermissions();
             $permissions = $this->userPermissions;
         }
 
@@ -1099,7 +1090,7 @@ class AdminController extends BaseController
     {
         $result = $perms;
         try {
-            $pdo = \App\Service\Database::getPdo();
+            $pdo = $this->pdo;
             // 一次性把所有 source_key 的目标拉出来，避免 N+1
             $implied = [];
             $rows = $pdo->query("SELECT source_key, target_key FROM " . AppConfig::TABLE_IMPLIED_RULES)->fetchAll();
@@ -1128,7 +1119,7 @@ class AdminController extends BaseController
     private function allPermissionKeys(): array
     {
         try {
-            $pdo = \App\Service\Database::getPdo();
+            $pdo = $this->pdo;
             return $pdo->query("SELECT perm_key FROM " . AppConfig::TABLE_PERMISSIONS)->fetchAll(\PDO::FETCH_COLUMN);
         } catch (\Exception $e) {
             return array_keys(AppConfig::DEFAULT_PERMISSIONS);
@@ -1144,29 +1135,7 @@ class AdminController extends BaseController
         if ($this->currentRole === AppConfig::ROLE_SUPER_ADMIN) {
             return true;
         }
-        if (empty($this->userPermissions)) {
-            $this->loadUserPermissions();
-        }
         return in_array($permKey, $this->userPermissions, true);
-    }
-
-    /** 从数据库加载当前用户的权限列表 */
-    private function loadUserPermissions(): void
-    {
-        $this->userPermissions = [];
-        if (empty($this->currentUser)) return;
-        try {
-            $pdo = \App\Service\Database::getPdo();
-            $stmt = $pdo->prepare("
-                SELECT rp.perm_key FROM " . AppConfig::TABLE_ROLE_PERMISSIONS . " rp
-                JOIN " . AppConfig::TABLE_ROLES . " r ON r.id = rp.role_id
-                WHERE r.name = ?
-            ");
-            $stmt->execute([$this->currentRole]);
-            $this->userPermissions = $stmt->fetchAll(\PDO::FETCH_COLUMN);
-        } catch (\Exception $e) {
-            $this->userPermissions = [];
-        }
     }
 
     /**
@@ -1186,44 +1155,14 @@ class AdminController extends BaseController
     }
 
     /**
-     * 验证 Bearer token
+     * 从 request attribute 读取中间件设置的鉴权信息
+     *（currentUser / currentRole / userPermissions 均由 AuthMiddleware 统一设置）
      */
-    private function authCheck(Request $request, Response $response): ?Response
+    private function initAuthFromRequest(Request $request): void
     {
-        $cred = $this->config->getAdminCredentials();
-        $header = $request->getHeaderLine('Authorization');
-        if (!preg_match('/^Bearer\s+(.+)$/i', $header, $m)) {
-            return $this->jsonError($response, 'auth.not_logged_in', 401);
-        }
-        $token = $m[1];
-
-        // 验证 cache 中的随机 token
-        try {
-            $pdo = \App\Service\Database::getPdo();
-            $row = $pdo->prepare("SELECT value FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key = ? AND expires_at > ?");
-            $row->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . $token, time()]);
-            $cache = $row->fetch(\PDO::FETCH_ASSOC);
-            if ($cache) {
-                // value 格式：username|role
-                $parts = explode('|', $cache['value']);
-                $this->currentUser = $parts[0] ?? '';
-                $this->currentRole = $parts[1] ?? AppConfig::ROLE_ADMIN;
-                return null;
-            }
-        } catch (\Exception $e) {
-            // DB 不可用降级
-        }
-
-        // 未设任何密码则放行
-        if (empty($cred['password'])) {
-            try {
-                $pdo = \App\Service\Database::getPdo();
-                $cnt = $pdo->query("SELECT count(*) c FROM " . AppConfig::TABLE_ADMIN_USERS)->fetch()['c'];
-                if ($cnt == 0) return null;
-            } catch (\Exception $e) {}
-        }
-
-        return $this->jsonError($response, 'auth.token_invalid', 401);
+        $this->currentUser     = $request->getAttribute('currentUser', '');
+        $this->currentRole     = $request->getAttribute('currentRole', AppConfig::ROLE_ADMIN);
+        $this->userPermissions = $request->getAttribute('userPermissions', []);
     }
 
     private function buildEntry(array $body): array
@@ -1254,7 +1193,7 @@ class AdminController extends BaseController
     private function invalidateTopologyCache(): void
     {
         try {
-            $pdo = \App\Service\Database::getPdo();
+            $pdo = $this->pdo;
             $modes = [AppConfig::BUILD_MODE_JENKINS, AppConfig::BUILD_MODE_GITLAB_CI, AppConfig::BUILD_MODE_BOTH];
             foreach ($modes as $mode) {
                 $pdo->prepare("DELETE FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key = ?")->execute([AppConfig::CACHE_KEY_MAP_LIST_PREFIX . $mode]);

@@ -342,44 +342,12 @@ $i18nData = json_decode($tc->rawBody, true) ?? [];
 $tc->assert(is_array($i18nData) && count($i18nData) > 0, '包含翻译条目', '语言包为空');
 echo "  [Infra] i18n 语言包 ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
 
-// ─── 2. Main 模块 ───
+// ─── 2. Main 模块（需认证）───
 
-$tc = apiT('Job列表（默认/raw）', "{$baseUrl}/api/main/jobs/list");
-$tc->assertHttpOk();
-echo "  [Main] Job列表(default) ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
-
-$tc = apiT('Job列表（JSON）', "{$baseUrl}/api/main/jobs/list?format=json");
-$tc->assertHttpOk();
-$tc->assertJson();
-$jobData = json_decode($tc->rawBody, true) ?? [];
-$tc->assertHasKey($jobData, 'data', 'JSON格式包裹 data');
-echo "  [Main] Job列表(JSON) ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
-
-$tc = apiT('Job列表（XML）', "{$baseUrl}/api/main/jobs/list?format=xml");
-$tc->assertHttpOk();
-echo "  [Main] Job列表(XML) ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
-
-$tc = apiT('三方映射列表', "{$baseUrl}/api/main/map/list");
-$tc->assertHttpOk();
-$tc->assertJson();
-$mapData = json_decode($tc->rawBody, true) ?? [];
-$tc->assertHasKey($mapData, 'projects', '包含 projects 键');
-echo "  [Main] 三方映射 ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
-
-$tc = apiT('Git平台列表', "{$baseUrl}/api/main/git/platforms");
-$tc->assertHttpOk();
-$tc->assertJson();
-$platData = json_decode($tc->rawBody, true) ?? [];
-$tc->assertHasKey($platData, 'git_platforms', '包含 git_platforms');
-echo "  [Main] Git平台 ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
-
-$tc = apiT('Git平台发现', "{$baseUrl}/api/main/git/discovery");
-$tc->assertHttpOk();
-$tc->assertJson();
-$discData = json_decode($tc->rawBody, true) ?? [];
-$tc->assertHasKey($discData, 'configured', '包含 configured');
-$tc->assertHasKey($discData, 'unconfigured', '包含 unconfigured');
-echo "  [Main] Git发现 ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
+// 无 token 应返回 401
+$tc = apiT('Job列表（无认证）', "{$baseUrl}/api/main/jobs/list");
+$tc->assertHttpIs(401, '无 token 返回 401');
+echo "  [Main] Job列表(无认证) ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
 
 // ─── 3. Admin 登录 + 认证接口 ───
 
@@ -557,9 +525,54 @@ if ($globalToken) {
     echo "  [Admin] 认证接口 ... \033[33mSKIP\033[0m (无token)\n";
 }
 
-// ─── 4. Build 模块 ───
+// ─── 4. Main 模块（需认证）───
 
-$tc = apiT('全量Job列表', "{$baseUrl}/api/build/jobs/list");
+if ($globalToken) {
+    $authHeader = ["Authorization: Bearer {$globalToken}"];
+
+    $tc = apiT('Job列表（默认/raw）', "{$baseUrl}/api/main/jobs/list", 'GET', null, $authHeader);
+    $tc->assertHttpOk();
+    echo "  [Main] Job列表(default) ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
+
+    $tc = apiT('Job列表（JSON）', "{$baseUrl}/api/main/jobs/list?format=json", 'GET', null, $authHeader);
+    $tc->assertHttpOk();
+    $tc->assertJson();
+    $jobData = json_decode($tc->rawBody, true) ?? [];
+    $tc->assertHasKey($jobData, 'data', 'JSON格式包裹 data');
+    echo "  [Main] Job列表(JSON) ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
+
+    $tc = apiT('Job列表（XML）', "{$baseUrl}/api/main/jobs/list?format=xml", 'GET', null, $authHeader);
+    $tc->assertHttpOk();
+    echo "  [Main] Job列表(XML) ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
+
+    $tc = apiT('三方映射列表', "{$baseUrl}/api/main/map/list", 'GET', null, $authHeader);
+    $tc->assertHttpOk();
+    $tc->assertJson();
+    $mapData = json_decode($tc->rawBody, true) ?? [];
+    $tc->assertHasKey($mapData, 'projects', '包含 projects 键');
+    echo "  [Main] 三方映射 ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
+
+    $tc = apiT('Git平台列表', "{$baseUrl}/api/main/git/platforms", 'GET', null, $authHeader);
+    $tc->assertHttpOk();
+    $tc->assertJson();
+    $platData = json_decode($tc->rawBody, true) ?? [];
+    $tc->assertHasKey($platData, 'git_platforms', '包含 git_platforms');
+    echo "  [Main] Git平台 ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
+
+    $tc = apiT('Git平台发现', "{$baseUrl}/api/main/git/discovery", 'GET', null, $authHeader);
+    $tc->assertHttpOk();
+    $tc->assertJson();
+    $discData = json_decode($tc->rawBody, true) ?? [];
+    $tc->assertHasKey($discData, 'configured', '包含 configured');
+    $tc->assertHasKey($discData, 'unconfigured', '包含 unconfigured');
+    echo "  [Main] Git发现 ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
+}
+
+// ─── 5. Build 模块（需认证）───
+
+$authHeader = $globalToken ? ["Authorization: Bearer {$globalToken}"] : [];
+
+$tc = apiT('全量Job列表', "{$baseUrl}/api/build/jobs/list", 'GET', null, $authHeader);
 $tc->assertHttpOk();
 $tc->assertJson();
 $tc->assertIsArray();
@@ -567,7 +580,7 @@ echo "  [Build] 全量Job列表 ... " . ($tc->status === 'pass' ? "\033[32mPASS\
 
 foreach ($testJobs as $job) {
     // variables
-    $tc = apiT("$job 参数", "{$baseUrl}/api/build/{$job}/variables");
+    $tc = apiT("$job 参数", "{$baseUrl}/api/build/{$job}/variables", 'GET', null, $authHeader);
     $tc->assertHttpRange("variables 接口", 200, 404);
     if (remoteAvailable($tc->httpCode)) {
         $tc->assertJson();
@@ -576,7 +589,7 @@ foreach ($testJobs as $job) {
     echo "  [Build] {$job}/variables ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : ($tc->status === 'skip' ? "\033[33mSKIP\033[0m" : "\033[31mFAIL\033[0m")) . "\n";
 
     // branches
-    $tc = apiT("$job 分支", "{$baseUrl}/api/build/{$job}/branches");
+    $tc = apiT("$job 分支", "{$baseUrl}/api/build/{$job}/branches", 'GET', null, $authHeader);
     $tc->assertHttpRange("branches 接口", 200, 404);
     if (remoteAvailable($tc->httpCode)) {
         $tc->assertJson();
@@ -585,7 +598,7 @@ foreach ($testJobs as $job) {
     echo "  [Build] {$job}/branches ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : ($tc->status === 'skip' ? "\033[33mSKIP\033[0m" : "\033[31mFAIL\033[0m")) . "\n";
 
     // pipelines (id list)
-    $tc = apiT("$job Pipeline ID列表", "{$baseUrl}/api/build/{$job}/pipelines?list=id");
+    $tc = apiT("$job Pipeline ID列表", "{$baseUrl}/api/build/{$job}/pipelines?list=id", 'GET', null, $authHeader);
     $tc->assertHttpRange("pipelines 接口", 200, 404);
     if (remoteAvailable($tc->httpCode)) {
         $tc->assertJson();
@@ -594,7 +607,7 @@ foreach ($testJobs as $job) {
         if (!empty($buildIds) && is_array($buildIds)) {
             $firstId = $buildIds[0];
             // pipeline detail
-            $tc2 = apiT("$job Pipeline详情(#{$firstId})", "{$baseUrl}/api/build/{$job}/pipelines/{$firstId}");
+            $tc2 = apiT("$job Pipeline详情(#{$firstId})", "{$baseUrl}/api/build/{$job}/pipelines/{$firstId}", 'GET', null, $authHeader);
             $tc2->assertHttpRange("pipeline 详情", 200, 404);
             if (remoteAvailable($tc2->httpCode)) {
                 $tc2->assertJson();
@@ -603,7 +616,7 @@ foreach ($testJobs as $job) {
             echo "  [Build] {$job}/pipelines/{$firstId} ... " . ($tc2->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
 
             // logs
-            $tc2 = apiT("$job 日志(#{$firstId})", "{$baseUrl}/api/build/{$job}/logs/{$firstId}");
+            $tc2 = apiT("$job 日志(#{$firstId})", "{$baseUrl}/api/build/{$job}/logs/{$firstId}", 'GET', null, $authHeader);
             $tc2->assertHttpRange("logs 接口", 200, 404);
             echo "  [Build] {$job}/logs/{$firstId} ... " . ($tc2->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
         }
@@ -612,13 +625,13 @@ foreach ($testJobs as $job) {
 
     // pipeline list formats
     foreach (['build', 'time'] as $fmt) {
-        $tc = apiT("$job Pipeline({$fmt})", "{$baseUrl}/api/build/{$job}/pipelines?list={$fmt}");
+        $tc = apiT("$job Pipeline({$fmt})", "{$baseUrl}/api/build/{$job}/pipelines?list={$fmt}", 'GET', null, $authHeader);
         $tc->assertHttpRange("pipelines?list={$fmt}", 200, 404);
         echo "  [Build] {$job}/pipelines?list={$fmt} ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
     }
 
     // git branches
-    $tc = apiT("$job Git分支", "{$baseUrl}/api/git/{$job}/branches");
+    $tc = apiT("$job Git分支", "{$baseUrl}/api/git/{$job}/branches", 'GET', null, $authHeader);
     $tc->assertHttpRange("git branches", 200, 404);
     if (remoteAvailable($tc->httpCode)) {
         $tc->assertJson();
@@ -628,25 +641,25 @@ foreach ($testJobs as $job) {
 }
 
 // GitLab CI 专属测试
-$tc = apiT('GitLab CI Pipeline(完整)', "{$baseUrl}/api/build/tools/runner-ci/pipelines");
+$tc = apiT('GitLab CI Pipeline(完整)', "{$baseUrl}/api/build/tools/runner-ci/pipelines", 'GET', null, $authHeader);
 $tc->assertHttpRange("GL CI 完整", 200, 404);
 echo "  [Build] GitLab CI pipelines ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
 
-$tc = apiT('Jenkins Pipeline(完整)', "{$baseUrl}/api/build/static/pipelines");
+$tc = apiT('Jenkins Pipeline(完整)', "{$baseUrl}/api/build/static/pipelines", 'GET', null, $authHeader);
 $tc->assertHttpRange("Jenkins 完整", 200, 404);
 echo "  [Build] Jenkins pipelines ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
 
-$tc = apiT('GitLab CI Variables', "{$baseUrl}/api/build/tools/runner-ci/variables");
+$tc = apiT('GitLab CI Variables', "{$baseUrl}/api/build/tools/runner-ci/variables", 'GET', null, $authHeader);
 $tc->assertHttpRange("GL CI vars", 200, 404);
 echo "  [Build] GitLab CI variables ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
 
-$tc = apiT('Jenkins Variables', "{$baseUrl}/api/build/static/variables");
+$tc = apiT('Jenkins Variables', "{$baseUrl}/api/build/static/variables", 'GET', null, $authHeader);
 $tc->assertHttpRange("Jenkins vars", 200, 404);
 echo "  [Build] Jenkins variables ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
 
-// ─── 5. Harbor 模块 ───
+// ─── 6. Harbor 模块 ───
 
-$tc = apiT('Harbor 项目列表', "{$baseUrl}/api/harbor/projects");
+$tc = apiT('Harbor 项目列表', "{$baseUrl}/api/harbor/projects", 'GET', null, $authHeader);
 $tc->assertHttpRange("harbor projects", 200, 404);
 if (remoteAvailable($tc->httpCode)) {
     $tc->assertJson();
@@ -654,12 +667,12 @@ if (remoteAvailable($tc->httpCode)) {
 }
 echo "  [Harbor] 项目列表 ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
 
-$tc = apiT('Harbor 仓库列表', "{$baseUrl}/api/harbor/{$harborProject}/repositories");
+$tc = apiT('Harbor 仓库列表', "{$baseUrl}/api/harbor/{$harborProject}/repositories", 'GET', null, $authHeader);
 $tc->assertHttpRange("harbor repos", 200, 404);
 echo "  [Harbor] 仓库列表 ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
 
 $repoEncoded = str_replace('/', '%2F', $harborRepo);
-$tagsRes = apiCall("{$baseUrl}/api/harbor/{$harborProject}/repositories/{$repoEncoded}/tags");
+$tagsRes = apiCall("{$baseUrl}/api/harbor/{$harborProject}/repositories/{$repoEncoded}/tags", 'GET', null, $authHeader);
 $tc = T('Harbor Tag列表', 'GET', "{$baseUrl}/api/harbor/{$harborProject}/repositories/{$repoEncoded}/tags", $tagsRes['code'], $tagsRes['body'], $tagsRes['error']);
 $tc->assertHttpRange("harbor tags", 200, 404);
 if (remoteAvailable($tc->httpCode)) {
@@ -674,12 +687,12 @@ if (!empty($tags) && is_array($tags) && remoteAvailable($tagsRes['code'])) {
     $testTag = $tags[0];
     $scanUrl = "{$baseUrl}/api/harbor/{$harborProject}/repositories/{$repoEncoded}/tags/" . rawurlencode($testTag) . "/scan";
 
-    $res = apiCall($scanUrl, 'POST');
+    $res = apiCall($scanUrl, 'POST', null, $authHeader);
     $tc = T("Harbor 触发扫描({$testTag})", 'POST', $scanUrl, $res['code'], $res['body'], $res['error']);
     $tc->assert($res['code'] >= 200 && $res['code'] < 500, '触发扫描有响应', "HTTP {$res['code']}");
     echo "  [Harbor] 触发扫描 ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
 
-    $res = apiCall($scanUrl, 'GET');
+    $res = apiCall($scanUrl, 'GET', null, $authHeader);
     $tc = T("Harbor 扫描报告({$testTag})", 'GET', $scanUrl, $res['code'], $res['body'], $res['error']);
     $tc->assertHttpRange('扫描报告', 200, 404);
     echo "  [Harbor] 扫描报告 ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
@@ -691,7 +704,7 @@ if (!empty($tags) && is_array($tags) && remoteAvailable($tagsRes['code'])) {
     $tc->skip('无可用 tag');
 }
 
-// ─── 6. 构建触发（有副作用的写操作，谨慎处理）──
+// ─── 7. 构建触发（有副作用的写操作，谨慎处理）──
 
 foreach ($testJobs as $job) {
     $params = $triggerParams[$job] ?? null;
@@ -702,7 +715,7 @@ foreach ($testJobs as $job) {
         continue;
     }
     $url = "{$baseUrl}/api/build/{$job}/trigger";
-    $res = apiCall($url, 'POST', ['variables' => $params]);
+    $res = apiCall($url, 'POST', ['variables' => $params], $authHeader);
     $tc = T("{$job} 触发 " . json_encode($params, JSON_UNESCAPED_UNICODE), 'POST', $url, $res['code'], $res['body'], $res['error']);
     // 触发可能返回 200/202/400/404 等
     $tc->assert($res['code'] >= 200 && $res['code'] < 500, '触发有响应', "HTTP {$res['code']}");

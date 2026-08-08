@@ -238,6 +238,22 @@ function toast(msg, ok, center) {
     setTimeout(() => el.classList.remove('show'), 2500);
 }
 
+// 复制 Pipeline ID 列表到剪贴板（build 接口已加认证，需带 token）
+async function copyPipelineIds(jobName) {
+    try {
+        const res = await fetch('/api/build/' + encodeURIComponent(jobName) + '/pipelines?list=id', { headers: authHeaders() });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const text = await res.text();
+        if (!text.trim()) { toast('无 Pipeline 记录', false); return; }
+        navigator.clipboard.writeText(text).then(
+            () => toast('Pipeline ID 已复制', true),
+            () => toast('复制失败，请检查浏览器权限', false)
+        );
+    } catch (e) {
+        toast('获取失败: ' + e.message, false);
+    }
+}
+
 // ═══════════ 服务监测 ═══════════
 async function loadMonitor() {
     const now = new Date().toLocaleString(__.lang === 'en' ? 'en-US' : 'zh-CN');
@@ -462,7 +478,7 @@ async function loadMaps() {
                         })()}
                         <button class="btn btn-sm btn-edit" onclick='editMap(${js(m)})'>✏️ ${__.t('common.edit')}</button>
                         <button class="btn btn-sm btn-del" onclick='deleteMap("${escJs(m.job_name)}")'>🗑 ${__.t('common.delete')}</button>
-                        <a href="/api/build/${esc(encodeURI(m.job_name))}/pipelines?list=id" target="_blank" style="color:#4f46e5;font-size:12px;margin-left:6px;">📋</a>
+                        <button class="btn btn-sm" onclick='copyPipelineIds("${escJs(m.job_name)}")' style="color:#4f46e5;font-size:12px;margin-left:6px;border:none;background:none;cursor:pointer;" title="复制 Pipeline ID">📋</button>
                     </td>
                 </tr>`;
             }).join('');

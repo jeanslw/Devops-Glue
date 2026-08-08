@@ -11,7 +11,7 @@ class JenkinsService
     private ?Logger $logger = null;
     private ?string $cachedVersion = null;
 
-    public function __construct(array $config)
+    public function __construct(array $config, ?Logger $logger = null)
     {
         $this->baseUrl = rtrim($config['url'], '/');
         $this->client = new Client([
@@ -20,10 +20,6 @@ class JenkinsService
             'cookies' => true,   // 启用 Cookie 存储（用于 CSRF crumb）
             'timeout' => 30, 'connect_timeout' => 10,
         ]);
-    }
-
-    public function setLogger(Logger $logger): void
-    {
         $this->logger = $logger;
     }
 

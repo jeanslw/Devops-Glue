@@ -10,7 +10,10 @@ class BuildProviderRegistry
     private array $factories = [];
     private ?Logger $logger = null;
 
-    public function setLogger(Logger $logger): void { $this->logger = $logger; }
+    public function __construct(?Logger $logger = null)
+    {
+        $this->logger = $logger;
+    }
 
     public function register(string $name, callable $factory): void
     {

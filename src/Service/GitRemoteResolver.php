@@ -15,6 +15,7 @@ class GitRemoteResolver
     private string $defaultPlatform;
     private array $autoCache = [];
     private ?Logger $logger = null;
+    private ?Client $gitlabClient = null;
 
     public function __construct(
         JenkinsService $jenkins,
@@ -22,13 +23,17 @@ class GitRemoteResolver
         array $manualConfig = [],
         array $gitlabConfig = [],
         string $cacheFile = '',
-        string $defaultPlatform = 'gitlab'
+        string $defaultPlatform = 'gitlab',
+        ?Logger $logger = null,
+        ?Client $gitlabClient = null
     ) {
         $this->jenkins = $jenkins;
         $this->registry = $registry;
         $this->gitlabConfig = $gitlabConfig;
         $this->cacheFile = $cacheFile;
         $this->defaultPlatform = $defaultPlatform;
+        $this->logger = $logger;
+        $this->gitlabClient = $gitlabClient;
 
         // 索引化手动配置
         $this->manualMap = [];
@@ -134,11 +139,6 @@ class GitRemoteResolver
         return $base;
     }
 
-    public function setLogger(Logger $logger): void
-    {
-        $this->logger = $logger;
-    }
-
     /**
      * 根据 Git remote URL 检测所属平台（委托给 ProviderRegistry）
      *
@@ -189,16 +189,11 @@ class GitRemoteResolver
     private function fetchGitlabProjectId(string $projectPath): ?int
     {
         $baseUrl = rtrim($this->gitlabConfig['base_url'] ?? '', '/');
-        $token   = $this->gitlabConfig['token'] ?? '';
-        if (empty($baseUrl) || empty($token)) {
+        if (empty($baseUrl) || !$this->gitlabClient) {
             return null;
         }
         try {
-            $client = new Client([
-                'headers' => ['PRIVATE-TOKEN' => $token],
-                'timeout' => 10,
-            ]);
-            $resp = $client->get($baseUrl . '/api/v4/projects/' . urlencode($projectPath));
+            $resp = $this->gitlabClient->get($baseUrl . '/api/v4/projects/' . urlencode($projectPath));
             $data = json_decode($resp->getBody(), true);
             return $data['id'] ?? null;
         } catch (\Exception $e) {

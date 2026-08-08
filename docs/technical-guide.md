@@ -309,7 +309,7 @@ Controller → AppConfig::getXxxConfig()
 
 **Core table:** `ci_job_git_map`  
 **Admin endpoints:** `/api/admin/job_git_map` (GET/POST/PUT/DELETE)  
-**Public endpoint:** `/api/main/map/list` (grouped by Git repository)
+**Authenticated endpoint:** `/api/main/map/list` (grouped by Git repository, requires Token)
 
 #### 5.2.1 Data Writing
 
@@ -566,29 +566,47 @@ If only `ref` is present without other parameters, auto-convert to `{branches: r
 1. Query `admin_users` table, `password_verify()` to check bcrypt hash
 2. Fallback: compare `.env` `ADMIN_USER`/`ADMIN_PASSWORD` (requires password non-empty)
 3. Auth success → generate 64-char hex token → write to `cache` table (`admin_token_{token}`, 24h TTL)
+4. Pre-load user permissions to request attribute via `TokenService::loadPermissions()`
 
-#### 5.9.2 Token Verification
+#### 5.9.2 Token Verification (AuthMiddleware + TokenService)
 
-**Method:** `AdminController::authCheck()`
+**Middleware:** `AuthMiddleware` (applied to `/api/admin`, `/api/build`, `/api/git`, `/api/harbor` route groups)
+**Service:** `TokenService` (encapsulates token validation, permission loading, token revocation)
 
 ```
 1. Extract token from Authorization: Bearer xxx
-2. Query cache table to verify token (key=admin_token_{token}, expires_at > now)
-3. If DB unavailable AND .env ADMIN_PASSWORD empty → allow (first-start no-password scenario)
-4. If DB unavailable AND admin_users table empty → allow
-5. Otherwise → 401
+2. Call TokenService::validate() to verify token in cache table (key=admin_token_{token}, expires_at > now)
+3. Call TokenService::loadPermissions() to query role permissions
+4. Write currentUser, currentRole, userPermissions to request attribute
+5. If DB unavailable AND .env ADMIN_PASSWORD empty → allow (first-start no-password scenario)
+6. If DB unavailable AND admin_users table empty → allow
+7. Otherwise → 401
 ```
 
-**On password change:** `DELETE FROM cache WHERE cache_key LIKE 'admin_token_%'` — clears all old tokens, forces re-login.
+**On password change:** `TokenService::revoke()` deletes all old tokens from cache table, forces re-login.
 
 #### 5.9.3 Docs Page Authentication
 
 **Swagger UI (`/api/docs`) and OpenAPI JSON (`/api/openapi.json`):**
-- Uses routes.php closure `$checkAuth`, independent of `AdminController::authCheck`
+- Uses routes.php closure `$checkAuth`, independent of `AuthMiddleware`
 - If `.env` `ADMIN_PASSWORD` is empty → allow directly
 - Otherwise verify token (supports Bearer or Query String `?token=`)
 
-#### 5.9.4 RBAC Permission System (v2.4, Data-Driven)
+#### 5.9.4 Build/Git/Harbor Endpoint Authentication (new in v2.4.3)
+
+The `/api/build`, `/api/git`, and `/api/harbor` route groups are now protected by `AuthMiddleware`. All requests to these endpoints must include the `Authorization: Bearer <token>` header.
+
+**Authentication chain:**
+```
+Client → CI:  Authorization: Bearer <ci_user_token>   ← User token, verified by CI
+CI → GitLab:  PRIVATE-TOKEN: <gitlab_api_token>       ← CI's own service token
+CI → Harbor:  Basic Auth: admin:password               ← CI's own service credentials
+CI → Jenkins: Basic Auth: user:api_token               ← CI's own service token
+```
+
+> Downstream services (GitLab/Harbor/Jenkins) use independent service-account authentication and never receive CI user tokens. This is a standard BFF/Gateway pattern that prevents user tokens from leaking into downstream logs.
+
+#### 5.9.5 RBAC Permission System (v2.4, Data-Driven)
 
 The system uses a role-based access control (RBAC) model with **all tables stored in the database and fully manageable from the admin UI** (no code changes required when CD adds new menus/modules).
 
@@ -663,10 +681,10 @@ Primary path: DB; falls back to `AppConfig::IMPLIED_PERMISSIONS` constants on DB
 **Permission check logic** (`hasPermission($permKey)`):
 ```php
 if ($role === 'super_admin') return true;  // hardcoded bypass
-// Otherwise: loadUserPermissions() JOINs role_permissions → fetches perm_keys,
+// Otherwise: read userPermissions directly from request attribute (pre-loaded by AuthMiddleware),
 //            expandPermissions() unfolds implied keys, then in_array() compares
 ```
-The expanded permission array is cached in `$this->userPermissions` and reused within a single request.
+The expanded permission array is loaded once in AuthMiddleware and cached in `$this->userPermissions`, reused within a single request.
 
 ---
 
@@ -850,10 +868,10 @@ LOG_PATH=/applogs/                 # Log directory
 | GET | `/api/openapi.json` | Yes | OpenAPI 3.0 spec |
 | GET | `/api/i18n/{locale}` | No | i18n language pack |
 | **Main** | | | |
-| GET/POST | `/api/main/jobs/list` | No | Job list |
-| GET/POST | `/api/main/map/list` | No | Three-party mapping (30s cache) |
-| GET/POST | `/api/main/git/platforms` | No | Git platform list |
-| GET/POST | `/api/main/git/discovery` | No | Platform access detection |
+| GET/POST | `/api/main/jobs/list` | Token | Job list |
+| GET/POST | `/api/main/map/list` | Token | Three-party mapping (30s cache) |
+| GET/POST | `/api/main/git/platforms` | Token | Git platform list |
+| GET/POST | `/api/main/git/discovery` | Token | Platform access detection |
 | **Admin** | | | |
 | POST | `/api/admin/login` | No | Login to get token |
 | PUT | `/api/admin/password` | Token | Change password |
@@ -872,26 +890,26 @@ LOG_PATH=/applogs/                 # Log directory
 | PUT | `/api/admin/build_mode` | Token | Update build mode |
 | GET | `/api/admin/me/permissions` | Token | Get current user permissions |
 | **Build** | | | |
-| GET/POST | `/api/build/jobs/list` | No | Job list (with ci_provider) |
-| GET | `/api/build/config-mode` | No | Build mode status |
-| GET/POST | `/api/build/{path}/pipelines` | No | Pipeline list |
-| GET/POST | `/api/build/{path}/pipelines/{id}` | No | Pipeline details + jobs |
-| POST | `/api/build/{path}/pipelines/{id}/retry` | No | Retry pipeline (GitLab CI only) |
-| POST | `/api/build/{path}/pipelines/{id}/cancel` | No | Cancel pipeline (GitLab CI only) |
-| GET/POST | `/api/build/{path}/logs/{id}` | No | Build logs |
-| GET/POST | `/api/build/{path}/trigger` | No | Trigger build |
-| GET/POST | `/api/build/{path}/variables` | No | Build parameters |
-| POST | `/api/build/{path}/scan-sync` | No | Harbor scan sync |
-| POST | `/api/build/{path}/commit-status` | No | Commit status writeback |
-| GET/POST | `/api/build/{path}/tag` | No | Pipeline → tag query |
+| GET/POST | `/api/build/jobs/list` | Token | Job list (with ci_provider) |
+| GET | `/api/build/config-mode` | Token | Build mode status |
+| GET/POST | `/api/build/{path}/pipelines` | Token | Pipeline list |
+| GET/POST | `/api/build/{path}/pipelines/{id}` | Token | Pipeline details + jobs |
+| POST | `/api/build/{path}/pipelines/{id}/retry` | Token | Retry pipeline (GitLab CI only) |
+| POST | `/api/build/{path}/pipelines/{id}/cancel` | Token | Cancel pipeline (GitLab CI only) |
+| GET/POST | `/api/build/{path}/logs/{id}` | Token | Build logs |
+| GET/POST | `/api/build/{path}/trigger` | Token | Trigger build |
+| GET/POST | `/api/build/{path}/variables` | Token | Build parameters |
+| POST | `/api/build/{path}/scan-sync` | Token | Harbor scan sync |
+| POST | `/api/build/{path}/commit-status` | Token | Commit status writeback |
+| GET/POST | `/api/build/{path}/tag` | Token | Pipeline → tag query |
 | **Git** | | | |
-| GET/POST | `/api/git/{path}/branches` | No | Branch list |
+| GET/POST | `/api/git/{path}/branches` | Token | Branch list |
 | **Harbor** | | | |
-| GET/POST | `/api/harbor/projects` | No | Project list |
-| GET/POST | `/api/harbor/{project}/repositories` | No | Repository list |
-| GET/POST | `/api/harbor/{project}/repositories/{repo}/tags` | No | Tag list |
-| POST | `/api/harbor/{project}/repositories/{repo}/tags/{tag}/scan` | No | Trigger scan |
-| GET | `/api/harbor/{project}/repositories/{repo}/tags/{tag}/scan` | No | Scan report |
+| GET/POST | `/api/harbor/projects` | Token | Project list |
+| GET/POST | `/api/harbor/{project}/repositories` | Token | Repository list |
+| GET/POST | `/api/harbor/{project}/repositories/{repo}/tags` | Token | Tag list |
+| POST | `/api/harbor/{project}/repositories/{repo}/tags/{tag}/scan` | Token | Trigger scan |
+| GET | `/api/harbor/{project}/repositories/{repo}/tags/{tag}/scan` | Token | Scan report |
 
 ### 8.3 Database Migration Checklist
 

@@ -74,6 +74,8 @@ Returns connectivity status of Jenkins, Git platforms, and Harbor.
 
 ## Main Module (`/api/main`)
 
+> **Authentication:** All Main endpoints require Bearer Token (obtained via `POST /api/admin/login`). Add `Authorization: Bearer <token>` header to your requests.
+
 ### List Jobs
 ```
 GET /api/main/jobs/list
@@ -117,6 +119,8 @@ GET /api/main/git/discovery
 ## Build Module (`/api/build`) — v2.3.0
 
 > Unified entry for Jenkins and GitLab CI. Legacy `/api/jenkins/*` routes are deprecated.
+>
+> **Authentication:** All Build endpoints require Bearer Token (obtained via `POST /api/admin/login`). Add `Authorization: Bearer <token>` header to your requests.
 
 | Endpoint | Method | Description |
 |---|---|---|
@@ -142,6 +146,8 @@ Works with all Git providers (GitLab/GitHub/Gitee/Gitea), independent of CI syst
 
 ## Git Module (`/api/git`)
 
+> **Authentication:** All Git endpoints require Bearer Token (obtained via `POST /api/admin/login`). Add `Authorization: Bearer <token>` header to your requests.
+
 ```
 GET /api/git/{group}/{project}/branches
 ```
@@ -153,6 +159,8 @@ Supports GitLab, Gitee, and GitHub. Automatically resolves the Git repository fr
 ---
 
 ## Harbor Module (`/api/harbor`)
+
+> **Authentication:** All Harbor endpoints require Bearer Token (obtained via `POST /api/admin/login`). Add `Authorization: Bearer <token>` header to your requests.
 
 | Endpoint | Method | Description |
 |---|---|---|
@@ -191,41 +199,60 @@ All admin endpoints require Bearer Token (obtained via `POST /api/admin/login`).
 ## Quick Test Commands
 
 ```bash
-# Health check
+# Health check (no auth required)
 curl "http://URL/api/health"
 
-# Trigger build (POST JSON)
+# Login and get token
+TOKEN=$(curl -s -X POST "http://URL/api/admin/login" \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"your_password"}' | jq -r '.data.token')
+
+# Trigger build (POST JSON, requires auth)
 curl -X POST "http://URL/api/build/static/trigger" \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
   -d '{"variables":{"branches":"master"}}'
 
-# Query job variables
-curl "http://URL/api/build/static/variables"
+# Query job variables (requires auth)
+curl "http://URL/api/build/static/variables" \
+  -H "Authorization: Bearer $TOKEN"
 
-# Query Git branches
-curl "http://URL/api/build/static/branches"
+# Query Git branches via build endpoint (requires auth)
+curl "http://URL/api/build/static/branches" \
+  -H "Authorization: Bearer $TOKEN"
 
-# Query三方映射
-curl "http://URL/api/main/map/list"
+# Query Git branches via git endpoint (requires auth)
+curl "http://URL/api/git/group/project/branches" \
+  -H "Authorization: Bearer $TOKEN"
 
-# Query configured Git platforms
-curl "http://URL/api/main/git/platforms"
+# Query三方映射 (requires auth)
+curl "http://URL/api/main/map/list" \
+  -H "Authorization: Bearer $TOKEN"
 
-# Query platform discovery
-curl "http://URL/api/main/git/discovery"
+# Query configured Git platforms (requires auth)
+curl "http://URL/api/main/git/platforms" \
+  -H "Authorization: Bearer $TOKEN"
 
-# Harbor projects
-curl "http://URL/api/harbor/projects"
+# Query platform discovery (requires auth)
+curl "http://URL/api/main/git/discovery" \
+  -H "Authorization: Bearer $TOKEN"
 
-# Harbor tags
-curl "http://URL/api/harbor/mycode/repositories/diagnosis-runtime/tags"
+# Harbor projects (requires auth)
+curl "http://URL/api/harbor/projects" \
+  -H "Authorization: Bearer $TOKEN"
 
-# Trigger Harbor scan
-curl -X POST "http://URL/api/harbor/mycode/repositories/diagnosis-runtime/tags/v1.0.0/scan"
+# Harbor tags (requires auth)
+curl "http://URL/api/harbor/mycode/repositories/diagnosis-runtime/tags" \
+  -H "Authorization: Bearer $TOKEN"
 
-# Get Harbor scan report
-curl "http://URL/api/harbor/mycode/repositories/diagnosis-runtime/tags/v1.0.0/scan"
+# Trigger Harbor scan (requires auth)
+curl -X POST "http://URL/api/harbor/mycode/repositories/diagnosis-runtime/tags/v1.0.0/scan" \
+  -H "Authorization: Bearer $TOKEN"
 
-# CORS preflight test
+# Get Harbor scan report (requires auth)
+curl "http://URL/api/harbor/mycode/repositories/diagnosis-runtime/tags/v1.0.0/scan" \
+  -H "Authorization: Bearer $TOKEN"
+
+# CORS preflight test (no auth required)
 curl -X OPTIONS "http://URL/api/main/jobs/list" -H "Origin: http://example.com" -v
 ```

@@ -7,15 +7,7 @@ use App\Service\I18nService;
 
 class BaseController
 {
-    protected ?I18nService $i18n = null;
-
-    /**
-     * 注入国际化服务（由 DI 容器在构造后调用）
-     */
-    public function setI18n(I18nService $i18n): void
-    {
-        $this->i18n = $i18n;
-    }
+    public function __construct(protected I18nService $i18n) {}
 
     /**
      * 翻译快捷方法
@@ -24,7 +16,7 @@ class BaseController
      */
     protected function __(string $key, array $params = []): string
     {
-        return $this->i18n ? $this->i18n->trans($key, $params) : $key;
+        return $this->i18n->trans($key, $params);
     }
 
     /**
@@ -32,7 +24,7 @@ class BaseController
      */
     protected function getLocale(Request $request): string
     {
-        return $this->i18n ? $this->i18n->detectLocale($request) : 'zh_CN';
+        return $this->i18n->detectLocale($request);
     }
     /**
      * 统一输出处理
@@ -98,8 +90,8 @@ class BaseController
      */
     protected function jsonError(Response $response, string $message, int $code = 400): Response
     {
-        // 如果 i18n 可用且消息看起来像翻译键（含点号），尝试翻译
-        if ($this->i18n && str_contains($message, '.') && !str_contains($message, ' ')) {
+        // 消息看起来像翻译键（含点号且无空格）时尝试翻译
+        if (str_contains($message, '.') && !str_contains($message, ' ')) {
             $translated = $this->i18n->trans($message);
             // 翻译成功（不同于键本身）则使用翻译结果
             if ($translated !== $message) {

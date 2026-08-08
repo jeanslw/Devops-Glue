@@ -6,6 +6,7 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Config\AppConfig;
 use App\Service\Build\BuildProviderRegistry;
 use App\Service\HarborService;
+use App\Service\I18nService;
 use App\Service\MappingManager;
 use App\Service\Git\ProviderRegistry as GitProviderRegistry;
 
@@ -16,12 +17,15 @@ class BuildController extends BaseController
     private MappingManager $mapping;
     private ?HarborService $harbor;
     private ?GitProviderRegistry $gitRegistry;
+    private \PDO $pdo;
 
-    public function __construct(BuildProviderRegistry $registry, AppConfig $config, MappingManager $mapping, ?HarborService $harbor = null, ?GitProviderRegistry $gitRegistry = null)
+    public function __construct(I18nService $i18n, BuildProviderRegistry $registry, AppConfig $config, MappingManager $mapping, \PDO $pdo, ?HarborService $harbor = null, ?GitProviderRegistry $gitRegistry = null)
     {
+        parent::__construct($i18n);
         $this->registry    = $registry;
         $this->config      = $config;
         $this->mapping     = $mapping;
+        $this->pdo         = $pdo;
         $this->harbor      = $harbor;
         $this->gitRegistry = $gitRegistry;
     }
@@ -387,7 +391,7 @@ class BuildController extends BaseController
     private function recordSecurityCheck(string $project, string $sha, string $state, string $context, string $description, string $checkType, string $tag): void
     {
         try {
-            $pdo = \App\Service\Database::getPdo();
+            $pdo = $this->pdo;
             $sql = \App\Service\Database::sqlUpsert(
                 AppConfig::TABLE_SECURITY_CHECKS,
                 'project, sha, check_type, state, context, description, tag, created_at',
@@ -579,7 +583,7 @@ class BuildController extends BaseController
     private function loadPipelineTags(): array
     {
         try {
-            $pdo = \App\Service\Database::getPdo();
+            $pdo = $this->pdo;
             $rows = $pdo->query("SELECT project, pipeline_iid, tag, harbor_repository, status, created_at FROM " . AppConfig::TABLE_PIPELINE_TAGS . " ORDER BY created_at DESC")->fetchAll();
             $result = [];
             foreach ($rows as $r) {
@@ -636,7 +640,7 @@ class BuildController extends BaseController
 
         if (!empty($staleKeys)) {
             try {
-                $pdo  = \App\Service\Database::getPdo();
+                $pdo  = $this->pdo;
                 $stmt = $pdo->prepare("DELETE FROM " . AppConfig::TABLE_PIPELINE_TAGS . " WHERE project = ? AND pipeline_iid = ?");
                 foreach ($staleKeys as $key) {
                     $stmt->execute([$key['project'], $key['pipeline_iid']]);
@@ -652,7 +656,7 @@ class BuildController extends BaseController
         if (empty($path) || $pipelineIid <= 0 || empty($tag)) return;
         if (mb_strlen($tag) > 255 || mb_strlen($path) > 255) return;
         try {
-            $pdo = \App\Service\Database::getPdo();
+            $pdo = $this->pdo;
             $sql   = \App\Service\Database::sqlUpsert(AppConfig::TABLE_PIPELINE_TAGS, 'project, pipeline_iid, tag, harbor_repository, status', '?, ?, ?, ?, ?');
             $stmt = $pdo->prepare($sql);
             $stmt->execute([$path, $pipelineIid, $tag, $harborRepo, $status]);

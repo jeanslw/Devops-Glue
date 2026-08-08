@@ -2,6 +2,8 @@
 use DI\ContainerBuilder;
 use Slim\Factory\AppFactory;
 use Dotenv\Dotenv;
+use Psr\Http\Message\ResponseFactoryInterface;
+use Psr\Http\Message\ResponseInterface;
 
 require __DIR__ . '/../vendor/autoload.php';
 
@@ -46,6 +48,9 @@ $container = $containerBuilder->build();
 AppFactory::setContainer($container);
 $app = AppFactory::create();
 
+// PSR-17 Response 工厂（错误处理器统一使用，不直接 new 具体实现）
+$responseFactory = $container->get(ResponseFactoryInterface::class);
+
 // 兼容 Swagger UI 等客户端对 job 名称中 / 的编码（php%2Fmyapp → php/myapp）
 $_SERVER['REQUEST_URI'] = str_replace('%2F', '/', $_SERVER['REQUEST_URI'] ?? '');
 
@@ -63,10 +68,12 @@ $app->get('/', function ($request, $response, $args) {
     return $response->withHeader('Content-Type', 'text/html; charset=utf-8');
 });
 
+// ── 中间件（LIFO 栈：后添加先执行）──
+// 执行顺序：Error → CORS → Routing → BodyParsing → Route Handler
 $app->addBodyParsingMiddleware();
 $app->addRoutingMiddleware();
 
-// CORS 中间件（最后添加 = 最先执行，确保在路由之前拦截 OPTIONS）
+// CORS 中间件（在路由之前执行，确保 OPTIONS 预检请求被拦截）
 $app->add(\App\Middleware\CorsMiddleware::class);
 $appDebug = ($_ENV['APP_DEBUG'] ?? 'false') === 'true';
 $errorMiddleware = $app->addErrorMiddleware($appDebug, true, true);
@@ -131,8 +138,8 @@ $errorMessages = [
 ];
 
 // ── 渲染友好 HTML 错误页 ──
-$renderErrorHtml = function ($request, int $code, ?string $detail = null) use ($resolveErrorLocale): \Slim\Psr7\Response {
-    $response = new \Slim\Psr7\Response();
+$renderErrorHtml = function ($request, int $code, ?string $detail = null) use ($resolveErrorLocale, $responseFactory): ResponseInterface {
+    $response = $responseFactory->createResponse();
     $lang = $resolveErrorLocale($request);
     $htmlFile = __DIR__ . '/../templates/error.html';
     if (file_exists($htmlFile)) {
@@ -149,8 +156,8 @@ $renderErrorHtml = function ($request, int $code, ?string $detail = null) use ($
 };
 
 // ── 通用错误 → API 请求返回 JSON，否则 HTML ──
-$errorMiddleware->setDefaultErrorHandler(function ($request, $exception, $displayErrorDetails) use ($isApiRequest, $renderErrorHtml, $errorMessages, $resolveErrorLocale) {
-    $response = new \Slim\Psr7\Response();
+$errorMiddleware->setDefaultErrorHandler(function ($request, $exception, $displayErrorDetails) use ($isApiRequest, $renderErrorHtml, $errorMessages, $resolveErrorLocale, $responseFactory) {
+    $response = $responseFactory->createResponse();
     $code = 500;
     if ($exception instanceof \Slim\Exception\HttpException) {
         $code = $exception->getCode();
@@ -190,8 +197,8 @@ $httpExceptions = [
 ];
 
 foreach ($httpExceptions as $exceptionClass => $statusCode) {
-    $errorMiddleware->setErrorHandler($exceptionClass, function ($request, $exception, $displayErrorDetails) use ($isApiRequest, $renderErrorHtml, $errorMessages, $resolveErrorLocale, $statusCode) {
-        $response = new \Slim\Psr7\Response();
+    $errorMiddleware->setErrorHandler($exceptionClass, function ($request, $exception, $displayErrorDetails) use ($isApiRequest, $renderErrorHtml, $errorMessages, $resolveErrorLocale, $statusCode, $responseFactory) {
+        $response = $responseFactory->createResponse();
         $lang = $resolveErrorLocale($request);
         $message = $errorMessages[$lang][$statusCode] ?? $errorMessages[$lang][500];
 

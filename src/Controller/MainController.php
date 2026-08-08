@@ -6,6 +6,8 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Service\JenkinsService;
 use App\Service\HarborService;
 use App\Service\MappingManager;
+use App\Service\I18nService;
+use App\Service\TokenService;
 use App\Config\AppConfig;
 
 class MainController extends BaseController
@@ -14,13 +16,18 @@ class MainController extends BaseController
     private AppConfig $config;
     private MappingManager $mapping;
     private ?HarborService $harbor;
+    private \PDO $pdo;
+    private ?TokenService $tokenService = null;
 
-    public function __construct(JenkinsService $jenkins, AppConfig $config, MappingManager $mapping, ?HarborService $harbor = null)
+    public function __construct(I18nService $i18n, JenkinsService $jenkins, AppConfig $config, MappingManager $mapping, \PDO $pdo, ?HarborService $harbor = null, ?TokenService $tokenService = null)
     {
+        parent::__construct($i18n);
         $this->jenkins = $jenkins;
         $this->config = $config;
         $this->mapping = $mapping;
+        $this->pdo = $pdo;
         $this->harbor = $harbor;
+        $this->tokenService = $tokenService;
     }
 
     /**
@@ -49,7 +56,7 @@ class MainController extends BaseController
         // 有缓存且未过期，直接返回（gitlab_ci 模式跳过缓存，避免 Jenkins 旧数据）
         if ($buildMode !== AppConfig::BUILD_MODE_GITLAB_CI) {
             try {
-                $pdo = \App\Service\Database::getPdo();
+                $pdo = $this->pdo;
                 $cached = $pdo->prepare("SELECT value FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key = ? AND expires_at > ?");
                 $cached->execute([$cacheKey, time()]);
                 $row = $cached->fetch();
@@ -115,7 +122,7 @@ class MainController extends BaseController
 
         // 写入缓存（30s TTL）
         try {
-            $pdo = \App\Service\Database::getPdo();
+            $pdo = $this->pdo;
             $sql = \App\Service\Database::sqlUpsert(AppConfig::TABLE_CACHE, 'cache_key, value, expires_at', '?, ?, ?');
             $stmt = $pdo->prepare($sql);
             $stmt->execute([$cacheKey, json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), time() + 30]);
@@ -318,7 +325,7 @@ class MainController extends BaseController
         // 统计卡片数据
         $stats = ['total_maps' => 0, 'active_maps' => 0, 'git_platforms' => 0, 'harbor_repos' => 0];
         try {
-            $pdo = \App\Service\Database::getPdo();
+            $pdo = $this->pdo;
             $stats['total_maps'] = (int)$pdo->query("SELECT count(*) FROM " . AppConfig::TABLE_JOB_GIT_MAP)->fetchColumn();
             $stmt = $pdo->prepare("SELECT count(*) FROM " . AppConfig::TABLE_JOB_GIT_MAP . " WHERE status = ?");
             $stmt->execute([AppConfig::STATUS_ACTIVE]);
@@ -353,5 +360,111 @@ class MainController extends BaseController
             return $matches[1];
         }
         return '';
+    }
+
+    // ────────────────────────── i18n / docs / openapi ──────────────────────────
+
+    /**
+     * GET /api/i18n/{locale} — 获取指定语言的语言包
+     */
+    public function i18n(Request $request, Response $response, array $args): Response
+    {
+        $locale = $args['locale'] ?? 'zh_CN';
+        $messages = $this->i18n->getAll($locale);
+        $response->getBody()->write(json_encode($messages, JSON_UNESCAPED_UNICODE));
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
+     * GET /api/docs — Swagger UI 页面（需登录，未登录显示登录页）
+     */
+    public function docs(Request $request, Response $response): Response
+    {
+        $htmlFile = __DIR__ . '/../../templates/swagger.html';
+        $swaggerHtml = file_exists($htmlFile) ? file_get_contents($htmlFile) : '<h1>Swagger file missing / 文档文件丢失</h1>';
+
+        if ($this->checkDocsAuth($request)) {
+            $response->getBody()->write($swaggerHtml);
+            return $response->withHeader('Content-Type', 'text/html; charset=utf-8');
+        }
+
+        // 未登录 → 登录页
+        $loginFile = __DIR__ . '/../../templates/swagger-auth.html';
+        $response->getBody()->write(file_exists($loginFile) ? file_get_contents($loginFile) : '<h1>Login page missing / 登录页丢失</h1>');
+        return $response->withHeader('Content-Type', 'text/html; charset=utf-8');
+    }
+
+    /**
+     * GET /api/openapi.json — OpenAPI 规范（需登录）
+     */
+    public function openapiJson(Request $request, Response $response): Response
+    {
+        if (!$this->checkDocsAuth($request)) {
+            $response->getBody()->write(json_encode(['code' => 401, 'message' => $this->__('auth.please_login_first')]));
+            return $response->withStatus(401)->withHeader('Content-Type', 'application/json');
+        }
+
+        $lang = $request->getQueryParams()['lang'] ?? '';
+        $map = ['zh-CN' => 'zh', 'zh' => 'zh', 'en' => 'en'];
+        $suffix = $map[$lang] ?? '';
+        if (!$suffix) {
+            $accept = $request->getHeaderLine('Accept-Language');
+            if (stripos($accept, 'zh') !== false) {
+                $suffix = 'zh';
+            } elseif (stripos($accept, 'en') !== false) {
+                $suffix = 'en';
+            }
+        }
+        $specFile = __DIR__ . '/../../templates/openapi' . ($suffix ? '.' . $suffix : '') . '.json';
+        if (!file_exists($specFile)) {
+            $specFile = __DIR__ . '/../../templates/openapi.json';
+        }
+        $spec = file_exists($specFile)
+            ? json_decode(file_get_contents($specFile), true)
+            : ['openapi' => '3.0.3', 'info' => ['title' => 'Devops-Glue API'], 'paths' => []];
+
+        $uri  = $request->getUri();
+        $port = $uri->getPort();
+        $isDefault = ($uri->getScheme() === 'http'  && $port === 80)
+                  || ($uri->getScheme() === 'https' && $port === 443);
+
+        // 优先使用配置的 API_BASE_URL，未设则自动推导
+        $apiBaseUrl = $this->config->getApiBaseUrl();
+        if (empty($apiBaseUrl)) {
+            $apiBaseUrl = $uri->getScheme() . '://' . $uri->getHost()
+                        . (($port && !$isDefault) ? ':' . $port : '');
+        }
+
+        $locale = $this->i18n->detectLocale($request);
+        $spec['servers'] = [[
+            'url'         => $apiBaseUrl,
+            'description' => $this->i18n->trans('admin.current_env', [], $locale),
+        ]];
+
+        $response->getBody()->write(json_encode($spec, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
+     * 文档鉴权：验证 Bearer token 或 ?token= 参数（兼容旧版 base64 token）
+     * 返回 true/false，由调用方决定显示内容或拒绝
+     */
+    private function checkDocsAuth(Request $request): bool
+    {
+        $cred = $this->config->getAdminCredentials();
+        if (empty($cred['password'])) return true; // 未设密码则放行
+
+        $token = $request->getQueryParams()['token'] ?? '';
+        if (empty($token)) {
+            $header = $request->getHeaderLine('Authorization');
+            if (preg_match('/^Bearer\s+(.+)$/i', $header, $m)) $token = $m[1];
+        }
+        if (empty($token)) return false;
+
+        // 验证 cache 中的随机 token
+        if ($this->tokenService?->validate($token) !== null) return true;
+
+        // 兼容旧版 base64 token
+        return $this->tokenService?->validateLegacy($token) ?? false;
     }
 }

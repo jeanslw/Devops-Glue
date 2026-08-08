@@ -12,14 +12,11 @@ class GitService
 
     public function __construct(
         GitRemoteResolver $remoteResolver,
-        ProviderRegistry $registry
+        ProviderRegistry $registry,
+        ?Logger $logger = null
     ) {
         $this->remoteResolver = $remoteResolver;
         $this->registry = $registry;
-    }
-
-    public function setLogger(Logger $logger): void
-    {
         $this->logger = $logger;
     }
 

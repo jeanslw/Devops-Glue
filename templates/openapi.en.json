@@ -381,6 +381,7 @@
         "summary": "List all Jobs",
         "description": "Fetches from Jenkins in real-time when in jenkins mode, or from DB in gitlab_ci mode. Falls back to DB cache if Jenkins is unreachable.",
         "operationId": "mainJobsList",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [{ "$ref": "#/components/parameters/format" }],
         "responses": {
           "200": {
@@ -396,6 +397,7 @@
         "summary": "Job / Git / Harbor mapping",
         "description": "Returns mapping relationships grouped by project. 30s cache in jenkins mode.",
         "operationId": "mainMapList",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [{ "$ref": "#/components/parameters/format" }],
         "responses": {
           "200": {
@@ -411,6 +413,7 @@
         "summary": "Configured Git platforms",
         "description": "Returns statically configured Git platform info and Harbor API info.",
         "operationId": "mainGitPlatforms",
+        "security": [{ "bearerAuth": [] }],
         "responses": {
           "200": {
             "description": "Platform configuration",
@@ -435,6 +438,7 @@
         "summary": "Platform connectivity detection",
         "description": "Compares Git platforms used in mappings against configured platforms, returning configured and unconfigured lists.",
         "operationId": "mainGitDiscovery",
+        "security": [{ "bearerAuth": [] }],
         "responses": {
           "200": {
             "description": "configured + unconfigured lists",
@@ -478,6 +482,7 @@
         "summary": "Build-oriented Job list",
         "description": "Returns all active mapped jobs with ci_provider, project_id, current_path. ?format=raw returns plain job name array.",
         "operationId": "buildJobsList",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [{ "$ref": "#/components/parameters/format" }],
         "responses": {
           "200": {
@@ -508,6 +513,7 @@
         "summary": "Get build mode config",
         "description": "Returns the currently effective build mode and its source. Database is the single source of truth; first run seeds from .env.",
         "operationId": "buildConfigMode",
+        "security": [{ "bearerAuth": [] }],
         "responses": {
           "200": {
             "description": "Build mode config",
@@ -522,6 +528,7 @@
         "summary": "Pipeline list",
         "description": "Unified query for Jenkins / GitLab CI pipelines. ?list=id returns ID array, ?list=success returns successful pipeline IDs.",
         "operationId": "buildPipelines",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "path", "in": "path", "required": true, "schema": { "type": "string" }, "example": "tools/runner-ci" },
           { "$ref": "#/components/parameters/format" },
@@ -557,6 +564,7 @@
         "summary": "Pipeline detail + Jobs",
         "description": "?format=raw returns plain status array (e.g. [\"success\", \"failed\"])",
         "operationId": "buildPipelineDetail",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "path", "in": "path", "required": true, "schema": { "type": "string" } },
           { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
@@ -572,6 +580,7 @@
         "tags": ["Build"],
         "summary": "Retry Pipeline (GitLab CI only)",
         "operationId": "buildRetry",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "path", "in": "path", "required": true, "schema": { "type": "string" } },
           { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
@@ -587,6 +596,7 @@
         "tags": ["Build"],
         "summary": "Cancel Pipeline (GitLab CI only)",
         "operationId": "buildCancel",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "path", "in": "path", "required": true, "schema": { "type": "string" } },
           { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
@@ -602,6 +612,7 @@
         "tags": ["Build"],
         "summary": "Build logs (Jenkins / GitLab CI universal)",
         "operationId": "buildLogs",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "path", "in": "path", "required": true, "schema": { "type": "string" }, "example": "tools/runner-ci" },
           { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" }, "example": 32 }
@@ -618,6 +629,7 @@
         "summary": "Trigger build (POST, recommended)",
         "description": "Pass parameters in POST body JSON via variables=object (recommended). Root-level keys are also accepted (legacy compat). Parameter names must match Jenkins Job definitions; call GET /api/build/{path}/variables first to discover them.",
         "operationId": "buildTrigger",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "path", "in": "path", "required": true, "schema": { "type": "string" }, "example": "php/myapp" }
         ],
@@ -644,6 +656,7 @@
         "summary": "Trigger build (GET, Query String)",
         "description": "Legacy compat mode: parameters passed via Query String. ref is only used in GitLab CI mode.",
         "operationId": "buildTriggerGet",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "path", "in": "path", "required": true, "schema": { "type": "string" }, "example": "static" }
         ],
@@ -658,6 +671,7 @@
         "summary": "Build parameters / CI variables",
         "description": "Returns Jenkins Job parameter definitions or GitLab CI variables. ?format=json returns full object with build_provider; default returns simplified {key: options}.",
         "operationId": "buildVariables",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "path", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
@@ -673,6 +687,7 @@
         "summary": "Git branch list",
         "description": "Returns plain string array, usable directly as Rundeck Option Model Provider remote URL.",
         "operationId": "buildBranches",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "path", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
@@ -688,6 +703,7 @@
         "summary": "Harbor image scan → Commit Status write-back",
         "description": "Call after CI pipeline build completion. Automatically fetches Harbor vulnerability report and writes result back to Git platform commit status (harbor-scan context). If tag is omitted, uses the latest from Harbor.",
         "operationId": "buildScanSync",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "path", "in": "path", "required": true, "schema": { "type": "string" }, "example": "php/myapp" }
         ],
@@ -718,6 +734,7 @@
         "summary": "Generic security scan Commit Status write-back",
         "description": "Similar to GitHub Actions Security Check. Results from any security scanner (SAST, secret scan, dependency vuln, IaC audit, etc.) can be written back to the Git platform commit/MR page. Audit records are automatically written to ci_security_checks table.",
         "operationId": "buildCommitStatus",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "path", "in": "path", "required": true, "schema": { "type": "string" }, "example": "php/myapp" }
         ],
@@ -744,6 +761,7 @@
         "summary": "Query Pipeline → Tag mapping",
         "description": "?pipeline=52 queries tag for a specific pipeline; omit to return all mappings for this project. ?format=raw returns 'repo:tag' format.",
         "operationId": "buildTagQuery",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "path", "in": "path", "required": true, "schema": { "type": "string" }, "example": "php/myapp" },
           { "name": "pipeline", "in": "query", "schema": { "type": "string" }, "description": "Pipeline number (omit for all)" }
@@ -762,6 +780,7 @@
         "tags": ["Git"],
         "summary": "List Git branches for a Job",
         "operationId": "gitBranches",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "job", "in": "path", "required": true, "schema": { "type": "string" }, "example": "php/myapp", "allowReserved": true },
           { "$ref": "#/components/parameters/format" }
@@ -781,6 +800,7 @@
         "tags": ["Harbor"],
         "summary": "List projects (auto-paginated, max 1000)",
         "operationId": "harborProjects",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [{ "$ref": "#/components/parameters/format" }],
         "responses": {
           "200": {
@@ -796,6 +816,7 @@
         "tags": ["Harbor"],
         "summary": "List repositories (auto-paginated, max 1000)",
         "operationId": "harborRepositories",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "project", "in": "path", "required": true, "schema": { "type": "string" }, "example": "mycode" },
           { "$ref": "#/components/parameters/format" }
@@ -814,6 +835,7 @@
         "summary": "List tags (auto-paginated, max 2000)",
         "description": "Repository names containing / require double-encoding (%2F).",
         "operationId": "harborTags",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "project", "in": "path", "required": true, "schema": { "type": "string" }, "example": "mycode" },
           { "name": "repository", "in": "path", "required": true, "schema": { "type": "string" }, "example": "diagnosis-runtime", "allowReserved": true },
@@ -832,6 +854,7 @@
         "tags": ["Harbor"],
         "summary": "Trigger image security scan",
         "operationId": "harborScanTrigger",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "project", "in": "path", "required": true, "schema": { "type": "string" }, "example": "mycode" },
           { "name": "repository", "in": "path", "required": true, "schema": { "type": "string" }, "example": "myapp", "allowReserved": true },
@@ -850,6 +873,7 @@
         "summary": "Get image vulnerability scan report",
         "description": "Returns vulnerability list. Harbor v2 returns structured data, v1 returns raw report. Empty array when no vulnerabilities.",
         "operationId": "harborScanReport",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "project", "in": "path", "required": true, "schema": { "type": "string" }, "example": "mycode" },
           { "name": "repository", "in": "path", "required": true, "schema": { "type": "string" }, "example": "myapp", "allowReserved": true },

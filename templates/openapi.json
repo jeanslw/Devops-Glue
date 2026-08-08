@@ -381,6 +381,7 @@
         "summary": "获取所有 Job 列表",
         "description": "jenkins 模式从 Jenkins 实时拉取，gitlab_ci 模式从数据库读取。Jenkins 不可达时降级返回数据库缓存。",
         "operationId": "mainJobsList",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [{ "$ref": "#/components/parameters/format" }],
         "responses": {
           "200": {
@@ -396,6 +397,7 @@
         "summary": "Job / Git / Harbor 三方映射",
         "description": "按项目分组返回映射关系。jenkins 模式带 30s 缓存。",
         "operationId": "mainMapList",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [{ "$ref": "#/components/parameters/format" }],
         "responses": {
           "200": {
@@ -411,6 +413,7 @@
         "summary": "已接入的 Git 平台列表",
         "description": "返回静态配置的 Git 平台信息与 Harbor API 信息。",
         "operationId": "mainGitPlatforms",
+        "security": [{ "bearerAuth": [] }],
         "responses": {
           "200": {
             "description": "平台配置",
@@ -435,6 +438,7 @@
         "summary": "平台接入检测",
         "description": "对比映射中使用的 Git 平台与已配置平台，分别返回已配置和未配置列表。",
         "operationId": "mainGitDiscovery",
+        "security": [{ "bearerAuth": [] }],
         "responses": {
           "200": {
             "description": "configured + unconfigured 列表",
@@ -478,6 +482,7 @@
         "summary": "Build 视角的 Job 列表",
         "description": "返回所有活跃映射的 job，含 ci_provider、project_id、current_path。?format=raw 返回纯 job 名数组。",
         "operationId": "buildJobsList",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [{ "$ref": "#/components/parameters/format" }],
         "responses": {
           "200": {
@@ -508,6 +513,7 @@
         "summary": "获取构建模式配置",
         "description": "返回当前有效的构建模式及来源。数据库为唯一来源，首次运行从 .env 种子写入 DB。",
         "operationId": "buildConfigMode",
+        "security": [{ "bearerAuth": [] }],
         "responses": {
           "200": {
             "description": "配置模式",
@@ -522,6 +528,7 @@
         "summary": "Pipeline 列表",
         "description": "统一查询 Jenkins/GitLab CI 的 Pipeline。?list=id 返回 ID 数组，?list=success 返回成功的 Pipeline ID。",
         "operationId": "buildPipelines",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "path", "in": "path", "required": true, "schema": { "type": "string" }, "example": "tools/runner-ci" },
           { "$ref": "#/components/parameters/format" },
@@ -557,6 +564,7 @@
         "summary": "Pipeline 详情 + Jobs",
         "description": "?format=raw 返回纯状态数组（如 [\"success\", \"failed\"]）",
         "operationId": "buildPipelineDetail",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "path", "in": "path", "required": true, "schema": { "type": "string" } },
           { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
@@ -572,6 +580,7 @@
         "tags": ["Build"],
         "summary": "重试 Pipeline（仅 GitLab CI）",
         "operationId": "buildRetry",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "path", "in": "path", "required": true, "schema": { "type": "string" } },
           { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
@@ -587,6 +596,7 @@
         "tags": ["Build"],
         "summary": "取消 Pipeline（仅 GitLab CI）",
         "operationId": "buildCancel",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "path", "in": "path", "required": true, "schema": { "type": "string" } },
           { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
@@ -602,6 +612,7 @@
         "tags": ["Build"],
         "summary": "构建日志（Jenkins / GitLab CI 通用）",
         "operationId": "buildLogs",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "path", "in": "path", "required": true, "schema": { "type": "string" }, "example": "tools/runner-ci" },
           { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" }, "example": 32 }
@@ -618,6 +629,7 @@
         "summary": "触发构建（POST，推荐）",
         "description": "POST body JSON 中 variables=参数对象（推荐）。也可在根级直接写参数名（兼容旧版）。参数名需与 Jenkins Job 定义的参数名一致，先用 GET /api/build/{path}/variables 查看可用参数。",
         "operationId": "buildTrigger",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "path", "in": "path", "required": true, "schema": { "type": "string" }, "example": "php/myapp" }
         ],
@@ -644,6 +656,7 @@
         "summary": "触发构建（GET，Query String 传参）",
         "description": "兼容旧版调用方式，参数通过 Query String 传入。ref 仅 GitLab CI 模式使用。",
         "operationId": "buildTriggerGet",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "path", "in": "path", "required": true, "schema": { "type": "string" }, "example": "static" }
         ],
@@ -658,6 +671,7 @@
         "summary": "构建参数 / CI 变量",
         "description": "返回 Jenkins Job 参数定义或 GitLab CI 变量。?format=json 返回完整含 build_provider，默认返回 {key: options} 简化格式。",
         "operationId": "buildVariables",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "path", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
@@ -673,6 +687,7 @@
         "summary": "Git 分支列表",
         "description": "返回纯字符串数组，可直接用作 Rundeck Option Model Provider 的远程 URL。",
         "operationId": "buildBranches",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "path", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
@@ -688,6 +703,7 @@
         "summary": "Harbor 镜像扫描 → Commit Status 回写",
         "description": "CI pipeline 构建完成后调用。自动获取 Harbor 漏洞报告，将结果回写到 Git 平台 commit status（harbor-scan 上下文）。tag 不传则取 Harbor 最新。",
         "operationId": "buildScanSync",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "path", "in": "path", "required": true, "schema": { "type": "string" }, "example": "php/myapp" }
         ],
@@ -718,6 +734,7 @@
         "summary": "通用安全扫描 Commit Status 回写",
         "description": "类似 GitHub Actions Security Check。SAST、密钥扫描、依赖漏洞、IaC 审计等任何安全扫描工具的结果都可以通过此端点回写到 Git 平台 commit/MR 页面。自动审计记录写入 ci_security_checks 表。",
         "operationId": "buildCommitStatus",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "path", "in": "path", "required": true, "schema": { "type": "string" }, "example": "php/myapp" }
         ],
@@ -744,6 +761,7 @@
         "summary": "查询 Pipeline → Tag 映射",
         "description": "?pipeline=52 查指定 pipeline 的 tag，不传返回该项目的全部映射。?format=raw 返回 '仓库:tag' 格式。",
         "operationId": "buildTagQuery",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "path", "in": "path", "required": true, "schema": { "type": "string" }, "example": "php/myapp" },
           { "name": "pipeline", "in": "query", "schema": { "type": "string" }, "description": "Pipeline 编号（不传返回全部）" }
@@ -762,6 +780,7 @@
         "tags": ["Git"],
         "summary": "查询 Job 对应的 Git 分支列表",
         "operationId": "gitBranches",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "job", "in": "path", "required": true, "schema": { "type": "string" }, "example": "php/myapp", "allowReserved": true },
           { "$ref": "#/components/parameters/format" }
@@ -781,6 +800,7 @@
         "tags": ["Harbor"],
         "summary": "获取项目列表（自动翻页，上限 1000）",
         "operationId": "harborProjects",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [{ "$ref": "#/components/parameters/format" }],
         "responses": {
           "200": {
@@ -796,6 +816,7 @@
         "tags": ["Harbor"],
         "summary": "获取仓库列表（自动翻页，上限 1000）",
         "operationId": "harborRepositories",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "project", "in": "path", "required": true, "schema": { "type": "string" }, "example": "mycode" },
           { "$ref": "#/components/parameters/format" }
@@ -814,6 +835,7 @@
         "summary": "获取 Tag 列表（自动翻页，上限 2000）",
         "description": "仓库名含 / 需双重编码（%2F）。",
         "operationId": "harborTags",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "project", "in": "path", "required": true, "schema": { "type": "string" }, "example": "mycode" },
           { "name": "repository", "in": "path", "required": true, "schema": { "type": "string" }, "example": "diagnosis-runtime", "allowReserved": true },
@@ -832,6 +854,7 @@
         "tags": ["Harbor"],
         "summary": "触发镜像安全扫描",
         "operationId": "harborScanTrigger",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "project", "in": "path", "required": true, "schema": { "type": "string" }, "example": "mycode" },
           { "name": "repository", "in": "path", "required": true, "schema": { "type": "string" }, "example": "myapp", "allowReserved": true },
@@ -850,6 +873,7 @@
         "summary": "获取镜像漏洞扫描报告",
         "description": "返回漏洞列表。Harbor v2 返回结构化漏洞数据，v1 返回原始报告。无漏洞时返回空数组。",
         "operationId": "harborScanReport",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "project", "in": "path", "required": true, "schema": { "type": "string" }, "example": "mycode" },
           { "name": "repository", "in": "path", "required": true, "schema": { "type": "string" }, "example": "myapp", "allowReserved": true },
