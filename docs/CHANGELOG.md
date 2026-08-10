@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.4.4 (2026-08-11)
+- **Release update** — Bumped app version to v2.4.4.
+- **Admin auth clarification** — Clarified `.env` fallback and admin account login behavior in documentation.
+- **Smoke test fix** — Narrowed admin role expectation to match current super_admin auth semantics.
+
 ## v2.4.3 (2026-08-08)
 - **Security Hardening** — All `/api/build/*`, `/api/git/*`, `/api/harbor/*` routes are now covered by AuthMiddleware, eliminating unauthenticated access risks.
 - **Slim 4 Best Practices Refactor** — Authentication logic moved from Controller to AuthMiddleware; PDO, Logger and other dependencies unified as constructor injection; eliminated service locator anti-pattern and setter injection.

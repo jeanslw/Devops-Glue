@@ -9,6 +9,8 @@ use App\Service\HarborService;
 use App\Service\MappingManager;
 use App\Service\I18nService;
 use App\Service\TokenService;
+use App\Service\AdminAuthService;
+use App\Service\AdminUserRepository;
 use App\Service\Git\ProviderRegistry;
 use App\Service\Git\GitProviderFactory;
 use App\Service\Build\BuildProviderRegistry;
@@ -88,6 +90,22 @@ return [
     TokenService::class => function (\Psr\Container\ContainerInterface $c) {
         return new TokenService(
             $c->get(\PDO::class),
+            $c->get(AppConfig::class)
+        );
+    },
+
+    // 管理员用户仓库
+    AdminUserRepository::class => function (\Psr\Container\ContainerInterface $c) {
+        return new AdminUserRepository(
+            $c->get(\PDO::class)
+        );
+    },
+
+    // 管理认证服务
+    AdminAuthService::class => function (\Psr\Container\ContainerInterface $c) {
+        return new AdminAuthService(
+            $c->get(\PDO::class),
+            $c->get(AdminUserRepository::class),
             $c->get(AppConfig::class)
         );
     },
@@ -306,6 +324,8 @@ return [
             $c->get(I18nService::class),
             $c->get(AppConfig::class),
             $c->get(\PDO::class),
+            $c->get(AdminAuthService::class),
+            $c->get(AdminUserRepository::class),
             $c->get(AutoDiscover::class),
             $c->get(TokenService::class)
         );

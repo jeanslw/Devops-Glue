@@ -102,8 +102,8 @@
                 <option value="en" data-i18n="lang.en">English</option>
             </select>
         </span>
-        <a href="/admin" data-i18n="index.admin">🔑 登录</a>
-        <a href="#" onclick="var t=sessionStorage.getItem('admin_token');location.href='/api/docs'+(t?'?token='+t:'')" data-i18n="index.docs">📖 文档</a>
+        <a href="/admin"><span class="menu-icon">🔑</span> <span data-i18n="index.admin">登录</span></a>
+        <a href="#" onclick="var t=sessionStorage.getItem('admin_token');location.href='/api/docs'+(t?'?token='+t:'')"><span class="menu-icon">📖</span> <span data-i18n="index.docs">文档</span></a>
     </div>
 </nav>
 

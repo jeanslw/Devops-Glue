@@ -452,17 +452,25 @@ class MainController extends BaseController
     private function checkDocsAuth(Request $request): bool
     {
         $cred = $this->config->getAdminCredentials();
-        if (empty($cred['password'])) return true; // 未设密码则放行
+        if (empty($cred['password'])) {
+            return $this->tokenService?->isFirstInit() ?? false;
+        }
 
         $token = $request->getQueryParams()['token'] ?? '';
         if (empty($token)) {
             $header = $request->getHeaderLine('Authorization');
-            if (preg_match('/^Bearer\s+(.+)$/i', $header, $m)) $token = $m[1];
+            if (preg_match('/^Bearer\s+(.+)$/i', $header, $m)) {
+                $token = $m[1];
+            }
         }
-        if (empty($token)) return false;
+        if (empty($token)) {
+            return false;
+        }
 
         // 验证 cache 中的随机 token
-        if ($this->tokenService?->validate($token) !== null) return true;
+        if ($this->tokenService?->validate($token) !== null) {
+            return true;
+        }
 
         // 兼容旧版 base64 token
         return $this->tokenService?->validateLegacy($token) ?? false;

@@ -1,5 +1,6 @@
 -- =============================================================
 -- Devops-Glue SQLite 建表脚本
+-- Using to inspect structure; no modification
 -- 使用: sqlite3 config/data/data.db < database/sqlite_init.sql
 -- =============================================================
 

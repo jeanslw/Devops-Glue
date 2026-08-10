@@ -348,21 +348,7 @@ class Database
 
     private static function seedAdmin(): void
     {
-        $pdo = self::$pdo;
-        $cnt = $pdo->query("SELECT count(*) c FROM " . \App\Config\AppConfig::TABLE_ADMIN_USERS)->fetch()['c'];
-        if ($cnt == 0) {
-            $user = $_ENV['ADMIN_USER'] ?? 'admin';
-            $pass = $_ENV['ADMIN_PASSWORD'] ?? '';
-            if (!empty($pass)) {
-                $hash = password_hash($pass, PASSWORD_BCRYPT);
-                $pdo->prepare("INSERT INTO " . \App\Config\AppConfig::TABLE_ADMIN_USERS . " (username, password_hash, role, systems) VALUES (?, ?, ?, 'ci,cd')")
-                    ->execute([$user, $hash, \App\Config\AppConfig::ROLE_SUPER_ADMIN]);
-            }
-        }
-        // 迁移：已有根管理员 role 从 'admin' 升级为 'super_admin'
-        $rootUser = $_ENV['ADMIN_USER'] ?? 'admin';
-        $pdo->prepare("UPDATE " . \App\Config\AppConfig::TABLE_ADMIN_USERS . " SET role = ? WHERE username = ? AND role = ?")
-            ->execute([\App\Config\AppConfig::ROLE_SUPER_ADMIN, $rootUser, \App\Config\AppConfig::ROLE_ADMIN]);
+        AdminUserRepository::seedAdminFromEnv(self::$pdo);
     }
 
     // ── JSON 迁移（仅 SQLite 一次性）──

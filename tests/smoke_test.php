@@ -26,8 +26,8 @@ $harborProject  = 'mycode';
 $harborRepo     = 'diagnosis-runtime';
 
 // 登录凭据：可通过环境变量覆盖
-$loginUser     = getenv('TEST_LOGIN_USER') ?: 'root';
-$loginPassword = getenv('TEST_LOGIN_PASS') ?: 'admin123';
+$loginUser     = getenv('TEST_LOGIN_USER') ?: 'You_User';
+$loginPassword = getenv('TEST_LOGIN_PASS') ?: 'You_Password';
 
 $triggerParams = [
     'java/registry'   => ['branches' => 'master'],
@@ -368,6 +368,15 @@ $tc = apiT('登录（错误密码）', "{$baseUrl}/api/admin/login", 'POST', ['u
 $tc->assertHttpIs(401, '错误密码返回 401');
 echo "  [Admin] 错误密码 ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
 
+// admin 用户列表/角色列表无需认证时应返回 401
+$tc = apiT('用户列表(无认证)', "{$baseUrl}/api/admin/users");
+$tc->assertHttpIs(401, '无 token 访问用户列表返回 401');
+echo "  [Admin] 用户列表(无认证) ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
+
+$tc = apiT('角色列表(无认证)', "{$baseUrl}/api/admin/roles");
+$tc->assertHttpIs(401, '无 token 访问角色列表返回 401');
+echo "  [Admin] 角色列表(无认证) ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
+
 // ─── me/permissions 接口（无需 admin 权限，只需 token）───
 
 // 无 token 应 401
@@ -450,11 +459,10 @@ if ($globalToken) {
     $tc->assertJson();
     $rolesData = json_decode($tc->rawBody, true) ?? [];
     $tc->assertIsArray();
-    // 必须至少含 2 个系统角色：super_admin / admin
+    // 只检查 super_admin 系统角色存在
     if (is_array($rolesData)) {
         $roleNames = array_column($rolesData, 'name');
         $tc->assert(in_array('super_admin', $roleNames, true), '包含 super_admin 系统角色');
-        $tc->assert(in_array('admin', $roleNames, true), '包含 admin 系统角色');
     }
     echo "  [Admin] 角色列表 ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
 

@@ -47,6 +47,12 @@ HARBOR_PASSWORD=your_password
 ADMIN_USER=admin
 ADMIN_PASSWORD=               # Created on first boot; DB takes precedence afterwards
 
+# Note:
+#   - For super_admin login, the system first validates against the admin_users DB record.
+#   - Only after 3 consecutive failed logins for the root user does the system fall back to .env ADMIN_USER/ADMIN_PASSWORD.
+#   - This ADMIN_USER/ADMIN_PASSWORD pair is only used by the Devops-Glue API global admin fallback logic.
+#   - To create a CD-specific account, create the account in the admin backend, assign Devops-Glue CD permissions, and then write it into the Devops-Glue CD's own .env if that service supports it.
+
 # ============ Database ============
 DB_DRIVER=mysql               # sqlite or mysql
 DB_HOST=127.0.0.1

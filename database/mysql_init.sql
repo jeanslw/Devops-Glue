@@ -1,6 +1,7 @@
 -- =============================================================
 -- Devops-Glue MySQL 建表脚本
 -- 适用: MySQL 8.0+
+-- Using to inspect structure; no modification
 -- 使用: mysql -u root -p < database/mysql_init.sql
 -- =============================================================
 

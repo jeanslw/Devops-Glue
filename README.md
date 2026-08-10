@@ -18,16 +18,12 @@ Devops-Glue API is a DevOps toolchain integration platform built on Slim4 for sm
 
 ## 🆚 Why Devops-Glue + CD?
 
-| Dimension | Devops-Glue + CD | Jenkins | GitLab CI | GitHub Actions |
-|-----------|------------------|---------|-----------|----------------|
-| **China Ecosystem** | ✅ Native Gitee/DingTalk/Feishu | ❌ Plugin-dependent | ⚠️ Slow international access | ⚠️ Unstable in China |
-| **Real-time Feedback** | ✅ SSE + Web Shell | ⚠️ Polling/Blue Ocean | ⚠️ Basic log streaming | ✅ Native support |
-| **PHP Team Onboarding** | ✅ Zero learning curve | ❌ Steep Groovy curve | ⚠️ Moderate YAML | ⚠️ Moderate YAML |
-| **Deployment Methods** | SSH/Docker/K8s full coverage | Plugin-dependent | Runner-based | Runner-based |
-| **Permission Model** | ✅ Data-driven RBAC | ⚠️ Complex matrix perms | ✅ Inherits Git perms | ✅ Inherits repo perms |
-| **Time to First Deploy** | 30 min setup & running | Days of tuning | Hours | Hours |
+> **A Unified Management Console for Jenkins & GitLab CI**
+> ✅ Make your distributed Jenkins instances and GitLab CI projects manageable, observable, and auditable
 
-> 💡 **Core Philosophy**: Not an enterprise remote control — a Swiss Army knife for small teams. Sufficient, usable, affordable.
+- 🔍 **Unified Build View**: Cross-engine search and aggregation of all build history — no more platform switching
+- 🔐 **Fine-grained RBAC**: More flexible access control than native plugins, tailored for team-scale organizations
+- 🚀 **Non-invasive Integration**: API-only connection with zero changes to existing CI configs — onboard in under 5 minutes
 
 > **[Chinese](README_ZH-CN.md)**
 

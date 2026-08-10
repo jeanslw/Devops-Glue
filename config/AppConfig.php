@@ -3,7 +3,7 @@ namespace App\Config;
 
 class AppConfig
 {
-    public const APP_VERSION = '2.4.3';
+    public const APP_VERSION = '2.4.4';
 
     // ── 表名常量 ──
     public const TABLE_JOB_GIT_MAP       = 'ci_job_git_map';
@@ -150,13 +150,15 @@ class AppConfig
     public const PROVIDER_GITLAB_CI = 'gitlab_ci';
 
     // ── 缓存键前缀常量 ──
-    public const CACHE_KEY_ADMIN_TOKEN_PREFIX = 'admin_token_';
-    public const CACHE_KEY_MAP_LIST_PREFIX    = 'map_list_';
-    public const CACHE_KEY_HARBOR_VERSION     = 'harbor_api_version';
+    public const CACHE_KEY_ADMIN_TOKEN_PREFIX      = 'admin_token_';
+    public const CACHE_KEY_ADMIN_LOGIN_FAIL_PREFIX = 'admin_login_fail_';
+    public const CACHE_KEY_MAP_LIST_PREFIX         = 'map_list_';
+    public const CACHE_KEY_HARBOR_VERSION          = 'harbor_api_version';
 
     // ── TTL 常量（秒）──
-    public const TTL_TOKEN  = 86400;  // 登录 token 有效期（24h）
-    public const TTL_CACHE  = 3600;   // 通用缓存有效期（1h）
+    public const TTL_TOKEN      = 86400;  // 登录 token 有效期（24h）
+    public const TTL_LOGIN_FAIL = 3600;   // 管理登录失败计数有效期（1h）
+    public const TTL_CACHE      = 3600;   // 通用缓存有效期（1h）
 
     private array $config;
 

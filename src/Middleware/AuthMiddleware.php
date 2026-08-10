@@ -42,16 +42,6 @@ class AuthMiddleware implements MiddlewareInterface
             );
         }
 
-        // 未设任何密码且无管理员用户则放行（首次初始化场景）
-        if ($this->tokenService->isFirstInit()) {
-            return $handler->handle(
-                $request
-                    ->withAttribute('currentUser', '')
-                    ->withAttribute('currentRole', AppConfig::ROLE_ADMIN)
-                    ->withAttribute('userPermissions', [])
-            );
-        }
-
         return $this->unauthorized($request, 'auth.token_invalid');
     }
 

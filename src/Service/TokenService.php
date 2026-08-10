@@ -49,11 +49,14 @@ class TokenService
     public function validateLegacy(string $token): bool
     {
         $cred = $this->config->getAdminCredentials();
-        if (empty($cred['password'])) {
-            return true;
+        if (empty($cred['user']) || empty($cred['password'])) {
+            return false;
         }
-        $expected = base64_encode($cred['user'] . ':' . $cred['password']);
-        return hash_equals($expected, $token);
+        $expected = \base64_encode($cred['user'] . ':' . $cred['password']);
+        if (\function_exists('hash_equals')) {
+            return \hash_equals($expected, $token);
+        }
+        return $expected === $token;
     }
 
     /**

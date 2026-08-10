@@ -564,9 +564,11 @@ If only `ref` is present without other parameters, auto-convert to `{branches: r
 
 **Verification Priority:**
 1. Query `admin_users` table, `password_verify()` to check bcrypt hash
-2. Fallback: compare `.env` `ADMIN_USER`/`ADMIN_PASSWORD` (requires password non-empty)
+2. If the root user has failed database login 3 times in a row, fallback: compare `.env` `ADMIN_USER`/`ADMIN_PASSWORD` (requires password non-empty)
 3. Auth success → generate 64-char hex token → write to `cache` table (`admin_token_{token}`, 24h TTL)
 4. Pre-load user permissions to request attribute via `TokenService::loadPermissions()`
+
+> **Note:** This `.env` fallback only applies to the Devops-Glue API global admin login flow. To create a CD-specific account, create the account in the admin backend and assign CD permissions first, then write it into the CD service's own `.env` if that service supports it.
 
 #### 5.9.2 Token Verification (AuthMiddleware + TokenService)
 
