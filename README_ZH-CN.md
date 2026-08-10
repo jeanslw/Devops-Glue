@@ -1,7 +1,32 @@
 # Devops-Glue API v2.4
 Devops-Glue API 是基于 Slim4 为小团队打造的 DevOps 工具链集成平台。统一 API 管理 Jenkins + GitLab CI 双通道构建、GitLab / Gitee / GitHub / Gitea 多平台代码、以及 Harbor 镜像仓库——覆盖从 CI 到 CD 的完整流程。双语界面，数据驱动的角色权限分级（RBAC）。
 
-> **不是大厂遥控器——是小团队的瑞士军刀。**
+<p align="center">
+  <strong>🔧 轻量级 CI 管理服务 | 小团队的瑞士军刀</strong><br/>
+  PHP + Slim4 构建，专为小团队设计的持续集成与 DevOps 数据聚合平台
+</p>
+
+<p align="center">
+  <a href="https://gitee.com/jeanslw/devops_cd"><img src="https://img.shields.io/badge/配套_CD-Devops__CD-green?logo=python" alt="CD"></a>
+  <img src="https://img.shields.io/badge/PHP-8.1+-777BB4?logo=php&logoColor=white" alt="PHP">
+  <img src="https://img.shields.io/badge/Slim-4-00A650?logo=slim&logoColor=white" alt="Slim">
+  <img src="https://img.shields.io/github/license/jeanslw/Devops-Glue" alt="License">
+</p>
+
+> 🔗 **本项目为 CI 组件** | 完整系统需配套 CD 部署服务 → [Devops_CD](https://gitee.com/jeanslw/devops_cd)
+
+## 🆚 为什么选择 Devops-Glue + CD？
+
+| 维度 | Devops-Glue + CD | Jenkins | GitLab CI | GitHub Actions |
+|------|------------------|---------|-----------|----------------|
+| **国内生态** | ✅ Gitee/钉钉/飞书原生 | ❌ 需插件适配 | ⚠️ 国际版访问慢 | ⚠️ 国内网络不稳定 |
+| **实时反馈** | ✅ SSE + Web Shell | ⚠️ 轮询/Blue Ocean | ⚠️ 基础日志流 | ✅ 原生支持 |
+| **PHP 团队接入** | ✅ 零学习成本 | ❌ Groovy 陡峭 | ⚠️ YAML 中等 | ⚠️ YAML 中等 |
+| **部署方式** | SSH/Docker/K8s 全覆盖 | 依赖插件 | Runner 模式 | Runner 模式 |
+| **权限模型** | ✅ RBAC 数据驱动 | ⚠️ 矩阵权限复杂 | ✅ 继承 Git 权限 | ✅ 继承 Repo 权限 |
+| **上手时间** | 30 分钟部署即用 | 数天配置调优 | 数小时 | 数小时 |
+
+> 💡 **核心理念**：不是大厂遥控器，是小团队的瑞士军刀。够用、好用、养得起。
 
 > **[英文版](README.md)**
 
@@ -19,7 +44,46 @@ Devops-Glue API 是基于 Slim4 为小团队打造的 DevOps 工具链集成平�
 - **管理面板** — 服务监控、映射配置、安全扫描、用户管理
 - **零配置启动** — 默认 SQLite，一键切换 MySQL / MariaDB
 
-## 快速开始
+## 架构全景图
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        CODE PUSH                            │
+│  GitLab / Gitee / GitHub / Gitea  →  Webhook Trigger        │
+└──────────────────────────┬──────────────────────────────────┘
+                           ↓
+┌─────────────────────────────────────────────────────────────┐
+│                     CI 层：Devops-Glue API (PHP)            │
+│                                                             │
+│  ┌──────────────┐  ┌──────────────┐   ┌──────────────┐      │
+│  │   Jenkins    │  │  GitLab CI   │   │   自定义 CI  │      │
+│  │ BuildProvider│  │ BuildProvider│   │ BuildProvider│      │
+│  └──────┬───────┘  └──────┬───────┘   └──────┬───────┘      │
+│         └─────────────────┼──────────────────┘              │
+│                           ↓                                 │
+│              Build → Docker Image → Harbor Registry         │
+│                           ↓                                 │
+│              scan-sync → ci_pipeline_tags                   │
+└──────────────────────────┬──────────────────────────────────┘
+                           ↓
+┌─────────────────────────────────────────────────────────────┐
+│                     CD 层：cd_service (Python)              │
+│                                                             │
+│   选择 Project + Tag  ──→  部署执行                         │
+│                                                             │
+│   ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
+│   │  SSH 脚本    │  │Docker Compose│  │  Kubernetes  │      │
+│   │  Ansible     │  │  SFTP + up   │  │ kubectl/Helm │      │
+│   │              │  │              │  │ ArgoCD/FluxCD│      │
+│   └──────────────┘  └──────────────┘  └──────────────┘      │
+│                           ↓                                 │
+│              cd_deploy_logs (部署记录)                      │
+│                           ↓                                 │
+│              钉钉 / 企业微信 Webhook 通知                   │
+└─────────────────────────────────────────────────────────────┘
+```
+<details>
+## <summary>快速开始</summary>
 
 ```bash
 # 1. 克隆
@@ -45,6 +109,7 @@ curl http://localhost:8080/api/health
 访问 `http://localhost:8080/admin` 进入管理面板（账号密码见 `.env`）。
 
 访问 `http://localhost:8080/api/docs` 查看交互式 API 文档（Swagger UI）。
+</details>
 
 ## 运行环境
 
@@ -56,20 +121,18 @@ curl http://localhost:8080/api/health
 | GitLab | v9.0+（API v4） |
 | Harbor | v1.10.1 / v2.x |
 
-完整环境变量参考和 CORS 配置请见 [docs/ADMIN_MANUAL.md](docs/ADMIN_MANUAL.md)。
+完整环境变量参考和 CORS 配置请见 [docs/管理员配置手册.md](docs/管理员配置手册.md)。
 
 ## 文档
 
 | 文档 | 语言 | 说明 |
-|---|---|---|
-| [docs/API.md](docs/API.md) | EN | API 参考 — 接口端点、请求/响应格式、快速测试 |
-| [docs/ADMIN_MANUAL.md](docs/ADMIN_MANUAL.md) | EN | 管理员手册 — 环境变量、映射配置、自定义 Git 平台 |
-| [docs/用户说明.md](docs/用户说明.md) | 中文 | 用户指南 — 最终用户操作说明 |
-| [docs/技术文档.md](docs/技术文档.md) | 中文 | 技术文档 — 架构设计、数据库设计、数据流程、故障排查 |
-| [docs/technical-guide.md](docs/technical-guide.md) | EN | Technical Guide — architecture, DB design, data flows, troubleshooting |
-| [docs/常见问题.md](docs/常见问题.md) | 中文 | 常见问题 — 部署、配置、构建、鉴权、Harbor 等 |
-| [docs/FAQ.md](docs/FAQ.md) | EN | FAQ — deployment, config, builds, auth, Harbor, etc. |
-| [docs/CHANGELOG.md](docs/CHANGELOG.md) | — | 更新日志 |
+|------|------|------|
+| [API 参考](docs/API_文档.md) | 中文 | API 接口、请求/响应格式、快速测试 |
+| [架构全景图](docs/架构全景图.md) | 中文 | 整体数据流、组件关系、部署模式矩阵|
+| [管理员手册](docs/管理员配置手册.md) | 中文 | 环境变量、映射配置、自定义 Git 平台 |
+| [技术文档](docs/技术文档.md) | 中文 | 架构设计、数据库设计、数据流程、故障排查（中文） |
+| [常见问题](docs/常见问题.md) | 中文 | 常见问题与排查指南（中文） |
+| [更新日志](docs/更新日志.md) | 中文 | 版本发布记录 |
 
 ## 相关项目
 

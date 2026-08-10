@@ -1,63 +1,62 @@
 # Changelog
 
 ## v2.4.3 (2026-08-08)
-- **安全加固** — `/api/build/*`、`/api/git/*`、`/api/harbor/*` 路由组全部纳入 AuthMiddleware 认证，消除未鉴权调用风险
-- **Slim 4 最佳实践重构** — 鉴权逻辑从 Controller 移至 AuthMiddleware 中间件；PDO、Logger 等依赖统一改为构造函数注入；消除服务定位器反模式、setter 注入
-- **TokenService 抽取** — 统一封装 token 验证、权限查询、token 撤销逻辑，消除 AuthMiddleware / AdminController / MainController 三处重复 SQL
-- **Admin 接口性能优化** — AuthMiddleware 一次性查询并注入 userPermissions，消除 AdminController 每次权限检查的冗余 DB 查询
-- **前端适配** — admin.js 中 build 接口的 `<a>` 链接改为 fetch + authHeaders + 剪贴板复制
+- **Security Hardening** — All `/api/build/*`, `/api/git/*`, `/api/harbor/*` routes are now covered by AuthMiddleware, eliminating unauthenticated access risks.
+- **Slim 4 Best Practices Refactor** — Authentication logic moved from Controller to AuthMiddleware; PDO, Logger and other dependencies unified as constructor injection; eliminated service locator anti-pattern and setter injection.
+- **TokenService Extraction** — Unified token validation, permission query, and token revocation logic, eliminating duplicate SQL across AuthMiddleware, AdminController, and MainController.
+- **Admin API Performance Optimization** — AuthMiddleware now queries and injects userPermissions in one pass, eliminating redundant DB queries for each permission check in AdminController.
+- **Frontend Adaptation** — Build interface `<a>` links in admin.js changed to fetch + authHeaders + clipboard copy.
 
 ## v2.4.2 (2026-07-31)
-- **权限管理重构（数据驱动 RBAC）** — 权限 key、父级层级、隐含关系全部存 DB，后台 UI 可直接注册/删除。
-- **RBAC 角色/权限编辑 UI** — 角色编辑支持可视化权限分组。
-- **安全加固** — 权限注册 API、隐含规则 API 增加统一权限校验；
-- **首页 UI 调整** — 增加管理界面的系统监测
-- **错误提示完善** — OpenAPI 文档补全 5 个 RBAC 接口
-- **补全历史文档** — README（中/英）、技术文档（中/英）、FAQ（中/英）、API.md
-
+- **Permission Management Refactor (Data-Driven RBAC)** — Permission keys, parent hierarchy, and implied relations all stored in DB; admin UI supports direct registration/deletion.
+- **RBAC Role/Permission Edit UI** — Role editing supports visual permission grouping.
+- **Security Hardening** — Permission registration API and implied rules API now have unified permission checks.
+- **Homepage UI Adjustments** — Added system monitoring to admin dashboard.
+- **Error Message Improvements** — OpenAPI docs now include 5 RBAC endpoints.
+- **Historical Documentation Completion** — README (EN/CN), Technical Guide (EN/CN), FAQ (EN/CN), API.md updated.
 
 ## v2.4.0 (2026-07-28)
-- **国际化 (i18n)** — 新增 `symfony/translation` 依赖，支持中文/英文双语界面
-- **超级管理员** — 引入 `super_admin` 角色，数据库存储，权限优于普通 `admin`
-- **用户权限分级** —  4级RBAC权限，同级管理账户不可互相修改、删除。
-- **根管理员保护** — 内置 root 账号不可删除、不可修改
-- **管理后台增强** — 用户列表角色区分显示，顶部栏显示当前登录用户
+- **i18n** — Added `symfony/translation` dependency, supports Chinese/English bilingual UI.
+- **Super Admin** — Introduced `super_admin` role, stored in DB, with permissions above regular `admin`.
+- **User Permission Levels** — 4-tier RBAC; admin accounts at the same level cannot modify or delete each other.
+- **Root Admin Protection** — Built-in root account cannot be deleted or modified.
+- **Admin Dashboard Enhancements** — User list now shows roles; top bar displays current logged-in user.
 
 ## v2.3.2 (2026-07-25)
-- Multi-environment config support (`APP_ENV` with `.env.{ENV}` overrides)
-- Build mode runtime switching with backend validation
-- Security scan commit status write-back + `ci_security_checks` audit table
-- Bug fixes: security scan icons, `ci_pipeline_tags` COUNT query, Git pagination
+- Multi-environment config support (`APP_ENV` with `.env.{ENV}` overrides).
+- Build mode runtime switching with backend validation.
+- Security scan commit status write-back + `ci_security_checks` audit table.
+- Bug fixes: security scan icons, `ci_pipeline_tags` COUNT query, Git pagination.
 
 ## v2.3.1 (2026-07-15)
-- Tag validation and storage rules
-- MySQL / SQLite dual driver; `DB_DRIVER` required
-- Docker optimized with MySQL 8.4 integration
+- Tag validation and storage rules.
+- MySQL / SQLite dual driver; `DB_DRIVER` required.
+- Docker optimized with MySQL 8.4 integration.
 
 ## v2.3.0 (2026-07-10)
-- GitLab CI dual-channel + Build unified module
-- SQLite persistence + Admin web UI
+- GitLab CI dual-channel + Build unified module.
+- SQLite persistence + Admin web UI.
 
 ## v2.2.0 (2026-05-06)
-- ProviderRegistry pattern for Git platforms
-- Custom platform extension support
-- Gitea adapter added
+- ProviderRegistry pattern for Git platforms.
+- Custom platform extension support.
+- Gitea adapter added.
 
 ## v2.1.2 (2026-05-04)
-- Homepage health check dashboard
-- GitHub platform integration
-- `/api/health` endpoint
-- Swagger UI + structured file logging
-- Docker deployment support
+- Homepage health check dashboard.
+- GitHub platform integration.
+- `/api/health` endpoint.
+- Swagger UI + structured file logging.
+- Docker deployment support.
 
 ## v2.1.1 (2026-03-05)
-- Slim4 refactor
-- Main module (platform integration, multi-party mapping)
-- Output format switching (raw/json/xml)
-- Harbor scan integration and report retrieval
+- Slim4 refactor.
+- Main module (platform integration, multi-party mapping).
+- Output format switching (raw/json/xml).
+- Harbor scan integration and report retrieval.
 
 ## v1.1.0 (2021-11-01)
-- Harbor query features added
+- Harbor query features added.
 
 ## v1.0.0 (2018-09-28)
-- Initial release: Jenkins, Git, and Rundeck integration
+- Initial release: Jenkins, Git, and Rundeck integration.
