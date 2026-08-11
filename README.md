@@ -1,5 +1,5 @@
 # Devops-Glue API v2.4
-Devops-Glue API is a DevOps toolchain integration platform built on Slim4 for small teams. A unified API to manage Jenkins + GitLab CI dual-channel builds, GitLab / Gitee / GitHub / Gitea multi-platform code, and Harbor image registry — covering the full CI-to-CD workflow. Bilingual interface, data-driven role-based access control (RBAC).
+Devops-Glue API is a DevOps toolchain enhancement and integration platform built on Slim4 for small teams. A unified API to manage Jenkins + GitLab CI dual-channel builds, GitLab / Gitee / GitHub / Gitea multi-platform code, and Harbor image registry — covering the full CI-to-CD workflow. Bilingual interface, data-driven role-based access control (RBAC).
 
 <p align="center">
   <strong>🔧 Lightweight CI Management Service | Swiss Army Knife for Small Teams</strong><br/>
@@ -13,10 +13,10 @@ Devops-Glue API is a DevOps toolchain integration platform built on Slim4 for sm
   <img src="https://img.shields.io/github/license/jeanslw/Devops-Glue" alt="License">
 </p>
 
-> 🔗 **This is the CI component** | Full system requires the CD deployment service → [Devops_CD](https://github.com/jeanslw/Devops_CD)
+> 🔗 **This is a CI enhancement component** | Full system requires the CD deployment service → [Devops_CD](https://github.com/jeanslw/Devops_CD)
 
 
-## 🆚 Why Devops-Glue + CD?
+##  Why Devops-Glue + CD?
 
 > **A Unified Management Console for Jenkins & GitLab CI**
 > ✅ Make your distributed Jenkins instances and GitLab CI projects manageable, observable, and auditable
@@ -40,8 +40,11 @@ Devops-Glue API is a DevOps toolchain integration platform built on Slim4 for sm
 - **Role-Based Access (Data-Driven RBAC)** — `super_admin` > `admin` > `deployer` > `viewer`. Permission keys and implied rules are stored in DB and fully managed via the admin UI; no code change required when new menus/modules are added.
 - **Admin Dashboard** — service monitoring, mapping config, security scan, user management
 - **Zero-Config Startup** — SQLite by default, MySQL / MariaDB with one-click switch
+- 
 
-## Architecture Overview
+##  Architecture Overview
+<details>
+<summary>Click to expand</summary>
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -79,8 +82,11 @@ Devops-Glue API is a DevOps toolchain integration platform built on Slim4 for sm
 │              DingTalk / WeCom Webhook Notifications         │
 └─────────────────────────────────────────────────────────────┘
 ```
+</details>
+
+## Quick Start
 <details>
-## <summary>Quick Start</summary>
+<summary>Click to expand</summary>
 
 ```bash
 # 1. Clone
@@ -107,6 +113,7 @@ Visit `http://localhost:8080/admin` for the admin panel (credentials in `.env`).
 
 Visit `http://localhost:8080/api/docs` for interactive API docs (Swagger UI).
 </details>
+
 ## Requirements
 
 | Component | Version |
@@ -124,7 +131,7 @@ See [docs/ADMIN_MANUAL.md](docs/ADMIN_MANUAL.md) for full environment variable r
 | Document | Language | Description |
 |----------|----------|-------------|
 | [API Reference](docs/API.md) | EN | API endpoints, request/response formats, quick tests |
-| [ARCHITECTURE](docs/ARCHITECTURE.md) | EN | 整体数据流、组件关系、部署模式矩阵|
+| [ARCHITECTURE](docs/ARCHITECTURE.md) | EN | Overall data flow, component relationships, deployment pattern matrix|
 | [Admin Manual](docs/ADMIN_MANUAL.md) | EN | Environment variables, mapping config, custom Git platform |
 | [Technical Guide](docs/Technical-Guide.md) | EN | Architecture, DB design, data flows, troubleshooting |
 | [FAQ](docs/FAQ.md) | EN | Common issues and troubleshooting |

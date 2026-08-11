@@ -1,5 +1,5 @@
 # Devops-Glue API v2.4
-Devops-Glue API 是基于 Slim4 为小团队打造的 DevOps 工具链集成平台。统一 API 管理 Jenkins + GitLab CI 双通道构建、GitLab / Gitee / GitHub / Gitea 多平台代码、以及 Harbor 镜像仓库——覆盖从 CI 到 CD 的完整流程。双语界面，数据驱动的角色权限分级（RBAC）。
+Devops-Glue API 是基于 Slim4 为小团队打造的 DevOps 工具链增强集成平台。统一 API 管理 Jenkins + GitLab CI 双通道构建、GitLab / Gitee / GitHub / Gitea 多平台代码、以及 Harbor 镜像仓库——覆盖从 CI 到 CD 的完整流程。双语界面，数据驱动的角色权限分级（RBAC）。
 
 <p align="center">
   <strong>🔧 轻量级 CI 管理服务 | 小团队的瑞士军刀</strong><br/>
@@ -13,7 +13,7 @@ Devops-Glue API 是基于 Slim4 为小团队打造的 DevOps 工具链集成平�
   <img src="https://img.shields.io/github/license/jeanslw/Devops-Glue" alt="License">
 </p>
 
-> 🔗 **本项目为 CI 组件** | 完整系统需配套 CD 部署服务 → [Devops_CD](https://gitee.com/jeanslw/devops_cd)
+> 🔗 **本项目为CI增强组件** | 完整系统需配套 CD 部署服务 → [Devops_CD](https://gitee.com/jeanslw/devops_cd)
 
 ## 🆚 为什么选择 Devops-Glue + CD？
 
@@ -41,6 +41,8 @@ Devops-Glue API 是基于 Slim4 为小团队打造的 DevOps 工具链集成平�
 - **零配置启动** — 默认 SQLite，一键切换 MySQL / MariaDB
 
 ## 架构全景图
+<details>
+<summary>点击展开</summary>
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -78,8 +80,11 @@ Devops-Glue API 是基于 Slim4 为小团队打造的 DevOps 工具链集成平�
 │              钉钉 / 企业微信 Webhook 通知                   │
 └─────────────────────────────────────────────────────────────┘
 ```
+</details>
+
+## 快速开始
 <details>
-## <summary>快速开始</summary>
+<summary>点击展开</summary>
 
 ```bash
 # 1. 克隆
