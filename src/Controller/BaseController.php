@@ -4,9 +4,14 @@ namespace App\Controller;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Service\I18nService;
+use App\Config\AppConfig;
 
 class BaseController
 {
+    protected string $currentUser = '';
+    protected string $currentRole = AppConfig::ROLE_ADMIN;
+    protected array $userPermissions = [];
+
     public function __construct(protected I18nService $i18n) {}
 
     /**
@@ -25,6 +30,40 @@ class BaseController
     protected function getLocale(Request $request): string
     {
         return $this->i18n->detectLocale($request);
+    }
+
+    /**
+     * 从 request attribute 读取中间件设置的鉴权信息
+     *（currentUser / currentRole / userPermissions 均由 AuthMiddleware 统一设置）
+     */
+    protected function initAuthFromRequest(Request $request): void
+    {
+        $this->currentUser     = $request->getAttribute('currentUser', '');
+        $this->currentRole     = $request->getAttribute('currentRole', AppConfig::ROLE_ADMIN);
+        $this->userPermissions = $request->getAttribute('userPermissions', []);
+    }
+
+    /**
+     * 判断当前用户是否有指定权限
+     * super_admin 始终拥有所有权限
+     */
+    protected function hasPermission(string $permKey): bool
+    {
+        if ($this->currentRole === AppConfig::ROLE_SUPER_ADMIN) {
+            return true;
+        }
+        return in_array($permKey, $this->userPermissions, true);
+    }
+
+    /**
+     * 权限检查：无权限时返回错误响应，有权限返回 null
+     */
+    protected function requirePermission(Response $response, string $permKey, string $messageKey = 'auth.forbidden'): ?Response
+    {
+        if (!$this->hasPermission($permKey)) {
+            return $this->jsonError($response, $messageKey, 403);
+        }
+        return null;
     }
     /**
      * 统一输出处理
@@ -67,11 +106,13 @@ class BaseController
         // 如果数据本身已经是完整的响应结构（比如 buildTrigger），直接输出
         if (is_array($data) && array_key_exists('code', $data)) {
             $response->getBody()->write(json_encode($data));
+            $status = is_int($data['code']) ? $data['code'] : $code;
+            return $response->withStatus($status)->withHeader('Content-Type', 'application/json');
         } else {
             // 否则只包裹 data
             $response->getBody()->write(json_encode(['data' => $data]));
         }
-        return $response->withHeader('Content-Type', 'application/json');
+        return $response->withStatus($code)->withHeader('Content-Type', 'application/json');
     }
 
     /**

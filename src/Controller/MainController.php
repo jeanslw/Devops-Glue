@@ -66,7 +66,9 @@ class MainController extends BaseController
                         return $this->output($response, $data, $request);
                     }
                 }
-            } catch (\Exception $e) {}
+            } catch (\Exception $e) {
+                \App\Helper\Log::exception($e);
+            }
         }
         try {
             $maps = $this->config->getJobGitMap();
@@ -198,6 +200,23 @@ class MainController extends BaseController
      */
     public function health(Request $request, Response $response): Response
     {
+        // 该方法已拆分为公开简化接口和需鉴权的详细接口。
+        // 旧的 `health` 路由已被重命名为 `healthDetail`，本方法保持向后兼容。
+        $result = [
+            'status'      => 'ok',
+            'app_env'     => $this->config->getAppEnv(),
+            'app_version' => AppConfig::APP_VERSION,
+            'time'        => time(),
+        ];
+
+        return $this->output($response, $result, $request);
+    }
+
+    /**
+     * 详细健康检查（需要鉴权）
+     */
+    public function healthDetail(Request $request, Response $response): Response
+    {
         $checks = [
             'jenkins'         => false,
             'jenkins_version' => null,
@@ -222,6 +241,7 @@ class MainController extends BaseController
                 // 版本号沿用 JenkinsService 缓存（短超时探测连通性即可）
                 $checks['jenkins_version'] = $this->jenkins->getVersion();
             } catch (\Exception $e) {
+                \App\Helper\Log::exception($e);
                 $checks['jenkins'] = false;
             }
         } else {

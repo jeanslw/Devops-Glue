@@ -28,8 +28,9 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # 安装 PHP 扩展（用镜像自带的 docker-php-ext-install，无需联网拉安装器）
+# pdo_sqlite 为 PHP 核心扩展，官方镜像默认已启用；此处显式安装确保 SQLite 单机部署可用
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install -j$(nproc) pdo_mysql opcache zip intl gd bcmath
+    && docker-php-ext-install -j$(nproc) pdo_mysql pdo_sqlite opcache zip intl gd bcmath
 
 # 配置 PHP-FPM
 RUN sed -i 's|^listen = .*|listen = /run/php/php-fpm.sock|' /usr/local/etc/php-fpm.d/www.conf \

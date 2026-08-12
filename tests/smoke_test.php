@@ -26,8 +26,8 @@ $harborProject  = 'mycode';
 $harborRepo     = 'diagnosis-runtime';
 
 // 登录凭据：可通过环境变量覆盖
-$loginUser     = getenv('TEST_LOGIN_USER') ?: 'You_User';
-$loginPassword = getenv('TEST_LOGIN_PASS') ?: 'You_Password';
+$loginUser     = getenv('TEST_LOGIN_USER') ?: 'root';
+$loginPassword = getenv('TEST_LOGIN_PASS') ?: 'root123456';
 
 $triggerParams = [
     'java/registry'   => ['branches' => 'master'],
@@ -44,7 +44,7 @@ function apiCall(string $url, string $method = 'GET', $body = null, array $heade
     curl_setopt_array($ch, [
         CURLOPT_URL            => $url,
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => 20,
+        CURLOPT_TIMEOUT        => 30,
         CURLOPT_CONNECTTIMEOUT => 10,
         CURLOPT_FOLLOWLOCATION => true,
         CURLOPT_SSL_VERIFYPEER => false,
@@ -65,6 +65,9 @@ function apiCall(string $url, string $method = 'GET', $body = null, array $heade
     $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $error    = curl_error($ch);
     curl_close($ch);
+    if ($response === false) {
+        $response = '';
+    }
     return ['code' => $httpCode, 'body' => $response, 'error' => $error];
 }
 
@@ -290,8 +293,15 @@ echo "║  目标: {$baseUrl}\n";
 echo "╚══════════════════════════════════════╝\n\n";
 
 // ─── 1. 健康检查 + 文档 + CORS ───
+$loginRes = apiCall("{$baseUrl}/api/admin/login", 'POST', ['user' => $loginUser, 'password' => $loginPassword]);
+$globalToken = '';
+if ($loginRes['code'] >= 200 && $loginRes['code'] < 300) {
+    $ld = json_decode($loginRes['body'], true) ?? [];
+    if (!empty($ld['token'])) $globalToken = (string)$ld['token'];
+}
 
-$tc = apiT('健康检查', "{$baseUrl}/api/health");
+$authHeader = $globalToken ? ["Authorization: Bearer {$globalToken}"] : [];
+$tc = apiT('健康检查', "{$baseUrl}/api/health", 'GET', null, $authHeader);
 $tc->assertHttpOk();
 $tc->assertJson();
 $health = json_decode($tc->rawBody, true) ?? [];

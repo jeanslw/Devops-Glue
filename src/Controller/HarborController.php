@@ -5,6 +5,7 @@ use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Service\HarborService;
 use App\Service\I18nService;
+use App\Config\AppConfig;
 
 class HarborController extends BaseController
 {
@@ -39,6 +40,11 @@ class HarborController extends BaseController
 
     public function scanTrigger(Request $request, Response $response, array $args): Response
     {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_TRIGGER)) {
+            return $resp;
+        }
+
         $project    = $args['project'] ?? '';
         $repository = $args['repository'] ?? '';
         $tag        = $args['tag'] ?? '';

@@ -361,8 +361,9 @@
       "get": {
         "tags": ["Health"],
         "summary": "健康检查",
-        "description": "检查 Jenkins、Git 平台、Harbor 连通性。全部正常返回 200，部分降级返回 503。",
+        "description": "检查 Jenkins、Git 平台、Harbor 连通性。此接口需要 Bearer Token 鉴权。全部正常返回 200，部分降级返回 503。",
         "operationId": "health",
+        "security": [{ "bearerAuth": [] }],
         "responses": {
           "200": {
             "description": "全部正常",
@@ -371,10 +372,15 @@
           "503": {
             "description": "部分服务不可达（降级运行）",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HealthResult" } } }
+          },
+          "401": {
+            "description": "未授权（需要 Bearer token)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
           }
         }
       }
     },
+
     "/api/main/jobs/list": {
       "get": {
         "tags": ["Main"],

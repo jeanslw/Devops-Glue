@@ -36,14 +36,37 @@ return [
         return new ResponseFactory();
     },
 
-    // PDO 数据库连接（委托给 Database 单例，由 DI 容器管理注入）
+    // PDO 数据库连接（根据环境变量直接构造，不再依赖 Database::getPdo 单例）
     \PDO::class => function () {
-        return \App\Service\Database::getPdo();
+        $driver = strtolower($_ENV['DB_DRIVER'] ?? 'sqlite');
+        if (!in_array($driver, ['sqlite', 'mysql'])) {
+            throw new \RuntimeException('DB_DRIVER must be sqlite or mysql');
+        }
+        if ($driver === 'mysql') {
+            $host = $_ENV['DB_HOST'] ?? '127.0.0.1';
+            $port = $_ENV['DB_PORT'] ?? '3306';
+            $db   = $_ENV['DB_NAME'] ?? 'devops_glue';
+            $user = $_ENV['DB_USER'] ?? 'root';
+            $pass = $_ENV['DB_PASS'] ?? '';
+            $charset = $_ENV['DB_CHARSET'] ?? 'utf8mb4';
+            $dsn = "mysql:host={$host};port={$port};dbname={$db};charset={$charset}";
+            $pdo = new \PDO($dsn, $user, $pass, [\PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES {$charset}"]);
+        } else {
+            $path = $_ENV['DB_PATH'] ?? __DIR__ . '/../../config/data/data.db';
+            $dir = dirname($path);
+            if (!is_dir($dir)) @mkdir($dir, 0777, true);
+            $pdo = new \PDO('sqlite:' . $path);
+            try { $pdo->exec('PRAGMA journal_mode=WAL'); } catch (\Throwable $e) { }
+            try { $pdo->exec('PRAGMA foreign_keys=ON'); } catch (\Throwable $e) { }
+        }
+        $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $pdo->setAttribute(\PDO::ATTR_DEFAULT_FETCH_MODE, \PDO::FETCH_ASSOC);
+        return $pdo;
     },
 
     // 全局配置
-    AppConfig::class => function () use ($settings) {
-        return new AppConfig($settings);
+    AppConfig::class => function (\Psr\Container\ContainerInterface $c) use ($settings) {
+        return new AppConfig($settings, $c->get(\PDO::class));
     },
 
     // ---------- 基础设施 ----------

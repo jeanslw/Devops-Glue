@@ -166,6 +166,11 @@ class BuildController extends BaseController
     /** POST /api/build/{path}/trigger（兼容 GET Query String 触发） */
     public function trigger(Request $request, Response $response, array $args): Response
     {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_TRIGGER)) {
+            return $resp;
+        }
+
         $path = $args['path'] ?? '';
         $body = $request->getParsedBody() ?? [];
         $qs   = $request->getQueryParams();
@@ -198,6 +203,11 @@ class BuildController extends BaseController
     /** POST /api/build/{path}/pipelines/{id}/retry */
     public function retry(Request $request, Response $response, array $args): Response
     {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_TRIGGER)) {
+            return $resp;
+        }
+
         $path       = $args['path'] ?? '';
         $pipelineId = (int) ($args['id'] ?? 0);
         [$provider, $projectId] = $this->resolve($path);
@@ -217,6 +227,11 @@ class BuildController extends BaseController
     /** POST /api/build/{path}/pipelines/{id}/cancel */
     public function cancel(Request $request, Response $response, array $args): Response
     {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_TRIGGER)) {
+            return $resp;
+        }
+
         $path       = $args['path'] ?? '';
         $pipelineId = (int) ($args['id'] ?? 0);
         [$provider, $projectId] = $this->resolve($path);
@@ -478,7 +493,9 @@ class BuildController extends BaseController
                     $iid = (int) ($pipelines[0]['iid'] ?? 0);
                 }
             }
-        } catch (\Exception $e) {}
+        } catch (\Exception $e) {
+            \App\Helper\Log::exception($e);
+        }
 
         // 4. Harbor 扫描 + commit status 回写（通过 Git Provider，跨所有平台）
         $vulnCount = 0;
@@ -646,7 +663,9 @@ class BuildController extends BaseController
                     $stmt->execute([$key['project'], $key['pipeline_iid']]);
                     unset($tagGroups[$key['project']][(string) $key['pipeline_iid']]);
                 }
-            } catch (\Exception $e) {}
+            } catch (\Exception $e) {
+                \App\Helper\Log::exception($e);
+            }
         }
     }
 

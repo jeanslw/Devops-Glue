@@ -18,9 +18,6 @@ class AdminController extends BaseController
     private ?TokenService $tokenService = null;
     private AdminAuthService $adminAuthService;
     private AdminUserRepository $adminUserRepository;
-    private string $currentUser = '';
-    private string $currentRole = AppConfig::ROLE_ADMIN;
-    private array $userPermissions = [];
 
     public function __construct(
         I18nService $i18n,
@@ -217,10 +214,13 @@ class AdminController extends BaseController
         return $this->output($response, ['message' => 'logged_out'], $request);
     }
 
-    /** PUT /api/admin/password — 修改密码 */
+    /** PUT /api/admin/password — 修改当前登录用户的密码 */
     public function changePassword(Request $request, Response $response): Response
     {
         $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_USERS_PASSWORD)) {
+            return $resp;
+        }
 
         $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
         $oldPass = $body['old_password'] ?? '';
@@ -231,8 +231,11 @@ class AdminController extends BaseController
         }
 
         try {
-            $cred = $this->config->getAdminCredentials();
-            $username = $cred['user'];
+            // 修改当前登录用户的密码（而非 .env 中的 root 账号）
+            $username = $this->currentUser;
+            if ($username === '') {
+                return $this->jsonError($response, 'auth.not_logged_in', 401);
+            }
 
             if (!$this->adminAuthService->verifyCurrentPassword($username, $oldPass)) {
                 return $this->jsonError($response, 'auth.old_password_wrong', 403);
@@ -242,9 +245,15 @@ class AdminController extends BaseController
             $repository = new \App\Service\AdminUserRepository($this->pdo);
             $repository->upsertPassword($username, $hash);
 
+            // 只踢当前用户的 token（而非所有用户）
             try {
-                $this->pdo->exec("DELETE FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key LIKE '" . AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . "%'");
-            } catch (\Exception $e) {}
+                $header = $request->getHeaderLine('Authorization');
+                if (preg_match('/^Bearer\s+(.+)$/i', $header, $m)) {
+                    $this->tokenService?->revoke($m[1]);
+                }
+            } catch (\Exception $e) {
+                \App\Helper\Log::exception($e);
+            }
 
             return $this->output($response, ['success' => true, 'message' => $this->__('auth.password_updated')], $request);
         } catch (\Exception $e) {
@@ -778,7 +787,7 @@ class AdminController extends BaseController
             $permInsert = $pdo->prepare("INSERT INTO " . AppConfig::TABLE_ROLE_PERMISSIONS . " (role_id, perm_key) VALUES (?, ?)");
             foreach ($expanded as $pk) {
                 if (in_array($pk, $validKeys, true)) {
-                    try { $permInsert->execute([$roleId, $pk]); } catch (\Exception $e) {}
+                    try { $permInsert->execute([$roleId, $pk]); } catch (\Exception $e) { \App\Helper\Log::exception($e); }
                 }
             }
             return $this->output($response, ['success' => true, 'id' => (int)$roleId, 'name' => $name], $request);
@@ -853,7 +862,7 @@ class AdminController extends BaseController
                 $permInsert = $pdo->prepare("INSERT INTO " . AppConfig::TABLE_ROLE_PERMISSIONS . " (role_id, perm_key) VALUES (?, ?)");
                 foreach ($expanded as $pk) {
                     if (in_array($pk, $validKeys, true)) {
-                        try { $permInsert->execute([$roleId, $pk]); } catch (\Exception $e) {}
+                        try { $permInsert->execute([$roleId, $pk]); } catch (\Exception $e) { \App\Helper\Log::exception($e); }
                     }
                 }
             }
@@ -912,7 +921,9 @@ class AdminController extends BaseController
                 foreach ($ruleRows as $r) {
                     $implied[$r['source_key']][] = $r['target_key'];
                 }
-            } catch (\Exception $e) {}
+            } catch (\Exception $e) {
+                \App\Helper\Log::exception($e);
+            }
             return $this->output($response, [
                 'permissions' => $rows,
                 'implied'     => $implied,
@@ -1109,25 +1120,6 @@ class AdminController extends BaseController
         }
     }
 
-    /**
-     * 判断当前用户是否有指定权限
-     * super_admin 始终拥有所有权限
-     */
-    private function hasPermission(string $permKey): bool
-    {
-        if ($this->currentRole === AppConfig::ROLE_SUPER_ADMIN) {
-            return true;
-        }
-        return in_array($permKey, $this->userPermissions, true);
-    }
-
-    private function requirePermission(Response $response, string $permKey, string $messageKey = 'auth.forbidden'): ?Response
-    {
-        if (!$this->hasPermission($permKey)) {
-            return $this->jsonError($response, $messageKey, 403);
-        }
-        return null;
-    }
 
     private static function parseSystems(string $systems): array
     {
@@ -1155,16 +1147,6 @@ class AdminController extends BaseController
         return $role === AppConfig::ROLE_ADMIN || $role === AppConfig::ROLE_SUPER_ADMIN;
     }
 
-    /**
-     * 从 request attribute 读取中间件设置的鉴权信息
-     *（currentUser / currentRole / userPermissions 均由 AuthMiddleware 统一设置）
-     */
-    private function initAuthFromRequest(Request $request): void
-    {
-        $this->currentUser     = $request->getAttribute('currentUser', '');
-        $this->currentRole     = $request->getAttribute('currentRole', AppConfig::ROLE_ADMIN);
-        $this->userPermissions = $request->getAttribute('userPermissions', []);
-    }
 
     private function buildEntry(array $body): array
     {

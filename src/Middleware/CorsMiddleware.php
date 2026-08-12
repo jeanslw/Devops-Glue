@@ -36,18 +36,18 @@ class CorsMiddleware implements MiddlewareInterface
 
     private function addCorsHeaders(Response $response, string $origin): Response
     {
-        $allowOrigin = '*';
-
-        if (!in_array('*', $this->allowedOrigins)) {
-            if (in_array($origin, $this->allowedOrigins)) {
-                $allowOrigin = $origin;
-            } else {
-                $allowOrigin = $this->allowedOrigins[0] ?? '*';
-            }
+        // 仅在允许所有来源或请求 Origin 在白名单中时设置 CORS 头。
+        // 不匹配时不返回任何 CORS 头，避免误放行非法 Origin。
+        if (in_array('*', $this->allowedOrigins)) {
+            $response = $response->withHeader('Access-Control-Allow-Origin', '*');
+        } elseif (!empty($origin) && in_array($origin, $this->allowedOrigins, true)) {
+            $response = $response->withHeader('Access-Control-Allow-Origin', $origin);
+        } else {
+            // Origin 不匹配且非通配符，直接返回原始响应（不添加 CORS 头）
+            return $response;
         }
 
         return $response
-            ->withHeader('Access-Control-Allow-Origin', $allowOrigin)
             ->withHeader('Access-Control-Allow-Methods', implode(', ', $this->allowedMethods))
             ->withHeader('Access-Control-Allow-Headers', implode(', ', $this->allowedHeaders))
             ->withHeader('Access-Control-Max-Age', '86400');

@@ -146,7 +146,7 @@ class Database
             api_version TEXT,
             status {$VARCHAR} DEFAULT '" . \App\Config\AppConfig::STATUS_ACTIVE . "'
         ){$ENGINE}");
-        try { $pdo->exec("ALTER TABLE " . \App\Config\AppConfig::TABLE_JOB_GIT_MAP . " ADD COLUMN status {$VARCHAR} DEFAULT '" . \App\Config\AppConfig::STATUS_ACTIVE . "'"); } catch (\Exception $e) {}
+        try { $pdo->exec("ALTER TABLE " . \App\Config\AppConfig::TABLE_JOB_GIT_MAP . " ADD COLUMN status {$VARCHAR} DEFAULT '" . \App\Config\AppConfig::STATUS_ACTIVE . "'"); } catch (\Exception $e) { \App\Helper\Log::exception($e); }
 
         // ci_platform_versions
         $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_PLATFORM_VERSIONS . " (
@@ -164,8 +164,8 @@ class Database
             created_at {$TS_TYPE} DEFAULT ({$NOW}),
             PRIMARY KEY (project, pipeline_iid)
         ){$ENGINE}");
-        try { $pdo->exec("ALTER TABLE " . \App\Config\AppConfig::TABLE_PIPELINE_TAGS . " ADD COLUMN harbor_repository TEXT"); } catch (\Exception $e) {}
-        try { $pdo->exec("ALTER TABLE " . \App\Config\AppConfig::TABLE_PIPELINE_TAGS . " ADD COLUMN status {$VARCHAR} DEFAULT ''"); } catch (\Exception $e) {}
+        try { $pdo->exec("ALTER TABLE " . \App\Config\AppConfig::TABLE_PIPELINE_TAGS . " ADD COLUMN harbor_repository TEXT"); } catch (\Exception $e) { \App\Helper\Log::exception($e); }
+        try { $pdo->exec("ALTER TABLE " . \App\Config\AppConfig::TABLE_PIPELINE_TAGS . " ADD COLUMN status {$VARCHAR} DEFAULT ''"); } catch (\Exception $e) { \App\Helper\Log::exception($e); }
 
         // cache
         if ($isMySQL) {

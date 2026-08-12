@@ -9,6 +9,7 @@ class GiteeService implements GitProviderInterface
 {
     private Client $client;
     private string $baseUrl;
+    private string $token;
     private ?Logger $logger;
 
     private const PAGE_SIZE = 100;
@@ -17,11 +18,20 @@ class GiteeService implements GitProviderInterface
     public function __construct(string $baseUrl, string $token, ?Logger $logger = null)
     {
         $this->baseUrl = rtrim($baseUrl, '/');
+        $this->token   = trim($token);
         $this->logger  = $logger;
-        $this->client = new Client([
-            'headers' => ['Authorization' => 'token ' . $token],
-            'timeout' => 15,
-        ]);
+        $this->client = new Client(['timeout' => 15]);
+    }
+
+    private function request(string $method, string $url, array $options = []): \Psr\Http\Message\ResponseInterface
+    {
+        $query = $options['query'] ?? [];
+        if ($this->token !== '') {
+            $query['access_token'] = $this->token;
+        }
+        $options['query'] = $query;
+
+        return $this->client->request($method, $url, $options);
     }
 
     public function getName(): string
@@ -60,7 +70,7 @@ class GiteeService implements GitProviderInterface
 
         try {
             $url = "{$this->baseUrl}/repos/{$repository}/commits/{$sha}/statuses";
-            $response = $this->client->post($url, ['json' => $body]);
+            $response = $this->request('POST', $url, ['json' => $body]);
             return [
                 'success' => $response->getStatusCode() < 400,
                 'message' => $response->getStatusCode() < 400 ? 'status 已回写' : '回写失败',
@@ -80,9 +90,9 @@ class GiteeService implements GitProviderInterface
         $all = [];
         $page = 1;
         do {
-            $url = "{$this->baseUrl}{$path}?per_page=" . self::PAGE_SIZE . "&page={$page}";
+            $url = "{$this->baseUrl}{$path}";
             try {
-                $response = $this->client->get($url);
+                $response = $this->request('GET', $url, ['query' => ['per_page' => self::PAGE_SIZE, 'page' => $page]]);
                 $data = json_decode($response->getBody(), true);
                 if (!is_array($data) || empty($data)) break;
                 $all = array_merge($all, array_column($data, $key));

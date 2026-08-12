@@ -258,6 +258,8 @@ async function copyPipelineIds(jobName) {
 async function loadMonitor() {
     const now = new Date().toLocaleString(__.lang === 'en' ? 'en-US' : 'zh-CN');
 
+    // 调用受保护的 /api/health，需要带上 Authorization 头
+
     function setSvc(iconId, nameId, statId, dotId, ok, ver, label, title) {
         const icon = document.getElementById(iconId);
         const name = document.getElementById(nameId);
@@ -274,7 +276,8 @@ async function loadMonitor() {
     }
 
     try {
-        const res = await fetch(HEALTH_API);
+        const res = await fetch(HEALTH_API, { headers: authHeaders() });
+        if (handle401(res)) return;
         const data = await res.json();
         const chk = data.checks || {};
         const st  = data.stats || {};

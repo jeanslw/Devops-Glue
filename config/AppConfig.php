@@ -3,7 +3,7 @@ namespace App\Config;
 
 class AppConfig
 {
-    public const APP_VERSION = '2.4.4';
+    public const APP_VERSION = '2.4.5';
 
     // ── 表名常量 ──
     public const TABLE_JOB_GIT_MAP       = 'ci_job_git_map';
@@ -161,10 +161,20 @@ class AppConfig
     public const TTL_CACHE      = 3600;   // 通用缓存有效期（1h）
 
     private array $config;
+    private ?\PDO $pdo;
 
-    public function __construct(array $config)
+    public function __construct(array $config, ?\PDO $pdo = null)
     {
         $this->config = $config;
+        $this->pdo = $pdo;
+    }
+
+    private function getPdo(): \PDO
+    {
+        if ($this->pdo === null) {
+            throw new \RuntimeException('AppConfig requires an injected PDO instance; do not use Database::getPdo() directly.');
+        }
+        return $this->pdo;
     }
 
     // Jenkins
@@ -235,13 +245,13 @@ class AppConfig
     // 手动映射 —— 从 SQLite 读写
     public function getJobGitMap(): array
     {
-        $pdo = \App\Service\Database::getPdo();
+        $pdo = $this->getPdo();
         return $pdo->query("SELECT * FROM " . self::TABLE_JOB_GIT_MAP . " ORDER BY job_name")->fetchAll();
     }
 
     public function saveJobGitMap(array $data): void
     {
-        $pdo = \App\Service\Database::getPdo();
+        $pdo = $this->getPdo();
         $cols = 'job_name,git_platform,build_provider,git_remote,project_id,web_url,current_path,harbor_repository,api_version,status';
         $upsertSql = \App\Service\Database::sqlUpsert(self::TABLE_JOB_GIT_MAP, $cols, '?,?,?,?,?,?,?,?,?,?');
         $upsertStmt = $pdo->prepare($upsertSql);
@@ -276,7 +286,7 @@ class AppConfig
     /** 单条删除映射 */
     public function deleteJobGitMap(string $jobName): void
     {
-        $pdo = \App\Service\Database::getPdo();
+        $pdo = $this->getPdo();
         $pdo->prepare("DELETE FROM " . self::TABLE_JOB_GIT_MAP . " WHERE job_name = ?")->execute([$jobName]);
     }
 
@@ -439,7 +449,7 @@ class AppConfig
 
         // SQLite 覆盖默认
         try {
-            $pdo = \App\Service\Database::getPdo();
+            $pdo = $this->getPdo();
             $rows = $pdo->query("SELECT platform, version FROM " . self::TABLE_PLATFORM_VERSIONS)->fetchAll();
             foreach ($rows as $r) {
                 if (isset($result[$r['platform']])) {
@@ -466,7 +476,7 @@ class AppConfig
 
     public function savePlatformApiVersions(array $data): void
     {
-        $pdo = \App\Service\Database::getPdo();
+        $pdo = $this->getPdo();
         $pdo->exec("DELETE FROM " . self::TABLE_PLATFORM_VERSIONS);
         $stmt = $pdo->prepare("INSERT INTO " . self::TABLE_PLATFORM_VERSIONS . " (platform, version) VALUES (?, ?)");
         foreach ($data as $name => $ver) {
@@ -487,7 +497,7 @@ class AppConfig
     public function getBuildMode(): string
     {
         try {
-            $pdo = \App\Service\Database::getPdo();
+            $pdo = $this->getPdo();
             $row = $pdo->query("SELECT value FROM " . self::TABLE_APP_SETTINGS . " WHERE setting_key = 'build_mode'")->fetch();
             if ($row && in_array($row['value'], [self::BUILD_MODE_JENKINS, self::BUILD_MODE_GITLAB_CI, self::BUILD_MODE_BOTH])) {
                 return $row['value'];
@@ -508,12 +518,14 @@ class AppConfig
     public function getBuildModeSource(): string
     {
         try {
-            $pdo = \App\Service\Database::getPdo();
+            $pdo = $this->getPdo();
             $row = $pdo->query("SELECT value FROM " . self::TABLE_APP_SETTINGS . " WHERE setting_key = 'build_mode'")->fetch();
             if ($row && in_array($row['value'], [self::BUILD_MODE_JENKINS, self::BUILD_MODE_GITLAB_CI, self::BUILD_MODE_BOTH])) {
                 return 'database';
             }
-        } catch (\Exception $e) {}
+        } catch (\Exception $e) {
+            \App\Helper\Log::exception($e);
+        }
         return 'env';
     }
 
@@ -525,7 +537,7 @@ class AppConfig
         if (!in_array($mode, [self::BUILD_MODE_JENKINS, self::BUILD_MODE_GITLAB_CI, self::BUILD_MODE_BOTH])) {
             throw new \InvalidArgumentException("Invalid build mode: {$mode}");
         }
-        $pdo = \App\Service\Database::getPdo();
+        $pdo = $this->getPdo();
         $sql = \App\Service\Database::sqlUpsert(self::TABLE_APP_SETTINGS, 'setting_key, value, updated_at', '?, ?, ' . \App\Service\Database::sqlNow());
         $pdo->prepare($sql)->execute(['build_mode', $mode]);
     }
