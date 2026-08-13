@@ -67,6 +67,24 @@ class DatabaseBootstrapTest extends TestCase
         $this->assertEquals(AppConfig::ROLE_SUPER_ADMIN, $admin['role']);
     }
 
+    public function testBootstrapSkipsSeedWhenSchemaVersionMatches(): void
+    {
+        Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
+        $pdo = $this->createMemoryPdo();
+        Database::bootstrap($pdo);
+
+        $before = (int)$pdo->query('SELECT count(*) FROM ' . AppConfig::TABLE_PERMISSIONS)->fetchColumn();
+
+        // 模拟运行时删掉一条权限：同版本再次 bootstrap 不应把它写回来（种子被跳过）
+        $firstKey = array_key_first(AppConfig::DEFAULT_PERMISSIONS);
+        $pdo->exec('DELETE FROM ' . AppConfig::TABLE_PERMISSIONS . ' WHERE perm_key = ' . $pdo->quote($firstKey));
+
+        Database::bootstrap($pdo);
+
+        $after = (int)$pdo->query('SELECT count(*) FROM ' . AppConfig::TABLE_PERMISSIONS)->fetchColumn();
+        $this->assertSame($before - 1, $after, '同版本重复 bootstrap 不应重新写入种子');
+    }
+
     public function testBootstrapThrowsWhenRbacSeedMissing(): void
     {
         // 模拟手动建库脚本模式：只建了 admin_users，roles/permissions 等表缺失

@@ -7,6 +7,9 @@ class Database
     private static string $driver = 'sqlite';
     private static array $config = [];
 
+    /** ci_app_settings 中记录「已应用的 schema/种子版本」的 key */
+    private const SCHEMA_VERSION_KEY = 'schema_version';
+
     // ── 初始化 ──
 
     public static function init(array $config = null): void
@@ -28,12 +31,43 @@ class Database
             self::init();
         }
         if (self::$config['auto_migrate'] ?? true) {
-            self::ensureTables(); // 建表 + RBAC 种子 + 索引 + JSON 迁移
+            // 仅在 schema/种子版本与当前代码版本不一致时执行建表 + 种子，
+            // 避免每个请求都重复跑 ensureTables/seedRbac 的写库操作。
+            if (!self::isSchemaCurrent()) {
+                self::ensureTables(); // 建表 + RBAC 种子 + 索引 + JSON 迁移
+                self::markSchemaCurrent();
+            }
         } else {
             self::seedRbac(); // 手动建库脚本模式：表已存在，仍补种子数据
         }
         self::seedAdmin();
         self::verifySeed();
+    }
+
+    /** 判断 schema/种子是否已应用到当前代码版本（首次启动或版本升级时返回 false） */
+    private static function isSchemaCurrent(): bool
+    {
+        try {
+            $stmt = self::$pdo->query(
+                "SELECT value FROM " . \App\Config\AppConfig::TABLE_APP_SETTINGS
+                . " WHERE setting_key = '" . self::SCHEMA_VERSION_KEY . "'"
+            );
+            $row = $stmt->fetch();
+            return $row !== false && ($row['value'] ?? '') === \App\Config\AppConfig::APP_VERSION;
+        } catch (\Throwable $e) {
+            return false; // ci_app_settings 表尚未创建 → 视为未初始化
+        }
+    }
+
+    /** 记录当前代码版本已应用的 schema/种子版本 */
+    private static function markSchemaCurrent(): void
+    {
+        $sql = self::sqlUpsert(
+            \App\Config\AppConfig::TABLE_APP_SETTINGS,
+            'setting_key, value, updated_at',
+            '?, ?, ' . self::sqlNow()
+        );
+        self::$pdo->prepare($sql)->execute([self::SCHEMA_VERSION_KEY, \App\Config\AppConfig::APP_VERSION]);
     }
 
     private static function defaultConfig(): array
@@ -137,6 +171,26 @@ class Database
             : "INSERT OR IGNORE INTO {$table} ({$columns}) VALUES ({$values})";
     }
 
+    /** 判断列是否已存在（MySQL/SQLite 双驱动），用于幂等 ALTER TABLE 迁移 */
+    private static function columnExists(string $table, string $column): bool
+    {
+        $pdo = self::$pdo;
+        if (self::$driver === 'mysql') {
+            $stmt = $pdo->prepare(
+                "SELECT 1 FROM information_schema.COLUMNS "
+                . "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?"
+            );
+            $stmt->execute([$table, $column]);
+            return (bool) $stmt->fetch();
+        }
+        foreach ($pdo->query("PRAGMA table_info({$table})")->fetchAll() as $row) {
+            if (($row['name'] ?? '') === $column) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // ── 建表 ──
 
     private static function ensureTables(): void
@@ -167,7 +221,9 @@ class Database
             api_version TEXT,
             status {$VARCHAR} DEFAULT '" . \App\Config\AppConfig::STATUS_ACTIVE . "'
         ){$ENGINE}");
-        try { $pdo->exec("ALTER TABLE " . \App\Config\AppConfig::TABLE_JOB_GIT_MAP . " ADD COLUMN status {$VARCHAR} DEFAULT '" . \App\Config\AppConfig::STATUS_ACTIVE . "'"); } catch (\Exception $e) { \App\Helper\Log::exception($e); }
+        if (!self::columnExists(\App\Config\AppConfig::TABLE_JOB_GIT_MAP, 'status')) {
+            $pdo->exec("ALTER TABLE " . \App\Config\AppConfig::TABLE_JOB_GIT_MAP . " ADD COLUMN status {$VARCHAR} DEFAULT '" . \App\Config\AppConfig::STATUS_ACTIVE . "'");
+        }
 
         // ci_platform_versions
         $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_PLATFORM_VERSIONS . " (
@@ -185,8 +241,12 @@ class Database
             created_at {$TS_TYPE} DEFAULT ({$NOW}),
             PRIMARY KEY (project, pipeline_iid)
         ){$ENGINE}");
-        try { $pdo->exec("ALTER TABLE " . \App\Config\AppConfig::TABLE_PIPELINE_TAGS . " ADD COLUMN harbor_repository TEXT"); } catch (\Exception $e) { \App\Helper\Log::exception($e); }
-        try { $pdo->exec("ALTER TABLE " . \App\Config\AppConfig::TABLE_PIPELINE_TAGS . " ADD COLUMN status {$VARCHAR} DEFAULT ''"); } catch (\Exception $e) { \App\Helper\Log::exception($e); }
+        if (!self::columnExists(\App\Config\AppConfig::TABLE_PIPELINE_TAGS, 'harbor_repository')) {
+            $pdo->exec("ALTER TABLE " . \App\Config\AppConfig::TABLE_PIPELINE_TAGS . " ADD COLUMN harbor_repository TEXT");
+        }
+        if (!self::columnExists(\App\Config\AppConfig::TABLE_PIPELINE_TAGS, 'status')) {
+            $pdo->exec("ALTER TABLE " . \App\Config\AppConfig::TABLE_PIPELINE_TAGS . " ADD COLUMN status {$VARCHAR} DEFAULT ''");
+        }
 
         // cache
         if ($isMySQL) {
@@ -252,7 +312,9 @@ class Database
             tag {$VARCHAR} DEFAULT '',
             created_at {$TS_TYPE} DEFAULT ({$NOW})
         ){$ENGINE}");
-        try { $pdo->exec("ALTER TABLE " . \App\Config\AppConfig::TABLE_SECURITY_CHECKS . " ADD COLUMN tag {$VARCHAR} DEFAULT ''"); } catch (\Exception $e) {}
+        if (!self::columnExists(\App\Config\AppConfig::TABLE_SECURITY_CHECKS, 'tag')) {
+            $pdo->exec("ALTER TABLE " . \App\Config\AppConfig::TABLE_SECURITY_CHECKS . " ADD COLUMN tag {$VARCHAR} DEFAULT ''");
+        }
 
         // ── RBAC 权限系统 ──
         // roles
@@ -293,7 +355,9 @@ class Database
         }
 
         // parent_key 列（用于权限层级，eg. cd.deploy.single → parent cd.deploy-manage）
-        try { $pdo->exec("ALTER TABLE " . \App\Config\AppConfig::TABLE_PERMISSIONS . " ADD COLUMN parent_key VARCHAR(128)"); } catch (\Exception $e) {}
+        if (!self::columnExists(\App\Config\AppConfig::TABLE_PERMISSIONS, 'parent_key')) {
+            $pdo->exec("ALTER TABLE " . \App\Config\AppConfig::TABLE_PERMISSIONS . " ADD COLUMN parent_key VARCHAR(128)");
+        }
 
         // implied_rules 表：权限隐含关系（source_key → target_key），数据驱动，运行时可由 CD 项目通过 API 注册
         if ($isMySQL) {
