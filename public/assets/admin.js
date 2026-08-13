@@ -526,7 +526,8 @@ async function loadTopology() {
     loading.innerHTML = '<p style="font-size:15px;">⏳ ' + __.t('common.loading') + '</p>';
 
     try {
-        const res = await fetch(MAP_LIST_API);
+        const res = await fetch(MAP_LIST_API, { headers: authHeaders() });
+        if (handle401(res)) return;
         const data = await res.json();
         // 平台 URL 已随 mapList 返回（搭 git_remote 的便车）
         topoPlatformUrls = {
@@ -543,9 +544,9 @@ function processTopoData(data) {
     const loading = document.getElementById('topo-loading');
     const empty   = document.getElementById('topo-empty');
 
-    // 服务端报错
-    if (data._error) {
-        loading.innerHTML = `<p style="color:#dc2626;">⚠️ ${esc(data._error)}</p><p style="font-size:13px;color:#9ca3af;margin-top:4px;">${esc(data._detail||'')}</p>`;
+    // 服务端报错（统一 {code, message} 信封；401 已在 loadTopology 经 handle401 处理）
+    if (data && data.code) {
+        loading.innerHTML = `<p style="color:#dc2626;">⚠️ ${esc(data.message || '')}</p><p style="font-size:13px;color:#9ca3af;margin-top:4px;">HTTP ${esc(data.code)}</p>`;
         return;
     }
 
@@ -611,8 +612,8 @@ function renderTopology() {
             const buildDisplay = buildUrl
                 ? `<a href="${esc(buildUrl + jenkinsPath)}" target="_blank" title="${esc(__.t('js.topo_open_jenkins'))}">${esc(p.project || p.current_path || __.t('js.topo_unnamed'))}</a>`
                 : `<span class="node-main">${esc(p.project || p.current_path || __.t('js.topo_unnamed'))}</span>`;
-            const platformCls = platform !== '—' && platform.length > 0 ? 'badge-' + platform : 'badge-default';
-            const buildBadgeCls = build === 'gitlab_ci' ? 'badge-gitlab' : 'badge-gitee';
+            const platformCls = platform !== '—' && platforms.includes(platform) ? 'badge-' + platform : 'badge-default';
+            const buildBadgeCls = build === 'gitlab_ci' ? 'badge-gitlab' : 'badge-default';
 
             return `<div class="topo-card">
                 <div class="topo-header">
@@ -1239,6 +1240,8 @@ const SEC_API = '/api/admin/security_checks';
 let secPage = 1, secTotalPages = 1, secDebounce = null;
 const STATE_ICONS = {success:'✅',failed:'❌',error:'⚠️',pending:'⏳'};
 const STATE_LABELS = {success:__.t('security.passed'),failed:__.t('security.failed'),error:__.t('security.error'),pending:__.t('security.pending')};
+const WB_ICONS = {success:'✅', failed:'❌', skipped:'⏭️'};
+const WB_LABELS = {success:__.t('security.writeback_success'), failed:__.t('security.writeback_failed'), skipped:__.t('security.writeback_skipped')};
 
 function secOnFilterChange() {
     clearTimeout(secDebounce);
@@ -1250,10 +1253,12 @@ async function loadSecurityChecks() {
         const project = document.getElementById('sec-search-project')?.value?.trim() || '';
         const checkType = document.getElementById('sec-filter-type')?.value || '';
         const state = document.getElementById('sec-filter-state')?.value || '';
+        const writeback = document.getElementById('sec-filter-writeback')?.value || '';
         const params = new URLSearchParams();
         if (project) params.set('project', project);
         if (checkType) params.set('check_type', checkType);
         if (state) params.set('state', state);
+        if (writeback) params.set('writeback', writeback);
         params.set('page', secPage);
         params.set('per_page', '20');
         const url = SEC_API + '?' + params.toString();
@@ -1290,6 +1295,10 @@ async function loadSecurityChecks() {
                 const cls = c.state === 'success' ? 'ok' : c.state === 'failed' ? 'err' : 'off';
                 const shaShort = (c.sha || '').substring(0, 8);
                 const time = (c.created_at || '').replace('T',' ').substring(0, 19);
+                const wb = c.writeback_status || '';
+                const wbCell = wb
+                    ? `<span class="svc-stat ${wb === 'success' ? 'ok' : wb === 'failed' ? 'err' : 'off'}" title="${esc(c.writeback_message || '')}">${WB_ICONS[wb] || ''} ${WB_LABELS[wb] || wb}</span>`
+                    : '<span style="color:#9ca3af;">—</span>';
                 return `<tr>
                     <td style="font-size:12px;white-space:nowrap;color:#6b7280;">${esc(time)}</td>
                     <td><strong>${esc(c.project)}</strong></td>
@@ -1298,6 +1307,7 @@ async function loadSecurityChecks() {
                     <td>${esc(c.tag || '—')}</td>
                     <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(c.description||'')}">${esc(c.description || '—')}</td>
                     <td><code style="font-size:11px;color:#6b7280;" title="${esc(c.sha||'')}">${esc(shaShort)}</code></td>
+                    <td>${wbCell}</td>
                 </tr>`;
             }).join('');
 

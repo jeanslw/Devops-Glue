@@ -90,6 +90,7 @@ class AdminController extends BaseController
         $project   = trim($params['project'] ?? '');
         $checkType = trim($params['check_type'] ?? '');
         $state     = trim($params['state'] ?? '');
+        $writeback = trim($params['writeback'] ?? '');
         $exclude   = trim($params['exclude'] ?? '');
         $page      = max(1, (int)($params['page'] ?? 1));
         $perPage   = max(1, min(100, (int)($params['per_page'] ?? 20)));
@@ -110,6 +111,10 @@ class AdminController extends BaseController
             if ($state !== '') {
                 $where[] = 'state = ?';
                 $bind[]  = $state;
+            }
+            if ($writeback !== '') {
+                $where[] = 'writeback_status = ?';
+                $bind[]  = $writeback;
             }
             if ($exclude !== '') {
                 $excluded = array_filter(explode(',', $exclude), fn($s) => $s !== '');
@@ -147,8 +152,9 @@ class AdminController extends BaseController
                 'per_page'    => $perPage,
                 'total_pages' => $totalPages,
                 'filter_opts' => [
-                    'check_types' => $types,
-                    'states'      => ['success', 'failed', 'pending', 'error'],
+                    'check_types'       => $types,
+                    'states'            => ['success', 'failed', 'pending', 'error'],
+                    'writeback_statuses' => ['success', 'failed', 'skipped'],
                 ],
             ], $request);
         } catch (\Exception $e) {

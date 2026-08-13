@@ -170,6 +170,11 @@ return [
     'security.type'        => '类型',
     'security.tag'         => '标签',
     'security.description' => '描述',
+    'security.writeback'          => '回写',
+    'security.writeback_success'  => '回写成功',
+    'security.writeback_failed'   => '回写失败',
+    'security.writeback_skipped'  => '未回写',
+    'security.writeback_all'      => '全部回写状态',
 
     // ── 服务监测 ──
     'monitor.page_title'   => '服务监测',

@@ -315,6 +315,13 @@ class Database
         if (!self::columnExists(\App\Config\AppConfig::TABLE_SECURITY_CHECKS, 'tag')) {
             $pdo->exec("ALTER TABLE " . \App\Config\AppConfig::TABLE_SECURITY_CHECKS . " ADD COLUMN tag {$VARCHAR} DEFAULT ''");
         }
+        // commit status 回写结果（success/failed/skipped，空 = 历史记录/未知）
+        if (!self::columnExists(\App\Config\AppConfig::TABLE_SECURITY_CHECKS, 'writeback_status')) {
+            $pdo->exec("ALTER TABLE " . \App\Config\AppConfig::TABLE_SECURITY_CHECKS . " ADD COLUMN writeback_status {$VARCHAR} DEFAULT ''");
+        }
+        if (!self::columnExists(\App\Config\AppConfig::TABLE_SECURITY_CHECKS, 'writeback_message')) {
+            $pdo->exec("ALTER TABLE " . \App\Config\AppConfig::TABLE_SECURITY_CHECKS . " ADD COLUMN writeback_message TEXT");
+        }
 
         // ── RBAC 权限系统 ──
         // roles

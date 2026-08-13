@@ -385,8 +385,9 @@ class BuildController extends BaseController
             $this->recordPipelineTag($path, 0, $tag, '', $state);
         }
 
-        // ── 同时记录到 ci_security_checks 表（审计追踪）──
-        $this->recordSecurityCheck($path, $sha, $state, $context, $description, $checkType, $tag);
+        // ── 同时记录到 ci_security_checks 表（审计追踪，含回写结果）──
+        $writebackStatus = ($result['success'] ?? false) ? 'success' : 'failed';
+        $this->recordSecurityCheck($path, $sha, $state, $context, $description, $checkType, $tag, $writebackStatus, $result['message'] ?? '');
 
         return $this->output($response, [
             'project'       => $path,
@@ -403,17 +404,17 @@ class BuildController extends BaseController
     /**
      * 记录安全扫描结果到 ci_security_checks 表
      */
-    private function recordSecurityCheck(string $project, string $sha, string $state, string $context, string $description, string $checkType, string $tag): void
+    private function recordSecurityCheck(string $project, string $sha, string $state, string $context, string $description, string $checkType, string $tag, string $writebackStatus = '', string $writebackMessage = ''): void
     {
         try {
             $pdo = $this->pdo;
             $sql = \App\Service\Database::sqlUpsert(
                 AppConfig::TABLE_SECURITY_CHECKS,
-                'project, sha, check_type, state, context, description, tag, created_at',
-                '?, ?, ?, ?, ?, ?, ?, ' . \App\Service\Database::sqlNow()
+                'project, sha, check_type, state, context, description, tag, writeback_status, writeback_message, created_at',
+                '?, ?, ?, ?, ?, ?, ?, ?, ?, ' . \App\Service\Database::sqlNow()
             );
             $stmt = $pdo->prepare($sql);
-            $stmt->execute([$project, $sha, $checkType, $state, $context, $description, $tag]);
+            $stmt->execute([$project, $sha, $checkType, $state, $context, $description, $tag, $writebackStatus, $writebackMessage]);
         } catch (\Exception $e) {
             // 静默失败，不影响主流程
         }
@@ -540,6 +541,10 @@ class BuildController extends BaseController
         if (!empty($iid)) {
             $this->recordPipelineTag($path, (int)$iid, $tag, $harborRepo, $state);
         }
+
+        // 6. 记录回写结果到 ci_security_checks（审计追踪）
+        $writebackStatus = !$canWriteBack ? 'skipped' : (($result['success'] ?? false) ? 'success' : 'failed');
+        $this->recordSecurityCheck($path, $sha, $state, 'harbor-scan', $desc ?? '', 'harbor-scan', $tag, $writebackStatus, $result['message'] ?? '');
 
         return $this->output($response, [
             'build_provider'       => $provider,

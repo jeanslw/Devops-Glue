@@ -170,6 +170,11 @@ return [
     'security.type'        => 'Type',
     'security.tag'         => 'Tag',
     'security.description' => 'Description',
+    'security.writeback'          => 'Write-back',
+    'security.writeback_success'  => 'Write-back OK',
+    'security.writeback_failed'   => 'Write-back Failed',
+    'security.writeback_skipped'  => 'Not written back',
+    'security.writeback_all'      => 'All write-back states',
 
     // ── Monitor ──
     'monitor.page_title'   => 'Service Monitor',

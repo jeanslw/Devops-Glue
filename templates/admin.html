@@ -347,6 +347,12 @@
                         <option value="error" data-i18n="security.error">⚠️ 错误</option>
                         <option value="pending" data-i18n="security.pending">⏳ 待处理</option>
                     </select>
+                    <select id="sec-filter-writeback" onchange="secOnFilterChange()" style="padding:7px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;min-width:120px;">
+                        <option value="" data-i18n="security.writeback_all">全部回写状态</option>
+                        <option value="success" data-i18n="security.writeback_success">✅ 回写成功</option>
+                        <option value="failed" data-i18n="security.writeback_failed">❌ 回写失败</option>
+                        <option value="skipped" data-i18n="security.writeback_skipped">⏭️ 未回写</option>
+                    </select>
                 </div>
 
                 <div class="card">
@@ -354,7 +360,7 @@
                     <div id="sec-table-wrap" style="display:none;overflow-x:auto;">
                         <table>
                             <thead>
-                                <tr><th data-i18n="security.time">时间</th><th data-i18n="security.project">项目</th><th data-i18n="security.type">类型</th><th data-i18n="map.status">状态</th><th data-i18n="security.tag">标签</th><th data-i18n="security.description">描述</th><th data-i18n="form.commit_sha">Commit SHA</th></tr>
+                                <tr><th data-i18n="security.time">时间</th><th data-i18n="security.project">项目</th><th data-i18n="security.type">类型</th><th data-i18n="map.status">状态</th><th data-i18n="security.tag">标签</th><th data-i18n="security.description">描述</th><th data-i18n="form.commit_sha">Commit SHA</th><th data-i18n="security.writeback">回写</th></tr>
                             </thead>
                             <tbody id="sec-tbody"></tbody>
                         </table>
