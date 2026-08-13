@@ -1847,6 +1847,13 @@ async function deleteRole(id, name) {
 let _apiScopes = [];
 let _apiTokenCreated = '';
 
+// 过期日期统一按 yyyy/mm/dd 显示（时间戳 → 本地时区 yyyy/mm/dd）
+function fmtYmd(ts) {
+    var d = new Date(ts * 1000);
+    var p = function(n) { return (n < 10 ? '0' : '') + n; };
+    return d.getFullYear() + '/' + p(d.getMonth() + 1) + '/' + p(d.getDate());
+}
+
 async function loadApiTokenScopes() {
     if (_apiScopes.length) return;
     try {
@@ -1867,7 +1874,7 @@ async function showApiTokenForm() {
     await loadApiTokenScopes();
     var box = document.getElementById('api-token-scopes');
     box.innerHTML = _apiScopes.map(function(s) {
-        return '<label style="display:inline-flex;align-items:center;gap:5px;font-size:13px;padding:5px 10px;border:1px solid #d1d5db;border-radius:6px;cursor:pointer;">' +
+        return '<label style="display:grid; grid-template-columns:1fr 9fr;gap:5px;font-size:10px;padding:5px 10px;border:1px solid #d1d5db;border-radius:6px;cursor:pointer;">' +
             '<input type="checkbox" value="' + esc(s.key) + '" data-scope>' +
             '<span>' + esc(s.label) + '</span>' +
         '</label>';
@@ -1881,7 +1888,7 @@ function hideApiTokenForm() {
 async function submitApiTokenForm(e) {
     e.preventDefault();
     var name = document.getElementById('api-token-name').value.trim();
-    var expires = document.getElementById('api-token-expires').value; // yyyy-mm-dd
+    var expires = document.getElementById('api-token-expires').value.trim(); // yyyy/mm/dd（兼容 yyyy-mm-dd）
     var note = document.getElementById('api-token-note').value.trim();
     var scopes = Array.from(document.querySelectorAll('#api-token-scopes input[data-scope]:checked')).map(function(i){ return i.value; });
     var msg = document.getElementById('api-token-msg');
@@ -1890,7 +1897,13 @@ async function submitApiTokenForm(e) {
 
     var expiresAt = null;
     if (expires) {
-        var d = new Date(expires + 'T23:59:59');
+        var iso = expires.replace(/\//g, '-'); // yyyy/mm/dd → yyyy-mm-dd 再解析
+        var d = new Date(iso + 'T23:59:59');
+        if (isNaN(d.getTime())) {
+            msg.textContent = __.t('api_token.expires_invalid');
+            msg.style.color = '#dc2626';
+            return;
+        }
         expiresAt = Math.floor(d.getTime() / 1000);
     }
 
@@ -1965,7 +1978,7 @@ async function loadApiTokens() {
         } else {
             tbody.innerHTML = rows.map(function(t) {
                 var scopes = (t.scopes || []).map(esc).join(', ');
-                var exp = t.expires_at ? new Date(t.expires_at * 1000).toLocaleDateString() : esc(__.t('api_token.never'));
+                var exp = t.expires_at ? fmtYmd(t.expires_at) : esc(__.t('api_token.never'));
                 var status = t.enabled === false
                     ? '<span style="color:#9ca3af;">🚫 ' + esc(__.t('api_token.disabled')) + '</span>'
                     : (t.expired

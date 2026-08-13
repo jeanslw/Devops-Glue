@@ -484,6 +484,7 @@ return [
     'api_token.scopes'          => '接口权限（Scope）',
     'api_token.expires'         => '过期日期',
     'api_token.expires_hint'    => '留空表示永不过期',
+    'api_token.expires_invalid' => '日期格式应为 yyyy/mm/dd，如 2026/08/13',
     'api_token.note'            => '备注',
     'api_token.note_placeholder'=> '用途说明（可选）',
     'api_token.created_title'   => '✅ Token 创建成功',

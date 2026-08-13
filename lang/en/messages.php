@@ -486,6 +486,7 @@ return [
     'api_token.scopes'          => 'API Scopes',
     'api_token.expires'         => 'Expiry Date',
     'api_token.expires_hint'    => 'Leave empty for no expiry',
+    'api_token.expires_invalid' => 'Date format should be yyyy/mm/dd, e.g. 2026/08/13',
     'api_token.note'            => 'Note',
     'api_token.note_placeholder'=> 'Usage description (optional)',
     'api_token.created_title'   => '✅ Token Created',
