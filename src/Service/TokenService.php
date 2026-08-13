@@ -13,7 +13,8 @@ class TokenService
 {
     public function __construct(
         private \PDO $pdo,
-        private AppConfig $config
+        private AppConfig $config,
+        private ?ApiTokenService $apiTokenService = null
     ) {}
 
     /**
@@ -41,6 +42,31 @@ class TokenService
         } catch (\Exception $e) {
         }
         return null;
+    }
+
+    /**
+     * 验证 API token（服务账号 / 第三方调用）。
+     * 明文 sha256 后查 api_tokens 表，校验 enabled + 未过期。
+     *
+     * @return array{user:string, scopes:string[]}|null
+     */
+    public function validateApiToken(string $token): ?array
+    {
+        if ($this->apiTokenService === null) {
+            return null;
+        }
+        try {
+            $resolved = $this->apiTokenService->resolve(hash('sha256', $token));
+            if ($resolved === null) {
+                return null;
+            }
+            return [
+                'user'   => $resolved['name'],
+                'scopes' => $resolved['scopes'],
+            ];
+        } catch (\Exception $e) {
+            return null;
+        }
     }
 
     /**

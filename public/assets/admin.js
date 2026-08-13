@@ -85,6 +85,7 @@ function doLogout() {
     // 按权限显隐：用户管理分组 + 角色管理（独立） + 权限管理分组
     applyRoleMenuVisibility();
     applyPermMenuVisibility();
+    applyApiTokenMenuVisibility();
 })();
 
 /** 根据权限控制用户管理分组及子菜单显隐 */
@@ -119,6 +120,12 @@ function applyPermMenuVisibility() {
     // 父菜单组可见条件：至少有一个子菜单项可见
     var showGroup = listOk || registerOk || rulesOk;
     if (group) group.style.display = showGroup ? '' : 'none';
+}
+
+/** API 管理菜单：独立于权限体系，仅 super_admin 可见 */
+function applyApiTokenMenuVisibility() {
+    var item = document.getElementById('menu-api-tokens');
+    if (item) item.style.display = (currentUserRole === 'super_admin') ? '' : 'none';
 }
 
 let _discovering = false;
@@ -171,6 +178,7 @@ async function doLogin() {
             } catch(e) {}
             applyRoleMenuVisibility();
             applyPermMenuVisibility();
+            applyApiTokenMenuVisibility();
             document.getElementById('login-page').style.display = 'none';
             document.getElementById('app-page').style.display = 'block';
             document.getElementById('top-user').textContent = '👤 ' + currentUserName;
@@ -204,7 +212,7 @@ function switchTab(name) {
             }
         }
     }
-    ['monitor','mapping','security','versions','mode','users','roles','password','perm-list','perm-register','implied-rules'].forEach(t => {
+    ['monitor','mapping','security','versions','mode','users','roles','password','perm-list','perm-register','implied-rules','api-tokens'].forEach(t => {
         var tabEl = document.getElementById('tab-' + t);
         if (tabEl) tabEl.style.display = name === t ? 'block' : 'none';
     });
@@ -218,6 +226,7 @@ function switchTab(name) {
     if (name === 'perm-list') loadPermList();
     if (name === 'perm-register') { }
     if (name === 'implied-rules') loadImpliedRules();
+    if (name === 'api-tokens') loadApiTokens();
 }
 
 function toggleUserMenu() {
@@ -1832,6 +1841,154 @@ async function deleteRole(id, name) {
     } catch (e) {
         toast(__.t('js.network_error') + ': ' + e.message, false);
     }
+}
+
+// ═══════════ API Token 管理 ═══════════
+let _apiScopes = [];
+let _apiTokenCreated = '';
+
+async function loadApiTokenScopes() {
+    if (_apiScopes.length) return;
+    try {
+        var res = await fetch('/api/admin/api_tokens/scopes', { headers: authHeaders() });
+        if (handle401(res)) return;
+        var data = await res.json();
+        _apiScopes = data.scopes || [];
+    } catch(e) {}
+}
+
+async function showApiTokenForm() {
+    document.getElementById('api-token-form').style.display = 'block';
+    document.getElementById('api-token-created').style.display = 'none';
+    document.getElementById('api-token-name').value = '';
+    document.getElementById('api-token-expires').value = '';
+    document.getElementById('api-token-note').value = '';
+    document.getElementById('api-token-msg').textContent = '';
+    await loadApiTokenScopes();
+    var box = document.getElementById('api-token-scopes');
+    box.innerHTML = _apiScopes.map(function(s) {
+        return '<label style="display:inline-flex;align-items:center;gap:5px;font-size:13px;padding:5px 10px;border:1px solid #d1d5db;border-radius:6px;cursor:pointer;">' +
+            '<input type="checkbox" value="' + esc(s.key) + '" data-scope>' +
+            '<span>' + esc(s.label) + '</span>' +
+        '</label>';
+    }).join('');
+}
+
+function hideApiTokenForm() {
+    document.getElementById('api-token-form').style.display = 'none';
+}
+
+async function submitApiTokenForm(e) {
+    e.preventDefault();
+    var name = document.getElementById('api-token-name').value.trim();
+    var expires = document.getElementById('api-token-expires').value; // yyyy-mm-dd
+    var note = document.getElementById('api-token-note').value.trim();
+    var scopes = Array.from(document.querySelectorAll('#api-token-scopes input[data-scope]:checked')).map(function(i){ return i.value; });
+    var msg = document.getElementById('api-token-msg');
+    msg.textContent = '';
+    if (!name) { msg.textContent = __.t('api_token.name_required'); msg.style.color = '#dc2626'; return; }
+
+    var expiresAt = null;
+    if (expires) {
+        var d = new Date(expires + 'T23:59:59');
+        expiresAt = Math.floor(d.getTime() / 1000);
+    }
+
+    try {
+        var res = await fetch('/api/admin/api_tokens', {
+            method: 'POST',
+            headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+            body: JSON.stringify({ name: name, scopes: scopes, expires_at: expiresAt, note: note })
+        });
+        if (handle401(res)) return;
+        var data = await res.json();
+        if (res.ok && data.token) {
+            _apiTokenCreated = data.token;
+            document.getElementById('api-token-form').style.display = 'none';
+            var created = document.getElementById('api-token-created');
+            created.style.display = 'block';
+            document.getElementById('api-token-value').textContent = data.token;
+            loadApiTokens();
+        } else {
+            msg.textContent = data.message || __.t('js.network_error');
+            msg.style.color = '#dc2626';
+        }
+    } catch(err) {
+        msg.textContent = __.t('js.network_error') + ': ' + err.message;
+        msg.style.color = '#dc2626';
+    }
+}
+
+function copyApiToken() {
+    if (!_apiTokenCreated) return;
+    navigator.clipboard.writeText(_apiTokenCreated).then(
+        function(){ toast(__.t('api_token.copied'), true); },
+        function(){ toast(__.t('api_token.copy_failed'), false); }
+    );
+}
+
+async function revokeApiToken(id) {
+    if (!confirm(__.t('api_token.confirm_revoke'))) return;
+    try {
+        var res = await fetch('/api/admin/api_tokens/' + id + '/revoke', { method: 'POST', headers: authHeaders() });
+        if (handle401(res)) return;
+        var data = await res.json();
+        if (res.ok) { toast(__.t('api_token.revoked'), true); loadApiTokens(); }
+        else { toast(data.message || __.t('js.network_error'), false); }
+    } catch(e) { toast(__.t('js.network_error') + ': ' + e.message, false); }
+}
+
+async function deleteApiToken(id) {
+    if (!confirm(__.t('api_token.confirm_delete'))) return;
+    try {
+        var res = await fetch('/api/admin/api_tokens/' + id, { method: 'DELETE', headers: authHeaders() });
+        if (handle401(res)) return;
+        var data = await res.json();
+        if (res.ok) { toast(__.t('api_token.deleted'), true); loadApiTokens(); }
+        else { toast(data.message || __.t('js.network_error'), false); }
+    } catch(e) { toast(__.t('js.network_error') + ': ' + e.message, false); }
+}
+
+async function loadApiTokens() {
+    var loading = document.getElementById('api-token-loading');
+    var wrap = document.getElementById('api-token-table-wrap');
+    var empty = document.getElementById('api-token-empty');
+    loading.style.display = 'block'; wrap.style.display = 'none'; empty.style.display = 'none';
+    try {
+        var res = await fetch('/api/admin/api_tokens', { headers: authHeaders() });
+        if (handle401(res)) return;
+        var data = await res.json();
+        var rows = data.tokens || [];
+        var tbody = document.getElementById('api-token-tbody');
+        if (!rows.length) {
+            empty.style.display = 'block';
+        } else {
+            tbody.innerHTML = rows.map(function(t) {
+                var scopes = (t.scopes || []).map(esc).join(', ');
+                var exp = t.expires_at ? new Date(t.expires_at * 1000).toLocaleDateString() : esc(__.t('api_token.never'));
+                var status = t.enabled === false
+                    ? '<span style="color:#9ca3af;">🚫 ' + esc(__.t('api_token.disabled')) + '</span>'
+                    : (t.expired
+                        ? '<span style="color:#dc2626;">⏳ ' + esc(__.t('api_token.expired')) + '</span>'
+                        : '<span style="color:#16a34a;">✅ ' + esc(__.t('api_token.active')) + '</span>');
+                var actions = (t.enabled === false ? '' :
+                    '<button class="btn btn-sm btn-warn" onclick="revokeApiToken(' + t.id + ')">⛔ ' + esc(__.t('api_token.revoke')) + '</button> ')
+                    + '<button class="btn btn-sm btn-del" onclick="deleteApiToken(' + t.id + ')">🗑 ' + esc(__.t('api_token.delete')) + '</button>';
+                return '<tr>' +
+                    '<td>' + esc(t.name) + '</td>' +
+                    '<td style="font-size:12px;max-width:260px;">' + scopes + '</td>' +
+                    '<td>' + exp + '</td>' +
+                    '<td>' + status + '</td>' +
+                    '<td style="font-size:12px;">' + esc(t.created_at || '') + '</td>' +
+                    '<td>' + actions + '</td>' +
+                '</tr>';
+            }).join('');
+            wrap.style.display = 'block';
+        }
+    } catch(e) {
+        toast(__.t('js.network_error') + ': ' + e.message, false, true);
+    }
+    loading.style.display = 'none';
 }
 
 // ═══════════ Helpers ═══════════

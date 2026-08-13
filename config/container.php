@@ -9,6 +9,7 @@ use App\Service\HarborService;
 use App\Service\MappingManager;
 use App\Service\I18nService;
 use App\Service\TokenService;
+use App\Service\ApiTokenService;
 use App\Service\AdminAuthService;
 use App\Service\AdminUserRepository;
 use App\Service\Git\ProviderRegistry;
@@ -61,6 +62,10 @@ return [
         }
         $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
         $pdo->setAttribute(\PDO::ATTR_DEFAULT_FETCH_MODE, \PDO::FETCH_ASSOC);
+
+        // 建表（可选）+ 种子数据（RBAC + 管理员账号）。绕过 Database::getPdo() 单例后在此显式补上。
+        \App\Service\Database::bootstrap($pdo);
+
         return $pdo;
     },
 
@@ -109,9 +114,18 @@ return [
         return new CorsMiddleware($config->getCorsConfig());
     },
 
-    // Token 验证服务（统一封装 cache token / 旧版 base64 token 验证逻辑）
+    // Token 验证服务（统一封装 cache token / 旧版 base64 token / API token 验证逻辑）
     TokenService::class => function (\Psr\Container\ContainerInterface $c) {
         return new TokenService(
+            $c->get(\PDO::class),
+            $c->get(AppConfig::class),
+            $c->get(ApiTokenService::class)
+        );
+    },
+
+    // API Token 服务（服务账号 / 第三方调用，独立于 RBAC）
+    ApiTokenService::class => function (\Psr\Container\ContainerInterface $c) {
+        return new ApiTokenService(
             $c->get(\PDO::class),
             $c->get(AppConfig::class)
         );
@@ -350,7 +364,8 @@ return [
             $c->get(AdminAuthService::class),
             $c->get(AdminUserRepository::class),
             $c->get(AutoDiscover::class),
-            $c->get(TokenService::class)
+            $c->get(TokenService::class),
+            $c->get(ApiTokenService::class)
         );
     },
 

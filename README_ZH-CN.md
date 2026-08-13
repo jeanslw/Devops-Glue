@@ -15,7 +15,7 @@ Devops-Glue API 是基于 Slim4 为小团队打造的 DevOps 工具链增强集�
 
 > 🔗 **本项目为CI增强组件** | 完整系统需配套 CD 部署服务 → [Devops_CD](https://gitee.com/jeanslw/devops_cd)
 
-## 🆚 为什么选择 Devops-Glue + CD？
+## 为什么选择 Devops-Glue + CD？
 
 > **给 Jenkins / GitLab CI 加一层统一管理控制台**
 > ✅ 让分散的 Jenkins 实例与 GitLab CI 项目变得可管理、可视化、可审计

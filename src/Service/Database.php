@@ -15,6 +15,27 @@ class Database
         self::$driver = self::$config['driver'] ?? 'sqlite';
     }
 
+    /**
+     * 数据库引导入口：建表（可选）+ 种子数据。
+     *
+     * Slim4 DI 容器直接 new PDO，绕过了 Database::getPdo() 单例，
+     * 因此由容器在创建 PDO 后调用此方法，确保 RBAC 与管理员的种子数据一定写入。
+     */
+    public static function bootstrap(\PDO $pdo): void
+    {
+        self::$pdo = $pdo;
+        if (empty(self::$config)) {
+            self::init();
+        }
+        if (self::$config['auto_migrate'] ?? true) {
+            self::ensureTables(); // 建表 + RBAC 种子 + 索引 + JSON 迁移
+        } else {
+            self::seedRbac(); // 手动建库脚本模式：表已存在，仍补种子数据
+        }
+        self::seedAdmin();
+        self::verifySeed();
+    }
+
     private static function defaultConfig(): array
     {
         $driver = strtolower($_ENV['DB_DRIVER'] ?? '');
@@ -289,6 +310,44 @@ class Database
             )");
         }
 
+        // api_tokens（服务账号 / 第三方调用的 API token，独立于 RBAC 权限体系）
+        $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_API_TOKENS . " (
+            id {$PK},
+            name {$VARCHAR} NOT NULL,
+            token_hash " . ($isMySQL ? 'VARCHAR(64) NOT NULL UNIQUE' : 'TEXT NOT NULL UNIQUE') . ",
+            scopes TEXT,
+            enabled " . ($isMySQL ? 'TINYINT NOT NULL DEFAULT 1' : 'INTEGER NOT NULL DEFAULT 1') . ",
+            expires_at INTEGER,
+            created_by {$VARCHAR},
+            note TEXT,
+            created_at {$TS_TYPE} DEFAULT ({$NOW})
+        ){$ENGINE}");
+
+        // 种子数据：RBAC（权限定义 / 隐含规则 / 系统角色 / 角色↔权限），幂等可重复执行
+        self::seedRbac();
+
+        // ── 索引 ──
+        try { $pdo->exec("CREATE INDEX IF NOT EXISTS idx_pipeline_tags_project ON " . \App\Config\AppConfig::TABLE_PIPELINE_TAGS . "(project)"); } catch (\Exception $e) {}
+        try { $pdo->exec("CREATE INDEX IF NOT EXISTS idx_pipeline_tags_created ON " . \App\Config\AppConfig::TABLE_PIPELINE_TAGS . "(created_at)"); } catch (\Exception $e) {}
+        try { $pdo->exec("CREATE INDEX IF NOT EXISTS idx_job_git_map_current_path ON " . \App\Config\AppConfig::TABLE_JOB_GIT_MAP . "(current_path)"); } catch (\Exception $e) {}
+        try { $pdo->exec("CREATE INDEX IF NOT EXISTS idx_security_checks_project ON " . \App\Config\AppConfig::TABLE_SECURITY_CHECKS . "(project, check_type)"); } catch (\Exception $e) {}
+        try { $pdo->exec("CREATE INDEX IF NOT EXISTS idx_security_checks_sha ON " . \App\Config\AppConfig::TABLE_SECURITY_CHECKS . "(sha)"); } catch (\Exception $e) {}
+
+        // 一次性 JSON 迁移（仅 SQLite）
+        if (!$isMySQL) {
+            $baseDir = __DIR__ . '/../../config';
+            self::migrateJobGitMap("{$baseDir}/job_git_map.json", $pdo);
+            self::migratePlatformVersions("{$baseDir}/platform_versions.json", $pdo);
+            self::migratePipelineTags("{$baseDir}/pipeline_tags.json", $pdo);
+        }
+    }
+
+    // ── RBAC 种子 ──
+
+    private static function seedRbac(): void
+    {
+        $pdo = self::$pdo;
+
         // 种子数据：权限定义（含 parent_key）
         $permUpsert = self::sqlUpsert(\App\Config\AppConfig::TABLE_PERMISSIONS, 'perm_key, description, parent_key', '?, ?, ?');
         $permStmt = $pdo->prepare($permUpsert);
@@ -327,21 +386,6 @@ class Database
                 try { $rpStmt->execute([$roleName, $permKey]); } catch (\Exception $e) {}
             }
         }
-
-        // ── 索引 ──
-        try { $pdo->exec("CREATE INDEX IF NOT EXISTS idx_pipeline_tags_project ON " . \App\Config\AppConfig::TABLE_PIPELINE_TAGS . "(project)"); } catch (\Exception $e) {}
-        try { $pdo->exec("CREATE INDEX IF NOT EXISTS idx_pipeline_tags_created ON " . \App\Config\AppConfig::TABLE_PIPELINE_TAGS . "(created_at)"); } catch (\Exception $e) {}
-        try { $pdo->exec("CREATE INDEX IF NOT EXISTS idx_job_git_map_current_path ON " . \App\Config\AppConfig::TABLE_JOB_GIT_MAP . "(current_path)"); } catch (\Exception $e) {}
-        try { $pdo->exec("CREATE INDEX IF NOT EXISTS idx_security_checks_project ON " . \App\Config\AppConfig::TABLE_SECURITY_CHECKS . "(project, check_type)"); } catch (\Exception $e) {}
-        try { $pdo->exec("CREATE INDEX IF NOT EXISTS idx_security_checks_sha ON " . \App\Config\AppConfig::TABLE_SECURITY_CHECKS . "(sha)"); } catch (\Exception $e) {}
-
-        // 一次性 JSON 迁移（仅 SQLite）
-        if (!$isMySQL) {
-            $baseDir = __DIR__ . '/../../config';
-            self::migrateJobGitMap("{$baseDir}/job_git_map.json", $pdo);
-            self::migratePlatformVersions("{$baseDir}/platform_versions.json", $pdo);
-            self::migratePipelineTags("{$baseDir}/pipeline_tags.json", $pdo);
-        }
     }
 
     // ── 管理员种子 ──
@@ -349,6 +393,54 @@ class Database
     private static function seedAdmin(): void
     {
         AdminUserRepository::seedAdminFromEnv(self::$pdo);
+    }
+
+    /**
+     * 自检：种子数据是否真的写进去了。
+     *
+     * 历史 bug 是种子调用链被重构断掉后静默失败（不报错、功能悄悄消失）。
+     * 这里对关键不变量做校验，一旦缺失直接抛异常，让问题在启动阶段就暴露，
+     * 而不是登录时才发现"改密码"等功能不见了。
+     */
+    private static function verifySeed(): void
+    {
+        $pdo = self::$pdo;
+        $problems = [];
+
+        try {
+            $stmt = $pdo->prepare("SELECT count(*) c FROM " . \App\Config\AppConfig::TABLE_ROLES . " WHERE name = ?");
+            $stmt->execute([\App\Config\AppConfig::ROLE_SUPER_ADMIN]);
+            if ((int)$stmt->fetch()['c'] === 0) {
+                $problems[] = 'roles 缺少 super_admin';
+            }
+        } catch (\Throwable $e) {
+            $problems[] = 'roles 查询失败: ' . $e->getMessage();
+        }
+
+        try {
+            $cnt = (int)$pdo->query("SELECT count(*) c FROM " . \App\Config\AppConfig::TABLE_PERMISSIONS)->fetch()['c'];
+            if ($cnt === 0) {
+                $problems[] = 'permissions 为空';
+            }
+        } catch (\Throwable $e) {
+            $problems[] = 'permissions 查询失败: ' . $e->getMessage();
+        }
+
+        // 仅在配置了 ADMIN_PASSWORD 时才要求管理员账号存在（未设密码属首次初始化，允许为空）
+        if (($_ENV['ADMIN_PASSWORD'] ?? '') !== '') {
+            try {
+                $cnt = (int)$pdo->query("SELECT count(*) c FROM " . \App\Config\AppConfig::TABLE_ADMIN_USERS)->fetch()['c'];
+                if ($cnt === 0) {
+                    $problems[] = 'admin_users 为空';
+                }
+            } catch (\Throwable $e) {
+                $problems[] = 'admin_users 查询失败: ' . $e->getMessage();
+            }
+        }
+
+        if (!empty($problems)) {
+            throw new \RuntimeException('数据库种子自检未通过: ' . implode('；', $problems));
+        }
     }
 
     // ── JSON 迁移（仅 SQLite 一次性）──

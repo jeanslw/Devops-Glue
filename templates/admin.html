@@ -102,6 +102,10 @@
                     </div>
                 </div>
             </div>
+            <div class="menu-div"></div>
+            <div class="menu-item" id="menu-api-tokens" data-tab="api-tokens" onclick="switchTab('api-tokens')" style="display:none;">
+                <span class="menu-icon">🔑</span> <span data-i18n="api_token.menu">API 管理</span>
+            </div>
         </div>
 
         <!-- 内容 -->
@@ -604,6 +608,72 @@
                     <div id="implied-empty" style="display:none;text-align:center;padding:40px;color:#9ca3af;" data-i18n="implied.no_rules">
                         暂无隐含规则
                     </div>
+                </div>
+            </div>
+
+            <!-- ═══ API 管理 Tab ═══ -->
+            <div id="tab-api-tokens" style="display:none;">
+                <div class="toolbar">
+                    <h3 data-i18n="api_token.menu">🔑 API 管理</h3>
+                    <button class="btn btn-pri" onclick="showApiTokenForm()" data-i18n="api_token.add">＋ 新增 Token</button>
+                </div>
+
+                <!-- 新增表单 -->
+                <div id="api-token-form" class="card" style="display:none;max-width:680px;">
+                    <form onsubmit="submitApiTokenForm(event)">
+                        <h4 data-i18n="api_token.add" style="margin-top:0;margin-bottom:14px;">＋ 新增 Token</h4>
+                        <div style="margin-bottom:10px;">
+                            <label><span class="req">*</span> <span data-i18n="api_token.name">名称</span></label>
+                            <input type="text" id="api-token-name" required data-i18n-placeholder="api_token.name_placeholder" placeholder="例：CD 服务账号 / Jenkins 扫描回写">
+                        </div>
+                        <div style="margin-bottom:10px;">
+                            <label data-i18n="api_token.scopes">接口权限（Scope）</label>
+                            <div id="api-token-scopes" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+                        </div>
+                        <div style="margin-bottom:10px;">
+                            <label data-i18n="api_token.expires">过期日期</label>
+                            <input type="date" id="api-token-expires">
+                            <p style="font-size:12px;color:#9ca3af;margin:4px 0 0 0;" data-i18n="api_token.expires_hint">留空表示永不过期</p>
+                        </div>
+                        <div style="margin-bottom:10px;">
+                            <label data-i18n="api_token.note">备注</label>
+                            <input type="text" id="api-token-note" data-i18n-placeholder="api_token.note_placeholder" placeholder="用途说明（可选）">
+                        </div>
+                        <button type="submit" class="btn btn-save">💾 <span data-i18n="common.save">保存</span></button>
+                        <button type="button" class="btn" onclick="hideApiTokenForm()" data-i18n="common.cancel">取消</button>
+                        <span id="api-token-msg" style="margin-left:12px;font-size:13px;"></span>
+                    </form>
+                </div>
+
+                <!-- 创建成功提示（一次性明文） -->
+                <div id="api-token-created" class="card" style="display:none;max-width:680px;margin-top:12px;border:1px solid #16a34a;">
+                    <h4 style="margin-top:0;color:#16a34a;" data-i18n="api_token.created_title">✅ Token 创建成功</h4>
+                    <p style="font-size:13px;color:#6b7280;" data-i18n="api_token.created_hint">请立即复制保存，此明文 Token 仅显示这一次。</p>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <code id="api-token-value" style="flex:1;padding:10px;background:#f3f4f6;border-radius:6px;word-break:break-all;font-size:12px;"></code>
+                        <button class="btn" onclick="copyApiToken()" data-i18n="api_token.copy">复制</button>
+                    </div>
+                </div>
+
+                <!-- 列表 -->
+                <div class="card" style="margin-top:12px;overflow-x:auto;">
+                    <div id="api-token-loading" style="text-align:center;padding:40px;color:#9ca3af;" data-i18n="common.loading">加载中…</div>
+                    <div id="api-token-table-wrap" style="display:none;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th data-i18n="api_token.name">名称</th>
+                                    <th data-i18n="api_token.scopes">接口权限</th>
+                                    <th data-i18n="api_token.expires">过期日期</th>
+                                    <th data-i18n="api_token.status">状态</th>
+                                    <th data-i18n="api_token.created_at">创建时间</th>
+                                    <th data-i18n="user.actions">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="api-token-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div id="api-token-empty" style="display:none;text-align:center;padding:40px;color:#9ca3af;" data-i18n="api_token.empty">暂无 Token</div>
                 </div>
             </div>
 

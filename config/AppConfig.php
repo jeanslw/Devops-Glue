@@ -17,6 +17,7 @@ class AppConfig
     public const TABLE_PERMISSIONS       = 'permissions';
     public const TABLE_ROLE_PERMISSIONS  = 'role_permissions';
     public const TABLE_IMPLIED_RULES     = 'implied_rules';
+    public const TABLE_API_TOKENS        = 'api_tokens';
 
     // ── 角色常量 ──
     public const ROLE_SUPER_ADMIN = 'super_admin';
@@ -25,6 +26,10 @@ class AppConfig
     public const ROLE_CD_ADMIN    = 'cd_admin';
     public const ROLE_DEPLOYER    = 'deployer';
     public const ROLE_VIEWER      = 'viewer';
+
+    // 请求 attribute 标记：API token 鉴权成功后的 currentRole 值。
+    // 注意：它不是 RBAC 角色（不进 roles 表），仅用于区分「服务账号 token」与「管理登录」两种鉴权来源。
+    public const ROLE_API_TOKEN   = 'api_token';
 
     // ── 权限键常量 ──
     public const PERM_CI_MANAGE             = 'ci.manage';
@@ -159,6 +164,109 @@ class AppConfig
     public const TTL_TOKEN      = 86400;  // 登录 token 有效期（24h）
     public const TTL_LOGIN_FAIL = 3600;   // 管理登录失败计数有效期（1h）
     public const TTL_CACHE      = 3600;   // 通用缓存有效期（1h）
+
+    // ── API Token 作用域（scope）──
+    // 独立于 RBAC 权限体系：token 直接携带 scopes，每个 scope 映射到一组接口的读写能力。
+    // 值均为 i18n key（lang/zh_CN、lang/en），供「API 管理」UI 渲染与后端翻译复用。
+    public const API_SCOPE_MAIN         = 'main';
+    public const API_SCOPE_GIT          = 'git';
+    public const API_SCOPE_HARBOR_READ  = 'harbor.read';
+    public const API_SCOPE_HARBOR_SCAN  = 'harbor.scan';
+    public const API_SCOPE_BUILD_READ   = 'build.read';
+    public const API_SCOPE_BUILD_WRITE  = 'build.write';
+    public const API_SCOPE_BUILD_REPORT = 'build.report';
+
+    /** 可选 scope 目录：key => i18n 翻译键 */
+    public const API_SCOPES = [
+        self::API_SCOPE_MAIN         => 'api.scope.main',
+        self::API_SCOPE_GIT          => 'api.scope.git',
+        self::API_SCOPE_HARBOR_READ  => 'api.scope.harbor_read',
+        self::API_SCOPE_HARBOR_SCAN  => 'api.scope.harbor_scan',
+        self::API_SCOPE_BUILD_READ   => 'api.scope.build_read',
+        self::API_SCOPE_BUILD_WRITE  => 'api.scope.build_write',
+        self::API_SCOPE_BUILD_REPORT => 'api.scope.build_report',
+    ];
+
+    /**
+     * scope → 控制器内二次校验的权限 key 映射。
+     * 写操作端点（build trigger/retry/cancel、harbor scanTrigger）在 Controller 里还有一层
+     * requirePermission('ci.trigger') 检查，API token 命中这些 scope 时须把对应权限注入 userPermissions，
+     * 否则中间件放行但控制器会 403。
+     */
+    public const API_SCOPE_PERMS = [
+        self::API_SCOPE_BUILD_WRITE => [self::PERM_CI_TRIGGER],
+        self::API_SCOPE_HARBOR_SCAN => [self::PERM_CI_TRIGGER],
+    ];
+
+    /**
+     * 根据 HTTP 方法 + 路径解析所需的 API scope。
+     *
+     * 返回值约定：
+     *   - null          → API token 禁止访问（/api/admin/* 等管理端点，fail-closed）
+     *   - '*'           → 任意有效 token 均可访问（如 /api/health）
+     *   - 具体 scope    → token 必须持有该 scope
+     *
+     * 只对「已被 AuthMiddleware 保护」的路径生效；公开路由（i18n/docs 等）不经过此方法。
+     */
+    public static function resolveRequiredScope(string $method, string $path): ?string
+    {
+        $m = strtoupper($method);
+        // 归一化：去掉查询串、统一斜杠
+        $path = parse_url($path, PHP_URL_PATH) ?? $path;
+        $path = '/' . trim($path, '/');
+        if ($path !== '/' && str_ends_with($path, '/')) {
+            $path = rtrim($path, '/');
+        }
+
+        // 健康检查：任意有效 token
+        if ($path === '/api/health') {
+            return '*';
+        }
+
+        // 管理端点：API token 一律禁止（super_admin 交互式专属）
+        if (preg_match('#^/api/admin($|/)#', $path)) {
+            return null;
+        }
+
+        // MAIN：只读
+        if (preg_match('#^/api/main($|/)#', $path)) {
+            return self::API_SCOPE_MAIN;
+        }
+
+        // GIT：只读
+        if (preg_match('#^/api/git($|/)#', $path)) {
+            return self::API_SCOPE_GIT;
+        }
+
+        // Harbor：触发扫描（写）优先于读判断
+        if (preg_match('#^/api/harbor/.+/repositories/.+/tags/.+/scan$#', $path) && $m === 'POST') {
+            return self::API_SCOPE_HARBOR_SCAN;
+        }
+        if (preg_match('#^/api/harbor($|/)#', $path)) {
+            return self::API_SCOPE_HARBOR_READ;
+        }
+
+        // Build：写操作（trigger / retry / cancel）
+        if (preg_match('#^/api/build/.+/pipelines/\d+/(retry|cancel)$#', $path)) {
+            return self::API_SCOPE_BUILD_WRITE;
+        }
+        if (preg_match('#^/api/build/.+/trigger$#', $path)) {
+            return self::API_SCOPE_BUILD_WRITE;
+        }
+
+        // Build：CI 流水线回写（scan-sync / commit-status）
+        if (preg_match('#^/api/build/.+/(scan-sync|commit-status)$#', $path)) {
+            return self::API_SCOPE_BUILD_REPORT;
+        }
+
+        // Build：其余全部只读
+        if (preg_match('#^/api/build($|/)#', $path)) {
+            return self::API_SCOPE_BUILD_READ;
+        }
+
+        // 未知路径：fail-closed
+        return null;
+    }
 
     private array $config;
     private ?\PDO $pdo;

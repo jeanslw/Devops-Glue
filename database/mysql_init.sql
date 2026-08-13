@@ -105,6 +105,19 @@ CREATE TABLE IF NOT EXISTS `implied_rules` (
     PRIMARY KEY (`source_key`, `target_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- ── 12. api_tokens（服务账号 / 第三方调用的 API token，独立于 RBAC）──
+CREATE TABLE IF NOT EXISTS `api_tokens` (
+    `id`         INT AUTO_INCREMENT PRIMARY KEY,
+    `name`       VARCHAR(255) NOT NULL,
+    `token_hash` VARCHAR(64) NOT NULL UNIQUE,
+    `scopes`     TEXT,
+    `enabled`    TINYINT NOT NULL DEFAULT 1,
+    `expires_at` INT,
+    `created_by` VARCHAR(255),
+    `note`       TEXT,
+    `created_at` DATETIME DEFAULT (NOW())
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- ── 索引 ──
 -- 注：首次建库和迁移都通过下方 _add_index 过程处理（兼容 DATETIME / TEXT 两种列类型）
 -- 这里不放裸 CREATE INDEX，避免重复执行时报 1061（重复键名）

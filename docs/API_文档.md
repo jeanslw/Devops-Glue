@@ -303,6 +303,113 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 
 ---
 
+## API Token 管理（服务账号 / 第三方调用）
+
+> 供 CD 系统服务账号（Jenkins / GitLab CI 脚本）或第三方系统调用。API Token **独立于 RBAC 权限体系**，直接携带接口权限清单（scope），不关联任何用户或角色。
+>
+> 仅 **super_admin** 可通过管理 UI（「API 管理」菜单）或下方接口创建 / 撤销 / 删除 Token。
+
+### 核心概念
+
+- Token 明文格式为 `dg_` 前缀 + 64 位十六进制，例如 `dg_8f3a…`。
+- 服务端只存 `sha256(明文)` 摘要，**明文仅在创建时返回一次**，请立即保存。
+- Token 可设置过期时间（`expires_at`，Unix 秒），留空表示永不过期。
+- Token 通过标准 `Authorization: Bearer <token>` 头使用，与管理员登录 Token 共用同一鉴权入口。
+
+### Scope 目录（创建 Token 时勾选）
+
+| Scope key | 说明 | 覆盖接口 |
+|---|---|---|
+| `main` | MAIN（只读） | `/api/main/*` |
+| `git` | GIT（只读） | `/api/git/*` |
+| `harbor.read` | Harbor 查询 | `/api/harbor/*`（除扫描触发外） |
+| `harbor.scan` | Harbor 扫描触发 | `POST /api/harbor/{project}/repositories/{repo}/tags/{tag}/scan` |
+| `build.read` | 构建查询 | `/api/build/*`（除下方写/回写接口外） |
+| `build.write` | 构建执行 | `trigger` / `retry` / `cancel` |
+| `build.report` | 构建回写 | `scan-sync` / `commit-status`（CI 脚本回调） |
+
+> **说明：**
+> - `/api/health` 无需 scope，任意有效 Token 即可访问。
+> - `/api/admin/*`（含管理接口）对 API Token **一律禁止**（fail-closed），即使持有任意 scope 也返回 403。
+> - 未知路径同样 fail-closed，返回 403。
+> - 每个 Token 可同时勾选多个 scope；scope 之间无包含关系。
+
+### 管理接口（仅 super_admin）
+
+| 接口 | 方法 | 说明 |
+|---|---|---|
+| `/api/admin/api_tokens/scopes` | GET | 返回可选 scope 目录（`{"scopes":[{"key":"main","label":"MAIN（只读）"},…]}`） |
+| `/api/admin/api_tokens` | GET | Token 列表（**不含明文**，返回 `{"tokens":[…]}`） |
+| `/api/admin/api_tokens` | POST | 创建 Token，返回一次性明文 |
+| `/api/admin/api_tokens/{id}/revoke` | POST | 撤销（**禁用**，保留记录），返回 `{"ok":true}` |
+| `/api/admin/api_tokens/{id}` | DELETE | 删除（**硬删除**记录），返回 `{"ok":true}` |
+
+#### 创建 Token
+
+请求体：
+
+```json
+{
+  "name": "jenkins-scan-bot",
+  "scopes": ["main", "harbor.read", "harbor.scan", "build.report"],
+  "expires_at": 1786579200,
+  "note": "Jenkins 扫描回写脚本使用"
+}
+```
+
+- `name` 必填；`scopes` 数组（非法 key 会被忽略）；`expires_at` 可选（Unix 秒，留空永不过期）；`note` 可选。
+
+响应（**明文仅此一次**）：
+
+```json
+{
+  "id": 1,
+  "token": "dg_8f3a4b1c…（64位十六进制）"
+}
+```
+
+### 使用示例
+
+```bash
+# ① super_admin 登录（管理接口用）
+ADMIN_TOKEN=$(curl -s -X POST "http://URL/api/admin/login" \
+  -H "Content-Type: application/json" \
+  -d '{"user":"admin","password":"your_password"}' | jq -r '.data.token')
+
+# ② 创建 API Token（返回一次性明文）
+NEW_TOKEN=$(curl -s -X POST "http://URL/api/admin/api_tokens" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d '{"name":"jenkins-scan-bot","scopes":["main","harbor.read","harbor.scan","build.report"]}' \
+  | jq -r '.token')
+
+# ③ 用 API Token 调用业务接口（与管理员登录 Token 用法一致）
+curl "http://URL/api/main/map/list" \
+  -H "Authorization: Bearer $NEW_TOKEN"
+
+# 触发 Harbor 扫描（需 harbor.scan scope）
+curl -X POST "http://URL/api/harbor/mycode/repositories/diagnosis-runtime/tags/v1.0.0/scan" \
+  -H "Authorization: Bearer $NEW_TOKEN"
+
+# 扫描结果回写（需 build.report scope，CI 脚本中调用）
+curl -X POST "http://URL/api/build/static/scan-sync" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $NEW_TOKEN" \
+  -d '{"tag":"v1.0.0"}'
+
+# ④ 撤销 Token（禁用，保留记录）
+curl -X POST "http://URL/api/admin/api_tokens/1/revoke" \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+
+# ⑤ 删除 Token（硬删除记录）
+curl -X DELETE "http://URL/api/admin/api_tokens/1" \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+> **注意：** 若 Token 未持有某接口所需的 scope，接口返回 `403`（`{"code":403,"message":"API Token 无权访问此接口"}`）。管理接口对 API Token 一律返回 403。
+
+---
+
 ## 快速测试命令
 
 ```bash

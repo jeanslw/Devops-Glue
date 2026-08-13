@@ -56,7 +56,7 @@ class AdminAuthService
             return [
                 'success' => true,
                 'user'    => $username,
-                'role'    => AppConfig::ROLE_ADMIN,
+                'role'    => AppConfig::ROLE_SUPER_ADMIN,
                 'isRoot'  => true,
             ];
         }

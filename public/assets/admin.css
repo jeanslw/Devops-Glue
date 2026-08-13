@@ -147,6 +147,8 @@
         .btn-edit:hover { background:#c7d2fe; }
         .btn-del { background:#fee2e2; color:#dc2626; }
         .btn-del:hover { background:#fecaca; }
+        .btn-warn { background:#fef3c7; color:#b45309; }
+        .btn-warn:hover { background:#fde68a; }
 
         /* 视图切换按钮组 */
         .view-toggle { display:flex; border:2px solid #d1d5db; border-radius:10px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.06); }

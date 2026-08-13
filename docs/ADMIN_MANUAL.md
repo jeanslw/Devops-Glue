@@ -1,4 +1,13 @@
-# Devops-Glue API Admin Manual v2.4
+# Devops-Glue API Admin Manual v2.5
+
+## Version Correspondence
+
+| Devops-Glue API | Devops-Glue CD |
+|:---:|:---:|
+| v2.5 | v1.3 |
+| v2.4 | v1.2 |
+
+---
 
 ## Table of Contents
 

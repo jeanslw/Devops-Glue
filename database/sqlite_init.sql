@@ -104,6 +104,19 @@ CREATE TABLE IF NOT EXISTS implied_rules (
     PRIMARY KEY (source_key, target_key)
 );
 
+-- ── 12. api_tokens（服务账号 / 第三方调用的 API token，独立于 RBAC）──
+CREATE TABLE IF NOT EXISTS api_tokens (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    scopes     TEXT,
+    enabled    INTEGER NOT NULL DEFAULT 1,
+    expires_at INTEGER,
+    created_by TEXT,
+    note       TEXT,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+);
+
 -- ── 索引 ──
 CREATE INDEX IF NOT EXISTS idx_pipeline_tags_project     ON ci_pipeline_tags(project);
 CREATE INDEX IF NOT EXISTS idx_pipeline_tags_created      ON ci_pipeline_tags(created_at);

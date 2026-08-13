@@ -303,6 +303,113 @@ Token expires in 24 hours. `super_admin` role returns `"*"` for permissions.
 
 ---
 
+## API Token Management (Service Accounts / Third-Party)
+
+> For CD system service accounts (Jenkins / GitLab CI scripts) or third-party systems. API tokens are **independent of the RBAC permission system** — they carry an endpoint permission list (scope) directly and are not tied to any user or role.
+>
+> Only **super_admin** can create / revoke / delete tokens via the admin UI (the "API Management" menu) or the endpoints below.
+
+### Core Concepts
+
+- Plaintext tokens use a `dg_` prefix + 64 hex chars, e.g. `dg_8f3a…`.
+- The server stores only the `sha256(plaintext)` hash — **the plaintext is returned exactly once** at creation; save it immediately.
+- Tokens may set an expiry (`expires_at`, Unix seconds); empty means never expires.
+- Tokens are sent via the standard `Authorization: Bearer <token>` header, sharing the same auth entry point as admin login tokens.
+
+### Scope Catalog (selected when creating a token)
+
+| Scope key | Description | Endpoints covered |
+|---|---|---|
+| `main` | MAIN (read-only) | `/api/main/*` |
+| `git` | GIT (read-only) | `/api/git/*` |
+| `harbor.read` | Harbor read | `/api/harbor/*` (except scan trigger) |
+| `harbor.scan` | Harbor scan trigger | `POST /api/harbor/{project}/repositories/{repo}/tags/{tag}/scan` |
+| `build.read` | Build read | `/api/build/*` (except write/report below) |
+| `build.write` | Build execution | `trigger` / `retry` / `cancel` |
+| `build.report` | Build report | `scan-sync` / `commit-status` (CI script callbacks) |
+
+> **Notes:**
+> - `/api/health` needs no scope — any valid token works.
+> - `/api/admin/*` (admin endpoints) are **always forbidden** for API tokens (fail-closed), returning 403 regardless of scopes.
+> - Unknown paths are also fail-closed (403).
+> - A token may hold multiple scopes; scopes do not imply each other.
+
+### Admin Endpoints (super_admin only)
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/admin/api_tokens/scopes` | GET | Return the selectable scope catalog (`{"scopes":[{"key":"main","label":"MAIN (read-only)"},…]}`) |
+| `/api/admin/api_tokens` | GET | List tokens (**no plaintext**, returns `{"tokens":[…]}`) |
+| `/api/admin/api_tokens` | POST | Create a token, returns one-time plaintext |
+| `/api/admin/api_tokens/{id}/revoke` | POST | Revoke (**disable**, keeps the record), returns `{"ok":true}` |
+| `/api/admin/api_tokens/{id}` | DELETE | Delete (**hard delete** the record), returns `{"ok":true}` |
+
+#### Create Token
+
+Request body:
+
+```json
+{
+  "name": "jenkins-scan-bot",
+  "scopes": ["main", "harbor.read", "harbor.scan", "build.report"],
+  "expires_at": 1786579200,
+  "note": "Used by the Jenkins scan writeback script"
+}
+```
+
+- `name` required; `scopes` array (invalid keys are dropped); `expires_at` optional (Unix seconds, empty = never); `note` optional.
+
+Response (**plaintext shown only once**):
+
+```json
+{
+  "id": 1,
+  "token": "dg_8f3a4b1c…（64 hex chars）"
+}
+```
+
+### Usage Examples
+
+```bash
+# ① super_admin login (for admin endpoints)
+ADMIN_TOKEN=$(curl -s -X POST "http://URL/api/admin/login" \
+  -H "Content-Type: application/json" \
+  -d '{"user":"admin","password":"your_password"}' | jq -r '.data.token')
+
+# ② Create an API token (returns one-time plaintext)
+NEW_TOKEN=$(curl -s -X POST "http://URL/api/admin/api_tokens" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d '{"name":"jenkins-scan-bot","scopes":["main","harbor.read","harbor.scan","build.report"]}' \
+  | jq -r '.token')
+
+# ③ Call business endpoints with the API token (same as admin login token)
+curl "http://URL/api/main/map/list" \
+  -H "Authorization: Bearer $NEW_TOKEN"
+
+# Trigger Harbor scan (requires harbor.scan scope)
+curl -X POST "http://URL/api/harbor/mycode/repositories/diagnosis-runtime/tags/v1.0.0/scan" \
+  -H "Authorization: Bearer $NEW_TOKEN"
+
+# Write back scan results (requires build.report scope, called from CI scripts)
+curl -X POST "http://URL/api/build/static/scan-sync" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $NEW_TOKEN" \
+  -d '{"tag":"v1.0.0"}'
+
+# ④ Revoke a token (disable, keeps the record)
+curl -X POST "http://URL/api/admin/api_tokens/1/revoke" \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+
+# ⑤ Delete a token (hard delete the record)
+curl -X DELETE "http://URL/api/admin/api_tokens/1" \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+> **Note:** If a token lacks the required scope for an endpoint, it returns `403` (`{"code":403,"message":"API token lacks permission for this endpoint"}`). Admin endpoints always return 403 for API tokens.
+
+---
+
 ## Quick Test Commands
 
 ```bash

@@ -6,6 +6,7 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Config\AppConfig;
 use App\Service\AdminAuthService;
 use App\Service\AdminUserRepository;
+use App\Service\ApiTokenService;
 use App\Service\AutoDiscover;
 use App\Service\I18nService;
 use App\Service\TokenService;
@@ -16,6 +17,7 @@ class AdminController extends BaseController
     private \PDO $pdo;
     private ?AutoDiscover $autoDiscover;
     private ?TokenService $tokenService = null;
+    private ?ApiTokenService $apiTokenService = null;
     private AdminAuthService $adminAuthService;
     private AdminUserRepository $adminUserRepository;
 
@@ -26,13 +28,15 @@ class AdminController extends BaseController
         AdminAuthService $adminAuthService,
         AdminUserRepository $adminUserRepository,
         ?AutoDiscover $autoDiscover = null,
-        ?TokenService $tokenService = null
+        ?TokenService $tokenService = null,
+        ?ApiTokenService $apiTokenService = null
     ) {
         parent::__construct($i18n);
         $this->config             = $config;
         $this->pdo                = $pdo;
         $this->autoDiscover       = $autoDiscover;
         $this->tokenService       = $tokenService;
+        $this->apiTokenService    = $apiTokenService;
         $this->adminAuthService   = $adminAuthService;
         $this->adminUserRepository = $adminUserRepository;
     }
@@ -1075,7 +1079,110 @@ class AdminController extends BaseController
         return $response->withHeader('Content-Type', 'application/json');
     }
 
+    // ────────────────────────── API Token 管理（仅 super_admin） ──────────────────────────
+
+    /** GET /api/admin/api_tokens/scopes — 返回可选 scope 目录（供 UI 渲染） */
+    public function apiTokenScopes(Request $request, Response $response): Response
+    {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requireSuperAdmin($response)) {
+            return $resp;
+        }
+        $scopes = [];
+        foreach (AppConfig::API_SCOPES as $key => $labelKey) {
+            $scopes[] = ['key' => $key, 'label' => $this->__($labelKey)];
+        }
+        $response->getBody()->write(json_encode(['scopes' => $scopes], JSON_UNESCAPED_UNICODE));
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /** GET /api/admin/api_tokens — 列表（不含明文） */
+    public function apiTokenList(Request $request, Response $response): Response
+    {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requireSuperAdmin($response)) {
+            return $resp;
+        }
+        if ($this->apiTokenService === null) {
+            return $this->jsonError($response, 'api_token.service_unavailable', 503);
+        }
+        $tokens = $this->apiTokenService->listTokens();
+        $response->getBody()->write(json_encode(['tokens' => $tokens], JSON_UNESCAPED_UNICODE));
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /** POST /api/admin/api_tokens — 创建，返回一次性明文 */
+    public function apiTokenCreate(Request $request, Response $response): Response
+    {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requireSuperAdmin($response)) {
+            return $resp;
+        }
+        if ($this->apiTokenService === null) {
+            return $this->jsonError($response, 'api_token.service_unavailable', 503);
+        }
+        $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
+
+        try {
+            $created = $this->apiTokenService->createToken([
+                'name'       => $body['name'] ?? '',
+                'scopes'     => $body['scopes'] ?? [],
+                'expires_at' => $body['expires_at'] ?? null,
+                'created_by' => $this->currentUser,
+                'note'       => $body['note'] ?? null,
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            return $this->jsonError($response, $e->getMessage(), 400);
+        } catch (\Exception $e) {
+            return $this->jsonError($response, $this->__('build.query_failed') . ': ' . $e->getMessage(), 500);
+        }
+
+        $response->getBody()->write(json_encode(['id' => $created['id'], 'token' => $created['token']], JSON_UNESCAPED_UNICODE));
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /** POST /api/admin/api_tokens/{id}/revoke — 撤销（禁用，保留记录） */
+    public function apiTokenRevoke(Request $request, Response $response, array $args): Response
+    {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requireSuperAdmin($response)) {
+            return $resp;
+        }
+        if ($this->apiTokenService === null) {
+            return $this->jsonError($response, 'api_token.service_unavailable', 503);
+        }
+        $revoked = $this->apiTokenService->revoke((int)($args['id'] ?? 0));
+        $response->getBody()->write(json_encode(['ok' => $revoked], JSON_UNESCAPED_UNICODE));
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /** DELETE /api/admin/api_tokens/{id} — 删除（硬删除记录） */
+    public function apiTokenDelete(Request $request, Response $response, array $args): Response
+    {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requireSuperAdmin($response)) {
+            return $resp;
+        }
+        if ($this->apiTokenService === null) {
+            return $this->jsonError($response, 'api_token.service_unavailable', 503);
+        }
+        $deleted = $this->apiTokenService->delete((int)($args['id'] ?? 0));
+        $response->getBody()->write(json_encode(['ok' => $deleted], JSON_UNESCAPED_UNICODE));
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
     // ────────────────────────── helpers ──────────────────────────
+
+    /**
+     * 仅 super_admin 可访问（API Token 管理专属，独立于 RBAC 权限体系）
+     */
+    private function requireSuperAdmin(Response $response): ?Response
+    {
+        if ($this->currentRole !== AppConfig::ROLE_SUPER_ADMIN) {
+            return $this->jsonError($response, 'api_token.super_admin_only', 403);
+        }
+        return null;
+    }
 
     /**
      * 展开权限列表：根据 implied_rules 表自动添加隐含权限（数据驱动，不再读常量）
