@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.5.0 (2026-08-13)
+- **API Token management** — Added API token feature: creation (`dg_` prefix + 64 hex chars), listing, and scope query.
+- **Token revoke/delete** — Supports both "revoke" (soft-delete: disable and keep the record) and "delete" (hard-delete) operations.
+- **OpenAPI docs** — Completed OpenAPI spec for the 5 API token endpoints.
+- **Version correspondence** — Admin manuals now document the Devops-Glue API ↔ Devops-Glue CD version correspondence (v2.5 → v1.3, v2.4 → v1.2).
+- **Release update** — Bumped app version to v2.5.0.
+
 ## v2.4.4 (2026-08-11)
 - **Release update** — Bumped app version to v2.4.4.
 - **Admin auth clarification** — Clarified `.env` fallback and admin account login behavior in documentation.
