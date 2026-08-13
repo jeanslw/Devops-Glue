@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.5.1 (2026-08-13)
+- **DB bootstrap fix** — Restored "run schema/seed only on first boot" semantics; no more per-request redundant writes (regression from the Slim4 refactor).
+- **Idempotent migrations** — `ALTER ... ADD COLUMN` now checks column existence, eliminating the flood of `Duplicate column name` error logs.
+
 ## v2.5.0 (2026-08-13)
 - **API Token management** — Added API token feature: creation (`dg_` prefix + 64 hex chars), listing, and scope query.
 - **Token revoke/delete** — Supports both "revoke" (soft-delete: disable and keep the record) and "delete" (hard-delete) operations.

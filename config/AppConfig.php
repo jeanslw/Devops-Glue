@@ -3,7 +3,7 @@ namespace App\Config;
 
 class AppConfig
 {
-    public const APP_VERSION = '2.5.0';
+    public const APP_VERSION = '2.5.1';
 
     // ── 表名常量 ──
     public const TABLE_JOB_GIT_MAP       = 'ci_job_git_map';
