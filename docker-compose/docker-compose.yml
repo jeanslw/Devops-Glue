@@ -61,8 +61,9 @@ volumes:
 #       HOST: 0.0.0.0
 #       PORT: 8081
 #       CI_API_URL: http://devops-glue
-#       CI_ADMIN_USER: root
-#       CI_ADMIN_PASS: admin123
+#       CI_API_TOKEN: dg_xxx   # API token (Service Account / Third Party) Recommendations
+#       CI_ADMIN_USER: Service_Account
+#       CI_ADMIN_PASS: Service_Password
 #     ports:
 #       - "8081:8081"
 #     restart: unless-stopped
