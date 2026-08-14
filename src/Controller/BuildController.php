@@ -324,6 +324,11 @@ class BuildController extends BaseController
      */
     public function commitStatus(Request $request, Response $response, array $args): Response
     {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_TRIGGER)) {
+            return $resp;
+        }
+
         $path = $args['path'] ?? '';
         $body = $request->getParsedBody() ?? [];
 
@@ -343,6 +348,12 @@ class BuildController extends BaseController
         $validStates = ['pending', 'success', 'failed', 'error'];
         if (!in_array($state, $validStates, true)) {
             return $this->jsonError($response, $this->__('build.commit_status_invalid_state', ['states' => implode(', ', $validStates)]), 400);
+        }
+
+        // SHA 必须为合法十六进制（7~64 位）。合法 SHA 本身是 URL 安全字符，无需编码，git 一定认；
+        // 校验可同时挡住含 /、..、%2F 的非法输入注入 git 回写路径。
+        if (!preg_match('/^[0-9a-fA-F]{7,64}$/', $sha)) {
+            return $this->jsonError($response, 'build.commit_status_invalid_sha', 400);
         }
 
         // ── 查找 git_platform ──
@@ -421,9 +432,14 @@ class BuildController extends BaseController
         }
     }
 
-    /** POST /api/build/{path}/scan-sync（公共端点，不限制 BUILD_MODE） */
+    /** POST /api/build/{path}/scan-sync（CI 流水线回写端点，不限制 BUILD_MODE） */
     public function scanSync(Request $request, Response $response, array $args): Response
     {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_TRIGGER)) {
+            return $resp;
+        }
+
         $path = $args['path'] ?? '';
         $body   = $request->getParsedBody() ?? [];
         $tag    = $body['tag'] ?? null;

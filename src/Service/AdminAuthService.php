@@ -22,7 +22,6 @@ class AdminAuthService
         }
 
         $rootUser = $this->config->getRootAdminUser();
-        $allowEnvFallback = false;
         $dbAccessible = true;
         $dbUser = null;
 
@@ -36,7 +35,6 @@ class AdminAuthService
             if (!$this->isAllowedSystem($dbUser['systems'], $systemType)) {
                 return ['success' => false, 'errorKey' => $this->getSystemErrorKey($systemType)];
             }
-            $this->clearAdminLoginFailCount($username);
             return [
                 'success' => true,
                 'user'    => $username,
@@ -45,14 +43,13 @@ class AdminAuthService
             ];
         }
 
-        if (!$dbAccessible) {
-            $allowEnvFallback = true;
-        } elseif ($username === $rootUser) {
-            $allowEnvFallback = $this->incrementAdminLoginFailCount($username) >= 3;
-        }
+        // env 兜底仅限两类场景（DB 是唯一权威，禁止常开明文旁路）：
+        //  1. DB 完全不可访问（灾难恢复，此时无法验证任何账号）
+        //  2. DB 可访问但尚无任何账号（首次部署，admin_users 为空）
+        // 其他情况一律不认 .env 密码；忘记密码走离线补丁
+        $allowEnvFallback = $dbAccessible ? $this->hasNoAdminUsers() : true;
 
-        if ($this->authenticateEnvRoot($username, $password, $allowEnvFallback, $dbAccessible)) {
-            $this->clearAdminLoginFailCount($username);
+        if ($allowEnvFallback && $this->authenticateEnvRoot($username, $password)) {
             return [
                 'success' => true,
                 'user'    => $username,
@@ -71,21 +68,25 @@ class AdminAuthService
             if ($dbUser && password_verify($password, $dbUser['password_hash'])) {
                 return true;
             }
+            // DB 可访问：仅首次部署（无任何账号）才接受 .env 密码，与 authenticate 保持一致
+            if ($this->hasNoAdminUsers()) {
+                $cred = $this->config->getAdminCredentials();
+                return $username === $cred['user'] && $password === $cred['password'] && $password !== '';
+            }
         } catch (\Throwable $e) {
-            // continue to .env fallback
+            // DB 不可访问：接受 .env 密码作为灾难恢复
+            $cred = $this->config->getAdminCredentials();
+            return $username === $cred['user'] && $password === $cred['password'] && $password !== '';
         }
-
-        $cred = $this->config->getAdminCredentials();
-        return $username === $cred['user'] && $password === $cred['password'] && $password !== '';
+        return false;
     }
 
-    private function authenticateEnvRoot(string $username, string $password, bool $allowEnvFallback, bool $dbAccessible): bool
+    private function authenticateEnvRoot(string $username, string $password): bool
     {
         $cred = $this->config->getAdminCredentials();
-        if ($username !== $cred['user'] || $password !== $cred['password'] || $password === '') {
-            return false;
-        }
-        return $allowEnvFallback || !$dbAccessible;
+        return $username === $cred['user']
+            && $password === $cred['password']
+            && $password !== '';
     }
 
     private function getSystemErrorKey(string $systemType): string
@@ -117,39 +118,16 @@ class AdminAuthService
         return array_filter(array_map('trim', explode(',', strtolower($systems))), fn($value) => $value !== '');
     }
 
-    private function getAdminLoginFailCount(string $username): int
+    /** 首次部署判断：admin_users 表为空（此时允许 .env 根密码兜底） */
+    private function hasNoAdminUsers(): bool
     {
         try {
-            $stmt = $this->pdo->prepare("SELECT value FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key = ? AND expires_at > ?");
-            $stmt->execute([AppConfig::CACHE_KEY_ADMIN_LOGIN_FAIL_PREFIX . $username, time()]);
-            $row = $stmt->fetch();
-            return $row ? (int)$row['value'] : 0;
+            $cnt = (int)$this->pdo->query(
+                "SELECT count(*) c FROM " . AppConfig::TABLE_ADMIN_USERS
+            )->fetch()['c'];
+            return $cnt === 0;
         } catch (\Throwable $e) {
-            return 0;
-        }
-    }
-
-    private function setAdminLoginFailCount(string $username, int $count): void
-    {
-        try {
-            $sql = Database::sqlUpsert(AppConfig::TABLE_CACHE, 'cache_key, value, expires_at', '?, ?, ?');
-            $this->pdo->prepare($sql)->execute([AppConfig::CACHE_KEY_ADMIN_LOGIN_FAIL_PREFIX . $username, (string)$count, time() + AppConfig::TTL_LOGIN_FAIL]);
-        } catch (\Throwable $e) {
-        }
-    }
-
-    private function incrementAdminLoginFailCount(string $username): int
-    {
-        $count = $this->getAdminLoginFailCount($username) + 1;
-        $this->setAdminLoginFailCount($username, $count);
-        return $count;
-    }
-
-    private function clearAdminLoginFailCount(string $username): void
-    {
-        try {
-            $this->pdo->prepare("DELETE FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key = ?")->execute([AppConfig::CACHE_KEY_ADMIN_LOGIN_FAIL_PREFIX . $username]);
-        } catch (\Throwable $e) {
+            return false;
         }
     }
 }

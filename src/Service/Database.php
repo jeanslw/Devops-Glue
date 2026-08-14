@@ -85,7 +85,7 @@ class Database
             'username'     => $_ENV['DB_USER'] ?? 'root',
             'password'     => $_ENV['DB_PASS'] ?? '',
             'charset'      => 'utf8mb4',
-            'auto_migrate' => ($_ENV['DB_AUTO_MIGRATE'] ?? 'true') !== 'false',
+            'auto_migrate' => !in_array(strtolower(trim($_ENV['DB_AUTO_MIGRATE'] ?? 'true')), ['0', 'false', 'no', 'off', ''], true),
         ];
     }
 
@@ -407,12 +407,12 @@ class Database
         // 种子数据：RBAC（权限定义 / 隐含规则 / 系统角色 / 角色↔权限），幂等可重复执行
         self::seedRbac();
 
-        // ── 索引 ──
-        try { $pdo->exec("CREATE INDEX IF NOT EXISTS idx_pipeline_tags_project ON " . \App\Config\AppConfig::TABLE_PIPELINE_TAGS . "(project)"); } catch (\Exception $e) {}
-        try { $pdo->exec("CREATE INDEX IF NOT EXISTS idx_pipeline_tags_created ON " . \App\Config\AppConfig::TABLE_PIPELINE_TAGS . "(created_at)"); } catch (\Exception $e) {}
-        try { $pdo->exec("CREATE INDEX IF NOT EXISTS idx_job_git_map_current_path ON " . \App\Config\AppConfig::TABLE_JOB_GIT_MAP . "(current_path)"); } catch (\Exception $e) {}
-        try { $pdo->exec("CREATE INDEX IF NOT EXISTS idx_security_checks_project ON " . \App\Config\AppConfig::TABLE_SECURITY_CHECKS . "(project, check_type)"); } catch (\Exception $e) {}
-        try { $pdo->exec("CREATE INDEX IF NOT EXISTS idx_security_checks_sha ON " . \App\Config\AppConfig::TABLE_SECURITY_CHECKS . "(sha)"); } catch (\Exception $e) {}
+        // ── 索引（跨驱动幂等：MySQL 无 IF NOT EXISTS，先查 information_schema）──
+        self::createIndex('idx_pipeline_tags_project',    \App\Config\AppConfig::TABLE_PIPELINE_TAGS, 'project');
+        self::createIndex('idx_pipeline_tags_created',    \App\Config\AppConfig::TABLE_PIPELINE_TAGS, 'created_at');
+        self::createIndex('idx_job_git_map_current_path', \App\Config\AppConfig::TABLE_JOB_GIT_MAP, 'current_path');
+        self::createIndex('idx_security_checks_project',  \App\Config\AppConfig::TABLE_SECURITY_CHECKS, 'project, check_type');
+        self::createIndex('idx_security_checks_sha',      \App\Config\AppConfig::TABLE_SECURITY_CHECKS, 'sha');
 
         // 一次性 JSON 迁移（仅 SQLite）
         if (!$isMySQL) {
@@ -420,6 +420,32 @@ class Database
             self::migrateJobGitMap("{$baseDir}/job_git_map.json", $pdo);
             self::migratePlatformVersions("{$baseDir}/platform_versions.json", $pdo);
             self::migratePipelineTags("{$baseDir}/pipeline_tags.json", $pdo);
+        }
+    }
+
+    /**
+     * 跨驱动创建索引（幂等，失败不阻断启动）。
+     * MySQL 8.0 不支持 CREATE INDEX IF NOT EXISTS，需先查 information_schema 判断；
+     * SQLite 用原生 IF NOT EXISTS 语法。
+     */
+    private static function createIndex(string $index, string $table, string $columns): void
+    {
+        try {
+            if (self::$driver === 'mysql') {
+                $stmt = self::$pdo->prepare(
+                    'SELECT COUNT(*) FROM information_schema.statistics'
+                    . ' WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?'
+                );
+                $stmt->execute([$table, $index]);
+                if ((int)$stmt->fetchColumn() > 0) {
+                    return; // 索引已存在
+                }
+                self::$pdo->exec("CREATE INDEX {$index} ON {$table} ({$columns})");
+            } else {
+                self::$pdo->exec("CREATE INDEX IF NOT EXISTS {$index} ON {$table} ({$columns})");
+            }
+        } catch (\Exception $e) {
+            // 索引非关键路径，失败不阻断启动
         }
     }
 

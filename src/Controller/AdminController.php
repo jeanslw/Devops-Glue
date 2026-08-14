@@ -168,7 +168,8 @@ class AdminController extends BaseController
     public function login(Request $request, Response $response): Response
     {
         $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
-        $user = trim($body['user'] ?? '');
+        // 请求体字段统一为 username（与用户管理接口一致）；保留 user 作为兼容别名
+        $user = trim($body['username'] ?? $body['user'] ?? '');
         $pass = $body['password'] ?? '';
         if ($user === '' || $pass === '') {
             return $this->jsonError($response, 'auth.wrong_credentials', 401);
@@ -616,6 +617,11 @@ class AdminController extends BaseController
             return $this->jsonError($response, 'auth.new_password_short', 400);
         }
 
+        // 创建 super_admin 必须由当前已是 super_admin 的操作者执行（防普通 admin 提权）
+        if ($role === AppConfig::ROLE_SUPER_ADMIN && $this->currentRole !== AppConfig::ROLE_SUPER_ADMIN) {
+            return $this->jsonError($response, 'user.cannot_create_super_admin', 403);
+        }
+
         // 只有拥有 ci.users.manage_admin 权限的用户能创建管理员角色
         if ($role === AppConfig::ROLE_ADMIN || $role === AppConfig::ROLE_SUPER_ADMIN) {
             if (!$this->hasPermission(AppConfig::PERM_CI_USERS_MANAGE_ADMIN)) {
@@ -671,12 +677,22 @@ class AdminController extends BaseController
                 return $this->jsonError($response, 'user.not_found', 404);
             }
 
+            // 内置根账号（.env ADMIN_USER）不可通过用户管理接口修改（改自己密码走 PUT /api/admin/password）
+            $rootAdmin = $this->config->getRootAdminUser();
+            if ($targetUser === $rootAdmin) {
+                return $this->jsonError($response, 'user.cannot_edit_root', 403);
+            }
+
             // 修改管理员账号需要 ci.users.manage_admin 权限
             if ($this->isTargetAdmin($target['role']) && !$this->hasPermission(AppConfig::PERM_CI_USERS_MANAGE_ADMIN)) {
                 return $this->jsonError($response, 'user.cannot_edit_admin', 403);
             }
 
             if ($role !== null) {
+                // 提升为 super_admin 必须由 super_admin 操作（防普通 admin 提权）
+                if ($role === AppConfig::ROLE_SUPER_ADMIN && $this->currentRole !== AppConfig::ROLE_SUPER_ADMIN) {
+                    return $this->jsonError($response, 'user.cannot_promote_super_admin', 403);
+                }
                 // 提升为管理员需要 ci.users.manage_admin 权限
                 if (($role === AppConfig::ROLE_ADMIN || $role === AppConfig::ROLE_SUPER_ADMIN) && !$this->hasPermission(AppConfig::PERM_CI_USERS_MANAGE_ADMIN)) {
                     return $this->jsonError($response, 'user.cannot_promote_admin', 403);
@@ -697,6 +713,52 @@ class AdminController extends BaseController
 
             $this->adminUserRepository->updateUser($targetUser, $passwordHash, $role);
             return $this->output($response, ['success' => true], $request);
+        } catch (\Exception $e) {
+            return $this->jsonError($response, $this->__('build.modify_failed') . ': ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * PUT /api/admin/users/{username}/password — 超级管理员修改任意用户密码
+     *
+     * 常规账号管理：登录中的 super_admin 可修改任意用户（deployer/admin/viewer）的密码。
+     * 根账号（ADMIN_USER）除外——改自己的密码走 PUT /api/admin/password（需旧密码），
+     * 忘记根密码走离线补丁
+     */
+    public function userModifyPassword(Request $request, Response $response, array $args): Response
+    {
+        $this->initAuthFromRequest($request);
+        // 硬门槛：仅 super_admin
+        if ($this->currentRole !== AppConfig::ROLE_SUPER_ADMIN) {
+            return $this->jsonError($response, 'user.modify_password_forbidden', 403);
+        }
+
+        $targetUser = $args['username'] ?? '';
+        if ($targetUser === '') {
+            return $this->jsonError($response, 'user.invalid_username', 400);
+        }
+
+        $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
+        $newPass = $body['new_password'] ?? '';
+
+        if (strlen($newPass) < 8) {
+            return $this->jsonError($response, 'auth.new_password_short', 400);
+        }
+
+        try {
+            $target = $this->adminUserRepository->findUser($targetUser);
+            if (!$target) {
+                return $this->jsonError($response, 'user.not_found', 404);
+            }
+
+            // 根账号密码走 changePassword（需旧密码）或离线 CLI
+            if ($targetUser === $this->config->getRootAdminUser()) {
+                return $this->jsonError($response, 'user.cannot_edit_root', 403);
+            }
+
+            $this->adminUserRepository->upsertPassword($targetUser, password_hash($newPass, PASSWORD_BCRYPT));
+
+            return $this->output($response, ['success' => true, 'username' => $targetUser], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.modify_failed') . ': ' . $e->getMessage(), 500);
         }

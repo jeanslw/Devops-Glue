@@ -155,15 +155,13 @@ class AppConfig
     public const PROVIDER_GITLAB_CI = 'gitlab_ci';
 
     // ── 缓存键前缀常量 ──
-    public const CACHE_KEY_ADMIN_TOKEN_PREFIX      = 'admin_token_';
-    public const CACHE_KEY_ADMIN_LOGIN_FAIL_PREFIX = 'admin_login_fail_';
-    public const CACHE_KEY_MAP_LIST_PREFIX         = 'map_list_';
-    public const CACHE_KEY_HARBOR_VERSION          = 'harbor_api_version';
+    public const CACHE_KEY_ADMIN_TOKEN_PREFIX = 'admin_token_';
+    public const CACHE_KEY_MAP_LIST_PREFIX    = 'map_list_';
+    public const CACHE_KEY_HARBOR_VERSION     = 'harbor_api_version';
 
     // ── TTL 常量（秒）──
-    public const TTL_TOKEN      = 86400;  // 登录 token 有效期（24h）
-    public const TTL_LOGIN_FAIL = 3600;   // 管理登录失败计数有效期（1h）
-    public const TTL_CACHE      = 3600;   // 通用缓存有效期（1h）
+    public const TTL_TOKEN = 86400;  // 登录 token 有效期（24h）
+    public const TTL_CACHE = 3600;   // 通用缓存有效期（1h）
 
     // ── API Token 作用域（scope）──
     // 独立于 RBAC 权限体系：token 直接携带 scopes，每个 scope 映射到一组接口的读写能力。
@@ -194,8 +192,9 @@ class AppConfig
      * 否则中间件放行但控制器会 403。
      */
     public const API_SCOPE_PERMS = [
-        self::API_SCOPE_BUILD_WRITE => [self::PERM_CI_TRIGGER],
-        self::API_SCOPE_HARBOR_SCAN => [self::PERM_CI_TRIGGER],
+        self::API_SCOPE_BUILD_WRITE  => [self::PERM_CI_TRIGGER],
+        self::API_SCOPE_BUILD_REPORT => [self::PERM_CI_TRIGGER],
+        self::API_SCOPE_HARBOR_SCAN  => [self::PERM_CI_TRIGGER],
     ];
 
     /**

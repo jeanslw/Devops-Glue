@@ -569,7 +569,7 @@ If only `ref` is present without other parameters, auto-convert to `{branches: r
 
 **Verification Priority:**
 1. Query `admin_users` table, `password_verify()` to check bcrypt hash
-2. If the root user has failed database login 3 times in a row, fallback: compare `.env` `ADMIN_USER`/`ADMIN_PASSWORD` (requires password non-empty)
+2. `.env` fallback only in two cases: (a) DB totally inaccessible (disaster recovery); (b) DB accessible but `admin_users` is empty (first deployment). Otherwise the `.env` password is never accepted; recover a forgotten password via an offline patch — contact the author to obtain it.
 3. Auth success → generate 64-char hex token → write to `cache` table (`admin_token_{token}`, 24h TTL)
 4. Pre-load user permissions to request attribute via `TokenService::loadPermissions()`
 
@@ -812,7 +812,7 @@ Next API call:
 
 | Symptom | Possible Cause | Diagnosis |
 |---|---|---|
-| Login always 401 | Password mismatch between `admin_users` and `.env` | Clear `admin_users` table to rebuild, or use temporary reset route |
+| Login always 401 | Password mismatch between `admin_users` and `.env` | Reset via offline patch — contact the author to obtain it |
 | Token suddenly invalid | Service restart, password changed, or 24h expired | Re-login |
 | Swagger UI inaccessible | Not logged in | Access `/api/docs` will auto-redirect to login page |
 

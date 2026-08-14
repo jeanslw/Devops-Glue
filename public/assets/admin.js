@@ -156,7 +156,7 @@ async function doLogin() {
 
     if (!user || !pass) { errEl.textContent = __.t('auth.please_enter_credentials'); errEl.style.display = 'block'; return; }
     try {
-        const res = await fetch(LOGIN_API, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({user,password:pass}) });
+        const res = await fetch(LOGIN_API, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username:user,password:pass}) });
         const data = await res.json();
         if (res.ok && data.token) {
             token = data.token;
@@ -486,11 +486,11 @@ async function loadMaps() {
                     <td style="white-space:nowrap">
                         ${(function(){
                             if ((m.status||'active')==='active') return '';
-                            return `<button class="btn btn-sm btn-activate" title="${esc(__.t('js.activate_warn_hide'))}" onclick='activateMap("${escJs(m.job_name)}", ${js(m)})'>${__.t('common.enabled')}</button>`;
+                            return `<button class="btn btn-sm btn-activate" title="${esc(__.t('js.activate_warn_hide'))}" onclick="activateMap('${escJs(esc(m.job_name))}', ${js(m)})">${__.t('common.enabled')}</button>`;
                         })()}
                         <button class="btn btn-sm btn-edit" onclick='editMap(${js(m)})'>✏️ ${__.t('common.edit')}</button>
-                        <button class="btn btn-sm btn-del" onclick='deleteMap("${escJs(m.job_name)}")'>🗑 ${__.t('common.delete')}</button>
-                        <button class="btn btn-sm" onclick='copyPipelineIds("${escJs(m.job_name)}")' style="color:#4f46e5;font-size:12px;margin-left:6px;border:none;background:none;cursor:pointer;" title="复制 Pipeline ID">📋</button>
+                        <button class="btn btn-sm btn-del" onclick="deleteMap('${escJs(esc(m.job_name))}')">🗑 ${__.t('common.delete')}</button>
+                        <button class="btn btn-sm" onclick="copyPipelineIds('${escJs(esc(m.job_name))}')" style="color:#4f46e5;font-size:12px;margin-left:6px;border:none;background:none;cursor:pointer;" title="复制 Pipeline ID">📋</button>
                     </td>
                 </tr>`;
             }).join('');
@@ -1423,19 +1423,23 @@ async function loadUsers() {
             const isAdmin = u.role === 'admin';
             const isSelf = u.username === currentUserName;
             let actions = '';
+            // 超级管理员可修改任意用户（deployer/admin/viewer）的密码；根账号（自己）走「修改密码」菜单
+            const modPwBtn = (currentUserRole === 'super_admin' && !isSelf)
+                ? `<button class="btn btn-sm btn-edit" onclick="modifyUserPassword('${escJs(esc(u.username))}')">🔑 ${__.t('user.modify_password')}</button>`
+                : '';
             if (isSuperAdmin) {
-                actions = `<span style="color:#9ca3af;font-size:12px;">${__.t('user.role_super_admin')}</span>`;
+                actions = modPwBtn || `<span style="color:#9ca3af;font-size:12px;">${__.t('user.role_super_admin')}</span>`;
             } else if (isSelf) {
                 actions = `<span style="color:#9ca3af;font-size:12px;">${__.t('user.role_admin')}</span>`;
             } else if (isAdmin) {
                 if (currentUserIsRoot) {
-                    actions = `<button class="btn btn-sm btn-del" onclick="deleteUser('${escJs(u.username)}')">🗑 ${__.t('common.delete')}</button>`;
+                    actions = modPwBtn + `<button class="btn btn-sm btn-del" onclick="deleteUser('${escJs(esc(u.username))}')">🗑 ${__.t('common.delete')}</button>`;
                 } else {
-                    actions = `<span style="color:#9ca3af;font-size:12px;">${__.t('user.role_admin')}</span>`;
+                    actions = modPwBtn || `<span style="color:#9ca3af;font-size:12px;">${__.t('user.role_admin')}</span>`;
                 }
             } else {
-                actions = `<button class="btn btn-sm btn-edit" onclick='showUserEditForm(${js(u)})'>✏️ ${__.t('common.edit')}</button>
-                    <button class="btn btn-sm btn-del" onclick="deleteUser('${escJs(u.username)}')">🗑 ${__.t('common.delete')}</button>`;
+                actions = modPwBtn + `<button class="btn btn-sm btn-edit" onclick='showUserEditForm(${js(u)})'>✏️ ${__.t('common.edit')}</button>
+                    <button class="btn btn-sm btn-del" onclick="deleteUser('${escJs(esc(u.username))}')">🗑 ${__.t('common.delete')}</button>`;
             }
             return `<tr>
                 <td><strong>${esc(u.username)}</strong></td>
@@ -1594,6 +1598,59 @@ async function deleteUser(username) {
     } catch (e) {
         alert(e.message);
     }
+}
+
+var _pwdTargetUser = '';
+
+/** 打开「修改密码」模态框（替代原生 prompt） */
+function modifyUserPassword(username) {
+    _pwdTargetUser = username;
+    document.getElementById('pwd-modal-hint').innerHTML =
+        __.t('user.modify_password_hint').replace('{user}', function() { return '<b>' + esc(username) + '</b>'; });
+    document.getElementById('pwd-new').value = '';
+    document.getElementById('pwd-confirm').value = '';
+    document.getElementById('pwd-msg').textContent = '';
+    document.getElementById('pwd-modal').style.display = 'flex';
+    setTimeout(function() { document.getElementById('pwd-new').focus(); }, 60);
+}
+
+function closePasswordModal() {
+    document.getElementById('pwd-modal').style.display = 'none';
+    _pwdTargetUser = '';
+}
+
+async function submitPasswordChange(e) {
+    if (e) e.preventDefault();
+    const username = _pwdTargetUser;
+    const newPass = document.getElementById('pwd-new').value;
+    const confirmPass = document.getElementById('pwd-confirm').value;
+    const msg = document.getElementById('pwd-msg');
+    const submitBtn = document.getElementById('pwd-submit');
+
+    msg.textContent = '';
+    if (newPass.length < 8) { msg.textContent = __.t('auth.new_password_short'); return; }
+    if (newPass !== confirmPass) { msg.textContent = __.t('user.modify_password_mismatch'); return; }
+
+    if (submitBtn) submitBtn.disabled = true;
+    try {
+        const res = await fetch('/api/admin/users/' + encodeURIComponent(username) + '/password', {
+            method: 'PUT',
+            headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ new_password: newPass })
+        });
+        if (handle401(res)) { if (submitBtn) submitBtn.disabled = false; return; }
+        if (res.ok) {
+            closePasswordModal();
+            await loadUsers();
+            toast(__.t('user.password_updated') + ': ' + username, true);
+        } else {
+            const data = await res.json();
+            msg.textContent = data.message || __.t('common.failed');
+        }
+    } catch (err) {
+        msg.textContent = err.message;
+    }
+    if (submitBtn) submitBtn.disabled = false;
 }
 
 // ═══════════ 角色管理（数据驱动，权限从 API 动态加载） ═══════════
@@ -1899,7 +1956,7 @@ async function deleteRole(id, name) {
         if (res.ok) {
             _rolesCache = null;
             await loadRoleList();
-            toast(__.t('map.deleted'), true);
+            toast(__.t('role.deleted'), true);
         } else {
             var data = await res.json();
             toast(data.message || __.t('js.operation_failed'), false);

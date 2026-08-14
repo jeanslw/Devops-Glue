@@ -2,12 +2,13 @@
 
 ## v2.5.1 (2026-08-14)
 - **Permission list: built-in vs. registered + delete + registered-at** — The permissions list now distinguishes built-in vs. registered permissions (`is_builtin`), shows the registration time (`created_at`), and lets admins delete registered permissions (built-in keys are protected).
-- **DB bootstrap fix** — Restored "run schema/seed only on first boot" semantics; no more per-request redundant writes (regression from the Slim4 refactor).
+- **DB bootstrap fix** — Restored "run schema/seed only on first boot" semantics; no more per-request redundant writes (regression from the refactor).
 - **Idempotent migrations** — `ALTER ... ADD COLUMN` now checks column existence, eliminating the flood of `Duplicate column name` error logs.
 - **Security audit write-back** — Commit status write-back results (success / failed / skipped) are now recorded in `ci_security_checks` and surfaced in the admin security audit page.
 - **Audit page i18n fix** — The state / write-back columns no longer render raw English i18n keys; translation now happens lazily at render time.
-- **Fresh-schema init scripts** — `mysql_init.sql` / `sqlite_init.sql` now create the complete schema in one shot (including the write-back columns); removed the migration stored procedures.
-- **Homepage API card** — Replaced the "branch & param visualization" feature card with an "Open API" card (RESTful API + Swagger + token/scopes).
+- **Schema init scripts** — `mysql_init.sql` / `sqlite_init.sql` now create the complete schema in one shot (including the write-back columns).
+- **Admin forgot-password** — Fixed the previous security issue; admin forgot-password recovery is now handled via a patch.
+- **Docs and other updates** — Fixed several minor bugs, plus documentation updates.
 
 ## v2.5.0 (2026-08-13)
 - **API Token management** — Added API token feature: creation (`dg_` prefix + 64 hex chars), listing, and scope query.

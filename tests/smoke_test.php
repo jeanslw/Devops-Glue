@@ -293,7 +293,7 @@ echo "║  目标: {$baseUrl}\n";
 echo "╚══════════════════════════════════════╝\n\n";
 
 // ─── 1. 健康检查 + 文档 + CORS ───
-$loginRes = apiCall("{$baseUrl}/api/admin/login", 'POST', ['user' => $loginUser, 'password' => $loginPassword]);
+$loginRes = apiCall("{$baseUrl}/api/admin/login", 'POST', ['username' => $loginUser, 'password' => $loginPassword]);
 $globalToken = '';
 if ($loginRes['code'] >= 200 && $loginRes['code'] < 300) {
     $ld = json_decode($loginRes['body'], true) ?? [];
@@ -361,7 +361,7 @@ echo "  [Main] Job列表(无认证) ... " . ($tc->status === 'pass' ? "\033[32mP
 
 // ─── 3. Admin 登录 + 认证接口 ───
 
-$tc = apiT('登录（正确凭据）', "{$baseUrl}/api/admin/login", 'POST', ['user' => $loginUser, 'password' => $loginPassword]);
+$tc = apiT('登录（正确凭据）', "{$baseUrl}/api/admin/login", 'POST', ['username' => $loginUser, 'password' => $loginPassword]);
 $tc->assertHttpOk('登录成功 200');
 $tc->assertJson();
 $loginData = json_decode($tc->rawBody, true) ?? [];
@@ -374,7 +374,7 @@ if (isset($loginData['token'])) {
 echo "  [Admin] 登录 ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
 
 // 错误密码
-$tc = apiT('登录（错误密码）', "{$baseUrl}/api/admin/login", 'POST', ['user' => $loginUser, 'password' => 'wrong_wrong_wrong']);
+$tc = apiT('登录（错误密码）', "{$baseUrl}/api/admin/login", 'POST', ['username' => $loginUser, 'password' => 'wrong_wrong_wrong']);
 $tc->assertHttpIs(401, '错误密码返回 401');
 echo "  [Admin] 错误密码 ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
 

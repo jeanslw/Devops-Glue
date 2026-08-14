@@ -33,10 +33,16 @@ class TokenService
             $stmt->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . $token, time()]);
             $cache = $stmt->fetch(\PDO::FETCH_ASSOC);
             if ($cache) {
+                // role 取最后一段，用户名即使含 '|' 也不会被解析成 role（防注入提权）
                 $parts = explode('|', $cache['value']);
+                if (count($parts) < 2) {
+                    return null; // 缓存格式异常
+                }
+                $role = array_pop($parts);
+                $user = implode('|', $parts);
                 return [
-                    'user' => $parts[0] ?? '',
-                    'role' => $parts[1] ?? AppConfig::ROLE_ADMIN,
+                    'user' => $user,
+                    'role' => $role !== '' ? $role : AppConfig::ROLE_ADMIN,
                 ];
             }
         } catch (\Exception $e) {

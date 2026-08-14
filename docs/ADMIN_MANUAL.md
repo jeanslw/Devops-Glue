@@ -140,7 +140,7 @@ Open `http://localhost:8080/admin` and log in with `ADMIN_USER` / `ADMIN_PASSWOR
 
 - Switch the UI language (Chinese / English) at the top right.
 - Change your password under "User Management → Change Password".
-- Admin authentication is validated against the database first; only after 3 consecutive failed logins for the root user does it fall back to `ADMIN_USER/ADMIN_PASSWORD` in `.env`.
+- Admin authentication is validated against the database first; the `.env` password only serves as a fallback when the database is totally inaccessible (disaster recovery) or the `admin_users` table is empty (first deployment). For a forgotten password, use an offline patch — contact the author to obtain it.
 
 The admin panel sidebar contains the following modules:
 
@@ -410,7 +410,7 @@ ADMIN_PASSWORD=               # Created on first boot; DB takes precedence after
 
 # Note:
 #   - For super_admin login, the system first validates against the admin_users DB record.
-#   - Only after 3 consecutive failed logins for the root user does the system fall back to .env ADMIN_USER/ADMIN_PASSWORD.
+#   - The system falls back to .env ADMIN_USER/ADMIN_PASSWORD only when the DB is totally inaccessible (disaster recovery) or the admin_users table is empty (first deployment).
 #   - This ADMIN_USER/ADMIN_PASSWORD pair is only used by the Devops-Glue API global admin fallback logic.
 #   - To create a CD-specific account, create the account in the admin backend, assign Devops-Glue CD permissions, and then write it into the Devops-Glue CD's own .env if that service supports it.
 

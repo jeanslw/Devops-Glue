@@ -247,7 +247,7 @@ POST /api/admin/login
 请求体：
 ```json
 {
-  "user": "admin",
+  "username": "admin",
   "password": "your_password"
 }
 ```
@@ -374,7 +374,7 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 # ① super_admin 登录（管理接口用）
 ADMIN_TOKEN=$(curl -s -X POST "http://URL/api/admin/login" \
   -H "Content-Type: application/json" \
-  -d '{"user":"admin","password":"your_password"}' | jq -r '.data.token')
+  -d '{"username":"admin","password":"your_password"}' | jq -r '.data.token')
 
 # ② 创建 API Token（返回一次性明文）
 NEW_TOKEN=$(curl -s -X POST "http://URL/api/admin/api_tokens" \
@@ -419,7 +419,7 @@ curl "http://URL/api/health"
 # 登录获取 Token
 TOKEN=$(curl -s -X POST "http://URL/api/admin/login" \
   -H "Content-Type: application/json" \
-  -d '{"user":"admin","password":"your_password"}' | jq -r '.data.token')
+  -d '{"username":"admin","password":"your_password"}' | jq -r '.data.token')
 
 # 触发构建（POST JSON，需要认证）
 curl -X POST "http://URL/api/build/static/trigger" \

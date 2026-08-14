@@ -25,11 +25,10 @@ class GiteeService implements GitProviderInterface
 
     private function request(string $method, string $url, array $options = []): \Psr\Http\Message\ResponseInterface
     {
-        $query = $options['query'] ?? [];
+        // 凭证放 Authorization 头，避免 token 进入 URL/代理访问日志
         if ($this->token !== '') {
-            $query['access_token'] = $this->token;
+            $options['headers'] = array_merge($options['headers'] ?? [], ['Authorization' => 'token ' . $this->token]);
         }
-        $options['query'] = $query;
 
         return $this->client->request($method, $url, $options);
     }

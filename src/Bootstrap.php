@@ -19,19 +19,21 @@ class Bootstrap
      */
     public static function createApp(): \Slim\App
     {
-        // ── 环境变量：三层加载（后加载的覆盖前面的）──
-        // 1. 基础配置（.env，gitignored，放真实密码）
+        // ── 环境变量：三层加载（顺序固定，后者覆盖前者）──
+        // 1. 基础配置 .env（gitignored，放真实密码/密钥）
+        //    用 Immutable：OS 真实环境变量优先，.env 只补缺省
         $dotenv = Dotenv::createImmutable(__DIR__ . '/../config');
         $dotenv->load();
 
-        // 2. 环境特定覆盖（.env.production / .env.staging，可选提交）
+        // 2. 环境特定覆盖 .env.{APP_ENV}（.env.production / .env.staging，可选提交）
+        //    任何 APP_ENV 都尝试加载并覆盖 .env；文件不存在则跳过
         $appEnv = $_ENV['APP_ENV'] ?? 'production';
         $envFile = __DIR__ . '/../config/.env.' . $appEnv;
-        if ($appEnv !== 'production' && file_exists($envFile)) {
+        if (file_exists($envFile)) {
             Dotenv::createUnsafeImmutable(__DIR__ . '/../config', '.env.' . $appEnv)->load();
         }
 
-        // 3. 本地覆盖（.env.local，gitignored，开发者个人配置）
+        // 3. 本地覆盖 .env.local（gitignored，开发者个人配置），优先级最高
         $localFile = __DIR__ . '/../config/.env.local';
         if (file_exists($localFile)) {
             Dotenv::createUnsafeImmutable(__DIR__ . '/../config', '.env.local')->load();

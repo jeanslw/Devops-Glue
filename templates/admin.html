@@ -114,6 +114,30 @@
             <!-- Toast -->
             <div class="toast" id="toast"></div>
 
+            <!-- 修改密码模态框 -->
+            <div id="pwd-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this) closePasswordModal()">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>🔑 <span data-i18n="user.modify_password">修改密码</span></h3>
+                        <button type="button" class="modal-close" onclick="closePasswordModal()" aria-label="Close">×</button>
+                    </div>
+                    <form onsubmit="submitPasswordChange(event)">
+                        <div class="modal-body">
+                            <p class="modal-hint" id="pwd-modal-hint"></p>
+                            <label data-i18n="auth.new_password">新密码</label>
+                            <input type="password" id="pwd-new" autocomplete="new-password" data-i18n-placeholder="form.placeholder_password" placeholder="至少 8 位" minlength="8" required>
+                            <label data-i18n="auth.confirm_password">确认新密码</label>
+                            <input type="password" id="pwd-confirm" autocomplete="new-password" data-i18n-placeholder="form.placeholder_confirm_password" placeholder="再输入一次" minlength="8" required>
+                            <span class="modal-msg" id="pwd-msg"></span>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-cancel" onclick="closePasswordModal()" data-i18n="common.cancel">取消</button>
+                            <button type="submit" class="btn btn-save" id="pwd-submit" data-i18n="user.modify_password_confirm">确认修改</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
             <!-- ═══ 服务监测 Tab ═══ -->
             <div id="tab-monitor">
                 <!-- 数据概览通栏 -->

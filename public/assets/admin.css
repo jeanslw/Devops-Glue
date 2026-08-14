@@ -358,6 +358,38 @@
         }
         .topo-empty-field { color:#9ca3af; font-style:italic; }
 
+        /* ── 模态框 ── */
+        .modal-overlay {
+            position:fixed; inset:0; background:rgba(17,24,39,.5);
+            display:flex; align-items:center; justify-content:center;
+            z-index:200; padding:20px;
+            animation:modal-fade .18s ease;
+        }
+        .modal-content {
+            background:#fff; border-radius:16px; width:400px; max-width:100%;
+            box-shadow:0 20px 50px rgba(0,0,0,.25);
+            overflow:hidden; animation:modal-pop .2s ease;
+        }
+        .modal-header {
+            display:flex; align-items:center; justify-content:space-between;
+            padding:16px 22px; border-bottom:1px solid #f3f4f6;
+        }
+        .modal-header h3 { font-size:16px; color:#1f2937; }
+        .modal-close {
+            background:none; border:none; font-size:24px; line-height:1;
+            color:#9ca3af; cursor:pointer; padding:0 4px; transition:color .15s;
+        }
+        .modal-close:hover { color:#374151; }
+        .modal-body { padding:20px 22px 6px; }
+        .modal-hint { font-size:13px; color:#6b7280; margin-bottom:16px; line-height:1.5; }
+        .modal-hint b { color:#1f2937; font-weight:700; }
+        .modal-body label { margin-top:12px; }
+        .modal-body label:first-of-type { margin-top:0; }
+        .modal-msg { display:block; min-height:18px; font-size:12px; color:#dc2626; margin-top:10px; }
+        .modal-footer { display:flex; justify-content:flex-end; gap:10px; padding:12px 22px 20px; }
+        @keyframes modal-fade { from { opacity:0; } to { opacity:1; } }
+        @keyframes modal-pop { from { opacity:0; transform:translateY(-8px) scale(.98); } to { opacity:1; transform:none; } }
+
         @media (max-width:768px) {
             .layout { flex-direction:column; }
             .sidebar { width:100%; display:flex; overflow-x:visible; padding:0; border-right:none; border-bottom:1px solid #e5e7eb; }

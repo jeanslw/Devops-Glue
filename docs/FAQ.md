@@ -265,7 +265,7 @@ No. `api_version` is metadata only; it does not affect actual API routing (route
 The password in `.env` and the password in `admin_users` table are out of sync.
 
 **Solution:**
-- Delete all rows from the `admin_users` table and restart — the system will recreate the user from `.env`
+- Reset via an offline patch — contact the author to obtain it
 - Or change the password through the admin panel (if you can still log in)
 
 ### Q: How to obtain and renew tokens?

@@ -230,9 +230,9 @@
       },
       "LoginRequest": {
         "type": "object",
-        "required": ["user", "password"],
+        "required": ["username", "password"],
         "properties": {
-          "user": { "type": "string", "example": "admin" },
+          "username": { "type": "string", "example": "admin" },
           "password": { "type": "string", "example": "admin123" }
         }
       },

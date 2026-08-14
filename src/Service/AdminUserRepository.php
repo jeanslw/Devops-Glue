@@ -27,8 +27,13 @@ class AdminUserRepository
 
     public function upsertPassword(string $username, string $passwordHash): void
     {
-        $sql = Database::sqlUpsert(AppConfig::TABLE_ADMIN_USERS, 'username, password_hash, updated_at', '?, ?, ' . Database::sqlNow());
-        $this->pdo->prepare($sql)->execute([$username, $passwordHash]);
+        // 只更新密码，绝不能用 REPLACE INTO / INSERT OR REPLACE ——
+        // 那会整行删除重建，把 role/systems 回退到列默认值（super_admin 被降级成 admin）。
+        $this->pdo->prepare(
+            "UPDATE " . AppConfig::TABLE_ADMIN_USERS
+            . " SET password_hash = ?, updated_at = " . Database::sqlNow()
+            . " WHERE username = ?"
+        )->execute([$passwordHash, $username]);
     }
 
     public function userExists(string $username): bool

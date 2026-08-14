@@ -247,7 +247,7 @@ POST /api/admin/login
 Request body:
 ```json
 {
-  "user": "admin",
+  "username": "admin",
   "password": "your_password"
 }
 ```
@@ -374,7 +374,7 @@ Response (**plaintext shown only once**):
 # ① super_admin login (for admin endpoints)
 ADMIN_TOKEN=$(curl -s -X POST "http://URL/api/admin/login" \
   -H "Content-Type: application/json" \
-  -d '{"user":"admin","password":"your_password"}' | jq -r '.data.token')
+  -d '{"username":"admin","password":"your_password"}' | jq -r '.data.token')
 
 # ② Create an API token (returns one-time plaintext)
 NEW_TOKEN=$(curl -s -X POST "http://URL/api/admin/api_tokens" \
@@ -419,7 +419,7 @@ curl "http://URL/api/health"
 # Login and get token
 TOKEN=$(curl -s -X POST "http://URL/api/admin/login" \
   -H "Content-Type: application/json" \
-  -d '{"user":"admin","password":"your_password"}' | jq -r '.data.token')
+  -d '{"username":"admin","password":"your_password"}' | jq -r '.data.token')
 
 # Trigger build (POST JSON, requires auth)
 curl -X POST "http://URL/api/build/static/trigger" \
