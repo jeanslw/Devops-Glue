@@ -1051,7 +1051,7 @@ class AdminController extends BaseController
 
     /**
      * DELETE /api/admin/implied_rules — 删除隐含规则（super_admin 限定）
-     * Query: ?source=xxx&target=yyy
+     * Query: ?source_key=xxx&target_key=yyy
      */
     public function impliedRuleDelete(Request $request, Response $response): Response
     {

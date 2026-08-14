@@ -272,7 +272,7 @@ The password in `.env` and the password in `admin_users` table are out of sync.
 
 The login endpoint `POST /api/admin/login` returns a 64-character hex token valid for 24 hours. Re-login after expiration. Changing the password invalidates all existing tokens.
 
-### Q: What roles are available? (v2.4)
+### Q: What roles are available?
 
 The system has a role-based access control (RBAC) system. **Everything is data-driven: permission keys and implied rules are stored in DB and fully manageable from the admin UI.** There is only one built-in system role:
 
@@ -361,7 +361,7 @@ The display name for system roles comes from i18n translation keys (`user.role_{
 
 > **Permission display names** follow the same pattern: the permission picker reads Chinese labels from the `role.perm_{key}` (dots → underscores) i18n key. For permissions dynamically registered via Admin UI's "Permission Registration", the `description` field is used first, then falls back to the raw key if the i18n entry is missing.
 
-### Q: What is `/api/admin/me/permissions`? (v2.4)
+### Q: What is `/api/admin/me/permissions`?
 
 `GET /api/admin/me/permissions` returns the current user's role and permission list. It only requires a valid Bearer token — **no admin privileges needed** (this is exactly how the CD frontend retrieves permissions).
 

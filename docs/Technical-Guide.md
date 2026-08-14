@@ -934,6 +934,7 @@ LOG_PATH=/applogs/                 # Log directory
 | GET/POST | `/api/build/{path}/logs/{id}` | Token | Build logs |
 | GET/POST | `/api/build/{path}/trigger` | Token | Trigger build |
 | GET/POST | `/api/build/{path}/variables` | Token | Build parameters |
+| GET/POST | `/api/build/{path}/branches` | Token | Git branch list |
 | POST | `/api/build/{path}/scan-sync` | Token | Harbor scan sync |
 | POST | `/api/build/{path}/commit-status` | Token | Commit status writeback |
 | GET/POST | `/api/build/{path}/tag` | Token | Pipeline → tag query |

@@ -325,7 +325,8 @@
           "perm_key": { "type": "string", "description": "Permission key, format: xx.yyy", "example": "cd.deploy-manage" },
           "description": { "type": "string", "description": "Permission description (i18n fallback)", "example": "Deploy Management" },
           "parent_key": { "type": "string", "nullable": true, "description": "Parent permission key for hierarchical menu display", "example": "cd.notification-manage" },
-          "created_at": { "type": "string", "format": "date-time", "nullable": true, "example": "2026-08-07 12:34:56" }
+          "created_at": { "type": "string", "format": "date-time", "nullable": true, "description": "Registered at; null for built-in permissions", "example": "2026-08-07 12:34:56" },
+          "is_builtin": { "type": "boolean", "description": "Whether this is a built-in permission (built-in cannot be deleted)", "example": false }
         }
       },
       "ImpliedRule": {

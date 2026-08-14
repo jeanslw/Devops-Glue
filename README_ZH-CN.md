@@ -1,4 +1,4 @@
-# Devops-Glue API v2.5
+# Devops-Glue API v2.5.1
 Devops-Glue API 是基于 Slim4 为小团队打造的 DevOps 工具链增强集成平台。统一 API 管理 Jenkins + GitLab CI 双通道构建、GitLab / Gitee / GitHub / Gitea 多平台代码、以及 Harbor 镜像仓库——覆盖从 CI 到 CD 的完整流程。双语界面，数据驱动的角色权限分级（RBAC）。
 
 <p align="center">

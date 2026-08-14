@@ -1,6 +1,7 @@
 # Changelog
 
-## v2.5.1 (2026-08-13)
+## v2.5.1 (2026-08-14)
+- **Permission list: built-in vs. registered + delete + registered-at** — The permissions list now distinguishes built-in vs. registered permissions (`is_builtin`), shows the registration time (`created_at`), and lets admins delete registered permissions (built-in keys are protected).
 - **DB bootstrap fix** — Restored "run schema/seed only on first boot" semantics; no more per-request redundant writes (regression from the Slim4 refactor).
 - **Idempotent migrations** — `ALTER ... ADD COLUMN` now checks column existence, eliminating the flood of `Duplicate column name` error logs.
 - **Security audit write-back** — Commit status write-back results (success / failed / skipped) are now recorded in `ci_security_checks` and surfaced in the admin security audit page.
