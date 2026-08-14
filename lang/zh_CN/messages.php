@@ -438,6 +438,7 @@ return [
     'validation.invalid_perm_key'      => '权限键格式不合法（应为 xx.yyy 形式）',
     'validation.perm_not_found'        => '权限键不存在于 permissions 表',
     'permission.builtin_protected'     => '系统内置权限不可删除',
+    'permission.builtin_immutable'     => '系统内置权限不可修改',
 
     // 权限管理界面
     'admin.sidebar_permissions'        => '权限管理',

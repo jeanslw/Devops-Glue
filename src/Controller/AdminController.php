@@ -970,6 +970,10 @@ class AdminController extends BaseController
         if (!preg_match('/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_-]*)+$/i', $permKey)) {
             return $this->jsonError($response, 'validation.invalid_perm_key', 400);
         }
+        // 系统内置权限 key 不可被注册覆盖（与 permissionDelete 的保护对称）
+        if (array_key_exists($permKey, AppConfig::DEFAULT_PERMISSIONS)) {
+            return $this->jsonError($response, 'permission.builtin_immutable', 400);
+        }
         try {
             $pdo = $this->pdo;
             $exists = $pdo->prepare("SELECT COUNT(*) FROM " . AppConfig::TABLE_PERMISSIONS . " WHERE perm_key = ?");

@@ -440,6 +440,7 @@ return [
     'validation.invalid_perm_key'      => 'Invalid permission key format (expected xx.yyy)',
     'validation.perm_not_found'        => 'Permission key not found in permissions table',
     'permission.builtin_protected'     => 'Built-in permission cannot be deleted',
+    'permission.builtin_immutable'     => 'Built-in permission cannot be modified',
 
     // Permission Management UI
     'admin.sidebar_permissions'        => 'Permissions',

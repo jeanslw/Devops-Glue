@@ -29,59 +29,59 @@
 ## 1. System Architecture Overview
 
 ```
-┌──────────────────────────────────────────────────────┐
-│                    HTTP Request                       │
-└──────────┬───────────────────────────────────────────┘
-           ▼
-┌──────────────────────────────────────────────────────┐
-│  public/index.php (Entry Point)                       │
-│  ├─ Dotenv three-layer loading (.env→.env.{ENV}→.env.local) │
-│  ├─ Static file serving                               │
-│  ├─ Database::init() auto-create tables + seed data   │
-│  └─ Slim 4 App + DI container assembly                │
-└──────────┬───────────────────────────────────────────┘
-           ▼
-┌──────────────────────────────────────────────────────┐
-│  Middleware Layer                                      │
-│  ├─ CorsMiddleware (CORS)                             │
-│  ├─ RoutingMiddleware (Route matching)                │
-│  └─ ErrorMiddleware (Unified error handling)          │
-└──────────┬───────────────────────────────────────────┘
-           ▼
-┌──────────────────────────────────────────────────────┐
-│  Controller Layer                                     │
+┌────────────────────────────────────────────────────────────────────┐
+│                    HTTP Request                                    │
+└─────────────────────────────┬──────────────────────────────────────┘
+                              ▼
+┌────────────────────────────────────────────────────────────────────┐
+│  public/index.php (Entry Point)                                    │
+│  ├─ Dotenv three-layer loading (.env→.env.{ENV}→.env.local)        │
+│  ├─ Static file serving                                            │
+│  ├─ Database::init() auto-create tables + seed data                │
+│  └─ Slim 4 App + DI container assembly                             │
+└─────────────────────────────┬──────────────────────────────────────┘
+                              ▼
+┌────────────────────────────────────────────────────────────────────┐
+│  Middleware Layer                                                  │
+│  ├─ CorsMiddleware (CORS)                                          │
+│  ├─ RoutingMiddleware (Route matching)                             │
+│  └─ ErrorMiddleware (Unified error handling)                       │
+└─────────────────────────────┬──────────────────────────────────────┘
+                              ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  Controller Layer                                                   │
 │  ├─ MainController   — Health check / map list / platform discovery │
-│  ├─ BuildController  — Build trigger / Pipeline / Scan / CS │
-│  ├─ AdminController  — Admin CRUD / Auth / mode switch │
-│  ├─ GitController    — Branch query                    │
-│  └─ HarborController — Registry query / Scan           │
-└──────────┬───────────────────────────────────────────┘
-           ▼
-┌──────────────────────────────────────────────────────┐
-│  Service Layer                                        │
-│  ├─ Database          — SQLite/MySQL dual driver + migration │
-│  ├─ MappingManager    — Mapping query / unified filtering │
-│  ├─ AppConfig         — Config access facade          │
-│  ├─ I18nService       — i18n (Symfony Translation)    │
-│  ├─ HarborService     — Harbor API wrapper (v1/v2 detection) │
-│  ├─ JenkinsService    — Jenkins API wrapper           │
-│  ├─ GitlabCiBuildProvider — GitLab CI Build adapter   │
-│  ├─ JenkinsBuildProvider  — Jenkins Build adapter     │
-│  ├─ BuildProviderRegistry — Build Provider registry   │
-│  ├─ Git/ProviderRegistry   — Git Provider registry    │
-│  ├─ Git/GitlabService      — GitLab API adapter       │
-│  ├─ Git/GithubService      — GitHub API adapter       │
-│  ├─ Git/GiteeService       — Gitee API adapter        │
-│  └─ Git/GiteaService       — Gitea API adapter        │
-└──────────┬───────────────────────────────────────────┘
-           ▼
-┌──────────────────────────────────────────────────────┐
-│  External Systems                                     │
-│  ├─ Jenkins      (Build engine)                       │
-│  ├─ GitLab CI    (Build engine)                       │
-│  ├─ GitLab/GitHub/Gitee/Gitea (Source + Commit Status)│
-│  └─ Harbor       (Registry + Vulnerability scan)      │
-└──────────────────────────────────────────────────────┘
+│  ├─ BuildController  — Build trigger / Pipeline / Scan / CS         │
+│  ├─ AdminController  — Admin CRUD / Auth / mode switch              │
+│  ├─ GitController    — Branch query                                 │
+│  └─ HarborController — Registry query / Scan                        │
+└─────────────────────────────┬───────────────────────────────────────┘
+                              ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  Service Layer                                                      │
+│  ├─ Database          — SQLite/MySQL dual driver + migration        │
+│  ├─ MappingManager    — Mapping query / unified filtering           │
+│  ├─ AppConfig         — Config access facade                        │
+│  ├─ I18nService       — i18n (Symfony Translation)                  │
+│  ├─ HarborService     — Harbor API wrapper (v1/v2 detection)        │
+│  ├─ JenkinsService    — Jenkins API wrapper                         │
+│  ├─ GitlabCiBuildProvider — GitLab CI Build adapter                 │
+│  ├─ JenkinsBuildProvider  — Jenkins Build adapter                   │
+│  ├─ BuildProviderRegistry — Build Provider registry                 │
+│  ├─ Git/ProviderRegistry   — Git Provider registry                  │
+│  ├─ Git/GitlabService      — GitLab API adapter                     │
+│  ├─ Git/GithubService      — GitHub API adapter                     │
+│  ├─ Git/GiteeService       — Gitee API adapter                      │
+│  └─ Git/GiteaService       — Gitea API adapter                      │
+└────────────────────────────┬────────────────────────────────────────┘
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  External Systems                                                   │
+│  ├─ Jenkins      (Build engine)                                     │
+│  ├─ GitLab CI    (Build engine)                                     │
+│  ├─ GitLab/GitHub/Gitee/Gitea (Source + Commit Status)              │
+│  └─ Harbor       (Registry + Vulnerability scan)                    │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
 **Framework:** Slim 4 + PHP-DI 7 + vlucas/phpdotenv 5.6 + GuzzleHTTP 7  
@@ -949,12 +949,14 @@ LOG_PATH=/applogs/                 # Log directory
 
 ### 8.3 Database Migration Checklist
 
-When adding/modifying table structures, simultaneously update the following files:
+When adding/modifying table structures, update the following files and **bump `APP_VERSION`** (marks this version's schema changes; `schema_version` records the version already applied to the current database, and the migration runs only when the two differ):
 
-- [ ] `config/AppConfig.php` → Add `TABLE_*` constant
-- [ ] `src/Service/Database.php` → `ensureTables()` method
+- [ ] `config/AppConfig.php` → Add `TABLE_*` constant (new tables)
+- [ ] `src/Service/Database.php` → `CREATE TABLE IF NOT EXISTS` in `ensureTables()`
+- [ ] `src/Service/Database.php` → `$columnMigrations` map (new columns; back-fills existing databases)
 - [ ] `database/mysql_init.sql`
 - [ ] `database/sqlite_init.sql`
+- [ ] `config/AppConfig.php` → Bump `APP_VERSION`
 
 ---
 

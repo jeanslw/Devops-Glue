@@ -221,10 +221,6 @@ class Database
             api_version TEXT,
             status {$VARCHAR} DEFAULT '" . \App\Config\AppConfig::STATUS_ACTIVE . "'
         ){$ENGINE}");
-        if (!self::columnExists(\App\Config\AppConfig::TABLE_JOB_GIT_MAP, 'status')) {
-            $pdo->exec("ALTER TABLE " . \App\Config\AppConfig::TABLE_JOB_GIT_MAP . " ADD COLUMN status {$VARCHAR} DEFAULT '" . \App\Config\AppConfig::STATUS_ACTIVE . "'");
-        }
-
         // ci_platform_versions
         $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_PLATFORM_VERSIONS . " (
             platform {$TEXT_PK},
@@ -241,13 +237,6 @@ class Database
             created_at {$TS_TYPE} DEFAULT ({$NOW}),
             PRIMARY KEY (project, pipeline_iid)
         ){$ENGINE}");
-        if (!self::columnExists(\App\Config\AppConfig::TABLE_PIPELINE_TAGS, 'harbor_repository')) {
-            $pdo->exec("ALTER TABLE " . \App\Config\AppConfig::TABLE_PIPELINE_TAGS . " ADD COLUMN harbor_repository TEXT");
-        }
-        if (!self::columnExists(\App\Config\AppConfig::TABLE_PIPELINE_TAGS, 'status')) {
-            $pdo->exec("ALTER TABLE " . \App\Config\AppConfig::TABLE_PIPELINE_TAGS . " ADD COLUMN status {$VARCHAR} DEFAULT ''");
-        }
-
         // cache
         if ($isMySQL) {
             $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_CACHE . " (
@@ -314,17 +303,6 @@ class Database
             writeback_message TEXT,
             created_at {$TS_TYPE} DEFAULT ({$NOW})
         ){$ENGINE}");
-        if (!self::columnExists(\App\Config\AppConfig::TABLE_SECURITY_CHECKS, 'tag')) {
-            $pdo->exec("ALTER TABLE " . \App\Config\AppConfig::TABLE_SECURITY_CHECKS . " ADD COLUMN tag {$VARCHAR} DEFAULT ''");
-        }
-        // commit status 回写结果（success/failed/skipped，空 = 历史记录/未知）
-        if (!self::columnExists(\App\Config\AppConfig::TABLE_SECURITY_CHECKS, 'writeback_status')) {
-            $pdo->exec("ALTER TABLE " . \App\Config\AppConfig::TABLE_SECURITY_CHECKS . " ADD COLUMN writeback_status {$VARCHAR} DEFAULT ''");
-        }
-        if (!self::columnExists(\App\Config\AppConfig::TABLE_SECURITY_CHECKS, 'writeback_message')) {
-            $pdo->exec("ALTER TABLE " . \App\Config\AppConfig::TABLE_SECURITY_CHECKS . " ADD COLUMN writeback_message TEXT");
-        }
-
         // ── RBAC 权限系统 ──
         // roles
         $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_ROLES . " (
@@ -339,13 +317,15 @@ class Database
             $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_PERMISSIONS . " (
                 perm_key VARCHAR(128) PRIMARY KEY,
                 description TEXT,
-                parent_key VARCHAR(128)
+                parent_key VARCHAR(128),
+                created_at {$TS_TYPE} DEFAULT NULL
             ){$ENGINE}");
         } else {
             $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_PERMISSIONS . " (
                 perm_key TEXT PRIMARY KEY,
                 description TEXT,
-                parent_key TEXT
+                parent_key TEXT,
+                created_at {$TS_TYPE} DEFAULT NULL
             )");
         }
         // role_permissions
@@ -361,11 +341,6 @@ class Database
                 perm_key TEXT NOT NULL,
                 PRIMARY KEY (role_id, perm_key)
             )");
-        }
-
-        // parent_key 列（用于权限层级，eg. cd.deploy.single → parent cd.deploy-manage）
-        if (!self::columnExists(\App\Config\AppConfig::TABLE_PERMISSIONS, 'parent_key')) {
-            $pdo->exec("ALTER TABLE " . \App\Config\AppConfig::TABLE_PERMISSIONS . " ADD COLUMN parent_key VARCHAR(128)");
         }
 
         // implied_rules 表：权限隐含关系（source_key → target_key），数据驱动，运行时可由 CD 项目通过 API 注册
@@ -395,6 +370,39 @@ class Database
             note TEXT,
             created_at {$TS_TYPE} DEFAULT ({$NOW})
         ){$ENGINE}");
+
+        // ── 通用列迁移 ──
+        // 存量库增量补列的唯一来源：新增列时只需在此追加一项（类型按驱动解析），
+        // 配合 columnExists 幂等检查，无需再为每列手写 if/ALTER。
+        // 新库由上方 CREATE TABLE 直接建全，此映射保证存量库也能补齐同名列。
+        $columnMigrations = [
+            \App\Config\AppConfig::TABLE_JOB_GIT_MAP => [
+                'status' => "{$VARCHAR} DEFAULT '" . \App\Config\AppConfig::STATUS_ACTIVE . "'",
+            ],
+            \App\Config\AppConfig::TABLE_PIPELINE_TAGS => [
+                'harbor_repository' => 'TEXT',
+                'status'            => "{$VARCHAR} DEFAULT ''",
+            ],
+            \App\Config\AppConfig::TABLE_SECURITY_CHECKS => [
+                'tag'               => "{$VARCHAR} DEFAULT ''", // 关联 tag
+                'writeback_status'  => "{$VARCHAR} DEFAULT ''", // commit status 回写结果（success/failed/skipped，空=历史）
+                'writeback_message' => 'TEXT',
+            ],
+            \App\Config\AppConfig::TABLE_PERMISSIONS => [
+                'parent_key' => $isMySQL ? 'VARCHAR(128)' : 'TEXT', // 权限层级
+                'created_at' => "{$TS_TYPE} DEFAULT NULL",          // 注册时间：内置为 NULL
+            ],
+        ];
+        // 补列循环：遍历有限映射，天然有界、必然终止（无 while/递归，无需显式 break）。
+        // 任一列检测/ALTER 失败会抛 PDOException 一路向上（fail-fast，与上方 CREATE TABLE 一致），
+        // 应用启动失败；但因 columnExists 幂等 + 尚未 markSchemaCurrent，下次启动会重跑补齐剩余列，不留半成品。
+        foreach ($columnMigrations as $table => $columns) {
+            foreach ($columns as $column => $definition) {
+                if (!self::columnExists($table, $column)) {
+                    $pdo->exec("ALTER TABLE {$table} ADD COLUMN {$column} {$definition}");
+                }
+            }
+        }
 
         // 种子数据：RBAC（权限定义 / 隐含规则 / 系统角色 / 角色↔权限），幂等可重复执行
         self::seedRbac();

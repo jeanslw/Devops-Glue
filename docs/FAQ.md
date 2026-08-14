@@ -472,18 +472,20 @@ This was an i18n gap in earlier versions, fixed in v2.5.1 (now translated lazily
 
 ### Q: What to note when changing table structures?
 
-⚠️ **Must update in four places simultaneously:**
-1. `config/AppConfig.php` → Add a `TABLE_*` constant for the new table
-2. `src/Service/Database.php` → `ensureTables()` method (auto-migration logic)
-3. `database/mysql_init.sql` → MySQL manual init script
-4. `database/sqlite_init.sql` → SQLite manual init script
+⚠️ When adding a table or column, update all the locations below, and **bump `APP_VERSION` every time** — it marks this version's schema changes; `schema_version` in `ci_app_settings` records the version already applied to the current database, and the migration runs only when the two differ.
 
-Adding a new table (e.g., `ci_new_table`) involves:
-1. Define `TABLE_NEW_TABLE = 'ci_new_table'` in `AppConfig.php`
-2. Add `CREATE TABLE IF NOT EXISTS` in `ensureTables()`, referencing the constant
-3. Add the same `CREATE TABLE` statement to both `mysql_init.sql` and `sqlite_init.sql`
+**Adding a new table** (e.g., `ci_new_table`):
+1. `config/AppConfig.php` → add a `TABLE_NEW_TABLE = 'ci_new_table'` constant
+2. `src/Service/Database.php` → add `CREATE TABLE IF NOT EXISTS` in `ensureTables()`, referencing the constant
+3. `database/mysql_init.sql` + `database/sqlite_init.sql` → add the same `CREATE TABLE` statement
+4. Bump `APP_VERSION`
 
-Existing columns or indexes added via `ALTER TABLE` / `CREATE INDEX` in `ensureTables()` don't need the manual scripts updated, but new tables always do.
+**Adding a new column**:
+1. `src/Service/Database.php` → add a line to the `$columnMigrations` map in `ensureTables()` (idempotently back-fills existing databases)
+2. Keep the table's `CREATE TABLE` in `ensureTables()` and both `.sql` init scripts in sync (fresh databases)
+3. Bump `APP_VERSION`
+
+> Note: `$columnMigrations` is the single source for back-filling columns on existing databases (`columnExists` → `ALTER ADD COLUMN`); `CREATE TABLE` and the init scripts only serve fresh databases. Column types are resolved per driver (`$VARCHAR` / `$TS_TYPE`, etc.).
 
 ### Q: What data is cached and for how long?
 
