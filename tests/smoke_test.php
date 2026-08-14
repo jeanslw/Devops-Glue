@@ -26,8 +26,8 @@ $harborProject  = 'mycode';
 $harborRepo     = 'diagnosis-runtime';
 
 // 登录凭据：可通过环境变量覆盖
-$loginUser     = getenv('TEST_LOGIN_USER') ?: 'root';
-$loginPassword = getenv('TEST_LOGIN_PASS') ?: 'root123456';
+$loginUser     = getenv('TEST_LOGIN_USER') ?: '';
+$loginPassword = getenv('TEST_LOGIN_PASS') ?: '';
 
 $triggerParams = [
     'java/registry'   => ['branches' => 'master'],

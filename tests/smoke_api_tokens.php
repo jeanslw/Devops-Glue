@@ -2,7 +2,7 @@
 // smoke_api_tokens.php - API token 生命周期冒烟测试
 // 用法: php tests/smoke_api_tokens.php [base_url] [admin_user] [admin_password]
 $base      = $argv[1] ?? 'http://localhost:80';
-$adminUser = $argv[2] ?? ($_ENV['ADMIN_USER'] ?? 'admin');
+$adminUser = $argv[2] ?? ($_ENV['ADMIN_USER'] ?? '');
 $adminPass = $argv[3] ?? ($_ENV['ADMIN_PASSWORD'] ?? '');
 
 function api($method, $url, $body = null, $headers = []) {

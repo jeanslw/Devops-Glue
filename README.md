@@ -130,7 +130,7 @@ See [docs/ADMIN_MANUAL.md](docs/ADMIN_MANUAL.md) for full environment variable r
 
 | Document | Language | Description |
 |----------|----------|-------------|
-| [API Reference](docs/API.md) | EN | API endpoints, request/response formats, quick tests |
+| [API Reference](docs/API_Documents.md) | EN | API endpoints, request/response formats, quick tests |
 | [ARCHITECTURE](docs/ARCHITECTURE.md) | EN | Overall data flow, component relationships, deployment pattern matrix|
 | [Admin Manual](docs/ADMIN_MANUAL.md) | EN | Environment variables, mapping config, custom Git platform |
 | [Technical Guide](docs/Technical-Guide.md) | EN | Architecture, DB design, data flows, troubleshooting |
