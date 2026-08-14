@@ -89,7 +89,8 @@ CREATE TABLE IF NOT EXISTS roles (
 CREATE TABLE IF NOT EXISTS permissions (
     perm_key    TEXT PRIMARY KEY,
     description TEXT,
-    parent_key  TEXT DEFAULT NULL
+    parent_key  TEXT DEFAULT NULL,
+    created_at  TEXT DEFAULT NULL
 );
 
 -- ── 10. role_permissions（角色↔权限）──

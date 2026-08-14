@@ -1,4 +1,4 @@
-# Devops-Glue API Reference v2.5
+# Devops-Glue API Reference v2.5.1
 
 Base URL: `http://your-domain.com/api`
 
@@ -89,7 +89,7 @@ Returns connectivity status of Jenkins, Git platforms, and Harbor, plus system s
   "build_mode": "both",
   "build_mode_source": "database",
   "db_driver": "mysql",
-  "app_version": "v2.4.3",
+  "app_version": "v2.5.1",
   "app_env": "production",
   "time": "2026-08-10 12:00:00"
 }
@@ -277,7 +277,7 @@ Token expires in 24 hours. `super_admin` role returns `"*"` for permissions.
 | `/api/admin/job_git_map` | PUT | Update mapping (requires `_original_job_name`) |
 | `/api/admin/job_git_map` | DELETE | Delete mapping (`?job_name=...`) |
 | `/api/admin/discover` | POST | Auto-discover Jenkins jobs |
-| `/api/admin/security_checks` | GET | Security scan audit records (supports `?project=&check_type=&state=&exclude=&page=&per_page=`) |
+| `/api/admin/security_checks` | GET | Security scan audit records (supports `?project=&check_type=&state=&writeback=&exclude=&page=&per_page=`) |
 | `/api/admin/platform_versions` | GET/PUT | Platform API version config |
 | `/api/admin/build_mode` | GET/PUT | Build mode (jenkins/gitlab_ci/both) |
 | `/api/admin/users` | GET | User list (admin sees all; non-admin cannot see admin users) |
@@ -288,11 +288,11 @@ Token expires in 24 hours. `super_admin` role returns `"*"` for permissions.
 | `/api/admin/roles` | POST | Create custom role (requires `ci.users.manage_admin`) |
 | `/api/admin/roles/{id}` | PUT | Update role permissions (full replacement, requires `ci.users.manage_admin`) |
 | `/api/admin/roles/{id}` | DELETE | Delete custom role (requires `ci.users.manage_admin`) |
-| `/api/admin/permissions` | GET | Permission catalog + implied rules (requires `ci.permissions.list`) |
-| `/api/admin/permissions` | POST | Register new permission (body: `perm_key`, `description`, `parent_key?`; requires `ci.permissions.register`) |
-| `/api/admin/permissions/{perm_key}` | DELETE | Delete permission (builtin keys protected; requires `ci.permissions.register`) |
+| `/api/admin/permissions` | GET | Permission list (with `is_builtin` / `created_at`) + implied rules (`implied` / `builtin_implied`) (requires `ci.permissions.list`) |
+| `/api/admin/permissions` | POST | Register permission (body: `perm_key`, `description`, `parent_key?`; updates and preserves first registration time if it already exists; requires `ci.permissions.register`) |
+| `/api/admin/permissions/{perm_key}` | DELETE | Delete permission (builtin keys cannot be deleted, registered ones can; cascades role_permissions/implied_rules; requires `ci.permissions.register`) |
 | `/api/admin/implied_rules` | POST | Create implied rule (body: `source_key`, `target_key`; requires `ci.permissions.rules`) |
-| `/api/admin/implied_rules` | DELETE | Delete implied rule (`?source_key=&target_key=`; requires `ci.permissions.rules`) |
+| `/api/admin/implied_rules` | DELETE | Delete implied rule (`?source_key=&target_key=`; builtin implied rules cannot be deleted, user-added ones can; requires `ci.permissions.rules`) |
 | `/api/admin/me/permissions` | GET | Get current user's permissions (super_admin returns wildcard `"*"`) |
 
 ### Permission Checks

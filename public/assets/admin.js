@@ -761,6 +761,13 @@ async function saveVersions() {
 // ── 构建模式配置 ──
 let currentBuildMode = 'both';
 
+/** 把下拉框当前值即时显示到右侧的 code 标签 */
+function updateBuildModeValue() {
+    const sel = document.getElementById('build-mode-select');
+    const valEl = document.getElementById('build-mode-value');
+    if (sel && valEl) valEl.textContent = sel.value || '—';
+}
+
 async function loadSettings() {
     const display = document.getElementById('mode-display');
     const configPanel = document.getElementById('mode-config');
@@ -783,6 +790,7 @@ async function loadSettings() {
 
         // 下拉选项状态
         sel.value = mode;
+        updateBuildModeValue();
         sel.querySelectorAll('option').forEach(opt => {
             if (opt.value === 'jenkins') opt.disabled = !hasJenkins;
             if (opt.value === 'gitlab_ci') opt.disabled = !hasGitlab;
@@ -868,9 +876,11 @@ async function onBuildModeChange() {
     const sel = document.getElementById('build-mode-select');
     const newMode = sel.value;
     const oldMode = currentBuildMode;
+    updateBuildModeValue(); // 即时显示新选中的值
 
     // 先回退选择，待确认后再正式切换
     sel.value = oldMode;
+    updateBuildModeValue(); // 回退后显示旧值
 
     const modeLabels = {
         'jenkins': '⚡ ' + __.t('js.mode_label_jenkins'),
@@ -884,6 +894,7 @@ async function onBuildModeChange() {
 
     // 用户确认，正式切换
     sel.value = newMode;
+    updateBuildModeValue();
 
     const statusEl = document.getElementById('build-mode-status');
     statusEl.style.display = 'none';
@@ -893,7 +904,7 @@ async function onBuildModeChange() {
             headers: Object.assign({'Content-Type':'application/json'}, authHeaders()),
             body: JSON.stringify({mode: newMode})
         });
-        if (handle401(res)) { sel.value = oldMode; currentBuildMode = oldMode; return; }
+        if (handle401(res)) { sel.value = oldMode; currentBuildMode = oldMode; updateBuildModeValue(); return; }
         if (res.ok) {
             currentBuildMode = newMode;
             statusEl.style.display = 'inline';
@@ -904,11 +915,13 @@ async function onBuildModeChange() {
             toast(data.message || __.t('js.save_failed'), false);
             sel.value = oldMode;
             currentBuildMode = oldMode;
+            updateBuildModeValue();
         }
     } catch(e) {
         toast(__.t('js.network_error') + ': ' + e.message, false);
         sel.value = oldMode;
         currentBuildMode = oldMode;
+        updateBuildModeValue();
     }
 }
 
@@ -960,12 +973,26 @@ async function loadPermList() {
             empty.style.display = 'block';
             return;
         }
+        var canDelete = hasPermission('ci.permissions.register');
         tbody.innerHTML = perms.map(function(p) {
+            var type = p.is_builtin
+                ? '<span class="badge badge-sys">' + __.t('perm.builtin') + '</span>'
+                : '<span class="badge badge-cus">' + __.t('perm.registered') + '</span>';
+            var actions;
+            if (p.is_builtin) {
+                actions = '<span style="color:#9ca3af;font-size:12px;" title="' + __.t('permission.builtin_protected') + '">🔒</span>';
+            } else if (canDelete) {
+                actions = '<button class="btn btn-sm btn-del" onclick="deletePermission(\'' + p.perm_key + '\')" title="' + __.t('common.delete') + '">🗑</button>';
+            } else {
+                actions = '<span style="color:#9ca3af;font-size:12px;">—</span>';
+            }
             return '<tr>' +
                 '<td><code>' + p.perm_key + '</code></td>' +
-                '<td>' + (p.description || '-') + '</td>' +
+                '<td>' + esc(p.description || '-') + '</td>' +
                 '<td>' + (p.parent_key ? '<code>' + p.parent_key + '</code>' : '-') + '</td>' +
-                '<td style="font-size:12px;color:#6b7280;">' + (p.created_at || '-') + '</td>' +
+                '<td>' + type + '</td>' +
+                '<td style="font-size:12px;color:#6b7280;">' + (p.created_at || '—') + '</td>' +
+                '<td>' + actions + '</td>' +
                 '</tr>';
         }).join('');
         loading.style.display = 'none';
@@ -973,6 +1000,27 @@ async function loadPermList() {
     } catch(e) {
         loading.textContent = __.t('js.network_error') + ': ' + e.message;
     }
+}
+
+// 删除已注册权限（内置权限后端已保护，此入口仅对非内置且拥有 ci.permissions.register 者可见）
+async function deletePermission(key) {
+    if (!confirm(__.t('perm.confirm_delete'))) return;
+    try {
+        var res = await fetch('/api/admin/permissions/' + encodeURIComponent(key), {
+            method: 'DELETE',
+            headers: authHeaders()
+        });
+        if (handle401(res)) return;
+        var data = await res.json();
+        if (res.ok) {
+            toast(__.t('perm.delete_ok'), true);
+            _allPerms = null; // 失效角色编辑器的权限缓存
+            loadPermList();
+            loadRoleList();
+        } else {
+            toast(data.message || __.t('js.operation_failed'), false);
+        }
+    } catch(e) { toast(__.t('js.network_error') + ': ' + e.message, false); }
 }
 
 // 权限注册
@@ -1021,6 +1069,7 @@ async function loadImpliedRules() {
         if (handle401(res)) return;
         var data = await res.json();
         var implied = data.implied || {};
+        var builtin = data.builtin_implied || {};
         var rules = [];
         Object.keys(implied).forEach(function(src) {
             implied[src].forEach(function(tgt) { rules.push({source: src, target: tgt}); });
@@ -1031,11 +1080,18 @@ async function loadImpliedRules() {
             return;
         }
         tbody.innerHTML = rules.map(function(r) {
+            var isBuiltin = (builtin[r.source] || []).indexOf(r.target) >= 0;
+            var type = isBuiltin
+                ? '<span class="badge badge-sys">' + __.t('perm.builtin') + '</span>'
+                : '<span class="badge badge-cus">' + __.t('perm.registered') + '</span>';
+            var actions = isBuiltin
+                ? '<span style="color:#9ca3af;font-size:12px;" title="' + __.t('implied.builtin_protected') + '">🔒</span>'
+                : '<button class="btn btn-danger btn-sm" onclick="deleteImpliedRule(\'' + r.source + '\',\'' + r.target + '\')">' + __.t('common.delete') + '</button>';
             return '<tr>' +
                 '<td><code>' + r.source + '</code></td>' +
                 '<td><code>' + r.target + '</code></td>' +
-                '<td><button class="btn btn-danger btn-sm" onclick="deleteImpliedRule(\'' + r.source + '\',\'' + r.target + '\')">' +
-                    __.t('common.delete') + '</button></td>' +
+                '<td>' + type + '</td>' +
+                '<td>' + actions + '</td>' +
                 '</tr>';
         }).join('');
         loading.style.display = 'none';

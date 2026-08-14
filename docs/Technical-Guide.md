@@ -1,4 +1,4 @@
-# Devops-Glue API Technical Guide v2.5
+# Devops-Glue API Technical Guide v2.5.1
 
 > This document is intended for developers, operations engineers, and troubleshooting. It covers all business logic, data flows, database table structures, and common issues.
 
@@ -239,6 +239,8 @@ Controller → AppConfig::getXxxConfig()
 | `context` | TEXT NOT NULL | Check name (commit status context) |
 | `description` | TEXT | Short description |
 | `tag` | TEXT DEFAULT '' | Associated image tag |
+| `writeback_status` | TEXT DEFAULT '' | Commit-status writeback result (success/failed/skipped, empty = historical/unknown) |
+| `writeback_message` | TEXT | Error message when writeback fails |
 | `created_at` | DATETIME/TEXT | Record time |
 
 **Indexes:** `(project, check_type)`, `(sha)`
@@ -298,7 +300,7 @@ Controller → AppConfig::getXxxConfig()
   "checks": { "jenkins": true, "jenkins_version": "2.555.3", "git": [...], "harbor": true, "harbor_components": {...} },
   "stats": { "total_maps": 4, "active_maps": 4, "git_platforms": 2, "harbor_repos": 4 },
   "build_mode": "both", "build_mode_source": "database",
-  "db_driver": "mysql", "app_version": "2.4.0", "app_env": "production",
+  "db_driver": "mysql", "app_version": "2.5.1", "app_env": "production",
   "time": "2026-07-25 12:00:00"
 }
 ```
@@ -482,7 +484,7 @@ If only `ref` is present without other parameters, auto-convert to `{branches: r
 
 ### 5.6 Security Scan Audit
 
-**Route:** `GET /api/admin/security_checks?project=&check_type=&state=&page=1&per_page=20`  
+**Route:** `GET /api/admin/security_checks?project=&check_type=&state=&writeback=&page=1&per_page=20`  
 **Method:** `AdminController::securityChecksList()`
 
 **Data source:** `ci_security_checks` table (written by commit-status and scan-sync)
@@ -491,7 +493,9 @@ If only `ref` is present without other parameters, auto-convert to `{branches: r
 - `project` — fuzzy match (LIKE %...%)
 - `check_type` — exact match
 - `state` — exact match (success/failed/pending/error)
-- `page` / `per_page` — pagination
+- `writeback` — exact match on writeback result (success/failed/skipped)
+- `exclude` — exclude specific states (comma-separated, e.g. `exclude=pending`)
+- `page` / `per_page` — pagination (per_page capped at 100)
 
 **Response:**
 ```json
@@ -503,12 +507,13 @@ If only `ref` is present without other parameters, auto-convert to `{branches: r
   "total_pages": 3,
   "filter_opts": {
     "check_types": ["harbor-scan", "sast", "secret-scan"],
-    "states": ["success", "failure", "pending", "error"]
+    "states": ["success", "failed", "pending", "error"],
+    "writeback_statuses": ["success", "failed", "skipped"]
   }
 }
 ```
 
-**⚠️ Note:** The frontend `STATE_ICONS` uses `failed` rather than `failure` (GitHub Commit Status API convention), because the backend `validStates` and database actually store `failed`.
+**⚠️ Note:** `state` is `failed` (not `failure`, following the GitHub Commit Status API convention); `writeback_status` uses `skipped` for "not written back", and empty means historical/unknown.
 
 ---
 
@@ -657,17 +662,29 @@ The system uses a role-based access control (RBAC) model with **all tables store
 
 | Method | Path | Description | Permission Required |
 |---|---|---|---|
-| GET | `/api/admin/permissions` | List all permissions (perm_key + parent_key + description) + implied-relations dict | Bearer Token + admin login |
+| GET | `/api/admin/permissions` | List all permissions (`perm_key` + `description` + `parent_key` + `created_at` + `is_builtin`) + `implied` relations dict + `builtin_implied` (built-in implied rules) | Bearer Token + `ci.permissions.list` |
 | POST | `/api/admin/permissions` | Register new permission (body: `{ perm_key, description, parent_key? }`) | super_admin |
 | DELETE | `/api/admin/permissions/{perm_key}` | Delete permission (cascades `role_permissions` + `implied_rules`; built-in keys are protected) | super_admin |
 | POST | `/api/admin/implied_rules` | Register implied rule (body: `{ source_key, target_key }`) | super_admin |
-| DELETE | `/api/admin/implied_rules` | Delete implied rule (query: `source_key=&target_key=`) | super_admin |
+| DELETE | `/api/admin/implied_rules` | Delete implied rule (query: `source_key=&target_key=`; built-in implied rules are protected, user-added ones can be deleted) | super_admin |
 | GET | `/api/admin/roles` | Role list — each role carries its `permissions` array | Bearer Token + admin login |
 | POST | `/api/admin/roles` | Create custom role (body: `{ name, description, permissions }`; backend auto-expands implied keys) | `ci.users.manage_admin` |
 | PUT | `/api/admin/roles/{id}` | Update custom role (name/description/permissions; `is_system=1` is locked) | `ci.users.manage_admin` |
 | DELETE | `/api/admin/roles/{id}` | Delete custom role (400 `role.in_use` when any user still binds it) | `ci.users.manage_admin` |
-| PUT | `/api/admin/users/{username}/role` | Change user's role (admin role change requires higher privilege) | `ci.users.manage` |
+| PUT | `/api/admin/users/{username}` | Update user (body: `password` and/or `role`) | `ci.users.manage` |
 | GET | `/api/admin/me/permissions` | Current user's role + permission list (super_admin → `permissions: "*"` wildcard; others → implied-expanded array) | Valid Bearer Token only |
+
+**API Token endpoints (v2.5.0, independent of RBAC, super_admin only):**
+
+| Method | Path | Description | Permission Required |
+|---|---|---|---|
+| GET | `/api/admin/api_tokens/scopes` | Return the selectable scope catalog | super_admin |
+| GET | `/api/admin/api_tokens` | List tokens (no plaintext) | super_admin |
+| POST | `/api/admin/api_tokens` | Create a token (returns one-time plaintext) | super_admin |
+| POST | `/api/admin/api_tokens/{id}/revoke` | Revoke a token (soft delete, disable and keep the record) | super_admin |
+| DELETE | `/api/admin/api_tokens/{id}` | Delete a token (hard delete) | super_admin |
+
+> API tokens are sent via the standard `Authorization: Bearer <token>` header, independent of RBAC, and carry scopes directly; `/api/admin/*` admin endpoints are always fail-closed (403) for API tokens. See [API_Documents.md](API_Documents.md), "API Token Management".
 
 **Implied-relation expansion logic** (`expandPermissions()`):
 ```php
@@ -876,10 +893,8 @@ LOG_PATH=/applogs/                 # Log directory
 | GET/POST | `/api/main/git/discovery` | Token | Platform access detection |
 | **Admin** | | | |
 | POST | `/api/admin/login` | No | Login to get token |
+| POST | `/api/admin/logout` | No | Logout, revoke token |
 | PUT | `/api/admin/password` | Token | Change password |
-| GET | `/api/admin/user/list` | Token | User list |
-| POST | `/api/admin/user/create` | Token | Create user (super_admin only) |
-| DELETE | `/api/admin/user/delete` | Token | Delete user (super_admin only) |
 | GET | `/api/admin/job_git_map` | Token | Mapping list (search/pagination) |
 | POST | `/api/admin/job_git_map` | Token | Add mapping |
 | PUT | `/api/admin/job_git_map` | Token | Update mapping |
@@ -887,10 +902,28 @@ LOG_PATH=/applogs/                 # Log directory
 | GET | `/api/admin/platform_versions` | Token | Platform version list |
 | PUT | `/api/admin/platform_versions` | Token | Update platform version |
 | POST | `/api/admin/discover` | Token | Auto-discover projects |
-| GET | `/api/admin/security_checks` | Token | Security scan list (filter/pagination) |
+| GET | `/api/admin/security_checks` | Token | Security scan list (filter/pagination, incl. writeback status) |
 | GET | `/api/admin/build_mode` | Token | Get build mode |
 | PUT | `/api/admin/build_mode` | Token | Update build mode |
+| GET | `/api/admin/users` | Token | User list |
+| POST | `/api/admin/users` | Token | Create user |
+| PUT | `/api/admin/users/{username}` | Token | Update user |
+| DELETE | `/api/admin/users/{username}` | Token | Delete user |
+| GET | `/api/admin/roles` | Token | Role list |
+| POST | `/api/admin/roles` | Token | Create role |
+| PUT | `/api/admin/roles/{id}` | Token | Update role |
+| DELETE | `/api/admin/roles/{id}` | Token | Delete role |
+| GET | `/api/admin/permissions` | Token | Permission list (with is_builtin / created_at / implied) |
+| POST | `/api/admin/permissions` | Token | Register permission |
+| DELETE | `/api/admin/permissions/{perm_key}` | Token | Delete permission |
+| POST | `/api/admin/implied_rules` | Token | Add implied rule |
+| DELETE | `/api/admin/implied_rules` | Token | Delete implied rule |
 | GET | `/api/admin/me/permissions` | Token | Get current user permissions |
+| GET | `/api/admin/api_tokens/scopes` | Token | API token scope catalog |
+| GET | `/api/admin/api_tokens` | Token | API token list |
+| POST | `/api/admin/api_tokens` | Token | Create API token |
+| POST | `/api/admin/api_tokens/{id}/revoke` | Token | Revoke API token |
+| DELETE | `/api/admin/api_tokens/{id}` | Token | Delete API token |
 | **Build** | | | |
 | GET/POST | `/api/build/jobs/list` | Token | Job list (with ci_provider) |
 | GET | `/api/build/config-mode` | Token | Build mode status |
@@ -924,4 +957,4 @@ When adding/modifying table structures, simultaneously update the following file
 
 ---
 
-*Document version: v2.5 | Last updated: 2026-08-13*
+*Document version: v2.5.1 | Last updated: 2026-08-14*

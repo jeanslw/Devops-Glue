@@ -1,4 +1,4 @@
-# Devops-Glue API FAQ v2.5
+# Devops-Glue API FAQ v2.5.1
 
 ## Table of Contents
 
@@ -240,6 +240,18 @@ Scans all projects in the current build mode, auto-extracts Git repository infor
 
 The mapping list has a 30-second cache (`cache` table, key=`map_list_{mode}`). Wait 30 seconds for auto-refresh, or switch to `gitlab_ci` mode (which skips caching).
 
+### Q: Duplicate entries appear in "Auto Discover" under `both` mode?
+
+`both` mode scans both Jenkins and GitLab CI, so the same `repository URL` may produce two entries (one from each). After enabling one pipeline, the other is auto-hidden; reverting to "pending" status shows the duplicates again. This is expected behavior.
+
+### Q: What is the "pending" mapping status?
+
+Mappings imported by Auto Discover start in "pending" and must be manually activated (status becomes `active`) before they are used by the API and homepage. Manually added mappings can be activated directly.
+
+### Q: Do I need to fill in the `api_version` mapping field?
+
+No. `api_version` is metadata only; it does not affect actual API routing (routes are hardcoded in each Service). You can omit it.
+
 ---
 
 ## Authentication & Permissions
@@ -308,6 +320,25 @@ Implied rules live in the dedicated `implied_rules` table (`source_key` → `tar
 - `cd.build-manage` → `ci.trigger` (Build Management implies Trigger Build — a special cross-module rule)
 
 Implied rules can be added/removed dynamically via the Admin UI → Implied Rules page. No code changes required.
+
+> **Note:** The **built-in implied rules above are seeded with the system and cannot be deleted** (shown with 🔒). Only rules added by a user via the Implied Rules page can be deleted.
+
+### Q: What does the "Type" column (Built-in / Registered) in the permission list mean?
+
+Permissions fall into two categories:
+
+- **Built-in**: seeded by the system (`AppConfig::DEFAULT_PERMISSIONS`), required for the system to run, and **cannot be deleted** (shown with 🔒 and no delete button).
+- **Registered**: added dynamically via "Permission Management → Permission Registration", and **can be deleted** (requires the `ci.permissions.register` permission on the current account).
+
+### Q: Why is the "Registered At" column empty (`—`)?
+
+Built-in permissions are written by the seed data and have no registration time (`created_at` is empty), so they show `—`. Only permissions added via "Permission Registration" have a real registration time. Re-registering the same permission key only updates the description/parent key and preserves the first registration time.
+
+### Q: Why can't I see the delete button on a permission?
+
+Both conditions must be met: ① the permission is "Registered" (built-in permissions cannot be deleted); ② the current account has the `ci.permissions.register` permission. Without it, even calling the delete endpoint directly returns 403.
+
+> Deleting a registered permission cascades and cleans up related records in `role_permissions` and `implied_rules`.
 
 ### Q: How to create a custom role?
 
@@ -413,6 +444,27 @@ Through the Commit Status endpoint (`POST /api/build/{path}/commit-status`), any
 - **IaC auditing**: Checkov, tfsec (context: `iac-audit`)
 
 All scan records are stored centrally in the `ci_security_checks` audit table.
+
+### Q: What does the "Write-back" column on the Security Audit page show?
+
+It records the result of each Commit Status write-back:
+
+| Status | Meaning |
+|---|---|
+| `success` | Write-back succeeded |
+| `failed` | Write-back failed |
+| `skipped` | Write-back skipped |
+| (empty) | Historical record / unknown |
+
+The result is stored in the `writeback_status` / `writeback_message` fields of `ci_security_checks` and shown on the "Security Audit" page. A failed write-back does not block the CI flow (it degrades and passes through).
+
+### Q: What fields does a security audit record contain?
+
+The `ci_security_checks` table records: `project`, `sha` (commit), `check_type` (scan type, defaults to `context`), `state` (result status), `context` (check name, e.g. `harbor-scan` / `secret-scan` / `sast` / `sca` / `iac-audit`), `description`, `tag`, `writeback_status` (write-back result), and `created_at`.
+
+### Q: The "Status / Write-back" column shows English keys instead of Chinese?
+
+This was an i18n gap in earlier versions, fixed in v2.5.1 (now translated lazily at render time). If you still see English keys, confirm your version is ≥ v2.5.1.
 
 ---
 
@@ -550,4 +602,4 @@ No. API responses always return raw data. i18n only affects the frontend UI and 
 
 ---
 
-*Document version: v2.5 | Last updated: 2026-08-13*
+*Document version: v2.5.1 | Last updated: 2026-08-14*

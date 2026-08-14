@@ -351,6 +351,14 @@
               "items": { "type": "string" }
             },
             "example": { "cd.bot": ["cd.notification-manage"], "cd.deploy.single": ["cd.deploy-manage"] }
+          },
+          "builtin_implied": {
+            "type": "object",
+            "description": "Built-in implication map (seed data, non-deletable): source_key → [target_key,...]; used by the frontend to distinguish built-in vs user-added rules",
+            "additionalProperties": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
           }
         }
       },

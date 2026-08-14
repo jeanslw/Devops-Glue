@@ -1,4 +1,4 @@
-# Devops-Glue API 参考 v2.5
+# Devops-Glue API 参考 v2.5.1
 
 基础 URL: `http://your-domain.com/api`
 
@@ -89,7 +89,7 @@ GET /api/health
   "build_mode": "both",
   "build_mode_source": "database",
   "db_driver": "mysql",
-  "app_version": "v2.4.3",
+  "app_version": "v2.5.1",
   "app_env": "production",
   "time": "2026-08-10 12:00:00"
 }
@@ -277,7 +277,7 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 | `/api/admin/job_git_map` | PUT | 更新映射（需 `_original_job_name`） |
 | `/api/admin/job_git_map` | DELETE | 删除映射（`?job_name=...`） |
 | `/api/admin/discover` | POST | 自动发现 Jenkins Job |
-| `/api/admin/security_checks` | GET | 安全扫描审计记录（支持 `?project=&check_type=&state=&exclude=&page=&per_page=` 筛选） |
+| `/api/admin/security_checks` | GET | 安全扫描审计记录（支持 `?project=&check_type=&state=&writeback=&exclude=&page=&per_page=` 筛选） |
 | `/api/admin/platform_versions` | GET/PUT | 平台 API 版本配置 |
 | `/api/admin/build_mode` | GET/PUT | 构建模式（jenkins/gitlab_ci/both） |
 | `/api/admin/users` | GET | 用户列表（admin 可见全部；非 admin 看不到 admin 用户） |
@@ -288,11 +288,11 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 | `/api/admin/roles` | POST | 创建自定义角色（需 `ci.users.manage_admin`） |
 | `/api/admin/roles/{id}` | PUT | 更新角色权限（全量替换，需 `ci.users.manage_admin`） |
 | `/api/admin/roles/{id}` | DELETE | 删除自定义角色（需 `ci.users.manage_admin`） |
-| `/api/admin/permissions` | GET | 权限目录 + 隐含规则（需 `ci.permissions.list`） |
-| `/api/admin/permissions` | POST | 注册新权限（body: `perm_key`、`description`、`parent_key?`；需 `ci.permissions.register`） |
-| `/api/admin/permissions/{perm_key}` | DELETE | 删除权限（内置权限受保护不可删；需 `ci.permissions.register`） |
+| `/api/admin/permissions` | GET | 权限列表（含 `is_builtin` / `created_at`）+ 隐含规则（`implied` / `builtin_implied`）（需 `ci.permissions.list`） |
+| `/api/admin/permissions` | POST | 注册权限（body: `perm_key`、`description`、`parent_key?`；已存在则更新并保留首次注册时间；需 `ci.permissions.register`） |
+| `/api/admin/permissions/{perm_key}` | DELETE | 删除权限（内置权限不可删，注册权限可删；级联清理 role_permissions/implied_rules；需 `ci.permissions.register`） |
 | `/api/admin/implied_rules` | POST | 创建隐含规则（body: `source_key`、`target_key`；需 `ci.permissions.rules`） |
-| `/api/admin/implied_rules` | DELETE | 删除隐含规则（`?source_key=&target_key=`；需 `ci.permissions.rules`） |
+| `/api/admin/implied_rules` | DELETE | 删除隐含规则（`?source_key=&target_key=`；内置隐含规则不可删，用户新增的可删；需 `ci.permissions.rules`） |
 | `/api/admin/me/permissions` | GET | 获取当前用户权限（super_admin 返回通配符 `"*"`） |
 
 ### 权限校验规则

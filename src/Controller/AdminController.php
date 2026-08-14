@@ -923,7 +923,12 @@ class AdminController extends BaseController
         }
         try {
             $pdo = $this->pdo;
-            $rows = $pdo->query("SELECT perm_key, description, parent_key FROM " . AppConfig::TABLE_PERMISSIONS . " ORDER BY perm_key")->fetchAll();
+            $rows = $pdo->query("SELECT perm_key, description, parent_key, created_at FROM " . AppConfig::TABLE_PERMISSIONS . " ORDER BY perm_key")->fetchAll();
+            // 标注内置/注册（与删除保护逻辑同一判定源 DEFAULT_PERMISSIONS）
+            foreach ($rows as &$row) {
+                $row['is_builtin'] = array_key_exists($row['perm_key'], AppConfig::DEFAULT_PERMISSIONS);
+            }
+            unset($row);
             // 附带 implied 关系（数据驱动，前端可直接用）
             $implied = [];
             try {
@@ -935,8 +940,9 @@ class AdminController extends BaseController
                 \App\Helper\Log::exception($e);
             }
             return $this->output($response, [
-                'permissions' => $rows,
-                'implied'     => $implied,
+                'permissions'      => $rows,
+                'implied'          => $implied,
+                'builtin_implied'  => AppConfig::IMPLIED_PERMISSIONS,
             ], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.query_failed') . ': ' . $e->getMessage(), 500);
@@ -966,8 +972,15 @@ class AdminController extends BaseController
         }
         try {
             $pdo = $this->pdo;
-            $sql = \App\Service\Database::sqlUpsert(AppConfig::TABLE_PERMISSIONS, 'perm_key, description, parent_key', '?, ?, ?');
-            $pdo->prepare($sql)->execute([$permKey, $desc, $parent]);
+            $exists = $pdo->prepare("SELECT COUNT(*) FROM " . AppConfig::TABLE_PERMISSIONS . " WHERE perm_key = ?");
+            $exists->execute([$permKey]);
+            if ((int)$exists->fetchColumn() > 0) {
+                // 已存在：仅更新描述/父级，保留首次注册时间
+                $pdo->prepare("UPDATE " . AppConfig::TABLE_PERMISSIONS . " SET description = ?, parent_key = ? WHERE perm_key = ?")->execute([$desc, $parent, $permKey]);
+            } else {
+                // 新注册：写入注册时间
+                $pdo->prepare("INSERT INTO " . AppConfig::TABLE_PERMISSIONS . " (perm_key, description, parent_key, created_at) VALUES (?, ?, ?, " . \App\Service\Database::sqlNow() . ")")->execute([$permKey, $desc, $parent]);
+            }
             return $this->output($response, ['perm_key' => $permKey, 'description' => $desc, 'parent_key' => $parent], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.save_failed') . ': ' . $e->getMessage(), 500);
@@ -1051,6 +1064,10 @@ class AdminController extends BaseController
         $tgt = trim($params['target_key'] ?? '');
         if ($src === '' || $tgt === '') {
             return $this->jsonError($response, 'validation.required', 400);
+        }
+        // 内置隐含规则（种子数据，来自 IMPLIED_PERMISSIONS）不可删除
+        if (isset(AppConfig::IMPLIED_PERMISSIONS[$src]) && in_array($tgt, AppConfig::IMPLIED_PERMISSIONS[$src], true)) {
+            return $this->jsonError($response, 'implied.builtin_protected', 400);
         }
         try {
             $pdo = $this->pdo;

@@ -453,8 +453,13 @@ return [
     'perm.key'             => 'Permission Key',
     'perm.description'     => 'Description',
     'perm.parent_key'      => 'Parent Key',
-    'perm.created_at'      => 'Created At',
+    'perm.type'            => 'Type',
+    'perm.builtin'         => 'Built-in',
+    'perm.registered'      => 'Registered',
+    'perm.created_at'      => 'Registered At',
     'perm.no_permissions'  => 'No permissions found',
+    'perm.confirm_delete'  => 'Delete this permission? Its role and implied-rule associations will also be removed.',
+    'perm.delete_ok'       => 'Permission deleted',
 
     // Permission Registration
     'perm.register_title'  => '➕ Register Permission',
@@ -482,6 +487,7 @@ return [
     'implied.confirm_delete'=> 'Delete this implied rule?',
     'implied.add_ok'       => 'Implied rule added successfully',
     'implied.delete_ok'    => 'Implied rule deleted',
+    'implied.builtin_protected' => 'Built-in implied rule cannot be deleted',
 
     // API Token Management
     'api_token.menu'            => 'API Management',

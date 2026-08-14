@@ -90,7 +90,8 @@ CREATE TABLE IF NOT EXISTS `roles` (
 CREATE TABLE IF NOT EXISTS `permissions` (
     `perm_key`    VARCHAR(128) PRIMARY KEY,
     `description` TEXT,
-    `parent_key`  VARCHAR(128) DEFAULT NULL
+    `parent_key`  VARCHAR(128) DEFAULT NULL,
+    `created_at`  DATETIME DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ── 10. role_permissions（角色↔权限）──

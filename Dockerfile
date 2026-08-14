@@ -1,5 +1,5 @@
-# ========== 阶段1: 安装 Composer 依赖 ==========
-# FROM 和 AS vendor
+# ========== Step 1: Install Composer dependencies ==========
+# FROM and AS vendor
 FROM php:8.3-fpm-bookworm AS vendor
 
 WORKDIR /app
@@ -17,32 +17,29 @@ COPY composer.json composer.lock ./
 RUN composer install --no-dev --optimize-autoloader --no-scripts \
     && rm /usr/local/bin/composer
 
-# ========== 阶段2: 生成镜像 ==========
+# ========== Step 2: Generate the image ==========
 FROM php:8.3-fpm-bookworm AS production
 
-# 安装系统依赖 + Nginx + Supervisor
+# Install system dependencies. 
 RUN apt-get update && apt-get install -y \
         nginx supervisor \
         libzip-dev libicu-dev libpng-dev libjpeg-dev libfreetype6-dev \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
-
-# 安装 PHP 扩展（用镜像自带的 docker-php-ext-install，无需联网拉安装器）
-# pdo_sqlite 为 PHP 核心扩展，官方镜像默认已启用；此处显式安装确保 SQLite 单机部署可用
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j$(nproc) pdo_mysql pdo_sqlite opcache zip intl gd bcmath
 
-# 配置 PHP-FPM
+# Configure PHP-FPM
 RUN sed -i 's|^listen = .*|listen = /run/php/php-fpm.sock|' /usr/local/etc/php-fpm.d/www.conf \
     && echo "clear_env = no" >> /usr/local/etc/php-fpm.d/www.conf \
     && mkdir -p /run/php
 
-# 复制应用代码
+# Copy application code
 WORKDIR /app
 COPY --from=vendor /app/vendor ./vendor
 COPY . .
 
-# 构建时放入默认配置
+# Stores default configurations
 COPY config/docker/nginx.conf /etc/nginx/sites-available/default
 COPY config/docker/php-fpm.conf /usr/local/etc/php-fpm.d/zz-custom.conf
 COPY config/docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf

@@ -385,6 +385,7 @@
                                 <option value="gitlab_ci" data-i18n="build.mode_gitlab_ci">🐺 GitLab CI</option>
                                 <option value="both" data-i18n="build.mode_both">⚡ Jenkins + 🐺 GitLab CI</option>
                             </select>
+                            <code id="build-mode-value" style="font-size:12px;color:#374151;background:#f3f4f6;padding:2px 8px;border-radius:4px;font-family:monospace;">—</code>
                             <span id="build-mode-status" style="font-size:12px;color:#16a34a;display:none;" data-i18n="build.mode_saved">✅ 已保存</span>
                         </div>
                         <p style="text-align:center;font-size:11px;color:#9ca3af;margin-top:8px;" data-i18n="build.mode_hint">
@@ -531,7 +532,9 @@
                                     <th data-i18n="perm.key">权限键</th>
                                     <th data-i18n="perm.description">描述</th>
                                     <th data-i18n="perm.parent_key">父级键</th>
-                                    <th data-i18n="perm.created_at">创建时间</th>
+                                    <th data-i18n="perm.type">类型</th>
+                                    <th data-i18n="perm.created_at">注册时间</th>
+                                    <th data-i18n="user.actions">操作</th>
                                 </tr>
                             </thead>
                             <tbody id="perm-list-tbody"></tbody>
@@ -605,6 +608,7 @@
                                 <tr>
                                     <th data-i18n="implied.source_key">源权限</th>
                                     <th data-i18n="implied.target_key">目标权限</th>
+                                    <th data-i18n="perm.type">类型</th>
                                     <th data-i18n="user.actions">操作</th>
                                 </tr>
                             </thead>

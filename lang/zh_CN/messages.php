@@ -451,8 +451,13 @@ return [
     'perm.key'             => '权限键',
     'perm.description'     => '描述',
     'perm.parent_key'      => '父级键',
-    'perm.created_at'      => '创建时间',
+    'perm.type'            => '类型',
+    'perm.builtin'         => '内置',
+    'perm.registered'      => '注册',
+    'perm.created_at'      => '注册时间',
     'perm.no_permissions'  => '暂无权限数据',
+    'perm.confirm_delete'  => '确定删除此权限？将同时清理其角色与隐含规则关联。',
+    'perm.delete_ok'       => '权限已删除',
 
     // 权限注册
     'perm.register_title'  => '➕ 权限注册',
@@ -480,6 +485,7 @@ return [
     'implied.confirm_delete'=> '确定删除此隐含规则？',
     'implied.add_ok'       => '隐含规则添加成功',
     'implied.delete_ok'    => '隐含规则已删除',
+    'implied.builtin_protected' => '系统内置隐含规则不可删除',
 
     // API Token 管理
     'api_token.menu'            => 'API 管理',

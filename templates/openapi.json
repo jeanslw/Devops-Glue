@@ -325,7 +325,8 @@
           "perm_key": { "type": "string", "description": "权限键，格式：xx.yyy", "example": "cd.deploy-manage" },
           "description": { "type": "string", "description": "权限描述（i18n 兜底用）", "example": "Deploy Management" },
           "parent_key": { "type": "string", "nullable": true, "description": "父级权限键，用于层级菜单展示", "example": "cd.notification-manage" },
-          "created_at": { "type": "string", "format": "date-time", "nullable": true, "example": "2026-08-07 12:34:56" }
+          "created_at": { "type": "string", "format": "date-time", "nullable": true, "description": "注册时间，内置权限为 null", "example": "2026-08-07 12:34:56" },
+          "is_builtin": { "type": "boolean", "description": "是否内置权限（内置不可删除）", "example": false }
         }
       },
       "ImpliedRule": {
@@ -351,6 +352,14 @@
               "items": { "type": "string" }
             },
             "example": { "cd.bot": ["cd.notification-manage"], "cd.deploy.single": ["cd.deploy-manage"] }
+          },
+          "builtin_implied": {
+            "type": "object",
+            "description": "内置隐含规则映射（种子数据，不可删除）：source_key → [target_key,...]，用于前端区分内置/用户添加",
+            "additionalProperties": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
           }
         }
       },
