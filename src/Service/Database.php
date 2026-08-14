@@ -310,6 +310,8 @@ class Database
             context {$VARCHAR} NOT NULL,
             description TEXT,
             tag {$VARCHAR} DEFAULT '',
+            writeback_status {$VARCHAR} DEFAULT '',
+            writeback_message TEXT,
             created_at {$TS_TYPE} DEFAULT ({$NOW})
         ){$ENGINE}");
         if (!self::columnExists(\App\Config\AppConfig::TABLE_SECURITY_CHECKS, 'tag')) {

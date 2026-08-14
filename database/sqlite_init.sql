@@ -63,15 +63,17 @@ CREATE TABLE IF NOT EXISTS admin_users (
 
 -- ── 7. ci_security_checks（安全扫描审计）──
 CREATE TABLE IF NOT EXISTS ci_security_checks (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    project       TEXT NOT NULL,
-    sha           TEXT NOT NULL,
-    check_type    TEXT NOT NULL,
-    state         TEXT NOT NULL,
-    context       TEXT NOT NULL,
-    description   TEXT,
-    tag           TEXT DEFAULT '',
-    created_at    TEXT DEFAULT (datetime('now','localtime'))
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    project           TEXT NOT NULL,
+    sha               TEXT NOT NULL,
+    check_type        TEXT NOT NULL,
+    state             TEXT NOT NULL,
+    context           TEXT NOT NULL,
+    description       TEXT,
+    tag               TEXT DEFAULT '',
+    writeback_status  TEXT DEFAULT '',
+    writeback_message TEXT,
+    created_at        TEXT DEFAULT (datetime('now','localtime'))
 );
 
 -- ── 8. roles（角色）──
@@ -125,11 +127,9 @@ CREATE INDEX IF NOT EXISTS idx_security_checks_project    ON ci_security_checks(
 CREATE INDEX IF NOT EXISTS idx_security_checks_sha        ON ci_security_checks(sha);
 
 -- =============================================================
--- 迁移（已有数据库增量更新；列已存在时会报错，可忽略）
+-- 迁移说明
 -- =============================================================
--- 使用 INSERT OR IGNORE 模拟 ALTER TABLE IF NOT EXISTS
--- 如果列已存在会静默忽略（实际执行仍会报错，但幂等运行下无影响）
-
--- ci_pipeline_tags 增量列（可选，报错忽略）
-ALTER TABLE ci_pipeline_tags ADD COLUMN harbor_repository TEXT;
-ALTER TABLE ci_pipeline_tags ADD COLUMN status TEXT DEFAULT '';
+-- 已有数据库的增量字段由应用启动时 Database::ensureTables()
+-- 幂等补列（columnExists 检测后再 ALTER），此处不再放裸 ALTER，
+-- 避免重复执行时报 "duplicate column name" 刷屏。
+-- 新建库直接使用上方 CREATE TABLE 的完整结构即可。

@@ -3,6 +3,10 @@
 ## v2.5.1 (2026-08-13)
 - **DB bootstrap fix** — Restored "run schema/seed only on first boot" semantics; no more per-request redundant writes (regression from the Slim4 refactor).
 - **Idempotent migrations** — `ALTER ... ADD COLUMN` now checks column existence, eliminating the flood of `Duplicate column name` error logs.
+- **Security audit write-back** — Commit status write-back results (success / failed / skipped) are now recorded in `ci_security_checks` and surfaced in the admin security audit page.
+- **Audit page i18n fix** — The state / write-back columns no longer render raw English i18n keys; translation now happens lazily at render time.
+- **Fresh-schema init scripts** — `mysql_init.sql` / `sqlite_init.sql` now create the complete schema in one shot (including the write-back columns); removed the migration stored procedures.
+- **Homepage API card** — Replaced the "branch & param visualization" feature card with an "Open API" card (RESTful API + Swagger + token/scopes).
 
 ## v2.5.0 (2026-08-13)
 - **API Token management** — Added API token feature: creation (`dg_` prefix + 64 hex chars), listing, and scope query.

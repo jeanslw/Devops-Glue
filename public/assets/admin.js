@@ -1239,9 +1239,9 @@ async function deleteMap(jobName) {
 const SEC_API = '/api/admin/security_checks';
 let secPage = 1, secTotalPages = 1, secDebounce = null;
 const STATE_ICONS = {success:'✅',failed:'❌',error:'⚠️',pending:'⏳'};
-const STATE_LABELS = {success:__.t('security.passed'),failed:__.t('security.failed'),error:__.t('security.error'),pending:__.t('security.pending')};
+const STATE_LABELS = {success:'security.passed',failed:'security.failed',error:'security.error',pending:'security.pending'};
 const WB_ICONS = {success:'✅', failed:'❌', skipped:'⏭️'};
-const WB_LABELS = {success:__.t('security.writeback_success'), failed:__.t('security.writeback_failed'), skipped:__.t('security.writeback_skipped')};
+const WB_LABELS = {success:'security.writeback_success', failed:'security.writeback_failed', skipped:'security.writeback_skipped'};
 
 function secOnFilterChange() {
     clearTimeout(secDebounce);
@@ -1291,13 +1291,13 @@ async function loadSecurityChecks() {
             em.style.display = 'none'; tw.style.display = 'block';
             document.getElementById('sec-tbody').innerHTML = checks.map(c => {
                 const icon = STATE_ICONS[c.state] || '❓';
-                const label = STATE_LABELS[c.state] || c.state || '—';
+                const label = (STATE_LABELS[c.state] ? __.t(STATE_LABELS[c.state]) : c.state) || '—';
                 const cls = c.state === 'success' ? 'ok' : c.state === 'failed' ? 'err' : 'off';
                 const shaShort = (c.sha || '').substring(0, 8);
                 const time = (c.created_at || '').replace('T',' ').substring(0, 19);
                 const wb = c.writeback_status || '';
                 const wbCell = wb
-                    ? `<span class="svc-stat ${wb === 'success' ? 'ok' : wb === 'failed' ? 'err' : 'off'}" title="${esc(c.writeback_message || '')}">${WB_ICONS[wb] || ''} ${WB_LABELS[wb] || wb}</span>`
+                    ? `<span class="svc-stat ${wb === 'success' ? 'ok' : wb === 'failed' ? 'err' : 'off'}" title="${esc(c.writeback_message || '')}">${WB_ICONS[wb] || ''} ${WB_LABELS[wb] ? __.t(WB_LABELS[wb]) : wb}</span>`
                     : '<span style="color:#9ca3af;">—</span>';
                 return `<tr>
                     <td style="font-size:12px;white-space:nowrap;color:#6b7280;">${esc(time)}</td>

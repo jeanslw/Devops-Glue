@@ -3,3 +3,17 @@
 *.js linguist-language=php
 *.css linguist-language=php
 *.html linguist-language=php
+
+# 二进制文件不做行尾归一化，避免 Git 把 PNG/ICO 等当作文本损坏（PNG 头部含 0d0a 魔数）
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.bmp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.pdf binary

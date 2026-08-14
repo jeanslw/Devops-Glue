@@ -416,7 +416,8 @@ class BuildController extends BaseController
             $stmt = $pdo->prepare($sql);
             $stmt->execute([$project, $sha, $checkType, $state, $context, $description, $tag, $writebackStatus, $writebackMessage]);
         } catch (\Exception $e) {
-            // 静默失败，不影响主流程
+            // 静默失败，不影响主流程，但记录日志便于排查（例如列缺失导致 INSERT 失败）
+            \App\Helper\Log::exception($e);
         }
     }
 
