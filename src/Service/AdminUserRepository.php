@@ -25,15 +25,22 @@ class AdminUserRepository
         $stmt->execute([$username, $passwordHash, $role, $systems]);
     }
 
-    public function upsertPassword(string $username, string $passwordHash): void
+    public function updatePassword(string $username, string $passwordHash): void
     {
         // 只更新密码，绝不能用 REPLACE INTO / INSERT OR REPLACE ——
         // 那会整行删除重建，把 role/systems 回退到列默认值（super_admin 被降级成 admin）。
-        $this->pdo->prepare(
+        $stmt = $this->pdo->prepare(
             "UPDATE " . AppConfig::TABLE_ADMIN_USERS
             . " SET password_hash = ?, updated_at = " . Database::sqlNow()
             . " WHERE username = ?"
-        )->execute([$passwordHash, $username]);
+        );
+        $stmt->execute([$passwordHash, $username]);
+        // 防御：调用方已先校验用户存在，此处 rowCount 必须为 1；
+        // 若为 0（用户被并发删除 / 用户名大小写不匹配）绝不静默吞掉。
+        // 新 bcrypt 哈希必然与旧值不同，不存在"值未变导致 rowCount=0"的误报。
+        if ($stmt->rowCount() !== 1) {
+            throw new \RuntimeException("updatePassword: 未命中用户 {$username}");
+        }
     }
 
     public function userExists(string $username): bool
@@ -108,7 +115,8 @@ class AdminUserRepository
     {
         $cnt = (int)$pdo->query("SELECT count(*) c FROM " . AppConfig::TABLE_ADMIN_USERS)->fetch()['c'];
         if ($cnt === 0) {
-            $user = $_ENV['ADMIN_USER'] ?? 'admin';
+            // 统一小写存储，与登录/建号规范化一致（SQLite 大小写敏感）
+            $user = strtolower($_ENV['ADMIN_USER'] ?? 'admin');
             $pass = $_ENV['ADMIN_PASSWORD'] ?? '';
             if ($pass !== '') {
                 $hash = password_hash($pass, PASSWORD_BCRYPT);
@@ -117,7 +125,7 @@ class AdminUserRepository
             }
         }
 
-        $rootUser = $_ENV['ADMIN_USER'] ?? 'admin';
+        $rootUser = strtolower($_ENV['ADMIN_USER'] ?? 'admin');
         $pdo->prepare("UPDATE " . AppConfig::TABLE_ADMIN_USERS . " SET role = ? WHERE username = ? AND role = ?")
             ->execute([AppConfig::ROLE_SUPER_ADMIN, $rootUser, AppConfig::ROLE_ADMIN]);
     }

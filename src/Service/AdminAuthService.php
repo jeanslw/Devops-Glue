@@ -71,12 +71,12 @@ class AdminAuthService
             // DB 可访问：仅首次部署（无任何账号）才接受 .env 密码，与 authenticate 保持一致
             if ($this->hasNoAdminUsers()) {
                 $cred = $this->config->getAdminCredentials();
-                return $username === $cred['user'] && $password === $cred['password'] && $password !== '';
+                return strtolower($username) === strtolower($cred['user']) && $password === $cred['password'] && $password !== '';
             }
         } catch (\Throwable $e) {
             // DB 不可访问：接受 .env 密码作为灾难恢复
             $cred = $this->config->getAdminCredentials();
-            return $username === $cred['user'] && $password === $cred['password'] && $password !== '';
+            return strtolower($username) === strtolower($cred['user']) && $password === $cred['password'] && $password !== '';
         }
         return false;
     }
@@ -84,7 +84,7 @@ class AdminAuthService
     private function authenticateEnvRoot(string $username, string $password): bool
     {
         $cred = $this->config->getAdminCredentials();
-        return $username === $cred['user']
+        return strtolower($username) === strtolower($cred['user'])
             && $password === $cred['password']
             && $password !== '';
     }

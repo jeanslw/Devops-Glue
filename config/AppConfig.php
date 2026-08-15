@@ -506,7 +506,9 @@ class AppConfig
      */
     public function getRootAdminUser(): string
     {
-        return $this->config['admin']['user'] ?? 'admin';
+        // 统一小写：与登录输入、建号、seedAdminFromEnv 的规范化保持一致，
+        // 否则根账号保护比对（===）在大小写不一致时会被绕过
+        return strtolower($this->config['admin']['user'] ?? 'admin');
     }
 
     /**

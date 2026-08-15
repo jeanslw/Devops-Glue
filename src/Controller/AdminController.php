@@ -169,7 +169,8 @@ class AdminController extends BaseController
     {
         $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
         // 请求体字段统一为 username（与用户管理接口一致）；保留 user 作为兼容别名
-        $user = trim($body['username'] ?? $body['user'] ?? '');
+        // 用户名统一小写规范化，与建号/种子一致（SQLite 大小写敏感，防止跨驱动行为分裂）
+        $user = strtolower(trim($body['username'] ?? $body['user'] ?? ''));
         $pass = $body['password'] ?? '';
         if ($user === '' || $pass === '') {
             return $this->jsonError($response, 'auth.wrong_credentials', 401);
@@ -254,7 +255,7 @@ class AdminController extends BaseController
 
             $hash = password_hash($newPass, PASSWORD_BCRYPT);
             $repository = new \App\Service\AdminUserRepository($this->pdo);
-            $repository->upsertPassword($username, $hash);
+            $repository->updatePassword($username, $hash);
 
             // 只踢当前用户的 token（而非所有用户）
             try {
@@ -608,7 +609,8 @@ class AdminController extends BaseController
         }
 
         $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
-        $username = trim($body['username'] ?? '');
+        // 统一小写存储，与登录规范化一致（SQLite 大小写敏感）
+        $username = strtolower(trim($body['username'] ?? ''));
         $password = $body['password'] ?? '';
         $role     = trim($body['role'] ?? AppConfig::ROLE_DEPLOYER);
         $systems  = trim($body['systems'] ?? AppConfig::SYSTEM_CD);
@@ -756,7 +758,7 @@ class AdminController extends BaseController
                 return $this->jsonError($response, 'user.cannot_edit_root', 403);
             }
 
-            $this->adminUserRepository->upsertPassword($targetUser, password_hash($newPass, PASSWORD_BCRYPT));
+            $this->adminUserRepository->updatePassword($targetUser, password_hash($newPass, PASSWORD_BCRYPT));
 
             return $this->output($response, ['success' => true, 'username' => $targetUser], $request);
         } catch (\Exception $e) {
