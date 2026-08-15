@@ -1,4 +1,5 @@
 <?php
+use Slim\App;
 use Slim\Routing\RouteCollectorProxy;
 use App\Controller\GitController;
 use App\Controller\MainController;
@@ -6,6 +7,12 @@ use App\Controller\HarborController;
 use App\Controller\AdminController;
 use App\Controller\BuildController;
 use App\Middleware\AuthMiddleware;
+
+// 本文件由 public/index.php 在 $app 就绪后直接 require（不走容器）。
+// 防御：$app 缺失/类型错误时在启动阶段显式失败，而不是留下 undefined variable 运行时错。
+if (!isset($app) || !$app instanceof App) {
+    throw new \RuntimeException('routes.php 必须由应用入口在 $app（Slim\App）就绪后加载');
+}
 
 // 管理页面
 $app->get('/admin', function ($request, $response) {

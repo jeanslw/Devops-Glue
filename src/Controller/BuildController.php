@@ -535,7 +535,8 @@ class BuildController extends BaseController
                         $state  = 'pending';
                         $result = ['success' => false, 'message' => $scan['message'] ?? '扫描功能未启用'];
                     } else {
-                        $vulns = $scan['vulnerabilities'] ?? $scan ?? [];
+                        // getScanReport 签名返回 array（永不为 null），?? [] 是不可达的死代码
+                        $vulns = $scan['vulnerabilities'] ?? $scan;
                         $vulnCount = is_array($vulns) ? count($vulns) : 0;
                         $state = $vulnCount > 0 ? 'failed' : 'success';
                     }
