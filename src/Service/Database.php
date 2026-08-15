@@ -474,12 +474,25 @@ class Database
         }
 
         // 种子数据：系统角色（幂等，is_system 由 DEFAULT_SYSTEM_ROLES 决定）
-        $roleUpsert = self::sqlUpsert(\App\Config\AppConfig::TABLE_ROLES, 'name, description, is_system', '?, ?, ?');
-        $roleStmt = $pdo->prepare($roleUpsert);
+        // 不能用 sqlUpsert（REPLACE INTO / INSERT OR REPLACE）：roles.name 是 UNIQUE，
+        // REPLACE 遇冲突会删旧行插新行 → 自增 id 变化 → role_permissions 里引用旧 id
+        // 的行全部变成孤儿（历史上每次 bootstrap 都会遗留一组孤儿行）。
+        // 改为查得到就 UPDATE（保留 id），查不到才 INSERT。
+        $findRoleStmt   = $pdo->prepare("SELECT id FROM " . \App\Config\AppConfig::TABLE_ROLES . " WHERE name = ?");
+        $insertRoleStmt = $pdo->prepare("INSERT INTO " . \App\Config\AppConfig::TABLE_ROLES . " (name, description, is_system) VALUES (?, ?, ?)");
+        $updateRoleStmt = $pdo->prepare("UPDATE " . \App\Config\AppConfig::TABLE_ROLES . " SET description = ?, is_system = ? WHERE id = ?");
         foreach (\App\Config\AppConfig::DEFAULT_ROLES as $roleName => $perms) {
             $roleDesc = ''; // 不硬编码描述，由前端 i18n（user.role_{name}）渲染
             $isSystem = in_array($roleName, \App\Config\AppConfig::DEFAULT_SYSTEM_ROLES) ? 1 : 0;
-            try { $roleStmt->execute([$roleName, $roleDesc, $isSystem]); } catch (\Exception $e) {}
+            try {
+                $findRoleStmt->execute([$roleName]);
+                $roleId = $findRoleStmt->fetchColumn();
+                if ($roleId === false) {
+                    $insertRoleStmt->execute([$roleName, $roleDesc, $isSystem]);
+                } else {
+                    $updateRoleStmt->execute([$roleDesc, $isSystem, (int)$roleId]);
+                }
+            } catch (\Exception $e) {}
         }
 
         // 种子数据：角色↔权限（只同步系统角色，不碰自定义角色）
@@ -493,6 +506,14 @@ class Database
                 try { $rpStmt->execute([$roleName, $permKey]); } catch (\Exception $e) {}
             }
         }
+
+        // 防御：清扫孤儿行（旧版 REPLACE INTO 换 id 遗留的 role_id 悬空引用）。
+        // 角色种子已在上方完成，此刻 roles 表必然非空；role_id NOT IN (roles.id)
+        // 正是孤儿定义，不会误删有效行。随每次种子执行，存量库会在下次发版自愈。
+        $pdo->exec(
+            "DELETE FROM " . \App\Config\AppConfig::TABLE_ROLE_PERMISSIONS
+            . " WHERE role_id NOT IN (SELECT id FROM " . \App\Config\AppConfig::TABLE_ROLES . ")"
+        );
     }
 
     // ── 管理员种子 ──
