@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Devops-Glue API",
-    "version": "2.5.1",
+    "version": "2.6.0",
     "description": "DevOps 工具链集成接口 —— Jenkins/GitLab CI、GitLab/Gitee/GitHub/Gitea、Harbor 统一 API。",
     "contact": {
       "email": "jeanslw@qq.com"
@@ -778,6 +778,96 @@
           "200": {
             "description": "扫描同步结果",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ScanSyncResult" } } }
+          },
+          "400": { "$ref": "#/components/responses/400" }
+        }
+      }
+    },
+    "/api/build/{path}/report": {
+      "post": {
+        "tags": ["Build"],
+        "summary": "自定义推送式 CI 构建结果单次上报",
+        "description": "custom_push 构建源专用：用户 CI 在构建完成后一次性上报终态结果（success/failed/aborted），无 pending/running 中间态。Devops-Glue 只存元数据与日志 URL 指针，不参与构建也不存日志内容。\n\nstatus=success 时必须带 tag，同步写入 ci_pipeline_tags（project、pipeline_iid、tag、finished_at、status）；CD 层通过现有 GET /api/build/{path}/tag 读取。\n\n请求体除控制字段（pipeline_iid / status / finished_at / started_at / ref / sha / exit_code / log_url / web_url / tag / harbor_repository）外，其余字段作为自定义构建参数一并存入 variables_json。",
+        "operationId": "buildReport",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" }, "example": "php/myapp" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["pipeline_iid", "status", "finished_at"],
+                "properties": {
+                  "pipeline_iid":      { "type": "integer", "example": 123, "description": "构建编号（必填，用户 CI 传入）" },
+                  "status":            { "type": "string", "enum": ["success", "failed", "aborted"], "example": "success", "description": "构建终态结果（必填）" },
+                  "finished_at":       { "type": "string", "format": "date-time", "example": "2026-08-18T10:05:12+08:00", "description": "构建完成时间（必填）" },
+                  "started_at":        { "type": "string", "format": "date-time", "example": "2026-08-18T10:00:00+08:00", "description": "构建开始时间（可选）" },
+                  "ref":               { "type": "string", "example": "main", "description": "构建分支/tag（可选）" },
+                  "sha":               { "type": "string", "example": "a1b2c3d4e5f6", "description": "commit SHA（可选）" },
+                  "exit_code":         { "type": "integer", "example": 0, "description": "构建退出码（可选）" },
+                  "log_url":           { "type": "string", "format": "uri", "example": "https://ci.example.com/build/123/log", "description": "日志 URL（仅存指针，Devops-Glue 不存日志内容）" },
+                  "web_url":           { "type": "string", "format": "uri", "example": "https://ci.example.com/build/123", "description": "用户 CI 构建页链接（可选）" },
+                  "tag":               { "type": "string", "example": "v1.0.0", "description": "镜像 tag（status=success 时必填，写入 ci_pipeline_tags；上报时校验该 tag 真实存在于 Harbor，不存在返回 400；failed/aborted 不需要）" },
+                  "harbor_repository": { "type": "string", "example": "team/myapp", "description": "Harbor 仓库路径（由 job_git_map 配置决定，body 传入会被忽略；project/repo 两段式，不接受 registry 地址/URL；上报时校验仓库与 tag 均真实存在于 Harbor，任一不存在返回 400）" },
+                  "env":               { "type": "string", "enum": ["dev", "staging", "prod"], "example": "prod", "description": "镜像目标环境（自定义变量，可选）" }
+                }
+              },
+              "examples": {
+                "构建成功上报（含 tag）": {
+                  "value": {
+                    "pipeline_iid": 123,
+                    "status": "success",
+                    "finished_at": "2026-08-18T10:05:12+08:00",
+                    "started_at": "2026-08-18T10:00:00+08:00",
+                    "sha": "a1b2c3d4e5f6",
+                    "ref": "main",
+                    "exit_code": 0,
+                    "log_url": "https://ci.example.com/build/123/log",
+                    "web_url": "https://ci.example.com/build/123",
+                    "tag": "v1.0.0",
+                    "env": "prod"
+                  }
+                },
+                "构建失败上报（无 tag）": {
+                  "value": {
+                    "pipeline_iid": 124,
+                    "status": "failed",
+                    "finished_at": "2026-08-18T10:05:12+08:00",
+                    "exit_code": 1,
+                    "log_url": "https://ci.example.com/build/124/log"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "上报成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "build_provider": { "type": "string", "example": "custom_push" },
+                    "pipeline_iid":   { "type": "integer", "example": 123 },
+                    "success":        { "type": "boolean", "example": true },
+                    "pipeline_id":    { "type": "integer", "example": 1, "description": "内部自增 id" },
+                    "action":         { "type": "string", "enum": ["created", "updated"], "example": "created", "description": "首次写入 created；重复上报覆盖 updated" }
+                  }
+                },
+                "example": {
+                  "build_provider": "custom_push",
+                  "pipeline_iid": 123,
+                  "success": true,
+                  "pipeline_id": 1,
+                  "action": "created"
+                }
+              }
+            }
           },
           "400": { "$ref": "#/components/responses/400" }
         }

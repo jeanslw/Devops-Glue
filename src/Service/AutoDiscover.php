@@ -28,17 +28,22 @@ class AutoDiscover
     {
         $buildMode = $this->mapping->buildMode();
 
-        // ⚠️ 关键安全约束：按当前构建模式严格隔离，Jenkins 和 GitLab CI 映射绝不允许互相干扰
+        // ⚠️ 关键安全约束：按当前构建模式严格隔离
         // - jenkins 模式：只参考 build_provider=jenkins 的已有记录去重
         // - gitlab_ci 模式：只参考 build_provider=gitlab_ci 的已有记录去重
-        // - both 模式：两类都纳入去重（归一化 remote 后互斥，同一仓库只挂一个 provider）
+        // - both 模式：jenkins + gitlab_ci 都纳入去重
+        // - custom_push_enabled 开启时：custom_push 记录也纳入去重（正交维度）
+        $cpEnabled = $this->config->getCustomPushEnabled();
         $activeRemotes = [];   // 归一化后的 key：host/path（统一格式，跨协议去重）
         $existingNames = [];
         foreach ($this->config->getJobGitMap() as $m) {
             $bp = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
 
             // 单 provider 模式：排斥对方 provider 的记录，杜绝交叉污染
-            if ($buildMode !== AppConfig::BUILD_MODE_BOTH && $bp !== $buildMode) continue;
+            if ($buildMode !== AppConfig::BUILD_MODE_BOTH && $bp !== $buildMode) {
+                // 但 custom_push 记录在 custom_push_enabled 时始终纳入去重
+                if (!($cpEnabled && $bp === AppConfig::PROVIDER_CUSTOM_PUSH)) continue;
+            }
 
             if (!empty($m['job_name'])) $existingNames[] = $m['job_name'];
             if (empty($m['git_remote'])) continue;
@@ -67,6 +72,15 @@ class AutoDiscover
             }
         }
 
+        // custom_push 开关开启时：扫描 Git 平台项目，build_provider 设为 custom_push
+        if ($cpEnabled) {
+            try {
+                $found = array_merge($found, $this->scanGitPlatforms($activeRemotes, $existingNames));
+            } catch (\Exception $e) {
+                $errors[] = 'Git: ' . $e->getMessage();
+            }
+        }
+
         if (!empty($errors)) {
             $found[] = ['entry' => ['job_name' => '__errors__'], 'source' => '_errors', '_errors' => $errors];
         }
@@ -78,13 +92,17 @@ class AutoDiscover
     {
         $saved = 0;
         $buildMode = $this->mapping->buildMode();
+        $cpEnabled = $this->config->getCustomPushEnabled();
         $maps  = $this->config->getJobGitMap();
 
         // 同样按模式隔离：只收集当前模式相关 provider 的 job_name，防止跨 provider 误判重复
         $names = [];
         foreach ($maps as $m) {
             $bp = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
-            if ($buildMode !== AppConfig::BUILD_MODE_BOTH && $bp !== $buildMode) continue;
+            if ($buildMode !== AppConfig::BUILD_MODE_BOTH && $bp !== $buildMode) {
+                // custom_push 记录在 custom_push_enabled 时始终纳入去重
+                if (!($cpEnabled && $bp === AppConfig::PROVIDER_CUSTOM_PUSH)) continue;
+            }
             if (!empty($m['job_name'])) $names[] = $m['job_name'];
         }
 
@@ -186,6 +204,63 @@ class AutoDiscover
         } catch (\Exception $e) {
             $this->logger?->warning('AutoDiscover GitLab CI 扫描失败', ['error' => $e->getMessage()]);
         }
+        return $found;
+    }
+
+    // ── Git 平台扫描（custom_push 模式专用） ──
+
+    /**
+     * 扫描已配置的 Git 平台项目，build_provider 统一设为 custom_push。
+     * 目前支持 GitLab（通过已有 gitlabClient）；其他平台可后续扩展。
+     */
+    private function scanGitPlatforms(array $activeRemotes, array $existingNames): array
+    {
+        $found = [];
+
+        // GitLab
+        $glCfg = $this->config->getGitlabConfig();
+        $base  = rtrim($glCfg['base_url'] ?? '', '/');
+        if (!empty($base) && $this->gitlabClient) {
+            try {
+                $test = $this->gitlabClient->get("{$base}/api/v4/user");
+                if ($test->getStatusCode() !== 401) {
+                    $page = 1;
+                    $seen = [];
+                    while ($page <= 10) {
+                        $resp = $this->gitlabClient->get("{$base}/api/v4/projects?per_page=100&page={$page}&membership=true&order_by=last_activity_at");
+                        $data = json_decode($resp->getBody(), true);
+                        if (!is_array($data) || empty($data)) break;
+
+                        foreach ($data as $p) {
+                            $path = $p['path_with_namespace'] ?? '';
+                            $remote = $p['http_url_to_repo'] ?? '';
+                            $rKey   = $remote ? $this->normalizeRemote($remote) : '';
+                            if ($rKey && in_array($rKey, $activeRemotes)) continue;
+                            if ($rKey && in_array($rKey, $seen)) continue;
+                            if (in_array($path, $existingNames)) continue;
+                            if ($rKey) $seen[] = $rKey;
+
+                            $found[] = ['entry' => [
+                                'job_name'       => $path,
+                                'build_provider' => AppConfig::PROVIDER_CUSTOM_PUSH,
+                                'git_platform'   => 'gitlab',
+                                'git_remote'     => $remote,
+                                'current_path'   => $path,
+                                'project_id'     => $p['id'] ?? null,
+                                'web_url'        => $p['web_url'] ?? '',
+                                'harbor_repository' => '',
+                            ], 'source' => 'gitlab'];
+                        }
+                        $page++;
+                    }
+                }
+            } catch (\Exception $e) {
+                $this->logger?->warning('AutoDiscover Git 平台扫描失败 (GitLab)', ['error' => $e->getMessage()]);
+            }
+        }
+
+        // TODO: GitHub / Gitee / Gitea 项目列表 API 对接（按需扩展）
+
         return $found;
     }
 

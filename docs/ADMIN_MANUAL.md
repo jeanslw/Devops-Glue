@@ -1,4 +1,4 @@
-# Devops-Glue API Admin Manual v2.5.1
+# Devops-Glue API Admin Manual v2.6
 
 > This manual is organized in a "from zero to usable" order, covering the installation, initialization, and full configuration of Devops-Glue API. Once you complete it in order, you will be able to: log in to the admin panel, connect CI / Git / Harbor platforms, configure build mode and mapping, manage permissions and roles, issue API tokens, and have the companion Devops-Glue CD call it correctly.
 
@@ -37,10 +37,11 @@ Devops-Glue API is a Slim4-based unified API layer that provides a single manage
 
 | Devops-Glue API | Devops-Glue CD |
 |:---:|:---:|
-| v2.5.1 | v1.3 |
+| v2.6 | v1.4 |
+| v2.5 | v1.3 |
 | v2.4 | v1.2 |
 
-> Version correspondence: Devops-Glue API v2.5.x maps to CD v1.3, and v2.4.x maps to CD v1.2. You can view each platform's API version on the admin panel's "Platform Versions" page.
+> Version correspondence: Devops-Glue API v2.6 maps to CD v1.4, v2.5 maps to CD v1.3, and v2.4 maps to CD v1.2. You can view each platform's API version on the admin panel's "Platform Versions" page.
 
 ---
 
@@ -224,6 +225,110 @@ On the "Build Mode" page, choose the build mode:
 
 This corresponds to `BUILD_MODE` in `.env`. First boot uses `.env`; afterwards you can switch directly in the admin panel.
 
+### Pull-based CI vs Push-based CI
+
+Devops-Glue supports two orthogonal CI paradigms:
+
+- **Pull-based CI**: controlled by `build_mode` (`jenkins` / `gitlab_ci` / `both`). Devops-Glue actively queries Jenkins / GitLab CI to pull build status, logs, and image tags.
+- **Push-based CI**: controlled by the independent boolean switch `custom_push_enabled`. Users trigger builds in their own CI scripts and push build status, log URLs, and image tags back to Devops-Glue. Devops-Glue only stores build metadata and log URL pointers — it **does not participate in build execution** and **does not store log content**.
+
+The two are independent and can be enabled simultaneously (e.g. `jenkins + custom_push`).
+
+> **Semantics note:** Push-based CI reuses the `/api/build/{path}/trigger` endpoint, but the endpoint's exact meaning is determined by the mapping's `build_provider` — a given `{path}` is bound to exactly one provider at a time, so the scenarios never conflict:
+>
+> | `build_provider` | `/trigger` semantics | Data direction |
+> |---|---|---|
+> | `jenkins` | Devops-Glue actively calls Jenkins to trigger a build | Outbound (Devops-Glue → Jenkins) |
+> | `gitlab_ci` | Devops-Glue actively calls GitLab to trigger a pipeline | Outbound (Devops-Glue → GitLab) |
+> | `custom_push` | User CI reports the **build result** (not a build trigger) | Inbound (CI → Devops-Glue) |
+>
+> The push-based flow uses a single endpoint: `report` (write the terminal build result + image tag, needs `build.report` scope).
+
+### Enabling Custom_Push
+
+No code changes needed — works out of the box:
+
+1. On the "Build Mode" page, check the **Custom_Push** checkbox. It is independent of the `build_mode` dropdown (which only has the three options `jenkins` / `gitlab_ci` / `both`).
+2. Register a provider in the `build.custom_providers` array of `config/settings.php`.
+
+Configuration example:
+
+```php
+'build' => [
+    'custom_providers' => [
+        [
+            'name'   => 'custom_push',
+            'class'  => 'App\\Service\\Build\\CustomPushBuildProvider',
+            'config' => [
+                'variables' => [
+                    'env'       => ['type' => 'choice', 'choices' => ['dev', 'staging', 'prod'], 'description' => 'Target environment for the built image (optional)', 'required' => false],
+                ],
+            ],
+        ],
+    ],
+],
+```
+
+- `CustomPushBuildProvider` implements `BuildProviderInterface` and is auto-discovered and registered on startup.
+- `variables` defines the custom variables allowed in reports; extra JSON keys outside the control fields are stored in `variables_json`.
+- Build records are stored in the new `ci_custom_builds` table with `(job_name, pipeline_iid)` as the unique key; `pipeline_iid` must be an integer.
+- Duplicate reports with the same `(job_name, pipeline_iid)` overwrite (UPDATE) the existing record.
+
+### Reporting flow (single report)
+
+Push-based CI reports the build result in **one call** — the terminal status and (on success) the image tag are written together:
+
+| Endpoint | When | Required fields |
+|---|---|---|
+| `POST /api/build/{path}/report` | After the build (and image artifact) completes | `pipeline_iid` + `status` + `finished_at` |
+
+> **Required pillars (missing any of them → 400):**
+> - `pipeline_iid`: the correlation key, hard-validated (400 if missing).
+> - `status`: the terminal build result (`success` / `failed` / `aborted`), hard-validated (400 if missing or not terminal).
+> - `finished_at`: the build completion time, hard-validated (400 if missing).
+> - `tag`: the image tag — required when `status=success`, hard-validated (400 if missing on success).
+
+`{path}` is the mapping's `current_path`. All JSON keys use lowercase snake_case.
+
+#### `POST /api/build/{path}/report` — Report terminal result
+
+Called after the build completes (or is aborted); writes the terminal state directly (no `pending`/`running` intermediate states). Requires an API token with the `build.report` scope.
+
+| Field | Required | Type / values | Description |
+|---|---|---|---|
+| `pipeline_iid` | ✅ | integer | Pipeline ID; combined with `job_name` it forms the unique key |
+| `status` | ✅ | `success` / `failed` / `aborted` | Terminal build result |
+| `finished_at` | ✅ | timestamp string | Build completion time |
+| `started_at` | | timestamp string | Start time (optional) |
+| `ref` | | string | branch or ref |
+| `sha` | | string | commit SHA |
+| `exit_code` | | int | Exit code |
+| `log_url` | | URL | Log URL pointer — Devops-Glue only stores the link; it does not fetch or store log content |
+| `web_url` | | URL | Pipeline web entry |
+| `tag` | ✅ (success) | string | Image tag — required when `status=success`; written to `ci_pipeline_tags` |
+| `harbor_repository` | — | string | Harbor repo — resolved from `job_git_map` (body value ignored); must be `project/repo`; both repo and `tag` verified to actually exist in Harbor on report (400 if either missing) |
+| (custom variables) | | — | Any other JSON keys are stored in `variables_json` (e.g. `env`) |
+
+> **Tag write semantics:** when `status=success`, `tag` and a resolvable `harbor_repository` are mandatory, and `ci_pipeline_tags` is written (`project`, `pipeline_iid`, `tag`, `harbor_repository`, `finished_at` as `created_at`, `status`), read by the deployment (CD) layer. Non-successful builds never write a tag, so the deployment system never picks up a failed build's tag.
+
+### Reporting example
+
+```bash
+BASE="http://localhost:8080/api/build/tools/runner-ci"
+TOKEN="<API token with build.report scope>"
+
+# Report the terminal result (and image tag) in one call
+curl -X POST "$BASE/report" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"pipeline_iid": 12345, "status": "success", "finished_at": "2026-08-18 18:05:30", "started_at": "2026-08-18 18:00:00", "ref": "master", "sha": "a3f8c1d2", "exit_code": 0, "tag": "master-a3f8c1d2", "env": "staging"}'
+```
+
+### Admin Panel and Auto-discovery
+
+- The Custom_Push status card on the "Monitor" page shows ✅ with provider names when configured, or ⚪ "Not configured" when unconfigured.
+- After enabling Custom_Push, auto-discovery scans Git platforms for custom_push pipelines.
+- After frontend page changes, perform a **hard refresh (Ctrl+F5)** in the browser; restart the service after backend configuration changes.
+
 ---
 
 ## 13. Configure Mapping
@@ -323,7 +428,7 @@ Go to "API Management" (requires the relevant permission) and choose the require
 | `harbor.scan` | Trigger Harbor image scans |
 | `build.read` | Read-only: build pipelines / logs / branches |
 | `build.write` | Write: trigger / retry / cancel builds |
-| `build.report` | Report: scan-sync / commit-status |
+| `build.report` | Report: scan-sync / commit-status / report |
 
 > **Note:**
 > - The token is shown in plaintext only once at creation; save it immediately.

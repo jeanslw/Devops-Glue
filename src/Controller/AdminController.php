@@ -511,6 +511,8 @@ class AdminController extends BaseController
             'source'        => $this->config->getBuildModeSource(),
             'has_jenkins'   => $hasJenkins,
             'has_gitlab_ci' => $hasGitlabCi,
+            'custom_push_enabled' => $this->config->getCustomPushEnabled(),
+            'custom_providers' => array_column($this->config->getCustomBuildProviders(), 'name'),
         ], $request);
     }
 
@@ -525,35 +527,47 @@ class AdminController extends BaseController
         }
         $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
         $mode = trim($body['mode'] ?? '');
+        $cpEnabled = !empty($body['custom_push_enabled']);
+
         if (!in_array($mode, [AppConfig::BUILD_MODE_JENKINS, AppConfig::BUILD_MODE_GITLAB_CI, AppConfig::BUILD_MODE_BOTH])) {
             return $this->jsonError($response, 'build.mode_required', 400);
         }
 
-        // 拒绝不可用的 Provider
+        // 拒绝不可用的 Provider（仅校验单 provider 模式；both 始终允许，配合 custom_push 可无拉取式 CI）
         $jenkinsCfg = $this->config->getJenkinsConfig();
         $hasJenkins = !empty($jenkinsCfg['url']);
         $hasGitlab = $this->config->isPlatformConfigured('gitlab');
         $glCfg = $hasGitlab ? $this->config->getGitlabConfig() : [];
         $hasGitlabCi = $hasGitlab && !empty($glCfg['base_url']) && !empty($glCfg['token']);
 
-        if (($mode === AppConfig::BUILD_MODE_JENKINS || $mode === AppConfig::BUILD_MODE_BOTH) && !$hasJenkins) {
+        if ($mode === AppConfig::BUILD_MODE_JENKINS && !$hasJenkins) {
             return $this->jsonError($response, 'build.jenkins_unavail', 400);
         }
-        if (($mode === AppConfig::BUILD_MODE_GITLAB_CI || $mode === AppConfig::BUILD_MODE_BOTH) && !$hasGitlabCi) {
+        if ($mode === AppConfig::BUILD_MODE_GITLAB_CI && !$hasGitlabCi) {
             return $this->jsonError($response, 'build.gitlab_ci_unavail', 400);
+        }
+
+        // custom_push 开启时要求至少配了一个 custom_providers
+        if ($cpEnabled && empty($this->config->getCustomBuildProviders())) {
+            return $this->jsonError($response, 'build.custom_push_no_provider', 400);
         }
 
         try {
             $this->config->setBuildMode($mode);
+            $this->config->setCustomPushEnabled($cpEnabled);
 
-            // 切到单 provider 模式时，将对方 provider 的 active 记录降为 pending
-            // 杜绝切模式后对方记录仍处于启用状态，避免意外参与构建或干扰自动发现
+            // 切到单 provider 模式时，将其他 provider 的 active 记录降为 pending
             if ($mode === AppConfig::BUILD_MODE_JENKINS || $mode === AppConfig::BUILD_MODE_GITLAB_CI) {
-                $otherProvider = ($mode === AppConfig::BUILD_MODE_JENKINS) ? AppConfig::PROVIDER_GITLAB_CI : AppConfig::PROVIDER_JENKINS;
+                $otherProviders = match ($mode) {
+                    AppConfig::BUILD_MODE_JENKINS      => [AppConfig::PROVIDER_GITLAB_CI],
+                    AppConfig::BUILD_MODE_GITLAB_CI   => [AppConfig::PROVIDER_JENKINS],
+                    default                            => [],
+                };
                 $maps = $this->config->getJobGitMap();
                 $changed = false;
                 foreach ($maps as &$m) {
-                    if (($m['build_provider'] ?? AppConfig::PROVIDER_JENKINS) === $otherProvider && ($m['status'] ?? AppConfig::STATUS_ACTIVE) !== AppConfig::STATUS_PENDING) {
+                    $bp = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
+                    if (in_array($bp, $otherProviders, true) && ($m['status'] ?? AppConfig::STATUS_ACTIVE) !== AppConfig::STATUS_PENDING) {
                         $m['status'] = AppConfig::STATUS_PENDING;
                         $changed = true;
                     }
@@ -564,9 +578,86 @@ class AdminController extends BaseController
                 }
             }
 
-            return $this->output($response, ['success' => true, 'mode' => $mode], $request);
+            // custom_push 关闭时，将 custom_push 的 active 记录降为 pending
+            if (!$cpEnabled) {
+                $maps = $this->config->getJobGitMap();
+                $changed = false;
+                foreach ($maps as &$m) {
+                    if (($m['build_provider'] ?? '') === AppConfig::PROVIDER_CUSTOM_PUSH
+                        && ($m['status'] ?? AppConfig::STATUS_ACTIVE) !== AppConfig::STATUS_PENDING) {
+                        $m['status'] = AppConfig::STATUS_PENDING;
+                        $changed = true;
+                    }
+                }
+                if ($changed) {
+                    $this->config->saveJobGitMap($maps);
+                    $this->invalidateTopologyCache();
+                }
+            }
+
+            return $this->output($response, ['success' => true, 'mode' => $mode, 'custom_push_enabled' => $cpEnabled], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.save_failed') . ': ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * GET /api/admin/custom_builds — Custom_Push 构建记录列表（「push 记录」Tab）
+     */
+    public function customBuildList(Request $request, Response $response): Response
+    {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_MODE_EDIT)) {
+            return $resp;
+        }
+
+        $params  = $request->getQueryParams();
+        $page    = max(1, (int)($params['page'] ?? 1));
+        $perPage = max(1, min(100, (int)($params['per_page'] ?? 20)));
+
+        try {
+            $pdo = $this->pdo;
+
+            // 总数按构建记录计（不 JOIN tag，避免一对多重复计数）
+            $total = (int) $pdo->query("SELECT count(*) FROM " . AppConfig::TABLE_CUSTOM_BUILDS)->fetchColumn();
+
+            $totalPages = max(1, (int) ceil($total / $perPage));
+            $page = min($page, $totalPages);
+            $offset = ($page - 1) * $perPage;
+
+            $stmt = $pdo->prepare(
+                'SELECT b.job_name, b.pipeline_iid, b.status, b.sha, b.variables_json, b.log_url, b.web_url, b.finished_at,
+                        t.tag
+                 FROM ' . AppConfig::TABLE_CUSTOM_BUILDS . ' b
+                 LEFT JOIN ' . AppConfig::TABLE_PIPELINE_TAGS . ' t
+                   ON t.project = b.job_name AND t.pipeline_iid = b.pipeline_iid
+                 ORDER BY b.finished_at DESC, b.pipeline_iid DESC
+                 LIMIT ' . $perPage . ' OFFSET ' . $offset
+            );
+            $stmt->execute();
+            $records = array_map(function (array $r): array {
+                return [
+                    'job_name'       => $r['job_name'] ?? '',
+                    'pipeline_iid'   => (int) ($r['pipeline_iid'] ?? 0),
+                    'status'         => $r['status'] ?? '',
+                    'tag'            => $r['tag'] ?? '',
+                    'sha'            => $r['sha'] ?? '',
+                    'variables_json' => $r['variables_json'] ?? '',
+                    'log_url'        => $r['log_url'] ?? '',
+                    'web_url'        => $r['web_url'] ?? '',
+                    'finished_at'    => $r['finished_at'] ?? '',
+                ];
+            }, $stmt->fetchAll());
+
+            return $this->output($response, [
+                'records'     => $records,
+                'total'       => $total,
+                'page'        => $page,
+                'per_page'    => $perPage,
+                'total_pages' => $totalPages,
+            ], $request);
+        } catch (\Exception $e) {
+            return $this->jsonError($response, $this->__('push.load_failed') . ': ' . $e->getMessage(), 500);
         }
     }
 
@@ -1365,6 +1456,12 @@ class AdminController extends BaseController
         if (!isset($entry['job_name'])) {
             $entry['job_name'] = '';
         }
+        // 未启用 Custom_Push 时，新增/编辑为 custom_push 的映射强制降为待定，避免「关了开关仍能新增一条 active」
+        if (($entry['build_provider'] ?? '') === AppConfig::PROVIDER_CUSTOM_PUSH
+            && !$this->config->getCustomPushEnabled()
+            && ($entry['status'] ?? AppConfig::STATUS_ACTIVE) === AppConfig::STATUS_ACTIVE) {
+            $entry['status'] = AppConfig::STATUS_PENDING;
+        }
         return $entry;
     }
 
@@ -1379,6 +1476,8 @@ class AdminController extends BaseController
             foreach ($modes as $mode) {
                 $pdo->prepare("DELETE FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key = ?")->execute([AppConfig::CACHE_KEY_MAP_LIST_PREFIX . $mode]);
             }
+            // custom_push 缓存 key 也清理
+            $pdo->prepare("DELETE FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key = ?")->execute([AppConfig::CACHE_KEY_MAP_LIST_PREFIX . AppConfig::PROVIDER_CUSTOM_PUSH]);
         } catch (\Exception $e) {
             // 缓存清理失败不影响主流程
         }

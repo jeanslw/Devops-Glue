@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Devops-Glue API",
-    "version": "2.5.1",
+    "version": "2.6.0",
     "description": "DevOps toolchain integration API — unified interface for Jenkins / GitLab CI, GitLab / Gitee / GitHub / Gitea, and Harbor.",
     "contact": {
       "email": "jeanslw@qq.com"
@@ -772,6 +772,96 @@
           "200": {
             "description": "Scan sync result",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ScanSyncResult" } } }
+          },
+          "400": { "$ref": "#/components/responses/400" }
+        }
+      }
+    },
+    "/api/build/{path}/report": {
+      "post": {
+        "tags": ["Build"],
+        "summary": "Custom Push CI build result single report",
+        "description": "For custom_push build provider only: after user CI completes, report the terminal result (success/failed/aborted) in one call — no pending/running intermediate states. Devops-Glue only stores metadata and log URL pointers; it does not participate in builds nor store log content.\n\nWhen status=success, tag is required and ci_pipeline_tags is also written (project, pipeline_iid, tag, finished_at, status); the CD layer reads it via the existing GET /api/build/{path}/tag endpoint.\n\nBesides control fields (pipeline_iid / status / finished_at / started_at / ref / sha / exit_code / log_url / web_url / tag / harbor_repository), all other request body fields are stored as custom build variables in variables_json.",
+        "operationId": "buildReport",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" }, "example": "php/myapp" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["pipeline_iid", "status", "finished_at"],
+                "properties": {
+                  "pipeline_iid":      { "type": "integer", "example": 123, "description": "Build ID (required, provided by user CI)" },
+                  "status":            { "type": "string", "enum": ["success", "failed", "aborted"], "example": "success", "description": "Terminal build result (required)" },
+                  "finished_at":       { "type": "string", "format": "date-time", "example": "2026-08-18T10:05:12+08:00", "description": "Build completion time (required)" },
+                  "started_at":        { "type": "string", "format": "date-time", "example": "2026-08-18T10:00:00+08:00", "description": "Build start time (optional)" },
+                  "ref":               { "type": "string", "example": "main", "description": "Build branch/tag (optional)" },
+                  "sha":               { "type": "string", "example": "a1b2c3d4e5f6", "description": "Commit SHA (optional)" },
+                  "exit_code":         { "type": "integer", "example": 0, "description": "Build exit code (optional)" },
+                  "log_url":           { "type": "string", "format": "uri", "example": "https://ci.example.com/build/123/log", "description": "Log URL (pointer only, Devops-Glue does not store log content)" },
+                  "web_url":           { "type": "string", "format": "uri", "example": "https://ci.example.com/build/123", "description": "User CI build page link (optional)" },
+                  "tag":               { "type": "string", "example": "v1.0.0", "description": "Image tag (required when status=success; written to ci_pipeline_tags; verified to actually exist in Harbor on report, 400 if missing; not needed for failed/aborted)" },
+                  "harbor_repository": { "type": "string", "example": "team/myapp", "description": "Harbor repository path (resolved from job_git_map, body value ignored; two-segment project/repo, no registry URL; both the repository and tag are verified to exist in Harbor on report, 400 if either is missing)" },
+                  "env":               { "type": "string", "enum": ["dev", "staging", "prod"], "example": "prod", "description": "Image target environment (custom variable, optional)" }
+                }
+              },
+              "examples": {
+                "Successful build report (with tag)": {
+                  "value": {
+                    "pipeline_iid": 123,
+                    "status": "success",
+                    "finished_at": "2026-08-18T10:05:12+08:00",
+                    "started_at": "2026-08-18T10:00:00+08:00",
+                    "sha": "a1b2c3d4e5f6",
+                    "ref": "main",
+                    "exit_code": 0,
+                    "log_url": "https://ci.example.com/build/123/log",
+                    "web_url": "https://ci.example.com/build/123",
+                    "tag": "v1.0.0",
+                    "env": "prod"
+                  }
+                },
+                "Failed build report (no tag)": {
+                  "value": {
+                    "pipeline_iid": 124,
+                    "status": "failed",
+                    "finished_at": "2026-08-18T10:05:12+08:00",
+                    "exit_code": 1,
+                    "log_url": "https://ci.example.com/build/124/log"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Report successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "build_provider": { "type": "string", "example": "custom_push" },
+                    "pipeline_iid":   { "type": "integer", "example": 123 },
+                    "success":        { "type": "boolean", "example": true },
+                    "pipeline_id":    { "type": "integer", "example": 1, "description": "Internal auto-increment id" },
+                    "action":         { "type": "string", "enum": ["created", "updated"], "example": "created", "description": "created on first report; updated on duplicate overwrite" }
+                  }
+                },
+                "example": {
+                  "build_provider": "custom_push",
+                  "pipeline_iid": 123,
+                  "success": true,
+                  "pipeline_id": 1,
+                  "action": "created"
+                }
+              }
+            }
           },
           "400": { "$ref": "#/components/responses/400" }
         }

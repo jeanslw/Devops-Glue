@@ -1,5 +1,18 @@
 # Changelog
 
+## v2.6.0 (2026-08-19)
+- **Custom Push CI (custom_push)** — Added a push-based CI build mode where users push build status, log URL, and image tags via their own CI scripts. Devops-Glue only stores metadata and does not participate in build execution.
+- **New API endpoint** — Added `POST /api/build/{path}/report` (terminal build result + image tag write-back in one call), reusing the `build.report` scope.
+- **Config-driven registration** — Custom CI instances are registered via the `build.custom_providers` array in `settings.php`, ready out of the box; enabling requires only a checkbox toggle in the admin panel.
+- **Orthogonal mode design** — `build_mode` (jenkins/gitlab_ci/both) and `custom_push_enabled` are independent switches, allowing any combination.
+- **Admin panel enhancements** — Added Custom_Push status card, auto-discovery scanning support, dropdown and mapping list adaptations.
+- **Database additions** — Added `ci_custom_builds` table for build metadata storage; `pipeline_iid` is an integer type.
+- **OpenAPI docs** — Completed OpenAPI spec for the new endpoint (CN/EN).
+- **Documentation updates** — API docs, admin manual, technical guide, architecture diagram, and FAQ all updated in sync.
+- **Version correspondence** — Devops-Glue API v2.6 ↔ Devops-Glue CD v1.4.
+- **Release update** — Bumped app version to v2.6.0.
+- **Refinements** — Push records pagination (Custom_Push_Log); disabled Custom_Push now demotes new custom_push mappings to Pending and filters them in every build mode; Harbor repository-vs-tag existence checks; topology flow direction git → build → harbor.
+
 ## v2.5.1 (2026-08-14)
 - **Permission list: built-in vs. registered + delete + registered-at** — The permissions list now distinguishes built-in vs. registered permissions (`is_builtin`), shows the registration time (`created_at`), and lets admins delete registered permissions (built-in keys are protected).
 - **DB bootstrap fix** — Restored "run schema/seed only on first boot" semantics; no more per-request redundant writes (regression from the refactor).

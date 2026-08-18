@@ -33,7 +33,12 @@ class BuildController extends BaseController
     private function resolve(string $projectPath): array
     {
         $r = $this->mapping->resolveProject($projectPath);
-        return [$r['provider'], $r['projectId']];
+        // 内置 Provider（Jenkins/GitLab CI）用 project_id 调外部 CI API；
+        // 自定义推送式 CI（custom_push 等）用 job_name（= path）作为本地表查询键。
+        $projectId = in_array($r['provider'], [AppConfig::PROVIDER_JENKINS, AppConfig::PROVIDER_GITLAB_CI], true)
+            ? $r['projectId']
+            : $projectPath;
+        return [$r['provider'], $projectId];
     }
 
     public function jobsList(Request $request, Response $response): Response
@@ -60,7 +65,25 @@ class BuildController extends BaseController
         $hasGitlab  = $this->registry->isRegistered(AppConfig::PROVIDER_GITLAB_CI);
         $mode   = $this->config->getBuildMode();
         $source = $this->config->getBuildModeSource();
-        return $this->output($response, ['mode' => $mode, 'source' => $source, 'has_jenkins' => $hasJenkins, 'has_gitlab_ci' => $hasGitlab], $request);
+
+        // 自定义 Build Provider 状态（custom_push 等）
+        $customProviders = [];
+        foreach ($this->config->getCustomBuildProviders() as $p) {
+            $name = $p['name'] ?? '';
+            if ($name && $this->registry->isRegistered($name)) {
+                $customProviders[] = $name;
+            }
+        }
+
+        return $this->output($response, [
+            'mode'                  => $mode,
+            'source'                => $source,
+            'has_jenkins'           => $hasJenkins,
+            'has_gitlab_ci'         => $hasGitlab,
+            'has_custom_push'       => !empty($customProviders),
+            'custom_push_enabled'   => $this->config->getCustomPushEnabled(),
+            'custom_providers'      => $customProviders,
+        ], $request);
     }
 
     /** GET /api/build/{path}/pipelines — raw: 流水线数组, json/xml: 完整元数据 */
@@ -193,6 +216,9 @@ class BuildController extends BaseController
         // ref 的自动映射交给 provider 处理（通过参数 _class 动态识别 Git 参数名）
 
         $p      = $this->registry->create($provider);
+        if ($p instanceof \App\Service\Build\CustomPushBuildProvider) {
+            return $this->jsonError($response, 'custom_push 不支持主动触发，请通过 POST /api/build/{path}/report 上报构建结果', 400);
+        }
         $result = $p->trigger($projectId, $ref, $vars);
         return $this->output($response, [
             'build_provider' => $provider,
@@ -391,12 +417,7 @@ class BuildController extends BaseController
             $result = ['success' => false, 'message' => $e->getMessage()];
         }
 
-        // ── 记录到数据库（可选，用于审计）──
-        if ($tag) {
-            $this->recordPipelineTag($path, 0, $tag, '', $state);
-        }
-
-        // ── 同时记录到 ci_security_checks 表（审计追踪，含回写结果）──
+        // ── 记录到 ci_security_checks 表（审计追踪，含回写结果）──
         $writebackStatus = ($result['success'] ?? false) ? 'success' : 'failed';
         $this->recordSecurityCheck($path, $sha, $state, $context, $description, $checkType, $tag, $writebackStatus, $result['message'] ?? '');
 
@@ -620,6 +641,105 @@ class BuildController extends BaseController
 
     // ── pipeline → tag 映射持久化（SQLite） ──
 
+    /**
+     * POST /api/build/{path}/report
+     *
+     * 自定义推送式 CI（custom_push）一次性上报构建终态结果。
+     * Devops-Glue 不参与构建执行、不存日志内容（只存 log_url 指针）。
+     *
+     * Body:
+     *   pipeline_iid       - 构建编号（必填，用户 CI 传入）
+     *   status             - success/failed/aborted（必填，终态，无 pending/running）
+     *   finished_at        - 构建完成时间（必填）
+     *   started_at         - 开始时间（可选）
+     *   ref                - 分支（可选）
+     *   sha                - commit SHA（可选）
+     *   exit_code          - 退出码（可选）
+     *   log_url            - 日志 URL（可选，仅指针）
+     *   web_url            - 用户 CI 构建页面（可选）
+     *   tag                - 镜像 tag（可选；status=success 时写入 ci_pipeline_tags）
+     *   harbor_repository  - Harbor 仓库（由 job_git_map 决定，body 不覆盖）
+     *   其余字段           - 作为自定义构建参数写入 variables_json
+     */
+    public function report(Request $request, Response $response, array $args): Response
+    {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_TRIGGER)) {
+            return $resp;
+        }
+
+        $path        = $args['path'] ?? '';
+        $body        = $request->getParsedBody() ?? [];
+        $pipelineIid = (int) ($body['pipeline_iid'] ?? 0);
+        $status      = trim((string) ($body['status'] ?? ''));
+        $finishedAt  = trim((string) ($body['finished_at'] ?? ''));
+        $tag         = trim((string) ($body['tag'] ?? ''));
+
+        if ($pipelineIid <= 0) {
+            return $this->jsonError($response, '缺少 pipeline_iid 参数', 400);
+        }
+        if ($status === '') {
+            return $this->jsonError($response, '缺少 status 参数（构建结果）', 400);
+        }
+        if (!in_array($status, ['success', 'failed', 'aborted'], true)) {
+            return $this->jsonError($response, '无效的 status 值，允许: success / failed / aborted（custom_push 直接上报终态，无 pending/running）', 400);
+        }
+        if ($finishedAt === '') {
+            return $this->jsonError($response, '缺少 finished_at 参数（构建完成时间必填）', 400);
+        }
+        if ($status === 'success' && $tag === '') {
+            return $this->jsonError($response, 'status=success 时必须上报 tag（镜像标签，供部署层交付）', 400);
+        }
+
+        // 先确认构建源是 custom_push，再做专属校验（避免对 Jenkins/GitLabCI 做无谓的 Harbor 请求）
+        [$provider, $projectId] = $this->resolve($path);
+        if (!$this->registry->isRegistered($provider)) {
+            return $this->jsonError($response, $this->__('build.provider_not_configured', ['{provider}' => $provider]), 400);
+        }
+
+        $p = $this->registry->create($provider);
+        if (!$p instanceof \App\Service\Build\CustomPushBuildProvider) {
+            return $this->jsonError($response, 'report 仅支持 custom_push 构建源', 400);
+        }
+
+        // success 时从 job_git_map 解析 harbor_repository（映射表是唯一来源，body 不覆盖）。
+        // ci_pipeline_tags 是最终部署依据，harbor_repository 与 tag 都必须真实存在于 Harbor，否则拒绝。
+        $harborRepo = '';
+        if ($status === 'success') {
+            foreach ($this->config->getJobGitMap() as $m) {
+                $job = $m['job_name'] ?? '';
+                $cp  = $m['current_path'] ?? '';
+                if ($job === $path || $cp === $path) {
+                    $harborRepo = trim((string) ($m['harbor_repository'] ?? ''));
+                    break;
+                }
+            }
+            if ($harborRepo === '') {
+                return $this->jsonError($response, 'status=success 时 job_git_map 未配置 harbor_repository，无法落 ci_pipeline_tags', 400);
+            }
+            // 格式校验：harbor_repository 必须是 project/repo 两段式，拒绝带 registry 主机/URL 的写法
+            if (!$this->isValidHarborRepo($harborRepo)) {
+                return $this->jsonError($response, 'job_git_map 中 harbor_repository 必须是 project/repo 两段式（如 mycode/runner-ci），不要携带 registry 地址或 URL', 400);
+            }
+            // 仓库 + tag 存在性校验：手动上报不可信，写错/乱传直接拒绝
+            if (($harborErr = $this->verifyHarborTag($harborRepo, $tag)) !== null) {
+                return $this->jsonError($response, $harborErr, 400);
+            }
+        }
+
+        $result = $p->report($projectId, $body);
+
+        // status=success 且带 tag：同步写入 ci_pipeline_tags（部署系统以 ci_pipeline_tags 为交付依据）
+        if (!empty($result['success']) && $status === 'success') {
+            $this->recordPipelineTag($projectId, $pipelineIid, $tag, $harborRepo, 'success', $finishedAt);
+        }
+
+        return $this->output($response, [
+            'build_provider' => $provider,
+            'pipeline_iid'   => $pipelineIid,
+        ] + $result, $request);
+    }
+
     private function loadPipelineTags(): array
     {
         try {
@@ -692,16 +812,85 @@ class BuildController extends BaseController
         }
     }
 
-    private function recordPipelineTag(string $path, int $pipelineIid, string $tag, string $harborRepo = '', string $status = ''): void
+    private function isValidHarborRepo(string $repo): bool
     {
-        // 基础输入校验
-        if (empty($path) || $pipelineIid <= 0 || empty($tag)) return;
+        // project/repo 两段式：两段均以字母数字开头，仅含 [A-Za-z0-9._-]，无 scheme/主机/端口
+        return (bool) preg_match('#^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$#', $repo);
+    }
+
+    /**
+     * 校验 Harbor 仓库与 tag 是否真实存在。
+     *
+     * 返回 null 表示仓库存在且 tag 在其中；否则返回错误消息（Harbor 未配置 / 不可达 /
+     * 仓库不存在 / tag 不存在）。分两步：先 getRepositories 判仓库（Harbor v2 对不存在的
+     * repo 返回空数组而非 404，故用 project 下仓库列表判断），再 getTags 判 tag。
+     *
+     * 仅用于 custom_push 手动上报（report）：手动传值不可信，可能写错/乱传，必须校验
+     * 仓库与 tag 的真实性，保证 ci_pipeline_tags 落的是真实仓库 + 真实 tag。
+     * Jenkins/GitLabCI 走 scan-sync，镜像 push 不进 Harbor 构建即失败，仓库与 tag 天然真实。
+     */
+    private function verifyHarborTag(string $repo, string $tag): ?string
+    {
+        if (!$this->harbor) {
+            return 'Harbor 未配置，无法校验仓库与 tag 的真实性';
+        }
+        $parts = explode('/', $repo, 2);
+        if (count($parts) !== 2) {
+            return 'harbor_repository 格式错误（应为 project/repo 两段式）';
+        }
+        [$project, $repoName] = $parts;
+
+        // 1. 仓库存在性：先列 project 下的仓库，确认 repo 存在（Harbor v2 对不存在的 repo 返回空数组，须用列表判断）
+        try {
+            $repos = $this->harbor->getRepositories($project);
+        } catch (\Throwable $e) {
+            return 'Harbor 不可达，无法校验仓库与 tag 的真实性';
+        }
+        if (!is_array($repos) || isset($repos['error'])) {
+            return 'Harbor 不可达或项目不存在（' . $project . '），无法校验仓库与 tag 的真实性';
+        }
+        // v2 返回去前缀短名（runner-ci），v1 可能返回完整名（mycode/runner-ci），两者都兼容
+        if (!in_array($repoName, $repos, true) && !in_array($repo, $repos, true)) {
+            return 'Harbor 仓库不存在：' . $repo . '（请核对 job_git_map 的 harbor_repository）';
+        }
+
+        // 2. tag 存在性：仓库存在后，确认 tag 确在其中
+        try {
+            $tags = $this->harbor->getTags($project, $repoName);
+        } catch (\Throwable $e) {
+            return 'Harbor 不可达，无法校验仓库与 tag 的真实性';
+        }
+        if (!is_array($tags) || isset($tags['error'])) {
+            return 'Harbor 不可达，无法校验仓库与 tag 的真实性';
+        }
+        if (!in_array($tag, $tags, true)) {
+            return 'Harbor 仓库 ' . $repo . ' 中不存在 tag：' . $tag . '（请确认镜像已 push 到 Harbor）';
+        }
+        return null;
+    }
+
+    private function recordPipelineTag(string $path, int $pipelineIid, string $tag, string $harborRepo = '', string $status = '', ?string $createdAt = null): void
+    {
+        // 基础输入校验：ci_pipeline_tags 是最终部署依据，关键字段必须真实非空
+        if (empty($path) || $pipelineIid <= 0 || empty($tag) || empty($harborRepo)) return;
         if (mb_strlen($tag) > 255 || mb_strlen($path) > 255) return;
         try {
             $pdo = $this->pdo;
-            $sql   = \App\Service\Database::sqlUpsert(AppConfig::TABLE_PIPELINE_TAGS, 'project, pipeline_iid, tag, harbor_repository, status', '?, ?, ?, ?, ?');
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute([$path, $pipelineIid, $tag, $harborRepo, $status]);
+            if ($createdAt !== null && $createdAt !== '') {
+                // custom_push 回写：created_at = 构建完成时间（部署系统依赖此时间判断构建时机）
+                $sql = \App\Service\Database::sqlUpsert(
+                    AppConfig::TABLE_PIPELINE_TAGS,
+                    'project, pipeline_iid, tag, harbor_repository, status, created_at',
+                    '?, ?, ?, ?, ?, ?'
+                );
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute([$path, $pipelineIid, $tag, $harborRepo, $status, $createdAt]);
+            } else {
+                // 其他调用方（scan-sync / commit-status）：不传时间，走 DB 默认 NOW()
+                $sql = \App\Service\Database::sqlUpsert(AppConfig::TABLE_PIPELINE_TAGS, 'project, pipeline_iid, tag, harbor_repository, status', '?, ?, ?, ?, ?');
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute([$path, $pipelineIid, $tag, $harborRepo, $status]);
+            }
         } catch (\Exception $e) {
             // 静默失败
         }

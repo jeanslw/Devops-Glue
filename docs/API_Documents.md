@@ -1,4 +1,4 @@
-# Devops-Glue API Reference v2.5.1
+# Devops-Glue API Reference v2.6
 
 Base URL: `http://your-domain.com/api`
 
@@ -89,7 +89,7 @@ Returns connectivity status of Jenkins, Git platforms, and Harbor, plus system s
   "build_mode": "both",
   "build_mode_source": "database",
   "db_driver": "mysql",
-  "app_version": "v2.5.1",
+  "app_version": "2.6.0",
   "app_env": "production",
   "time": "2026-08-10 12:00:00"
 }
@@ -179,6 +179,7 @@ Returns configured and unconfigured Git platform list.
 | `/api/build/{path}/scan-sync` | POST | Harbor scan sync (`{"tag":"v3.0.0"}`, tag optional = latest) |
 | `/api/build/{path}/tag` | GET/POST | Pipeline -> Tag mapping (`?pipeline=10`) |
 | `/api/build/{path}/commit-status` | POST | Commit status write-back (security scans) |
+| `/api/build/{path}/report` | POST | Custom Push CI result report (custom_push only, single terminal write) |
 
 `{path}` is the job name or `current_path` from the job-git mapping.
 
@@ -203,6 +204,34 @@ Works with all Git providers (GitLab/GitHub/Gitee/Gitea), independent of CI syst
 ### Scan Sync
 
 Triggers Harbor vulnerability scan and writes result back to Git platform commit status (`harbor-scan` context). If `tag` is omitted, uses the latest tag from Harbor.
+
+### Custom Push CI Result Report (report)
+
+For custom_push build provider only: after user CI completes, report the terminal result in one call — no `pending`/`running` intermediate states. Devops-Glue only stores metadata and log URL pointers; it does not participate in builds nor store log content.
+
+Required: `pipeline_iid` (build ID, integer), `status` (`success`/`failed`/`aborted`), `finished_at` (build completion time); when `status=success`, `tag` is required and `harbor_repository` is resolved from `job_git_map` (body value ignored). `harbor_repository` must be a two-segment `project/repo` path (e.g. `mycode/runner-ci`), not a registry URL; both the repository and the `tag` are verified to actually exist in Harbor on report (400 if either is missing).
+Optional: `started_at`, `ref`, `sha`, `exit_code`, `log_url`, `web_url`.
+Custom variables: any other field (e.g. `env`) is stored in `variables_json`.
+
+```json
+{
+  "pipeline_iid": 123,
+  "status": "success",
+  "finished_at": "2026-08-18T10:05:12+08:00",
+  "started_at": "2026-08-18T10:00:00+08:00",
+  "sha": "a1b2c3d4e5f6",
+  "ref": "main",
+  "exit_code": 0,
+  "log_url": "https://ci.example.com/build/123/log",
+  "web_url": "https://ci.example.com/build/123",
+  "tag": "v1.0.0",
+  "env": "prod"
+}
+```
+
+> On `success`, `tag` and a resolvable `harbor_repository` are mandatory and `ci_pipeline_tags` is written (project, pipeline_iid, tag, harbor_repository, finished_at, status), read by the CD layer via `GET /api/build/{path}/tag`.
+> Fields outside control fields (`pipeline_iid`/`status`/`finished_at`/`started_at`/`ref`/`sha`/`exit_code`/`log_url`/`web_url`/`tag`/`harbor_repository`) are stored in `variables_json`.
+> `(job_name, pipeline_iid)` is a unique key; duplicate reports overwrite (UPDATE) the existing record.
 
 ---
 
@@ -326,7 +355,7 @@ Token expires in 24 hours. `super_admin` role returns `"*"` for permissions.
 | `harbor.scan` | Harbor scan trigger | `POST /api/harbor/{project}/repositories/{repo}/tags/{tag}/scan` |
 | `build.read` | Build read | `/api/build/*` (except write/report below) |
 | `build.write` | Build execution | `trigger` / `retry` / `cancel` |
-| `build.report` | Build report | `scan-sync` / `commit-status` (CI script callbacks) |
+| `build.report` | Build report | `scan-sync` / `commit-status` / `report` (CI script callbacks) |
 
 > **Notes:**
 > - `/api/health` needs no scope — any valid token works.
@@ -396,6 +425,12 @@ curl -X POST "http://URL/api/build/static/scan-sync" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $NEW_TOKEN" \
   -d '{"tag":"v1.0.0"}'
+
+# Custom Push CI result report (requires build.report scope, custom_push only)
+curl -X POST "http://URL/api/build/php/myapp/report" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $NEW_TOKEN" \
+  -d '{"pipeline_iid":123,"status":"success","finished_at":"2026-08-18T10:05:12+08:00","exit_code":0,"log_url":"https://ci.example.com/build/123/log","tag":"v1.0.0","env":"prod"}'
 
 # ④ Revoke a token (disable, keeps the record)
 curl -X POST "http://URL/api/admin/api_tokens/1/revoke" \

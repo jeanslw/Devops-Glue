@@ -26,8 +26,8 @@ $harborProject  = 'mycode';
 $harborRepo     = 'diagnosis-runtime';
 
 // 登录凭据：可通过环境变量覆盖
-$loginUser     = getenv('TEST_LOGIN_USER') ?: '';
-$loginPassword = getenv('TEST_LOGIN_PASS') ?: '';
+$loginUser     = getenv('TEST_LOGIN_USER') ?: 'root';
+$loginPassword = getenv('TEST_LOGIN_PASS') ?: 'root123456';
 
 $triggerParams = [
     'java/registry'   => ['branches' => 'master'],
@@ -623,7 +623,7 @@ foreach ($testJobs as $job) {
         $buildIds = json_decode($tc->rawBody, true) ?: [];
         $tc->assertIsArray();
         if (!empty($buildIds) && is_array($buildIds)) {
-            $firstId = $buildIds[0];
+            $firstId = array_values($buildIds)[0] ?? null;
             // pipeline detail
             $tc2 = apiT("$job Pipeline详情(#{$firstId})", "{$baseUrl}/api/build/{$job}/pipelines/{$firstId}", 'GET', null, $authHeader);
             $tc2->assertHttpRange("pipeline 详情", 200, 404);
@@ -675,6 +675,46 @@ $tc = apiT('Jenkins Variables', "{$baseUrl}/api/build/static/variables", 'GET', 
 $tc->assertHttpRange("Jenkins vars", 200, 404);
 echo "  [Build] Jenkins variables ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
 
+// ─── 5.5 Custom Push（custom_push）后端端点 ───
+// 自定义推送式 CI：Devops-Glue 只提供 report 单次上报接口（终态），不参与构建执行。
+
+// 无 token → 401
+$tc = apiT('CustomPush report（无认证）', "{$baseUrl}/api/build/static/report", 'POST', ['pipeline_iid' => 1, 'status' => 'success', 'finished_at' => '2026-08-18 10:05:30']);
+$tc->assertHttpIs(401, '无 token 返回 401');
+echo "  [CustomPush] report(无认证) ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
+
+if ($globalToken) {
+    $authHeader = ["Authorization: Bearer {$globalToken}"];
+
+    // 参数校验：缺 pipeline_iid → 400（校验在鉴权之后）
+    $tc = apiT('CustomPush report（缺 pipeline_iid）', "{$baseUrl}/api/build/static/report", 'POST', ['status' => 'success', 'finished_at' => '2026-08-18 10:05:30'], $authHeader);
+    $tc->assertHttpIs(400, '缺 pipeline_iid 返回 400');
+    echo "  [CustomPush] report(缺pipeline_iid) ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
+
+    // 缺 finished_at → 400
+    $tc = apiT('CustomPush report（缺 finished_at）', "{$baseUrl}/api/build/static/report", 'POST', ['pipeline_iid' => 1, 'status' => 'success'], $authHeader);
+    $tc->assertHttpIs(400, '缺 finished_at 返回 400');
+    echo "  [CustomPush] report(缺finished_at) ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
+
+    // 非法 status（pending/running 中间态）→ 400
+    $tc = apiT('CustomPush report（中间态 status）', "{$baseUrl}/api/build/static/report", 'POST', ['pipeline_iid' => 1, 'status' => 'running', 'finished_at' => '2026-08-18 10:05:30'], $authHeader);
+    $tc->assertHttpIs(400, '中间态 status 返回 400');
+    echo "  [CustomPush] report(中间态status) ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
+
+    // success 缺 tag → 400（success 必须产出镜像 tag，供部署层交付）
+    $tc = apiT('CustomPush report（success缺tag）', "{$baseUrl}/api/build/static/report", 'POST', ['pipeline_iid' => 1, 'status' => 'success', 'finished_at' => '2026-08-18 10:05:30'], $authHeader);
+    $tc->assertHttpIs(400, 'success 缺 tag 返回 400');
+    echo "  [CustomPush] report(success缺tag) ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
+
+    // 端点存在性：合法 payload。未配置 custom_push 映射时后端优雅返回 4xx（不会 5xx）。
+    $tc = apiT('CustomPush report（合法payload）', "{$baseUrl}/api/build/static/report", 'POST', [
+        'pipeline_iid' => 1, 'status' => 'success', 'finished_at' => '2026-08-18 10:05:30', 'log_url' => 'http://example.com/log.txt', 'tag' => 'v1.0.0', 'harbor_repository' => 'mycode/static',
+    ], $authHeader);
+    $tc->assertHttpRange('report 端点可达(2xx/4xx)', 200, 499);
+    $tc->assertJson();
+    echo "  [CustomPush] report ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
+}
+
 // ─── 6. Harbor 模块 ───
 
 $tc = apiT('Harbor 项目列表', "{$baseUrl}/api/harbor/projects", 'GET', null, $authHeader);
@@ -702,16 +742,22 @@ echo "  [Harbor] Tag列表 ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0
 // 扫描（依赖有 tag）
 $tags = json_decode($tagsRes['body'], true);
 if (!empty($tags) && is_array($tags) && remoteAvailable($tagsRes['code'])) {
-    $testTag = $tags[0];
-    $scanUrl = "{$baseUrl}/api/harbor/{$harborProject}/repositories/{$repoEncoded}/tags/" . rawurlencode($testTag) . "/scan";
+    $testTag = array_values($tags)[0] ?? null;
+    $tagName = is_array($testTag) ? ($testTag['name'] ?? '') : (string)$testTag;
+} else {
+    $tagName = '';
+}
+
+if ($tagName !== '') {
+    $scanUrl = "{$baseUrl}/api/harbor/{$harborProject}/repositories/{$repoEncoded}/tags/" . rawurlencode($tagName) . "/scan";
 
     $res = apiCall($scanUrl, 'POST', null, $authHeader);
-    $tc = T("Harbor 触发扫描({$testTag})", 'POST', $scanUrl, $res['code'], $res['body'], $res['error']);
+    $tc = T("Harbor 触发扫描({$tagName})", 'POST', $scanUrl, $res['code'], $res['body'], $res['error']);
     $tc->assert($res['code'] >= 200 && $res['code'] < 500, '触发扫描有响应', "HTTP {$res['code']}");
     echo "  [Harbor] 触发扫描 ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
 
     $res = apiCall($scanUrl, 'GET', null, $authHeader);
-    $tc = T("Harbor 扫描报告({$testTag})", 'GET', $scanUrl, $res['code'], $res['body'], $res['error']);
+    $tc = T("Harbor 扫描报告({$tagName})", 'GET', $scanUrl, $res['code'], $res['body'], $res['error']);
     $tc->assertHttpRange('扫描报告', 200, 404);
     echo "  [Harbor] 扫描报告 ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
 } else {
@@ -820,6 +866,8 @@ foreach ($allTests as $tc) {
         $mod = 'Main';
     } elseif (str_contains($tc->url, '/api/harbor/') || str_contains($tc->url, 'Harbor')) {
         $mod = 'Harbor';
+    } elseif (str_contains($tc->name, 'CustomPush')) {
+        $mod = 'CustomPush';
     } elseif (str_contains($tc->url, '/api/build/') || str_contains($tc->url, '/api/git/') || str_contains($tc->url, 'Build') || str_contains($tc->url, 'GitLab') || str_contains($tc->url, 'Jenkins') || str_contains($tc->url, 'runner-ci')) {
         $mod = 'Build';
     } elseif (str_contains($tc->url, 'trigger')) {
@@ -835,7 +883,7 @@ foreach ($allTests as $tc) {
     $moduleMap[$mod][] = $tc;
 }
 
-$moduleOrder = ['Infra', 'Admin', 'Main', 'Build', 'Git', 'Harbor', 'Trigger', 'Other'];
+$moduleOrder = ['Infra', 'Admin', 'Main', 'Build', 'CustomPush', 'Git', 'Harbor', 'Trigger', 'Other'];
 foreach ($moduleOrder as $mod) {
     if (empty($moduleMap[$mod])) continue;
     $modTests = $moduleMap[$mod];

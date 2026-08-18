@@ -39,21 +39,39 @@ CREATE TABLE IF NOT EXISTS `ci_pipeline_tags` (
     PRIMARY KEY (`project`, `pipeline_iid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- ── 4. cache（通用缓存）──
+-- ── 4. ci_custom_builds（自定义推送式 CI 的构建记录）──
+CREATE TABLE IF NOT EXISTS `ci_custom_builds` (
+    `id`             INT AUTO_INCREMENT PRIMARY KEY,
+    `job_name`       VARCHAR(255) NOT NULL,
+    `pipeline_iid`   INT NOT NULL,
+    `ref`            TEXT,
+    `sha`            TEXT,
+    `variables_json` TEXT,
+    `status`         VARCHAR(255) DEFAULT 'pending',
+    `exit_code`      INT,
+    `log_url`        TEXT,
+    `web_url`        TEXT,
+    `triggered_at`   DATETIME,
+    `started_at`     DATETIME,
+    `finished_at`    DATETIME,
+    UNIQUE KEY `uniq_job_pipeline` (`job_name`, `pipeline_iid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ── 5. cache（通用缓存）──
 CREATE TABLE IF NOT EXISTS `cache` (
     `cache_key`  VARCHAR(255) PRIMARY KEY,
     `value`      MEDIUMTEXT NOT NULL,
     `expires_at` INT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- ── 5. ci_app_settings（应用运行时配置）──
+-- ── 6. ci_app_settings（应用运行时配置）──
 CREATE TABLE IF NOT EXISTS `ci_app_settings` (
     `setting_key` VARCHAR(255) PRIMARY KEY,
     `value`       MEDIUMTEXT NOT NULL,
     `updated_at`  DATETIME DEFAULT (NOW())
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- ── 6. admin_users（管理员账号）──
+-- ── 7. admin_users（管理员账号）──
 CREATE TABLE IF NOT EXISTS `admin_users` (
     `username`      VARCHAR(255) PRIMARY KEY,
     `password_hash` TEXT NOT NULL,
@@ -62,7 +80,7 @@ CREATE TABLE IF NOT EXISTS `admin_users` (
     `updated_at`    DATETIME DEFAULT (NOW())
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- ── 7. ci_security_checks（安全扫描审计）──
+-- ── 8. ci_security_checks（安全扫描审计）──
 CREATE TABLE IF NOT EXISTS `ci_security_checks` (
     `id`                INT AUTO_INCREMENT PRIMARY KEY,
     `project`           VARCHAR(255) NOT NULL,
@@ -77,7 +95,7 @@ CREATE TABLE IF NOT EXISTS `ci_security_checks` (
     `created_at`        DATETIME DEFAULT (NOW())
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- ── 8. roles（角色）──
+-- ── 9. roles（角色）──
 CREATE TABLE IF NOT EXISTS `roles` (
     `id`          INT AUTO_INCREMENT PRIMARY KEY,
     `name`        VARCHAR(255) NOT NULL UNIQUE,
@@ -86,7 +104,7 @@ CREATE TABLE IF NOT EXISTS `roles` (
     `created_at`  DATETIME DEFAULT (NOW())
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- ── 9. permissions（权限定义；parent_key 用于二级菜单 eg. cd.deploy.single → cd.deploy-manage）──
+-- ── 10. permissions（权限定义；parent_key 用于二级菜单 eg. cd.deploy.single → cd.deploy-manage）──
 CREATE TABLE IF NOT EXISTS `permissions` (
     `perm_key`    VARCHAR(128) PRIMARY KEY,
     `description` TEXT,
@@ -94,21 +112,21 @@ CREATE TABLE IF NOT EXISTS `permissions` (
     `created_at`  DATETIME DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- ── 10. role_permissions（角色↔权限）──
+-- ── 11. role_permissions（角色↔权限）──
 CREATE TABLE IF NOT EXISTS `role_permissions` (
     `role_id`  INTEGER NOT NULL,
     `perm_key` VARCHAR(128) NOT NULL,
     PRIMARY KEY (`role_id`, `perm_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- ── 11. implied_rules（权限隐含关系；数据驱动，CD 可通过 API 注册）──
+-- ── 12. implied_rules（权限隐含关系；数据驱动，CD 可通过 API 注册）──
 CREATE TABLE IF NOT EXISTS `implied_rules` (
     `source_key` VARCHAR(128) NOT NULL,
     `target_key` VARCHAR(128) NOT NULL,
     PRIMARY KEY (`source_key`, `target_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- ── 12. api_tokens（服务账号 / 第三方调用的 API token，独立于 RBAC）──
+-- ── 13. api_tokens（服务账号 / 第三方调用的 API token，独立于 RBAC）──
 CREATE TABLE IF NOT EXISTS `api_tokens` (
     `id`         INT AUTO_INCREMENT PRIMARY KEY,
     `name`       VARCHAR(255) NOT NULL,
@@ -128,3 +146,5 @@ CREATE INDEX `idx_pipeline_tags_created`    ON `ci_pipeline_tags` (`created_at`)
 CREATE INDEX `idx_job_git_map_current_path` ON `ci_job_git_map` (`current_path`(255));
 CREATE INDEX `idx_security_checks_project`  ON `ci_security_checks` (`project`(64), `check_type`(64));
 CREATE INDEX `idx_security_checks_sha`      ON `ci_security_checks` (`sha`);
+CREATE INDEX `idx_custom_builds_job`        ON `ci_custom_builds` (`job_name`);
+CREATE INDEX `idx_custom_builds_status`     ON `ci_custom_builds` (`status`);

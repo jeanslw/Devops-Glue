@@ -62,6 +62,7 @@ $app->group('/api', function (RouteCollectorProxy $api) {
             $auth->map(['GET'], '/security_checks', [AdminController::class, 'securityChecksList']);
             $auth->map(['GET'], '/build_mode', [AdminController::class, 'getBuildMode']);
             $auth->map(['PUT'], '/build_mode', [AdminController::class, 'updateBuildMode']);
+            $auth->map(['GET'], '/custom_builds', [AdminController::class, 'customBuildList']);
             $auth->map(['GET'], '/users', [AdminController::class, 'userList']);
             $auth->map(['POST'], '/users', [AdminController::class, 'userCreate']);
             $auth->map(['PUT'], '/users/{username}', [AdminController::class, 'userUpdate']);
@@ -98,6 +99,7 @@ $app->group('/api', function (RouteCollectorProxy $api) {
         $build->map(['GET', 'POST'], '/{path:.+}/branches', [BuildController::class, 'branches']);
         $build->map(['POST'], '/{path:.+}/scan-sync', [BuildController::class, 'scanSync']);
         $build->map(['POST'], '/{path:.+}/commit-status', [BuildController::class, 'commitStatus']);
+        $build->map(['POST'], '/{path:.+}/report', [BuildController::class, 'report']);
         $build->map(['GET', 'POST'], '/{path:.+}/tag', [BuildController::class, 'tagQuery']);
     })->add(AuthMiddleware::class);
 

@@ -1,4 +1,4 @@
-# Devops-Glue API v2.5.1
+# Devops-Glue API v2.6
 Devops-Glue API 是基于 Slim4 为小团队打造的 DevOps 工具链增强集成平台。统一 API 管理 Jenkins + GitLab CI 双通道构建、GitLab / Gitee / GitHub / Gitea 多平台代码、以及 Harbor 镜像仓库——覆盖从 CI 到 CD 的完整流程。双语界面，数据驱动的角色权限分级（RBAC）。
 
 <p align="center">
@@ -33,6 +33,7 @@ Devops-Glue API 是基于 Slim4 为小团队打造的 DevOps 工具链增强集�
 
 - **国际化** — 中/英文双语界面，`?lang=` 即时切换，基于 `symfony/translation`
 - **双构建通道** — Jenkins + GitLab CI，随意切换或并存，统一 API
+- **自定义推送式 CI（Custom_Push）** — 用户 CI 推送构建状态、日志地址、镜像 tag，Devops-Glue 仅存元数据不参与构建，与 pull-based CI 正交可同时启用
 - **多平台 Git** — GitLab · GitHub · Gitee · Gitea，自托管或 SaaS 均可
 - **全链路映射** — Job ↔ Git 仓库 ↔ Harbor 镜像，构建→代码→产物自动关联
 - **安全扫描审计** — SAST、密钥扫描、依赖漏洞检测，通过 Commit Status 回写

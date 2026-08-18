@@ -3,11 +3,12 @@ namespace App\Config;
 
 class AppConfig
 {
-    public const APP_VERSION = '2.5.1';
+    public const APP_VERSION = '2.6.0';
 
     // ── 表名常量 ──
     public const TABLE_JOB_GIT_MAP       = 'ci_job_git_map';
     public const TABLE_PIPELINE_TAGS     = 'ci_pipeline_tags';
+    public const TABLE_CUSTOM_BUILDS     = 'ci_custom_builds';
     public const TABLE_SECURITY_CHECKS   = 'ci_security_checks';
     public const TABLE_ADMIN_USERS       = 'admin_users';
     public const TABLE_PLATFORM_VERSIONS = 'ci_platform_versions';
@@ -149,10 +150,17 @@ class AppConfig
     public const BUILD_MODE_JENKINS   = 'jenkins';
     public const BUILD_MODE_GITLAB_CI = 'gitlab_ci';
     public const BUILD_MODE_BOTH      = 'both';
+    // 注：custom_push 不再作为 build_mode 值，改为独立开关 custom_push_enabled
 
     // ── 构建提供者常量 ──
-    public const PROVIDER_JENKINS   = 'jenkins';
-    public const PROVIDER_GITLAB_CI = 'gitlab_ci';
+    public const PROVIDER_JENKINS     = 'jenkins';
+    public const PROVIDER_GITLAB_CI   = 'gitlab_ci';
+    /**
+     * 自定义推送式 CI（user push 模式）默认注册名。
+     * custom_push 模式由用户在 settings.php 的 build.custom_providers 中通过 name 字段自定义，
+     * 此常量仅作为默认值 / 占位，具体 name 以配置为准。
+     */
+    public const PROVIDER_CUSTOM_PUSH = 'custom_push';
 
     // ── 缓存键前缀常量 ──
     public const CACHE_KEY_ADMIN_TOKEN_PREFIX = 'admin_token_';
@@ -253,8 +261,8 @@ class AppConfig
             return self::API_SCOPE_BUILD_WRITE;
         }
 
-        // Build：CI 流水线回写（scan-sync / commit-status）
-        if (preg_match('#^/api/build/.+/(scan-sync|commit-status)$#', $path)) {
+        // Build：CI 流水线回写（scan-sync / commit-status / report）
+        if (preg_match('#^/api/build/.+/(scan-sync|commit-status|report)$#', $path)) {
             return self::API_SCOPE_BUILD_REPORT;
         }
 
@@ -410,6 +418,16 @@ class AppConfig
     public function getCustomGitProviders(): array
     {
         return $this->config['git']['custom_providers'] ?? [];
+    }
+
+    /**
+     * 获取用户自定义 Build Provider 列表（custom_push 等推送式 CI）
+     * 与 Git 自定义平台解耦：独立配置项 build.custom_providers，不放在 git 下。
+     * @return array 每个元素包含 name (注册名), class (完整类名) 和 config (构造参数数组)
+     */
+    public function getCustomBuildProviders(): array
+    {
+        return $this->config['build']['custom_providers'] ?? [];
     }
 
     // getGitPlatformsConfig 方法
@@ -649,6 +667,33 @@ class AppConfig
         $pdo = $this->getPdo();
         $sql = \App\Service\Database::sqlUpsert(self::TABLE_APP_SETTINGS, 'setting_key, value, updated_at', '?, ?, ' . \App\Service\Database::sqlNow());
         $pdo->prepare($sql)->execute(['build_mode', $mode]);
+    }
+
+    /**
+     * custom_push 是否启用（独立开关，可与任何 build_mode 组合）
+     * 存储于 ci_app_settings 表，key = 'custom_push_enabled'，value = '1'/'0'
+     */
+    public function getCustomPushEnabled(): bool
+    {
+        try {
+            $pdo = $this->getPdo();
+            $row = $pdo->query("SELECT value FROM " . self::TABLE_APP_SETTINGS . " WHERE setting_key = 'custom_push_enabled'")->fetch();
+            if ($row) {
+                return $row['value'] === '1';
+            }
+            // DB 无记录 → 首次运行，默认关闭（settings.php 已配置 provider，需在后台勾选启用）
+            $this->setCustomPushEnabled(false);
+            return false;
+        } catch (\Exception $e) {
+            return false;
+        }
+    }
+
+    public function setCustomPushEnabled(bool $enabled): void
+    {
+        $pdo = $this->getPdo();
+        $sql = \App\Service\Database::sqlUpsert(self::TABLE_APP_SETTINGS, 'setting_key, value, updated_at', '?, ?, ' . \App\Service\Database::sqlNow());
+        $pdo->prepare($sql)->execute(['custom_push_enabled', $enabled ? '1' : '0']);
     }
 
     // 私有：获取平台默认 API 版本

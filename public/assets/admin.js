@@ -148,6 +148,12 @@ async function doDiscover() {
     finally { _discovering = false; }
 }
 
+/** 自动发现按钮始终可见（custom_push 模式扫描 Git 平台项目） */
+function updateDiscoverButton() {
+    const btn = document.querySelector('.btn-discover');
+    if (btn) btn.style.display = '';
+}
+
 async function doLogin() {
     const user = document.getElementById('login-user').value.trim();
     const pass = document.getElementById('login-pass').value;
@@ -212,15 +218,16 @@ function switchTab(name) {
             }
         }
     }
-    ['monitor','mapping','security','versions','mode','users','roles','password','perm-list','perm-register','implied-rules','api-tokens'].forEach(t => {
+    ['monitor','mapping','security','versions','mode','push-records','users','roles','password','perm-list','perm-register','implied-rules','api-tokens'].forEach(t => {
         var tabEl = document.getElementById('tab-' + t);
         if (tabEl) tabEl.style.display = name === t ? 'block' : 'none';
     });
     if (name === 'monitor') loadMonitor();
-    if (name === 'mapping') { if (currentMapView === 'topology') loadTopology(); else loadMaps(); }
+    if (name === 'mapping') { if (currentMapView === 'topology') loadTopology(); else loadMaps(); updateDiscoverButton(); }
     if (name === 'security') loadSecurityChecks();
     if (name === 'versions') loadVersions();
     if (name === 'mode') loadSettings();
+    if (name === 'push-records') loadPushRecords();
     if (name === 'users') loadUsers();
     if (name === 'roles') loadRoleList();
     if (name === 'perm-list') loadPermList();
@@ -357,12 +364,23 @@ async function loadMonitor() {
         const hLabel = hOk ? __.t('common.ok') : hOkRaw===null ? __.t('common.not_configured') : __.t('common.unreachable');
         setSvc('icon-harbor', 'name-harbor', 'stat-harbor', 'dot-harbor', hOk, hVer, hLabel, '');
 
+        // Custom_Push
+        const cpProviders = data.custom_push_providers || [];
+        const cpEnabled = data.custom_push_enabled || false;
+        const cpOk = cpEnabled && cpProviders.length > 0;
+        const cpLabel = cpEnabled
+            ? __.t('common.enabled')
+            : __.t('common.disabled');
+        setSvc('icon-custom-push', 'name-custom-push', 'stat-custom-push', 'dot-custom-push', cpOk || null, '', cpLabel);
+        applyPushRecordsMenuVisibility(cpEnabled);
+
     } catch(e) {
         const msg = e.name === 'AbortError' ? __.t('js.timeout') : __.t('js.cannot_connect');
         setSvc('icon-jenkins', 'name-jenkins', 'stat-jenkins', 'dot-jenkins', false, '', msg);
         document.getElementById('dot-git').className = 'dot dot-err';
         document.getElementById('git-rows').innerHTML = '<div class="svc-row parent"><span class="svc-icon">❌</span><span class="svc-name">' + __.t('monitor.git_platforms') + '</span><span class="svc-stat err">' + msg + '</span></div>';
         setSvc('icon-harbor', 'name-harbor', 'stat-harbor', 'dot-harbor', false, '', msg);
+        setSvc('icon-custom-push', 'name-custom-push', 'stat-custom-push', 'dot-custom-push', false, '', msg);
     }
 }
 
@@ -437,8 +455,13 @@ async function loadMaps() {
         maps = maps.filter(m => (m.status || 'active') === 'active' || !activeRemotes.has(normalizeRemote(m.git_remote)));
 
         // 隐藏非 active 且 provider 不匹配当前模式的记录（无法操作，占地方无意义）
+        // 自定义推送式 CI（custom_push 及其他自定义注册名）不参与 jenkins/gitlab_ci 的全局模式筛选，始终显示
         if (currentBuildMode !== 'both') {
-            maps = maps.filter(m => (m.status || 'active') === 'active' || (m.build_provider || 'jenkins') === currentBuildMode);
+            maps = maps.filter(m => {
+                const bp = (m.build_provider || 'jenkins');
+                if (bp !== 'jenkins' && bp !== 'gitlab_ci') return true;
+                return (m.status || 'active') === 'active' || bp === currentBuildMode;
+            });
         }
 
         // 分页以过滤后的实际可见数量为准（API 返回的是原始数据库总数，前端 dedup/provider 过滤后不可见）
@@ -473,8 +496,11 @@ async function loadMaps() {
             tbody.innerHTML = maps.map(m => {
                 const plat = m.git_platform || '—';
                 const bp = m.build_provider || 'jenkins';
-                const bpLabel = bp === 'gitlab_ci' ? __.t('build.mode_gitlab_ci') : __.t('build.mode_jenkins');
-                const bpBadge = bp === 'gitlab_ci' ? 'badge-gitlab' : 'badge-default';
+                const bpLabel = bp === 'jenkins' ? __.t('build.mode_jenkins')
+                    : bp === 'gitlab_ci' ? __.t('build.mode_gitlab_ci')
+                    : bp === 'custom_push' ? 'Custom_Push'
+                    : bp;
+                const bpBadge = bp === 'gitlab_ci' ? 'badge-gitlab' : bp === 'custom_push' ? 'badge-cus' : 'badge-default';
                 const badgeCls = plat !== '—' && platforms.includes(plat) ? 'badge-' + plat : 'badge-default';
                 return `<tr>
                     <td><strong>${esc(m.job_name)}</strong></td>
@@ -602,8 +628,11 @@ function renderTopology() {
                 : '<span class="topo-empty-field">' + __.t('js.topo_not_linked') + '</span>';
 
             const build = p.build_provider || 'jenkins';
-            const buildLabel = build === 'gitlab_ci' ? __.t('build.mode_gitlab_ci') : __.t('build.mode_jenkins');
-            const buildIcon = build === 'gitlab_ci' ? '🐺' : '⚡';
+            const buildLabel = build === 'jenkins' ? __.t('build.mode_jenkins')
+                : build === 'gitlab_ci' ? __.t('build.mode_gitlab_ci')
+                : build === 'custom_push' ? 'Custom_Push'
+                : build;
+            const buildIcon = build === 'gitlab_ci' ? '🐺' : build === 'custom_push' ? '📤' : '⚡';
             const buildUrl = topoPlatformUrls.jenkins_url || '';
             const projectPath = (p.project || p.current_path || '').replace(/\/+$/, '');
             const jenkinsPath = projectPath
@@ -613,7 +642,7 @@ function renderTopology() {
                 ? `<a href="${esc(buildUrl + jenkinsPath)}" target="_blank" title="${esc(__.t('js.topo_open_jenkins'))}">${esc(p.project || p.current_path || __.t('js.topo_unnamed'))}</a>`
                 : `<span class="node-main">${esc(p.project || p.current_path || __.t('js.topo_unnamed'))}</span>`;
             const platformCls = platform !== '—' && platforms.includes(platform) ? 'badge-' + platform : 'badge-default';
-            const buildBadgeCls = build === 'gitlab_ci' ? 'badge-gitlab' : 'badge-default';
+            const buildBadgeCls = build === 'gitlab_ci' ? 'badge-gitlab' : build === 'custom_push' ? 'badge-cus' : 'badge-default';
 
             return `<div class="topo-card">
                 <div class="topo-header">
@@ -626,13 +655,13 @@ function renderTopology() {
                 </div>
                 <div class="topo-flow">
                     <div class="topo-node">
-                        <div class="node-label">${buildIcon} ${__.t('js.topo_build_source')}</div>
-                        <div class="node-main">${buildDisplay}</div>
+                        <div class="node-label">🔗 ${__.t('js.topo_git_repo')}</div>
+                        <div class="node-sub">${gitDisplay}</div>
                     </div>
                     <div class="topo-arrow">→</div>
                     <div class="topo-node">
-                        <div class="node-label">🔗 ${__.t('js.topo_git_repo')}</div>
-                        <div class="node-sub">${gitDisplay}</div>
+                        <div class="node-label">${buildIcon} ${__.t('js.topo_build_source')}</div>
+                        <div class="node-main">${buildDisplay}</div>
                     </div>
                     <div class="topo-arrow">→</div>
                     <div class="topo-node">
@@ -772,6 +801,7 @@ async function loadSettings() {
     const display = document.getElementById('mode-display');
     const configPanel = document.getElementById('mode-config');
     const sel = document.getElementById('build-mode-select');
+    const cpToggle = document.getElementById('custom-push-toggle');
     const statusEl = document.getElementById('build-mode-status');
     try {
         const res = await fetch('/api/admin/build_mode', { headers: authHeaders() });
@@ -780,25 +810,30 @@ async function loadSettings() {
         const mode = data.mode || 'both';
         const hasJenkins = data.has_jenkins;
         const hasGitlab = data.has_gitlab_ci;
+        const hasCustom = (data.custom_providers || []).length > 0;
+        const cpEnabled = data.custom_push_enabled || false;
+        const customNames = data.custom_providers || [];
         const source = data.source || 'env';
         currentBuildMode = mode;
+        currentCpEnabled = cpEnabled;
 
         // 来源标识
         const srcLabel = source === 'database'
             ? '<span class="badge" style="background:#f0fdf4;color:#16a34a;font-size:11px;margin-left:6px;" title="' + __.t('js.mode_persisted') + '">✓ ' + __.t('js.mode_persisted') + '</span>'
             : '<span class="badge" style="background:#fefce8;color:#ca8a04;font-size:11px;margin-left:6px;" title="' + __.t('js.mode_temp') + '">⚠️ ' + __.t('js.mode_temp') + '</span>';
 
-        // 下拉选项状态
+        // 下拉选项状态：全部可选，后端校验不可用时返回错误
         sel.value = mode;
         updateBuildModeValue();
-        sel.querySelectorAll('option').forEach(opt => {
-            if (opt.value === 'jenkins') opt.disabled = !hasJenkins;
-            if (opt.value === 'gitlab_ci') opt.disabled = !hasGitlab;
-        });
+        // custom_push 开关
+        if (cpToggle) {
+            cpToggle.checked = cpEnabled;
+        }
+        applyPushRecordsMenuVisibility(cpEnabled);
         configPanel.style.display = 'block';
         statusEl.style.display = 'none';
 
-        // 状态图（流程卡片式）
+        // 状态图（流程卡片式）：拉取式（左）与推送式（右）并排，中间分界线
         let modeBadge = '', flow = '';
         const buildCi = (mode === 'gitlab_ci') ? '🐺 ' + __.t('js.mode_gitlab_ci_name') : '⚡ ' + __.t('js.mode_jenkins_name');
         const buildColor = (mode === 'gitlab_ci') ? '#c81e1e' : '#d97706';
@@ -813,64 +848,97 @@ async function loadSettings() {
         const arrow = '<div style="color:#9ca3af;font-size:22px;line-height:1;">→</div>';
         const split = '<div style="color:#9ca3af;font-size:22px;line-height:1;">/</div>';
 
+        // custom_push 启用状态徽标
+        const customBadge = (cpEnabled && hasCustom)
+            ? '<span class="badge" style="background:#fef3c7;color:#d97706;font-size:11px;margin-left:6px;">📤 ' + customNames.join(', ') + ' ✓</span>'
+            : '';
+
+        // ── 拉取式（左）：Glue 触发 CI 构建，CI 拉取代码并推送镜像到 Harbor ──
+        let pullInner = '';
         if (hasJenkins && hasGitlab) {
             if (mode === 'both') {
                 modeBadge = '<span class="badge" style="background:#dbeafe;color:#1d4ed8;font-size:13px;">⚡ ' + __.t('js.mode_jenkins_name') + ' + 🐺 ' + __.t('js.mode_gitlab_ci_name') + ' ' + __.t('js.mode_coexist') + '</span>';
-                flow = '<div style="margin-top:14px;display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;">'
-                    + node('🌿', __.t('js.mode_git_repo'), '#f3f4f6', '#d1d5db', '#374151', 22)
+                pullInner = node('🌿', __.t('js.mode_git_repo'), '#f3f4f6', '#d1d5db', '#374151', 22)
                     + arrow
                     + node('⚡', __.t('js.mode_jenkins_name'), '#fff8e1', '#f59e0b', '#d97706', 24)
                     + split
                     + node('🐺', __.t('js.mode_gitlab_ci_name'), '#fce4ec', '#e91e63', '#c81e1e', 24)
                     + arrow
-                    + node('🐳', __.t('js.mode_harbor_name'), '#ecfeff', '#0891b2', '#0e7490', 24)
-                    + '</div>';
+                    + node('🐳', __.t('js.mode_harbor_name'), '#ecfeff', '#0891b2', '#0e7490', 24);
             } else {
                 modeBadge = '<span class="badge" style="background:' + buildBg + ';color:' + buildColor + ';font-size:13px;">' + buildCi + ' ' + __.t('js.mode_mode') + '</span>';
                 const icon = (mode === 'gitlab_ci') ? '🐺' : '⚡';
                 const name = (mode === 'gitlab_ci') ? __.t('js.mode_gitlab_ci_name') : __.t('js.mode_jenkins_name');
-                flow = '<div style="margin-top:14px;display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;">'
-                    + node('🌿', __.t('js.mode_git_repo'), '#f3f4f6', '#d1d5db', '#374151', 22)
+                pullInner = node('🌿', __.t('js.mode_git_repo'), '#f3f4f6', '#d1d5db', '#374151', 22)
                     + arrow
                     + node(icon, name, buildBg, buildBorder, buildColor, 24)
                     + arrow
-                    + node('🐳', __.t('js.mode_harbor_name'), '#ecfeff', '#0891b2', '#0e7490', 24)
-                    + '</div>';
+                    + node('🐳', __.t('js.mode_harbor_name'), '#ecfeff', '#0891b2', '#0e7490', 24);
             }
         } else if (hasGitlab) {
             modeBadge = '<span class="badge" style="background:#fce4ec;color:#c81e1e;font-size:13px;">🐺 ' + __.t('js.mode_gitlab_ci_name') + ' ' + __.t('js.mode_mode') + '</span>';
-            flow = '<div style="margin-top:14px;display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;">'
-                + node('🌿', __.t('js.mode_git_repo'), '#f3f4f6', '#d1d5db', '#374151', 22)
+            pullInner = node('🌿', __.t('js.mode_git_repo'), '#f3f4f6', '#d1d5db', '#374151', 22)
                 + arrow
                 + node('🐺', __.t('js.mode_gitlab_ci_name'), '#fce4ec', '#e91e63', '#c81e1e', 24)
                 + arrow
-                + node('🐳', __.t('js.mode_harbor_name'), '#ecfeff', '#0891b2', '#0e7490', 24)
-                + '</div>';
-            sel.querySelectorAll('option').forEach(opt => {
-                if (opt.value === 'jenkins' || opt.value === 'both') opt.disabled = true;
-            });
+                + node('🐳', __.t('js.mode_harbor_name'), '#ecfeff', '#0891b2', '#0e7490', 24);
         } else {
             modeBadge = '<span class="badge" style="background:#fff8e1;color:#d97706;font-size:13px;">⚡ ' + __.t('js.mode_jenkins_name') + ' ' + __.t('js.mode_mode') + '</span>';
-            flow = '<div style="margin-top:14px;display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;">'
-                + node('🌿', __.t('js.mode_git_repo'), '#f3f4f6', '#d1d5db', '#374151', 22)
+            pullInner = node('🌿', __.t('js.mode_git_repo'), '#f3f4f6', '#d1d5db', '#374151', 22)
                 + arrow
                 + node('⚡', __.t('js.mode_jenkins_name'), '#fff8e1', '#f59e0b', '#d97706', 24)
                 + arrow
-                + node('🐳', __.t('js.mode_harbor_name'), '#ecfeff', '#0891b2', '#0e7490', 24)
-                + '</div>';
-            sel.querySelectorAll('option').forEach(opt => {
-                if (opt.value === 'gitlab_ci' || opt.value === 'both') opt.disabled = true;
-            });
+                + node('🐳', __.t('js.mode_harbor_name'), '#ecfeff', '#0891b2', '#0e7490', 24);
         }
+        const hasPull = hasJenkins || hasGitlab;
+
+        // ── 推送式（右）：用户 CI 自行构建并推送镜像到 Harbor，Glue 只接收回写 ──
+        const hasPush = cpEnabled && hasCustom;
+        let pushInner = '';
+        if (hasPush) {
+            pushInner = node('📤', __.t('js.mode_user_ci'), '#fef3c7', '#f59e0b', '#d97706', 24)
+                + arrow
+                + node('🐳', __.t('js.mode_harbor_name'), '#ecfeff', '#0891b2', '#0e7490', 24)
+                + arrow
+                + node('📋', 'Devops-Glue', '#f0fdf4', '#16a34a', '#15803d', 24);
+        }
+
+        // ── 左右并排 + 中间分界线 ──
+        const side = (title, desc, inner) =>
+            '<div style="flex:1;min-width:280px;padding:16px 14px;display:flex;flex-direction:column;align-items:center;gap:10px;">'
+            + '<div style="font-size:12px;font-weight:700;letter-spacing:2px;color:#6b7280;">' + title + '</div>'
+            + '<div style="font-size:11px;color:#9ca3af;text-align:center;max-width:340px;">' + desc + '</div>'
+            + '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:center;">' + inner + '</div>'
+            + '</div>';
+
+        if (hasPull && hasPush) {
+            flow = '<div style="margin-top:14px;display:flex;align-items:stretch;justify-content:center;flex-wrap:wrap;">'
+                + side(__.t('js.mode_pull_title'), __.t('js.mode_pull_desc'), pullInner)
+                + '<div style="width:1px;align-self:stretch;background:#e5e7eb;margin:8px 0;"></div>'
+                + side(__.t('js.mode_push_title'), __.t('js.mode_push_desc'), pushInner)
+                + '</div>';
+        } else if (hasPull) {
+            flow = '<div style="margin-top:14px;display:flex;align-items:center;justify-content:center;">'
+                + side(__.t('js.mode_pull_title'), __.t('js.mode_pull_desc'), pullInner)
+                + '</div>';
+        } else if (hasPush) {
+            flow = '<div style="margin-top:14px;display:flex;align-items:center;justify-content:center;">'
+                + side(__.t('js.mode_push_title'), __.t('js.mode_push_desc'), pushInner)
+                + '</div>';
+        }
+
         display.innerHTML = '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
-            + modeBadge + srcLabel
+            + modeBadge + srcLabel + customBadge
             + '</div>'
             + flow;
+        updateDiscoverButton();
 
     } catch(e) {
         display.innerHTML = '<span style="color:#9ca3af;">' + __.t('js.mode_cannot_detect') + '</span>';
     }
 }
+
+let currentCpEnabled = false;
 
 async function onBuildModeChange() {
     const sel = document.getElementById('build-mode-select');
@@ -902,7 +970,7 @@ async function onBuildModeChange() {
         const res = await fetch('/api/admin/build_mode', {
             method: 'PUT',
             headers: Object.assign({'Content-Type':'application/json'}, authHeaders()),
-            body: JSON.stringify({mode: newMode})
+            body: JSON.stringify({mode: newMode, custom_push_enabled: currentCpEnabled})
         });
         if (handle401(res)) { sel.value = oldMode; currentBuildMode = oldMode; updateBuildModeValue(); return; }
         if (res.ok) {
@@ -922,6 +990,117 @@ async function onBuildModeChange() {
         sel.value = oldMode;
         currentBuildMode = oldMode;
         updateBuildModeValue();
+    }
+}
+
+async function onCustomPushToggle() {
+    const cpToggle = document.getElementById('custom-push-toggle');
+    const newEnabled = cpToggle.checked;
+    const oldEnabled = currentCpEnabled;
+
+    if (!confirm(newEnabled
+        ? __.t('js.mode_label_custom_push')
+        : __.t('js.custom_push_disable_confirm'))) {
+        cpToggle.checked = oldEnabled;
+        return;
+    }
+
+    const statusEl = document.getElementById('build-mode-status');
+    statusEl.style.display = 'none';
+    try {
+        const res = await fetch('/api/admin/build_mode', {
+            method: 'PUT',
+            headers: Object.assign({'Content-Type':'application/json'}, authHeaders()),
+            body: JSON.stringify({mode: currentBuildMode, custom_push_enabled: newEnabled})
+        });
+        if (handle401(res)) { cpToggle.checked = oldEnabled; return; }
+        if (res.ok) {
+            currentCpEnabled = newEnabled;
+            statusEl.style.display = 'inline';
+            setTimeout(() => statusEl.style.display = 'none', 2000);
+            loadSettings();
+        } else {
+            const data = await res.json();
+            toast(data.message || __.t('js.save_failed'), false);
+            cpToggle.checked = oldEnabled;
+        }
+    } catch(e) {
+        toast(__.t('js.network_error') + ': ' + e.message, false);
+        cpToggle.checked = oldEnabled;
+    }
+}
+
+// ═══════════ push 记录 ═══════════
+
+let pushPage = 1, pushTotalPages = 1;
+
+/** Custom_Push 启用时显示「push 记录」菜单，关闭时隐藏 */
+function applyPushRecordsMenuVisibility(cpEnabled) {
+    var item = document.getElementById('menu-push-records');
+    if (item) item.style.display = cpEnabled ? '' : 'none';
+}
+
+async function loadPushRecords() {
+    const tbody = document.getElementById('push-records-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#9ca3af;">' + __.t('common.loading') + '</td></tr>';
+    try {
+        const res = await fetch('/api/admin/custom_builds?page=' + pushPage + '&per_page=20', { headers: authHeaders() });
+        if (handle401(res)) return;
+        const data = await res.json();
+        const records = data.records || [];
+        const total = data.total || 0;
+        pushTotalPages = data.total_pages || 1;
+        if (pushPage > pushTotalPages) pushPage = pushTotalPages;
+
+        const pagination = document.getElementById('push-pagination');
+        if (!records.length) {
+            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#9ca3af;">' + __.t('push.no_records') + '</td></tr>';
+            if (pagination) pagination.innerHTML = '';
+            return;
+        }
+        const statusBadge = (s) => {
+            const st = (s || '').toLowerCase();
+            let bg = '#f3f4f6', fg = '#6b7280';
+            if (st === 'success') { bg = '#ecfdf5'; fg = '#065f46'; }
+            else if (st === 'failed' || st === 'canceled') { bg = '#fef2f2'; fg = '#dc2626'; }
+            else if (st === 'running') { bg = '#dbeafe'; fg = '#1d4ed8'; }
+            else if (st === 'pending') { bg = '#fef3c7'; fg = '#d97706'; }
+            return '<span class="badge" style="background:' + bg + ';color:' + fg + ';">' + esc(s || '—') + '</span>';
+        };
+        tbody.innerHTML = records.map(r => {
+            const vars = r.variables_json || '';
+            const logCell = r.log_url
+                ? '<a href="' + esc(r.log_url) + '" target="_blank" rel="noopener noreferrer">' + esc(__.t('push.view_log')) + '</a>'
+                : '—';
+            const webCell = r.web_url
+                ? '<a href="' + esc(r.web_url) + '" target="_blank" rel="noopener noreferrer" style="display:inline-block;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;" title="' + esc(r.web_url) + '">' + esc(r.web_url) + '</a>'
+                : '—';
+            const shaCell = r.sha ? '<code style="font-size:11px;word-break:break-all;">' + esc(r.sha) + '</code>' : '—';
+            return '<tr>'
+                + '<td>' + esc(r.job_name) + '</td>'
+                + '<td>' + esc(String(r.pipeline_iid)) + '</td>'
+                + '<td>' + statusBadge(r.status) + '</td>'
+                + '<td>' + (r.tag ? '<code style="font-size:11px;">' + esc(r.tag) + '</code>' : '—') + '</td>'
+                + '<td>' + shaCell + '</td>'
+                + '<td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + (vars ? esc(vars) : '') + '">' + (vars ? esc(vars) : '—') + '</td>'
+                + '<td>' + logCell + '</td>'
+                + '<td>' + webCell + '</td>'
+                + '<td>' + esc(r.finished_at || '') + '</td>'
+                + '</tr>';
+        }).join('');
+
+        if (pagination) {
+            let pag = '<span style="color:#6b7280;">' + __.t('js.total_items', {total: total}) + '</span>';
+            pag += '<button class="btn btn-sm" onclick="pushPage=1;loadPushRecords()" ' + (pushPage<=1?'disabled':'') + '>« ' + __.t('js.page_first') + '</button>';
+            pag += '<button class="btn btn-sm" onclick="pushPage=Math.max(1,pushPage-1);loadPushRecords()" ' + (pushPage<=1?'disabled':'') + '>‹ ' + __.t('js.page_prev') + '</button>';
+            pag += '<span style="color:#374151;font-weight:600;">' + pushPage + ' / ' + pushTotalPages + '</span>';
+            pag += '<button class="btn btn-sm" onclick="pushPage=Math.min(pushTotalPages,pushPage+1);loadPushRecords()" ' + (pushPage>=pushTotalPages?'disabled':'') + '>' + __.t('js.page_next') + ' ›</button>';
+            pag += '<button class="btn btn-sm" onclick="pushPage=pushTotalPages;loadPushRecords()" ' + (pushPage>=pushTotalPages?'disabled':'') + '>' + __.t('js.page_last') + ' »</button>';
+            pagination.innerHTML = pag;
+        }
+    } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#dc2626;">' + __.t('js.network_error') + ': ' + esc(e.message) + '</td></tr>';
     }
 }
 
@@ -1197,6 +1376,11 @@ function showForm(editData) {
         document.getElementById('f-job_name').readOnly = false;
         document.getElementById('map-form').reset();
     }
+    // Custom_Push 未启用时禁用该选项并提示
+    const cpOption = document.querySelector('#f-build_provider option[value="custom_push"]');
+    const cpHint = document.getElementById('cp-disabled-hint');
+    if (cpOption) cpOption.disabled = !currentCpEnabled;
+    if (cpHint) cpHint.style.display = currentCpEnabled ? 'none' : '';
     panel.scrollIntoView({behavior:'smooth'});
 }
 
@@ -1231,7 +1415,11 @@ async function submitForm(e) {
         if (handle401(res)) return;
         const data = await res.json();
         if (res.ok) {
-            toast(isEdit ? __.t('js.already_updated') : __.t('js.already_added'), true);
+            if (body.build_provider === 'custom_push' && !currentCpEnabled) {
+                toast(__.t('js.cp_saved_as_pending'), true);
+            } else {
+                toast(isEdit ? __.t('js.already_updated') : __.t('js.already_added'), true);
+            }
             hideForm();
             loadMaps();
         } else {
@@ -1252,10 +1440,16 @@ function statusBadge(s) {
 async function activateMap(jobName, item) {
     // 防御：provider 与当前配置模式不匹配时直接拒绝
     const bp = item.build_provider || 'jenkins';
-    if (currentBuildMode !== 'both' && bp !== currentBuildMode) {
+    const isBuiltinBp = bp === 'jenkins' || bp === 'gitlab_ci';
+    if (isBuiltinBp && currentBuildMode !== 'both' && bp !== currentBuildMode) {
         const curLabel = currentBuildMode === 'jenkins' ? __.t('js.mode_jenkins_name') : __.t('js.mode_gitlab_ci_name');
         const itemLabel = bp === 'gitlab_ci' ? __.t('js.mode_gitlab_ci_name') : __.t('js.mode_jenkins_name');
         toast(__.t('js.cannot_activate_mode', {mode: curLabel, item: itemLabel}), false);
+        return;
+    }
+    // 防御：Custom_Push 未启用时不允许启用 custom_push 映射
+    if (bp === 'custom_push' && !currentCpEnabled) {
+        toast(__.t('js.cp_disabled_hint'), false);
         return;
     }
     if (!confirm(__.t('js.activate_confirm') + ' "' + jobName + '"?\n\n' + __.t('js.activate_warn_hide'))) return;

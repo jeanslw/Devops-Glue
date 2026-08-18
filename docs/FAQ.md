@@ -1,4 +1,4 @@
-# Devops-Glue API FAQ v2.5.1
+# Devops-Glue API FAQ v2.6
 
 ## Table of Contents
 
@@ -203,6 +203,26 @@ This tells Jenkins to accept any branch passed via the build parameter, rather t
 - Ensure the Git Parameter plugin is installed and configured in the Jenkins job
 - Verify the parameter name in the Jenkins job matches what devops-glue passes
 - Check that the Branch Filter regex is correct: `origin/(.*)` matches all remote branches
+
+### Q: What is Custom_Push mode?
+
+Custom_Push is a push-based CI mode where users push build status, log URL, and image tags to Devops-Glue via their own CI scripts. Devops-Glue only stores metadata and log URL pointers, does not participate in builds or store log content. Enabled via admin panel checkbox, no code changes needed.
+
+### Q: How does Custom_Push differ from Jenkins/GitLab CI?
+
+Jenkins/GitLab CI are pull-based CI where Devops-Glue calls CI APIs to trigger builds and fetch status. Custom_Push is push-based CI where user CI pushes status to Devops-Glue. Both can be enabled simultaneously (orthogonal design): `build_mode` controls pull-based CI, `custom_push_enabled` independently controls push-based CI.
+
+### Q: Why doesn't Custom_Push store build logs?
+
+Because Devops-Glue cannot verify the authenticity of build results, logs as evidence must be held by the executor (user CI). Devops-Glue only stores `log_url` pointers and proxies log content, ensuring evidence chain trustworthiness.
+
+### Q: Why must pipeline_iid be an integer?
+
+To align with existing `ci_pipeline_tags` table constraints, `pipeline_iid` must be an integer type. User CI must provide a unique integer build ID. Duplicate reports with the same `(job_name, pipeline_iid)` overwrite (UPDATE) the existing record.
+
+### Q: How to configure Custom_Push?
+
+`settings.php` comes with `CustomPushBuildProvider` configured by default, ready out of the box. Enable via admin panel checkbox. Custom variables (like `env`) are declared in the `variables` array in `settings.php` and automatically displayed on the frontend.
 
 ---
 
@@ -604,4 +624,4 @@ No. API responses always return raw data. i18n only affects the frontend UI and 
 
 ---
 
-*Document version: v2.5.1 | Last updated: 2026-08-14*
+*Document version: v2.6 | Last updated: 2026-08-14*

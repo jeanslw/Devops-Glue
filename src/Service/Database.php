@@ -237,6 +237,23 @@ class Database
             created_at {$TS_TYPE} DEFAULT ({$NOW}),
             PRIMARY KEY (project, pipeline_iid)
         ){$ENGINE}");
+        // ci_custom_builds（自定义推送式 CI 的构建记录，只存元数据，不存日志内容）
+        $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_CUSTOM_BUILDS . " (
+            id {$PK},
+            job_name {$VCHAR255},
+            pipeline_iid INTEGER NOT NULL,
+            ref TEXT,
+            sha TEXT,
+            variables_json TEXT,
+            status {$VARCHAR} DEFAULT 'pending',
+            exit_code INTEGER,
+            log_url TEXT,
+            web_url TEXT,
+            triggered_at {$TS_TYPE},
+            started_at {$TS_TYPE},
+            finished_at {$TS_TYPE},
+            UNIQUE (job_name, pipeline_iid)
+        ){$ENGINE}");
         // cache
         if ($isMySQL) {
             $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_CACHE . " (

@@ -1,4 +1,4 @@
-# Devops-Glue API Technical Guide v2.5.1
+# Devops-Glue API Technical Guide v2.6
 
 > This document is intended for developers, operations engineers, and troubleshooting. It covers all business logic, data flows, database table structures, and common issues.
 
@@ -20,6 +20,14 @@
    - [5.7 Platform Version Management](#57-platform-version-management)
    - [5.8 Build Mode Switching](#58-build-mode-switching)
    - [5.9 Authentication & Authorization](#59-authentication--authorization)
+   - [5.10 Custom_Push CI Mode](#510-custom_push-ci-mode)
+   - [5.10.1 Orthogonal Design](#5101-orthogonal-design)
+   - [5.10.2 Core Components](#5102-core-components)
+   - [5.10.3 Configuration & Registration](#5103-configuration--registration)
+   - [5.10.4 Report API](#5104-report-api)
+   - [5.10.5 Log Proxy](#5105-log-proxy)
+   - [5.10.6 Admin Panel](#5106-admin-panel)
+   - [5.10.7 Permissions & Scope](#5107-permissions--scope)
 6. [Key Data Flows](#6-key-data-flows)
 7. [Common Troubleshooting](#7-common-troubleshooting)
 8. [Appendix: Complete Configuration Reference](#8-appendix-complete-configuration-reference)
@@ -67,6 +75,7 @@
 │  ├─ JenkinsService    — Jenkins API wrapper                         │
 │  ├─ GitlabCiBuildProvider — GitLab CI Build adapter                 │
 │  ├─ JenkinsBuildProvider  — Jenkins Build adapter                   │
+│  ├─ CustomPushBuildProvider — Custom Push Build adapter             │
 │  ├─ BuildProviderRegistry — Build Provider registry                 │
 │  ├─ Git/ProviderRegistry   — Git Provider registry                  │
 │  ├─ Git/GitlabService      — GitLab API adapter                     │
@@ -214,7 +223,7 @@ Controller → AppConfig::getXxxConfig()
 | `value` | TEXT/MEDIUMTEXT | Config value |
 | `updated_at` | DATETIME/TEXT | Update time |
 
-**Existing settings:** `build_mode` (jenkins/gitlab_ci/both)
+**Existing settings:** `build_mode` (jenkins/gitlab_ci/both), `custom_push_enabled` (0/1)
 
 #### admin_users (Admin Accounts)
 
@@ -244,6 +253,29 @@ Controller → AppConfig::getXxxConfig()
 | `created_at` | DATETIME/TEXT | Record time |
 
 **Indexes:** `(project, check_type)`, `(sha)`
+
+#### ci_custom_builds (Custom_Push Build Metadata)
+
+| Field | Type | Description |
+|---|---|---|
+| `job_name` | TEXT NOT NULL (PK) | Job name or project path |
+| `pipeline_iid` | INTEGER NOT NULL (PK) | Pipeline internal ID (integer, aligns with `ci_pipeline_tags` constraint) |
+| `status` | TEXT | Build status |
+| `sha` | TEXT | Commit SHA |
+| `exit_code` | INTEGER | Build exit code |
+| `log_url` | TEXT | Log URL (pointer only, log content not stored; 302 redirect on access) |
+| `web_url` | TEXT | Pipeline Web link |
+| `started_at` | DATETIME/TEXT | Build start time |
+| `finished_at` | DATETIME/TEXT | Build finish time |
+| `variables_json` | TEXT | Custom build variables (JSON serialized) |
+| `created_at` | DATETIME/TEXT | Creation time |
+
+**Unique key:** `(job_name, pipeline_iid)`
+
+**Notes:**
+- Control fields (`pipeline_iid`/`status`/`finished_at`/`started_at`/`ref`/`sha`/`exit_code`/`log_url`/`web_url`/`tag`/`harbor_repository`) are stored separately from custom variables in `variables_json`
+- `pipeline_iid` cannot be modified after creation; duplicate reports with the same `(job_name, pipeline_iid)` overwrite (UPDATE) the existing record, preserving the auto-increment id
+- Image tags are not stored in this table; the existing `ci_pipeline_tags` table is reused (shared by CD layer)
 
 ### 4.2 Database Sync Rules
 
@@ -300,7 +332,7 @@ Controller → AppConfig::getXxxConfig()
   "checks": { "jenkins": true, "jenkins_version": "2.555.3", "git": [...], "harbor": true, "harbor_components": {...} },
   "stats": { "total_maps": 4, "active_maps": 4, "git_platforms": 2, "harbor_repos": 4 },
   "build_mode": "both", "build_mode_source": "database",
-  "db_driver": "mysql", "app_version": "2.5.1", "app_env": "production",
+  "db_driver": "mysql", "app_version": "2.6.0", "app_env": "production",
   "time": "2026-07-25 12:00:00"
 }
 ```
@@ -536,7 +568,11 @@ If only `ref` is present without other parameters, auto-convert to `{branches: r
 **Route:** `GET /api/admin/build_mode` + `PUT /api/admin/build_mode`  
 **Method:** `AdminController::getBuildMode()` / `updateBuildMode()`
 
-**Storage:** `ci_app_settings` table, key=`build_mode`, value ∈ {jenkins, gitlab_ci, both}
+**Storage:** `ci_app_settings` table
+- key=`build_mode`, value ∈ {jenkins, gitlab_ci, both} (controls pull-based CI)
+- key=`custom_push_enabled`, value ∈ {0,1} (independent boolean switch, controls push-based CI)
+
+> **Orthogonal Design:** `build_mode` (jenkins/gitlab_ci/both) only controls the pull-based CI channel; `custom_push_enabled` is an independent boolean switch. The two are not mutually exclusive and can be enabled simultaneously. The `build_mode` dropdown always shows three selectable options; `custom_push_enabled` is a separate checkbox. See also [§5.10](#510-custom_push-ci-mode).
 
 **Read Logic (AppConfig::getBuildMode()):**
 ```
@@ -704,6 +740,89 @@ if ($role === 'super_admin') return true;  // hardcoded bypass
 //            expandPermissions() unfolds implied keys, then in_array() compares
 ```
 The expanded permission array is loaded once in AuthMiddleware and cached in `$this->userPermissions`, reused within a single request.
+
+---
+
+### 5.10 Custom_Push CI Mode
+
+Custom_Push is a **push-based CI** mode that complements the **pull-based CI** (Jenkins/GitLab CI). Users push build status, log URL, and image tags to Devops-Glue via their own CI scripts. Devops-Glue only stores metadata and log URL pointers; it does not participate in build execution nor store log content.
+
+#### 5.10.1 Orthogonal Design
+
+| Dimension | build_mode | custom_push_enabled |
+|---|---|---|
+| Type | Pull-based CI | Push-based CI |
+| Direction | Devops-Glue → CI system | User CI → Devops-Glue |
+| Control | jenkins / gitlab_ci / both | Independent boolean switch |
+| Relationship | Independent, can be enabled simultaneously | Independent, can be enabled simultaneously |
+
+For example: `build_mode=jenkins` + `custom_push_enabled=true` means both Jenkins pull-based CI and Custom_Push push-based CI are active simultaneously.
+
+#### 5.10.2 Core Components
+
+- **`CustomPushBuildProvider`** (`src/Service/Build/CustomPushBuildProvider.php`): Implements `BuildProviderInterface`, handles `trigger`, `getPipelines`, `updateStatus`, and other methods.
+- **`ci_custom_builds` table**: Stores build metadata with `(job_name, pipeline_iid)` as the unique key; `pipeline_iid` is an integer type.
+- **`ci_pipeline_tags` table**: Reuses the existing table to store image tags; the CD layer reads via `GET /api/build/{path}/tag`.
+
+#### 5.10.3 Configuration & Registration
+
+Configured via the `build.custom_providers` array in `settings.php`. CustomPushBuildProvider is configured by default:
+
+```php
+'build' => [
+    'custom_providers' => [
+        [
+            'name'   => 'custom_push',
+            'class'  => 'App\\Service\\Build\\CustomPushBuildProvider',
+            'config' => [
+                'variables' => [
+                    'env'       => ['type' => 'choice', 'choices' => ['dev', 'staging', 'prod'], 'description' => 'Image target environment (optional)', 'required' => false],
+                ],
+            ],
+        ],
+    ],
+],
+```
+
+The DI container (`container.php`) automatically registers all custom providers by iterating over the `build.custom_providers` configuration.
+
+#### 5.10.4 Report API
+
+**Result report: `POST /api/build/{path}/report`**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `pipeline_iid` | INTEGER | ✅ | Build ID (provided by user CI) |
+| `status` | string | ✅ | `success`/`failed`/`aborted` (terminal, no pending/running) |
+| `finished_at` | datetime | ✅ | Build completion time |
+| `started_at` | datetime | ❌ | Build start time |
+| `ref` | string | ❌ | Build branch/tag |
+| `sha` | string | ❌ | Commit SHA |
+| `exit_code` | INTEGER | ❌ | Build exit code |
+| `log_url` | string(URI) | ❌ | Log URL (pointer only, Devops-Glue does not store log content) |
+| `web_url` | string(URI) | ❌ | User CI build page link |
+| `tag` | string | ✅ (success) | Image tag — required when `status=success`; written to `ci_pipeline_tags` |
+| `harbor_repository` | string | — | Harbor repository path — resolved from `job_git_map` (body value ignored); must be `project/repo`; both repo and `tag` verified to actually exist in Harbor on report (400 if either missing) |
+| `env` | string | ❌ | Image target environment (custom variable, optional) |
+
+> Fields outside the **control fields** (`pipeline_iid`/`status`/`finished_at`/`started_at`/`ref`/`sha`/`exit_code`/`log_url`/`web_url`/`tag`/`harbor_repository`) are automatically stored in `variables_json`.
+> When `status=success`, `tag` and a resolvable `harbor_repository` are mandatory, and `ci_pipeline_tags` is written (project, pipeline_iid, tag, harbor_repository, finished_at, status); duplicate reports overwrite (UPDATE) the existing record.
+> All JSON keys use lowercase snake_case.
+
+#### 5.10.5 Log Proxy
+
+Devops-Glue does not store log content, only `log_url` pointers. When accessing build logs, the system proxies log content via 302 redirect, ensuring the evidence chain is held by the executor (user CI).
+
+#### 5.10.6 Admin Panel
+
+- **Status card**: System monitoring page shows Custom_Push status ✅ (configured) or ⚪ (not configured)
+- **Auto-discovery**: `AutoDiscover` scans Git platforms and automatically identifies projects with `build_provider=custom_push` when `custom_push_enabled=true`
+- **Dropdown menu**: `build_mode` three options (jenkins/gitlab_ci/both) are always selectable
+- **Refresh requirements**: Frontend changes require browser hard refresh (Ctrl+F5); config/controller changes require backend restart
+
+#### 5.10.7 Permissions & Scope
+
+The report endpoint reuses the `build.report` scope, authenticated via API Token `Authorization: Bearer <token>` header.
 
 ---
 
@@ -960,4 +1079,4 @@ When adding/modifying table structures, update the following files and **bump `A
 
 ---
 
-*Document version: v2.5.1 | Last updated: 2026-08-14*
+*Document version: v2.6 | Last updated: 2026-08-14*

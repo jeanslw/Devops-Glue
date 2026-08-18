@@ -72,6 +72,7 @@ class ApiTokenScopeTest extends TestCase
             'build cancel 写'         => ['POST', '/api/build/group/proj/pipelines/9/cancel', AppConfig::API_SCOPE_BUILD_WRITE],
             'build scan-sync 回写'     => ['POST', '/api/build/static/scan-sync', AppConfig::API_SCOPE_BUILD_REPORT],
             'build commit-status 回写' => ['POST', '/api/build/static/commit-status', AppConfig::API_SCOPE_BUILD_REPORT],
+            'build report 回写'       => ['POST', '/api/build/static/report', AppConfig::API_SCOPE_BUILD_REPORT],
             'build pipelines 读'      => ['GET', '/api/build/static/pipelines', AppConfig::API_SCOPE_BUILD_READ],
             'build logs 读'           => ['GET', '/api/build/static/logs/1', AppConfig::API_SCOPE_BUILD_READ],
             'build tag 读'            => ['GET', '/api/build/static/tag', AppConfig::API_SCOPE_BUILD_READ],

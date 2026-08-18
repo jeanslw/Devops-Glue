@@ -45,6 +45,28 @@ return [
         'username' => env('HARBOR_USER', 'admin'),
         'password' => env('HARBOR_PASSWORD', ''),
     ],
+    'build' => [
+        // 自定义 Build Provider（推送式 CI）— 默认已配置，开箱即用，无需修改。
+        // 启用：管理后台「配置模式」Tab → 勾选「启用 Custom_Push」→ 即时生效。
+        // build_mode 与 custom_push_enabled 正交，可任意组合。
+        //
+        // 用户 CI 对接一个接口（path = job_git_map.job_name）：
+        //   POST /api/build/{path}/report — 一次性上报构建终态结果（含 tag）
+        //
+        // variables 定义上报时允许传入的自定义构建参数。
+        // 如需更多参数（如 COMMIT_MSG、BUILDER），在下方追加即可。
+        'custom_providers' => [
+            [
+                'name'   => 'custom_push',
+                'class'  => 'App\\Service\\Build\\CustomPushBuildProvider',
+                'config' => [
+                    'variables' => [
+                        'env'         => ['type' => 'choice', 'choices' => ['dev', 'staging', 'prod'], 'description' => '构建镜像目标环境（可选）', 'required' => false],
+                    ],
+                ],
+            ],
+        ],
+    ],
     'app' => [
         'env'           => env('APP_ENV', 'production'),
         'debug'         => env('APP_DEBUG') === 'true',

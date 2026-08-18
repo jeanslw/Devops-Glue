@@ -78,6 +78,38 @@ return [
         'password' => env('HARBOR_PASSWORD'),
     ],
 
+    // ==================== 自定义 Build Provider（推送式 CI） ====================
+    // 默认已配置 CustomPushBuildProvider，开箱即用，无需修改。
+    // 启用：管理后台「配置模式」Tab → 勾选「启用 Custom_Push」→ 即时生效。
+    //
+    // build_mode（jenkins/gitlab_ci/both）与 custom_push_enabled 正交，可任意组合。
+    // job_git_map.build_provider 填 'custom_push' 即可选用。
+    //
+    // 用户 CI 对接一个接口（path = job_git_map.job_name）：
+    //   POST /api/build/{path}/report — 一次性上报构建终态结果
+    //      Body: { "pipeline_iid": 123, "status": "success", "finished_at": "2026-08-18 10:05:30",
+    //              "started_at": "2026-08-18 10:00:00", "sha": "abc123", "ref": "main",
+    //              "log_url": "https://ci.example.com/build/123/log",
+    //              "web_url": "https://ci.example.com/build/123",
+    //              "tag": "v1.0.0", "env": "prod", ... }
+    //
+    // 下方 variables 定义上报时允许传入的自定义构建参数（存入 variables_json）。
+    // pipeline_iid/status/finished_at/tag 等控制字段不需要在此声明。
+    // 如需更多参数（如 COMMIT_MSG、BUILDER），直接在下方追加即可。
+    'build' => [
+        'custom_providers' => [
+            [
+                'name'   => 'custom_push',
+                'class'  => 'App\\Service\\Build\\CustomPushBuildProvider',
+                'config' => [
+                    'variables' => [
+                        'env'         => ['type' => 'choice', 'choices' => ['dev', 'staging', 'prod'], 'description' => '构建镜像目标环境（可选）', 'required' => false],
+                    ],
+                ],
+            ],
+        ],
+    ],
+
     // ==================== 管理后台 ====================
     'admin' => [
         'user'     => env('ADMIN_USER', 'admin'),

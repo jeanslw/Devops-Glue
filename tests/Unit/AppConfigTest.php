@@ -46,6 +46,12 @@ class AppConfigTest extends TestCase
         $this->assertEquals(AppConfig::BUILD_MODE_GITLAB_CI, AppConfig::PROVIDER_GITLAB_CI);
     }
 
+    public function testCustomPushConstants(): void
+    {
+        $this->assertEquals('custom_push', AppConfig::PROVIDER_CUSTOM_PUSH);
+        $this->assertEquals('ci_custom_builds', AppConfig::TABLE_CUSTOM_BUILDS);
+    }
+
     public function testStatusConstantsAreDistinct(): void
     {
         $statuses = [AppConfig::STATUS_ACTIVE, AppConfig::STATUS_INACTIVE, AppConfig::STATUS_PENDING];
@@ -61,6 +67,7 @@ class AppConfigTest extends TestCase
         $this->assertNotEmpty(AppConfig::TABLE_PIPELINE_TAGS);
         $this->assertNotEmpty(AppConfig::TABLE_SECURITY_CHECKS);
         $this->assertNotEmpty(AppConfig::TABLE_PLATFORM_VERSIONS);
+        $this->assertNotEmpty(AppConfig::TABLE_CUSTOM_BUILDS);
     }
 
     public function testCacheKeyConstantsHavePrefixPostfix(): void
@@ -205,6 +212,25 @@ class AppConfigTest extends TestCase
         $this->assertArrayHasKey('token', $jenkins);
         $this->assertEquals('http://localhost:8083', $jenkins['url']);
         $this->assertEquals('', $jenkins['user']);
+    }
+
+    // ── 自定义 Build Provider（custom_push）配置 ──
+
+    public function testGetCustomBuildProvidersEmptyByDefault(): void
+    {
+        $appConfig = new AppConfig([]);
+        $providers = $appConfig->getCustomBuildProviders();
+        $this->assertIsArray($providers);
+        $this->assertEmpty($providers);
+    }
+
+    public function testGetCustomBuildProvidersFromConfig(): void
+    {
+        $providers = [
+            ['name' => 'custom_push', 'class' => 'App\\Service\\Build\\CustomPushBuildProvider', 'config' => ['variables' => []]],
+        ];
+        $appConfig = new AppConfig(['build' => ['custom_providers' => $providers]]);
+        $this->assertSame($providers, $appConfig->getCustomBuildProviders());
     }
 
     // ── CORS 配置 ──

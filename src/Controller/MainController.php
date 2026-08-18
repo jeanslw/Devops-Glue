@@ -355,15 +355,17 @@ class MainController extends BaseController
         } catch (\Exception $e) {}
 
         $data = [
-            'status'           => $status,
-            'checks'           => $checks,
-            'stats'            => $stats,
-            'build_mode'       => $this->config->getBuildMode(),
-            'build_mode_source'=> $this->config->getBuildModeSource(),
-            'db_driver'        => \App\Service\Database::driver(),
-            'app_version'      => AppConfig::APP_VERSION,
-            'app_env'          => $this->config->getAppEnv(),
-            'time'             => date('Y-m-d H:i:s'),
+            'status'                => $status,
+            'checks'                => $checks,
+            'stats'                 => $stats,
+            'build_mode'            => $this->config->getBuildMode(),
+            'build_mode_source'     => $this->config->getBuildModeSource(),
+            'custom_push_enabled'  => $this->config->getCustomPushEnabled(),
+            'custom_push_providers' => array_column($this->config->getCustomBuildProviders(), 'name'),
+            'db_driver'             => \App\Service\Database::driver(),
+            'app_version'           => AppConfig::APP_VERSION,
+            'app_env'               => $this->config->getAppEnv(),
+            'time'                  => date('Y-m-d H:i:s'),
         ];
 
         $response->getBody()->write(json_encode($data));

@@ -66,6 +66,9 @@
             <div class="menu-item" data-tab="mode" onclick="switchTab('mode')">
                 <span class="menu-icon">🔧</span> <span data-i18n="admin.sidebar_mode">配置模式</span>
             </div>
+            <div class="menu-item" id="menu-push-records" data-tab="push-records" onclick="switchTab('push-records')" style="display:none;padding-left:44px;">
+                <span class="menu-icon">📤</span> <span data-i18n="admin.sidebar_push_records">Custom_Push_Log</span>
+            </div>
             <div class="menu-group" id="menu-group-users">
                 <div class="menu-item menu-group-title" onclick="toggleUserMenu()">
                     <span class="menu-icon">👥</span>
@@ -182,6 +185,15 @@
                             <span class="svc-stat" id="stat-harbor" data-i18n="common.detecting">检测中…</span>
                         </div>
                     </div>
+
+                    <div class="monitor-card" id="card-custom-push">
+                        <h4><span class="dot dot-load" id="dot-custom-push"></span> Custom_Push</h4>
+                        <div class="svc-row parent">
+                            <span class="svc-icon" id="icon-custom-push">⏳</span>
+                            <span class="svc-name" id="name-custom-push" data-base="Custom_Push">Custom_Push</span>
+                            <span class="svc-stat" id="stat-custom-push" data-i18n="common.detecting">检测中…</span>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- 系统监测通栏 -->
@@ -237,6 +249,7 @@
                             <option value="" data-i18n="map.all_build_sources">全部构建源</option>
                             <option value="jenkins" data-i18n="build.mode_jenkins">⚡ Jenkins</option>
                             <option value="gitlab_ci" data-i18n="build.mode_gitlab_ci">🐺 GitLab CI</option>
+                            <option value="custom_push" data-i18n="build.mode_custom_push">📤 Custom_Push</option>
                         </select>
                         <select id="map-platform-filter" onchange="onFilterChange()" style="padding:7px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;min-width:110px;">
                             <option value="" data-i18n="map.all_platforms">全部平台</option>
@@ -280,7 +293,9 @@
                                         <option value="" data-i18n="form.please_select">— 请选择 —</option>
                                         <option value="jenkins" data-i18n="js.mode_jenkins_name">jenkins</option>
                                         <option value="gitlab_ci" data-i18n="js.mode_gitlab_ci_name">gitlab_ci</option>
+                                        <option value="custom_push" data-i18n="js.mode_custom_push_name">Custom_Push</option>
                                     </select>
+                                    <small id="cp-disabled-hint" data-i18n="js.cp_disabled_hint" style="display:none;color:#d97706;">Custom_Push 未启用，选择后将保存为「待定」</small>
                                 </div>
                                 <div>
                                     <label data-i18n="form.status_field">状态</label>
@@ -402,20 +417,52 @@
                         加载中…
                     </div>
                     <div id="mode-config" style="display:none;border-top:1px solid #e5e7eb;padding:16px 24px 4px;margin-top:12px;">
-                        <div style="display:flex;align-items:center;gap:12px;justify-content:center;flex-wrap:wrap;">
-                            <label style="font-size:13px;font-weight:600;color:#374151;" data-i18n="build.mode_label">构建系统模式：</label>
-                            <select id="build-mode-select" style="width:auto;min-width:170px;" onchange="onBuildModeChange()">
-                                <option value="jenkins" data-i18n="build.mode_jenkins">⚡ Jenkins</option>
-                                <option value="gitlab_ci" data-i18n="build.mode_gitlab_ci">🐺 GitLab CI</option>
-                                <option value="both" data-i18n="build.mode_both">⚡ Jenkins + 🐺 GitLab CI</option>
-                            </select>
-                            <code id="build-mode-value" style="font-size:12px;color:#374151;background:#f3f4f6;padding:2px 8px;border-radius:4px;font-family:monospace;">—</code>
-                            <span id="build-mode-status" style="font-size:12px;color:#16a34a;display:none;" data-i18n="build.mode_saved">✅ 已保存</span>
+                        <div style="display:flex;align-items:center;gap:32px;justify-content:space-between;flex-wrap:wrap;">
+                            <div style="display:flex;align-items:center;gap:12px;flex-wrap:nowrap;">
+                                <label style="font-size:13px;font-weight:600;color:#374151;white-space:nowrap;" data-i18n="build.mode_label">构建系统模式：</label>
+                                <select id="build-mode-select" style="width:auto;min-width:170px;" onchange="onBuildModeChange()">
+                                    <option value="jenkins" data-i18n="build.mode_jenkins">⚡ Jenkins</option>
+                                    <option value="gitlab_ci" data-i18n="build.mode_gitlab_ci">🐺 GitLab CI</option>
+                                    <option value="both" data-i18n="build.mode_both">⚡ Jenkins + 🐺 GitLab CI</option>
+                                </select>
+                                <code id="build-mode-value" style="font-size:12px;color:#374151;background:#f3f4f6;padding:2px 8px;border-radius:4px;font-family:monospace;">—</code>
+                                <span id="build-mode-status" style="font-size:12px;color:#16a34a;display:none;" data-i18n="build.mode_saved">✅ 已保存</span>
+                            </div>
+                            <label style="font-size:13px;font-weight:600;color:#374151;cursor:pointer;display:inline-flex;align-items:center;gap:4px;">
+                                <input type="checkbox" id="custom-push-toggle" onchange="onCustomPushToggle()" style="width:16px;height:16px;cursor:pointer;">
+                                <span data-i18n="build.custom_push_toggle">📤 启用 Custom_Push</span>
+                            </label>
                         </div>
                         <p style="text-align:center;font-size:11px;color:#9ca3af;margin-top:8px;" data-i18n="build.mode_hint">
-                            修改后即时生效。不可用的选项会在下拉中禁用。
+                            修改后即时生效。更改构建模式会将不再匹配的映射记录停用（降为「待定」），不可用的选项会在下拉中禁用。
                         </p>
                     </div>
+                </div>
+            </div>
+
+            <!-- ═══ push 记录 Tab ═══ -->
+            <div id="tab-push-records" style="display:none;">
+                <div class="toolbar"><h3 data-i18n="admin.sidebar_push_records">📤 Custom_Push_Log</h3></div>
+                <div class="card" style="margin-top:12px;overflow-x:auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th data-i18n="push.job_name">job_name</th>
+                                <th data-i18n="push.pipeline_iid">pipeline_iid</th>
+                                <th data-i18n="push.status">status</th>
+                                <th data-i18n="push.tag">tag</th>
+                                <th data-i18n="push.sha">sha</th>
+                                <th data-i18n="push.variables_json">variables_json</th>
+                                <th data-i18n="push.log_url">log_url</th>
+                                <th data-i18n="push.web_url">web_url</th>
+                                <th data-i18n="push.finished_at">finished_at</th>
+                            </tr>
+                        </thead>
+                        <tbody id="push-records-tbody">
+                            <tr><td colspan="9" style="text-align:center;color:#9ca3af;" data-i18n="common.loading">加载中...</td></tr>
+                        </tbody>
+                    </table>
+                    <div id="push-pagination" style="display:flex;justify-content:center;align-items:center;gap:8px;padding:12px 0;font-size:13px;"></div>
                 </div>
             </div>
 

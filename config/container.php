@@ -292,6 +292,32 @@ return [
             }
         }
 
+        // ---- 自定义 Build Provider（custom_push 等）----
+        // 与 Git 自定义平台解耦：独立配置项 build.custom_providers。
+        // 构造签名统一为 (array $config, \PDO $pdo, ?GitService $git, ?Logger $logger)。
+        foreach ($config->getCustomBuildProviders() as $provider) {
+            $name  = $provider['name'] ?? '';
+            $class = $provider['class'] ?? '';
+            $cfg   = $provider['config'] ?? [];
+
+            if (empty($name) || empty($class)) {
+                $logger->warning('跳过无效的自定义 Build Provider 配置', ['provider' => $provider]);
+                continue;
+            }
+
+            $registry->register($name, function () use ($class, $cfg, $c, $logger) {
+                if (!class_exists($class)) {
+                    throw new \RuntimeException("自定义 Build Provider 类不存在: {$class}");
+                }
+                return new $class(
+                    $cfg,
+                    $c->get(\PDO::class),
+                    $c->get(GitService::class),
+                    $logger
+                );
+            });
+        }
+
         return $registry;
     },
 

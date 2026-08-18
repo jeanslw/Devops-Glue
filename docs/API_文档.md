@@ -1,4 +1,4 @@
-# Devops-Glue API 参考 v2.5.1
+# Devops-Glue API 参考 v2.6
 
 基础 URL: `http://your-domain.com/api`
 
@@ -89,7 +89,7 @@ GET /api/health
   "build_mode": "both",
   "build_mode_source": "database",
   "db_driver": "mysql",
-  "app_version": "v2.5.1",
+  "app_version": "2.6.0",
   "app_env": "production",
   "time": "2026-08-10 12:00:00"
 }
@@ -179,6 +179,7 @@ GET /api/main/git/discovery
 | `/api/build/{path}/scan-sync` | POST | Harbor 扫描同步（`{"tag":"v3.0.0"}`，tag 可选，不传取最新） |
 | `/api/build/{path}/tag` | GET/POST | 流水线 → 标签映射（`?pipeline=10`） |
 | `/api/build/{path}/commit-status` | POST | 提交状态回写（安全扫描） |
+| `/api/build/{path}/report` | POST | 自定义推送式 CI 构建结果上报（custom_push 专用，单次终态写入） |
 
 `{path}` 为 Job 名称或映射中的 `current_path`。
 
@@ -203,6 +204,35 @@ body 根级字段（除 `ref`、`variables`、`format`、`token` 外）会自动
 ### 扫描同步
 
 触发 Harbor 漏洞扫描，并将结果回写 Git 平台 commit status（`harbor-scan` 上下文）。`tag` 不传则取 Harbor 最新标签。
+
+### 自定义推送式 CI 结果上报（report）
+
+custom_push 构建源专用：用户 CI 在构建完成后一次性上报终态结果（success/failed/aborted），无 pending/running 中间态。Devops-Glue 只存元数据与日志 URL 指针，不参与构建也不存日志内容。
+
+必填：`pipeline_iid`（构建编号，整数）、`status`（`success`/`failed`/`aborted`）、`finished_at`（构建完成时间）；`status=success` 时 `tag` 必填，`harbor_repository` 由 `job_git_map` 配置决定（body 传入会被忽略）。`harbor_repository` 须为 `project/repo` 两段式（如 `mycode/runner-ci`），不接受带 registry 地址的 URL；上报时校验仓库与 `tag` 均真实存在于 Harbor，仓库不存在或 tag 不存在均返回 400。
+可选：`started_at`、`ref`、`sha`、`exit_code`、`log_url`、`web_url`。
+自定义变量：其余任意字段（如 `env`）存入 `variables_json`。
+
+```json
+{
+  "pipeline_iid": 123,
+  "status": "success",
+  "finished_at": "2026-08-18T10:05:12+08:00",
+  "started_at": "2026-08-18T10:00:00+08:00",
+  "sha": "a1b2c3d4e5f6",
+  "ref": "main",
+  "exit_code": 0,
+  "log_url": "https://ci.example.com/build/123/log",
+  "web_url": "https://ci.example.com/build/123",
+  "tag": "v1.0.0",
+  "env": "prod"
+}
+```
+
+> `success` 时必须带 `tag` 且能解析出 `harbor_repository`，同步写入 `ci_pipeline_tags`（project、pipeline_iid、tag、harbor_repository、finished_at、status），CD 层通过 `GET /api/build/{path}/tag` 读取。
+> 控制字段（`pipeline_iid`/`status`/`finished_at`/`started_at`/`ref`/`sha`/`exit_code`/`log_url`/`web_url`/`tag`/`harbor_repository`）以外的字段存入 `variables_json`。
+> `(job_name, pipeline_iid)` 为唯一键，重复上报按覆盖（UPDATE）处理。
+```
 
 ---
 
@@ -326,7 +356,7 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 | `harbor.scan` | Harbor 扫描触发 | `POST /api/harbor/{project}/repositories/{repo}/tags/{tag}/scan` |
 | `build.read` | 构建查询 | `/api/build/*`（除下方写/回写接口外） |
 | `build.write` | 构建执行 | `trigger` / `retry` / `cancel` |
-| `build.report` | 构建回写 | `scan-sync` / `commit-status`（CI 脚本回调） |
+| `build.report` | 构建回写 | `scan-sync` / `commit-status` / `report`（CI 脚本回调） |
 
 > **说明：**
 > - `/api/health` 无需 scope，任意有效 Token 即可访问。
@@ -396,6 +426,12 @@ curl -X POST "http://URL/api/build/static/scan-sync" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $NEW_TOKEN" \
   -d '{"tag":"v1.0.0"}'
+
+# 自定义推送式 CI 结果上报（需 build.report scope，custom_push 专用）
+curl -X POST "http://URL/api/build/php/myapp/report" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $NEW_TOKEN" \
+  -d '{"pipeline_iid":123,"status":"success","finished_at":"2026-08-18T10:05:12+08:00","exit_code":0,"log_url":"https://ci.example.com/build/123/log","tag":"v1.0.0","env":"prod"}'
 
 # ④ 撤销 Token（禁用，保留记录）
 curl -X POST "http://URL/api/admin/api_tokens/1/revoke" \

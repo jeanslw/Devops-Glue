@@ -32,6 +32,11 @@ class MappingManager
         return in_array($this->config->getBuildMode(), [AppConfig::BUILD_MODE_GITLAB_CI, AppConfig::BUILD_MODE_BOTH]);
     }
 
+    public function hasCustomPush(): bool
+    {
+        return $this->config->getCustomPushEnabled();
+    }
+
     // ── 全量查询（过滤禁用 + 模式筛选） ──
 
     /** 返回当前模式下活跃的映射条目 */
@@ -41,10 +46,29 @@ class MappingManager
         $maps = array_filter($maps, fn($m) => ($m['status'] ?? AppConfig::STATUS_ACTIVE) === AppConfig::STATUS_ACTIVE);
 
         $mode = $this->config->getBuildMode();
+        $cpEnabled = $this->config->getCustomPushEnabled();
+
         if ($mode === AppConfig::BUILD_MODE_GITLAB_CI) {
-            $maps = array_filter($maps, fn($m) => ($m['build_provider'] ?? AppConfig::PROVIDER_JENKINS) === AppConfig::PROVIDER_GITLAB_CI);
+            // gitlab_ci 模式：保留 gitlab_ci + custom_push（如果开启）
+            $maps = array_filter($maps, function($m) use ($cpEnabled) {
+                $bp = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
+                return $bp === AppConfig::PROVIDER_GITLAB_CI
+                    || ($cpEnabled && $bp === AppConfig::PROVIDER_CUSTOM_PUSH);
+            });
         } elseif ($mode === AppConfig::BUILD_MODE_JENKINS) {
-            $maps = array_filter($maps, fn($m) => ($m['build_provider'] ?? AppConfig::PROVIDER_JENKINS) !== AppConfig::PROVIDER_GITLAB_CI);
+            // jenkins 模式：保留 jenkins + custom_push（如果开启）
+            $maps = array_filter($maps, function($m) use ($cpEnabled) {
+                $bp = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
+                return $bp !== AppConfig::PROVIDER_GITLAB_CI
+                    && !(!$cpEnabled && $bp === AppConfig::PROVIDER_CUSTOM_PUSH);
+            });
+        } else {
+            // both 模式：保留 jenkins + gitlab_ci，custom_push 仅在开启时保留
+            if (!$cpEnabled) {
+                $maps = array_filter($maps, function($m) {
+                    return ($m['build_provider'] ?? AppConfig::PROVIDER_JENKINS) !== AppConfig::PROVIDER_CUSTOM_PUSH;
+                });
+            }
         }
         return array_values($maps);
     }
