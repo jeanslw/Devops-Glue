@@ -323,10 +323,172 @@ curl -X POST "$BASE/report" \
   -d '{"pipeline_iid": 12345, "status": "success", "finished_at": "2026-08-18 18:05:30", "started_at": "2026-08-18 18:00:00", "ref": "master", "sha": "a3f8c1d2", "exit_code": 0, "tag": "master-a3f8c1d2", "env": "staging"}'
 ```
 
+**Python (`requests`)**
+
+```python
+import requests
+
+BASE = "http://localhost:8080/api/build/tools/runner-ci"
+TOKEN = "<API token with build.report scope>"
+
+resp = requests.post(
+    f"{BASE}/report",
+    headers={"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"},
+    json={
+        "pipeline_iid": 12345,
+        "status": "success",
+        "finished_at": "2026-08-18 18:05:30",
+        "started_at": "2026-08-18 18:00:00",
+        "ref": "master",
+        "sha": "a3f8c1d2",
+        "exit_code": 0,
+        "tag": "master-a3f8c1d2",
+        "env": "staging",
+    },
+)
+resp.raise_for_status()  # raises on non-2xx
+print(resp.json())
+```
+
+**Java (JDK 11+ `java.net.http`, no third-party deps)**
+
+```java
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+
+public class ReportBuild {
+    public static void main(String[] args) throws Exception {
+        String base  = "http://localhost:8080/api/build/tools/runner-ci";
+        String token = "<API token with build.report scope>";
+        // text block requires JDK 15+; on JDK 11 use string concatenation
+        String payload = """
+            {
+              "pipeline_iid": 12345,
+              "status": "success",
+              "finished_at": "2026-08-18 18:05:30",
+              "started_at": "2026-08-18 18:00:00",
+              "ref": "master",
+              "sha": "a3f8c1d2",
+              "exit_code": 0,
+              "tag": "master-a3f8c1d2",
+              "env": "staging"
+            }
+            """;
+
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create(base + "/report"))
+            .header("Authorization", "Bearer " + token)
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(payload))
+            .build();
+
+        HttpResponse<String> response = HttpClient.newHttpClient()
+            .send(request, HttpResponse.BodyHandlers.ofString());
+
+        System.out.println(response.statusCode());
+        System.out.println(response.body());
+    }
+}
+```
+
+**Go (`net/http`)**
+
+```go
+package main
+
+import (
+    "bytes"
+    "encoding/json"
+    "fmt"
+    "net/http"
+)
+
+func main() {
+    base  := "http://localhost:8080/api/build/tools/runner-ci"
+    token := "<API token with build.report scope>"
+
+    payload, _ := json.Marshal(map[string]any{ // any requires Go 1.18+
+        "pipeline_iid": 12345,
+        "status":       "success",
+        "finished_at":  "2026-08-18 18:05:30",
+        "started_at":   "2026-08-18 18:00:00",
+        "ref":          "master",
+        "sha":          "a3f8c1d2",
+        "exit_code":    0,
+        "tag":          "master-a3f8c1d2",
+        "env":          "staging",
+    })
+
+    req, _ := http.NewRequest("POST", base+"/report", bytes.NewReader(payload))
+    req.Header.Set("Authorization", "Bearer "+token)
+    req.Header.Set("Content-Type", "application/json")
+
+    resp, err := http.DefaultClient.Do(req)
+    if err != nil {
+        panic(err)
+    }
+    defer resp.Body.Close()
+
+    fmt.Println(resp.StatusCode)
+}
+```
+
+**Drone CI (`.drone.yml` embedded report)**
+
+```yaml
+kind: pipeline
+type: docker
+name: build
+
+steps:
+  - name: build
+    image: golang
+    commands:
+      - go build ./...
+      - go test ./...
+
+  - name: report
+    image: curlimages/curl
+    when:
+      status: [success, failure]   # report on failure too
+    environment:
+      TOKEN:
+        from_secret: glue_token
+      BASE: http://glue:8080/api/build/tools/runner-ci
+    commands:
+      - |
+        STATUS="success"; [ "$DRONE_BUILD_STATUS" = "failure" ] && STATUS="failed"
+        curl -X POST "$BASE/report" \
+          -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+          -d "{\"pipeline_iid\": $DRONE_BUILD_NUMBER, \"status\": \"$STATUS\", \"finished_at\": \"$(date '+%Y-%m-%d %H:%M:%S')\", \"ref\": \"$DRONE_COMMIT_BRANCH\", \"sha\": \"$DRONE_COMMIT_SHA\", \"tag\": \"v1.0.$DRONE_BUILD_NUMBER\"}"
+```
+
+- `pipeline_iid` ← `DRONE_BUILD_NUMBER`, `ref` ← `DRONE_COMMIT_BRANCH`, `sha` ← `DRONE_COMMIT_SHA`.
+- Map Drone's `failure` status to our `failed`.
+- Replace `tag` with the image tag actually pushed to Harbor (example uses `v1.0.$DRONE_BUILD_NUMBER`).
+
+**TeamCity (Command Line build step)**
+
+Add a "Command Line" build step, set `Execute step` to "Even if some of the previous steps failed", with:
+
+```bash
+STATUS="success"; [ "%teamcity.build.status%" = "FAILURE" ] && STATUS="failed"
+curl -X POST "http://glue:8080/api/build/tools/runner-ci/report" \
+  -H "Authorization: Bearer %env.GLUE_TOKEN%" \
+  -H "Content-Type: application/json" \
+  -d "{\"pipeline_iid\": %build.number%, \"status\": \"$STATUS\", \"finished_at\": \"$(date '+%Y-%m-%d %H:%M:%S')\", \"ref\": \"%teamcity.build.branch%\", \"sha\": \"%build.vcs.number%\", \"tag\": \"v1.0.%build.number%\"}"
+```
+
+- `pipeline_iid` ← `%build.number%`, `ref` ← `%teamcity.build.branch%`, `sha` ← `%build.vcs.number%`, token via env var `%env.GLUE_TOKEN%`.
+- Map TeamCity's `FAILURE` status to our `failed`.
+- Replace `tag` with the image tag actually pushed to Harbor.
+
 ### Admin Panel and Auto-discovery
 
 - The Custom_Push status card on the "Monitor" page shows ✅ with provider names when configured, or ⚪ "Not configured" when unconfigured.
-- After enabling Custom_Push, auto-discovery scans Git platforms for custom_push pipelines.
+- After enabling Custom_Push, auto-discovery scans Git platform project lists and generates a `build_provider=custom_push` mapping candidate (initially "pending", requires manual activation) for each project.
 - After frontend page changes, perform a **hard refresh (Ctrl+F5)** in the browser; restart the service after backend configuration changes.
 
 ---

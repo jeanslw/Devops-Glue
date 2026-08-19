@@ -1,5 +1,5 @@
 # Devops-Glue API v2.6
-Devops-Glue API is a DevOps toolchain enhancement and integration platform built on Slim4 for small teams. A unified API to manage Jenkins + GitLab CI dual-channel builds, GitLab / Gitee / GitHub / Gitea multi-platform code, and Harbor image registry — covering the full CI-to-CD workflow. Bilingual interface, data-driven role-based access control (RBAC).
+DevOps-Glue API is a Slim 4–based integration platform designed to enhance DevOps toolchains for small teams. It provides a unified view, RBAC, and RESTful APIs, with support for multiple mainstream Git platforms and CI-agnostic integration.
 
 <p align="center">
   <strong>🔧 Lightweight CI Management Service | Swiss Army Knife for Small Teams</strong><br/>
@@ -18,10 +18,11 @@ Devops-Glue API is a DevOps toolchain enhancement and integration platform built
 
 ##  Why Devops-Glue + CD?
 
-> **A Unified Management Console for Jenkins & GitLab CI**
-> ✅ Make your distributed Jenkins instances and GitLab CI projects manageable, observable, and auditable
+> 🔧 **A Unified Management Console for Jenkins & GitLab CI & Custom CI**
+> ✅ Make your distributed Jenkins instances, GitLab CI projects, and Custom CI manageable, observable, and auditable
 
 - 🔍 **Unified Build View**: Cross-engine search and aggregation of all build history — no more platform switching
+- 📝 **Custom_Push**: Orthogonal push-based CI — pull and push coexist simultaneously. [Use case](docs/ADMIN_MANUAL.md#12-configure-build-mode)
 - 🔐 **Fine-grained RBAC**: More flexible access control than native plugins, tailored for team-scale organizations
 - 🚀 **Non-invasive Integration**: API-only connection with zero changes to existing CI configs — onboard in under 5 minutes
 
@@ -32,13 +33,13 @@ Devops-Glue API is a DevOps toolchain enhancement and integration platform built
 
 ## Features
 
-- **i18n** — Chinese / English bilingual interface, `?lang=` instant switching via `symfony/translation`
-- **Dual Build Pipeline** — Jenkins + GitLab CI, switch or coexist, unified API
 - **Custom Push CI (Custom_Push)** — User CI pushes build status, log URL, image tags; Devops-Glue only stores metadata without participating in builds. Orthogonal to pull-based CI, can be enabled simultaneously
+- **Multi-Build Pipeline** — Jenkins + GitLab CI + Custom_Push, switch or coexist, unified API
 - **Multi-Platform Git** — GitLab · GitHub · Gitee · Gitea, self-hosted or SaaS
 - **Full-Chain Mapping** — Job ↔ Git repo ↔ Harbor image, build→code→artifact auto-association
 - **Security Scan Audit** — SAST, secret scanning, dependency vulns written back via Commit Status
 - **Role-Based Access (Data-Driven RBAC)** — `super_admin` > `admin` > `deployer` > `viewer`. Permission keys and implied rules are stored in DB and fully managed via the admin UI; no code change required when new menus/modules are added.
+- **i18n** — Chinese / English bilingual interface, `?lang=` instant switching via `symfony/translation`
 - **Admin Dashboard** — service monitoring, mapping config, security scan, user management
 - **Zero-Config Startup** — SQLite by default, MySQL / MariaDB with one-click switch
 - 

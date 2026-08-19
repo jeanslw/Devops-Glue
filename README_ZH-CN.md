@@ -1,5 +1,5 @@
 # Devops-Glue API v2.6
-Devops-Glue API 是基于 Slim4 为小团队打造的 DevOps 工具链增强集成平台。统一 API 管理 Jenkins + GitLab CI 双通道构建、GitLab / Gitee / GitHub / Gitea 多平台代码、以及 Harbor 镜像仓库——覆盖从 CI 到 CD 的完整流程。双语界面，数据驱动的角色权限分级（RBAC）。
+Devops-Glue API 是基于 Slim4 为小团队打造的 DevOps 工具链增强集成平台。支持统一视图、RBAC、API，主流多Git平台，支持任何CI。
 
 <p align="center">
   <strong>🔧 轻量级 CI 管理服务 | 小团队的瑞士军刀</strong><br/>
@@ -17,10 +17,11 @@ Devops-Glue API 是基于 Slim4 为小团队打造的 DevOps 工具链增强集�
 
 ## 为什么选择 Devops-Glue + CD？
 
-> **给 Jenkins / GitLab CI 加一层统一管理控制台**
-> ✅ 让分散的 Jenkins 实例与 GitLab CI 项目变得可管理、可视化、可审计
+> 🔧 **给 Jenkins / GitLab CI / Custom CI 加一层统一管理控制台**
+> ✅ **分散不同的CI系统**： Jenkins 、 GitLab CI 项目、Custom CI 变得可管理、可视化、可审计
 
 - 🔍 **统一构建视图**：跨引擎聚合检索所有构建历史，告别多平台切换
+- 📝 **Custom_Push功能**：新增的Custom_Push功能，正交设计让拉取式、推送式同时兼得 [应用案例](docs/管理员配置手册.md#12-配置构建模式)
 - 🔐 **细粒度 RBAC**：比原生插件更灵活的权限管控，精准匹配中小团队组织架构
 - 🚀 **非侵入式接入**：仅通过 API 对接，零修改现有 CI 配置，5 分钟完成纳管
 
@@ -31,13 +32,13 @@ Devops-Glue API 是基于 Slim4 为小团队打造的 DevOps 工具链增强集�
 
 ## 功能特性
 
-- **国际化** — 中/英文双语界面，`?lang=` 即时切换，基于 `symfony/translation`
-- **双构建通道** — Jenkins + GitLab CI，随意切换或并存，统一 API
-- **自定义推送式 CI（Custom_Push）** — 用户 CI 推送构建状态、日志地址、镜像 tag，Devops-Glue 仅存元数据不参与构建，与 pull-based CI 正交可同时启用
+- **自定义推送式 CI（Custom_Push）** — 用户 CI 推送构建状态、日志地址、镜像 tag，Devops-Glue 仅存元数据，与 pull-based CI 正交可同时启用
+- **多构建通道** — Jenkins + GitLab CI + Custom_Push，随意切换或并存，统一 API
 - **多平台 Git** — GitLab · GitHub · Gitee · Gitea，自托管或 SaaS 均可
 - **全链路映射** — Job ↔ Git 仓库 ↔ Harbor 镜像，构建→代码→产物自动关联
 - **安全扫描审计** — SAST、密钥扫描、依赖漏洞检测，通过 Commit Status 回写
-- **角色权限分级（数据驱动 RBAC）** — `super_admin` > `admin` > `deployer` > `viewer`，权限键与隐含规则全部存数据库，后台 UI 直接管理；新增 CD 菜单/模块时无需改代码。
+- **角色权限分级（数据驱动 RBAC）** — `super_admin` > `admin` > `deployer` > `viewer`，权限键与隐含规则全部存数据库。
+- **国际化** — 中/英文双语界面，`?lang=` 即时切换，基于 `symfony/translation`
 - **管理面板** — 服务监控、映射配置、安全扫描、用户管理
 - **零配置启动** — 默认 SQLite，一键切换 MySQL / MariaDB
 
