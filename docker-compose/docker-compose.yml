@@ -17,6 +17,8 @@ services:
     ports:
       - "8080:80"
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "grep -q 'php-fpm' /proc/*/comm 2>/dev/null && (test -S /run/php/php-fpm.sock || exec 3<>/dev/tcp/127.0.0.1/9000) || exit 1"]
     depends_on:
       mysql:
         condition: service_healthy
@@ -63,8 +65,6 @@ volumes:
 #       CI_API_URL: http://devops-glue
 #       # Auth: pick ONE — API token (recommended) OR service account (deprecated)
 #       CI_API_TOKEN: dg_xxx                    # API token (recommended)
-#       # CI_ADMIN_USER: Service_Account        # service account (deprecated; mutually exclusive with token)
-#       # CI_ADMIN_PASS: Service_Password
 #     ports:
 #       - "8081:8081"
 #     restart: unless-stopped

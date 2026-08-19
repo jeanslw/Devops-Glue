@@ -23,7 +23,7 @@ FROM php:8.3-fpm-bookworm AS production
 # Install system dependencies. 
 RUN apt-get update && apt-get install -y \
         nginx supervisor \
-        libzip-dev libicu-dev libpng-dev libjpeg-dev libfreetype6-dev \
+        libzip-dev libicu-dev libpng-dev libjpeg-dev libfreetype6-dev  libsqlite3-dev pkg-config \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
