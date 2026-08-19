@@ -38,43 +38,41 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
-
-volumes:
-  mysql-data:
-
+      
 # ──────────────────────────────────────
-# CD Service (separate compose)
+# Devops CD Service (separate compose)
 # ──────────────────────────────────────
 # How to use:
 #   1. In devops_cd dir: cp .env.example .env → set DB_HOST=devops-mysql
 #   2. cd devops_cd && docker compose up -d (start individually)
 #   3. Or uncomment below to start together in the same compose:
 #
-#   cd-service:
-#     build:
-#       context: ../../devops_cd
-#       dockerfile: Dockerfile
-#     container_name: cd-service
-#     image: devops-cd:latest
-#     env_file:
-#       - ../../devops_cd/.env
-#     environment:
-#       PYTHONUNBUFFERED: "1"
-#       HOST: 0.0.0.0
-#       PORT: 8081
-#       CI_API_URL: http://devops-glue
-#       # Auth: pick ONE — API token (recommended) OR service account (deprecated)
-#       CI_API_TOKEN: dg_xxx                    # API token (recommended)
-#     ports:
-#       - "8081:8081"
-#     restart: unless-stopped
-#     healthcheck:
-#       test: ["CMD", "python", "-c", "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8081/health', timeout=3).status == 200 else 1)"]
-#       interval: 30s
-#       timeout: 5s
-#       retries: 3
-#       start_period: 20s
-#     depends_on:
-#       mysql:
-#         condition: service_healthy
+#  devops-cd:
+#    build:
+#      context: ../../devops_cd
+#      dockerfile: Dockerfile
+#    container_name: cd-service
+#    image: devops-cd:latest
+#    env_file:
+#      - ../../devops_cd/.env
+#    environment:
+#      PYTHONUNBUFFERED: "1"
+#      HOST: 0.0.0.0
+#      PORT: 8081
+#      CI_API_URL: http://devops-glue
+#      CI_API_TOKEN: dg_xxx #API token (recommended) OR service account (deprecated)
+#    ports:
+#      - "8081:8081"
+#    restart: unless-stopped
+#    healthcheck:
+#      test: ["CMD", "python", "-c", "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8081/health', timeout=3).status == 200 else 1)"]
+#      interval: 30s
+#      timeout: 5s
+#      retries: 3
+#      start_period: 20s
+#    depends_on:
+#      mysql:
+#        condition: service_healthy
 
+volumes:
+  mysql-data:
