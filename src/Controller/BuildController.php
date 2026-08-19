@@ -844,10 +844,13 @@ class BuildController extends BaseController
         try {
             $repos = $this->harbor->getRepositories($project);
         } catch (\Throwable $e) {
-            return 'Harbor 不可达，无法校验仓库与 tag 的真实性';
+            return 'Harbor 不可达（' . $e->getMessage() . '），无法校验仓库与 tag';
         }
         if (!is_array($repos) || isset($repos['error'])) {
-            return 'Harbor 不可达或项目不存在（' . $project . '），无法校验仓库与 tag 的真实性';
+            if (!is_array($repos)) {
+                return 'Harbor 返回数据异常（非预期的仓库列表格式），无法校验仓库与 tag';
+            }
+            return '查询 Harbor 项目仓库失败：' . $this->harborErrorMessage($repos) . '（项目 ' . $project . '）';
         }
         // v2 返回去前缀短名（runner-ci），v1 可能返回完整名（mycode/runner-ci），两者都兼容
         if (!in_array($repoName, $repos, true) && !in_array($repo, $repos, true)) {
@@ -858,15 +861,46 @@ class BuildController extends BaseController
         try {
             $tags = $this->harbor->getTags($project, $repoName);
         } catch (\Throwable $e) {
-            return 'Harbor 不可达，无法校验仓库与 tag 的真实性';
+            return 'Harbor 不可达（' . $e->getMessage() . '），无法校验仓库与 tag';
         }
         if (!is_array($tags) || isset($tags['error'])) {
-            return 'Harbor 不可达，无法校验仓库与 tag 的真实性';
+            if (!is_array($tags)) {
+                return 'Harbor 返回数据异常（非预期的 tag 列表格式），无法校验仓库与 tag';
+            }
+            return '查询 Harbor 仓库 tag 失败：' . $this->harborErrorMessage($tags) . '（仓库 ' . $repo . '）';
         }
         if (!in_array($tag, $tags, true)) {
-            return 'Harbor 仓库 ' . $repo . ' 中不存在 tag：' . $tag . '（请确认镜像已 push 到 Harbor）';
+            return 'Harbor 仓库 ' . $repo . ' 中不存在 tag「' . $tag . '」：该 tag 的镜像尚未 push 到 Harbor，或 tag 名拼写有误';
         }
         return null;
+    }
+
+    /**
+     * 把 HarborService 返回的错误数组翻译成对用户明确的错误描述。
+     * request() 出错时返回 ['error' => string]；HTTP 4xx 附带 ['http_code' => int]，
+     * 网络错误（重试耗尽）只有 error 无 http_code，据此区分「不可达 / 认证失败 / 资源不存在」。
+     */
+    private function harborErrorMessage(array $err): string
+    {
+        $httpCode = $err['http_code'] ?? 0;
+        $msg      = $err['error'] ?? '未知错误';
+        if ($httpCode === 0) {
+            // HarborService v1 路径返回的业务错误（如「项目 xxx 不存在」）直接透传，并非网络错误
+            if (str_contains($msg, '不存在')) {
+                return $msg;
+            }
+            return 'Harbor 不可达（' . $msg . '）';
+        }
+        if ($httpCode === 404) {
+            return '资源不存在（HTTP 404）';
+        }
+        if ($httpCode === 401 || $httpCode === 403) {
+            return 'Harbor 认证失败（HTTP ' . $httpCode . '），请检查 .env 中 Harbor 账号的权限';
+        }
+        if ($httpCode >= 500) {
+            return 'Harbor 服务端异常（HTTP ' . $httpCode . '）';
+        }
+        return 'Harbor 返回 HTTP ' . $httpCode . '（' . $msg . '）';
     }
 
     private function recordPipelineTag(string $path, int $pipelineIid, string $tag, string $harborRepo = '', string $status = '', ?string $createdAt = null): void
