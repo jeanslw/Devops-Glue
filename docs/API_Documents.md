@@ -160,7 +160,7 @@ Returns configured and unconfigured Git platform list.
 
 ## Build Module (`/api/build`) — v2.3.0
 
-> Unified entry for Jenkins and GitLab CI. Legacy `/api/jenkins/*` routes are deprecated.
+> Unified entry for Jenkins / GitLab CI (pull-based) and Custom_Push (push-based, theoretically supporting all CI). Legacy `/api/jenkins/*` routes are deprecated.
 >
 > **Auth:** All Build endpoints require Bearer Token (obtained via `POST /api/admin/login`). Add `Authorization: Bearer <token>` header.
 

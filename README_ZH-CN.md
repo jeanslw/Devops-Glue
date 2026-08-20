@@ -21,7 +21,7 @@ Devops-Glue API 是基于 Slim4 为小团队打造的 DevOps 工具链增强集�
 > ✅ **分散不同的CI系统**： Jenkins 、 GitLab CI 项目、Custom CI 变得可管理、可视化、可审计
 
 - 🔍 **统一构建视图**：跨引擎聚合检索所有构建历史，告别多平台切换
-- 📝 **Custom_Push功能**：新增的Custom_Push功能，正交设计让拉取式、推送式同时兼得 [应用案例](docs/管理员配置手册.md#12-配置构建模式)
+- 📝 **Custom_Push功能**：新增的Custom_Push功能，正交设计让拉取式、推送式同时兼得 [\[**应用案例**\]](docs/管理员配置手册.md#12-配置构建模式)
 - 🔐 **细粒度 RBAC**：比原生插件更灵活的权限管控，精准匹配中小团队组织架构
 - 🚀 **非侵入式接入**：仅通过 API 对接，零修改现有 CI 配置，5 分钟完成纳管
 
@@ -124,6 +124,8 @@ curl http://localhost:8080/api/health
 | GitLab | v9.0+（API v4） |
 | Harbor | v1.10.1 / v2.x |
 
+> **Harbor 机器人账户：** 通过机器人账户调用 REST API 需 Harbor **v2.2.0+**（secret 制）。v1.x / v2.0.x / v2.1.x 的机器人令牌为 JWT（仅 Docker/Helm CLI），请改用普通账户。详见 [docs/管理员配置手册.md](docs/管理员配置手册.md#11-接入-harbor)。
+
 完整环境变量参考和 CORS 配置请见 [docs/管理员配置手册.md](docs/管理员配置手册.md)。
 
 ## 文档
@@ -134,6 +136,7 @@ curl http://localhost:8080/api/health
 | [架构全景图](docs/架构全景图.md) | 中文 | 整体数据流、组件关系、部署模式矩阵|
 | [管理员手册](docs/管理员配置手册.md) | 中文 | 环境变量、映射配置、自定义 Git 平台 |
 | [技术文档](docs/技术文档.md) | 中文 | 架构设计、数据库设计、数据流程、故障排查（中文） |
+| [对接服务版本兼容性说明](docs/对接服务版本兼容性说明.md) | 中文 | Jenkins / GitLab / Gitea / Harbor 版本支持情况与边界 |
 | [常见问题](docs/常见问题.md) | 中文 | 常见问题与排查指南（中文） |
 | [更新日志](docs/更新日志.md) | 中文 | 版本发布记录 |
 

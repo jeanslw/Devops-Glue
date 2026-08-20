@@ -391,7 +391,8 @@ return [
             $c->get(AdminUserRepository::class),
             $c->get(AutoDiscover::class),
             $c->get(TokenService::class),
-            $c->get(ApiTokenService::class)
+            $c->get(ApiTokenService::class),
+            $c->get(HarborService::class)
         );
     },
 

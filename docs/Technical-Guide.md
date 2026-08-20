@@ -969,6 +969,8 @@ GITEA_TOKEN=
 DEFAULT_GIT_PLATFORM=gitlab        # Fallback platform when URL cannot be recognized
 
 # ============ Harbor ============
+# A robot account (robot$xxx) can call the REST API only on Harbor v2.2.0+ (secret-based);
+# on v1.x / v2.0.x / v2.1.x the robot token is a JWT (Docker/Helm CLI only) — use a normal account.
 HARBOR_BASE_URL=http://your-harbor
 HARBOR_USER=admin
 HARBOR_PASSWORD=your_password

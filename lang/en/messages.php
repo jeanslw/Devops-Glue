@@ -173,7 +173,7 @@ return [
     'platform.gitee_desc'   => 'API v5, SaaS platform stable endpoints',
     'platform.github_desc'  => 'Sent via X-GitHub-Api-Version header, cosmetic only',
     'platform.gitea_desc'   => 'API v1, self-hosted platform',
-    'platform.harbor_desc'  => 'Supports v1.10 / v2.0 auto-detection',
+    'platform.harbor_desc'  => 'Supports v1.10 / v2.x auto-detection; robot accounts require v2.2.0+',
 
     // ── Security Audit ──
     'security.scan_results' => 'Security Audit Results',
@@ -336,6 +336,13 @@ return [
     'js.version_source_admin'   => 'Admin UI',
     'js.version_source_default' => 'System Default',
     'js.version_config_readonly_title' => 'This value is explicitly set in config/settings.php (highest priority). Edit the config file to change it.',
+    // Harbor version detection / robot account compatibility
+    'js.harbor_detected_version' => 'Detected version',
+    'js.harbor_version_unknown'  => 'Unknown',
+    'js.harbor_robot_supported'  => 'Robot account supported (Harbor ≥ 2.2.0, robot accounts use a secret)',
+    'js.harbor_robot_unsupported'=> 'Robot account NOT supported (Harbor < 2.2.0, robot accounts use JWT and only work with Docker/Helm CLI)',
+    'js.harbor_robot_unknown'    => 'Cannot detect Harbor version, robot account support unknown',
+    'js.harbor_robot_warning'    => 'A robot account is configured, but this Harbor version does not support robot accounts calling the REST API. Use a normal account (username/password) instead.',
     // Build Mode
     'js.mode_persisted'         => 'Persisted',
     'js.mode_temp'              => 'Temporary',

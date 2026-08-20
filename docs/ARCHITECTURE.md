@@ -131,7 +131,7 @@ Devops-Glue supports two orthogonal CI modes that can be enabled simultaneously:
 Fragmented DevOps toolchain for SMBs:
 
 - Git platforms (GitLab/Gitee/GitHub/Gitea) → Unified integration
-- CI engines (Jenkins/GitLab CI) → Dual-channel unification
+- CI engines (Jenkins/GitLab CI pull-based + Custom_Push push-based, theoretically supporting all CI) → Unified integration
 - Image registry (Harbor) → Scan & sync
 - Deploy targets (SSH/Docker/K8s) → Unified execution
 - Notifications (DingTalk/WeCom) → Auto-push

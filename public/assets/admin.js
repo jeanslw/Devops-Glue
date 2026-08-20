@@ -751,9 +751,38 @@ async function loadVersions() {
                 <td style="font-size:12px;color:#6b7280;">${info.desc()}</td>
             </tr>`;
         }).join('');
+        renderHarborCompat();
     } catch(e) {
         document.getElementById('ver-loading').innerHTML = '<p style="color:#dc2626;">' + __.t('js.load_failed') + ': ' + esc(e.message) + '</p>';
     }
+}
+
+function renderHarborCompat() {
+    const el = document.getElementById('harbor-compat');
+    if (!el) return;
+    const h = currentVersions.harbor || {};
+    const ver = h.detected_version || null;
+    const support = h.robot_support || 'unknown';
+    const isRobot = !!h.robot_account;
+
+    let badge, text;
+    if (support === 'supported') {
+        badge = '✅'; text = __.t('js.harbor_robot_supported');
+    } else if (support === 'unsupported') {
+        badge = '⚠️'; text = __.t('js.harbor_robot_unsupported');
+    } else {
+        badge = '❓'; text = __.t('js.harbor_robot_unknown');
+    }
+    const verText = ver ? ver : __.t('js.harbor_version_unknown');
+
+    let extra = '';
+    if (isRobot && support === 'unsupported') {
+        extra = ' <strong style="color:#c81e1e;">' + __.t('js.harbor_robot_warning') + '</strong>';
+    }
+
+    el.style.display = 'block';
+    el.innerHTML = '<strong>🐳 Harbor</strong> · ' + __.t('js.harbor_detected_version')
+        + ': <code>' + esc(verText) + '</code> · ' + badge + ' ' + text + extra;
 }
 
 function getDefaultVer(key) {

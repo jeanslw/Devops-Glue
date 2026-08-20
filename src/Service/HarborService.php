@@ -8,6 +8,7 @@ class HarborService
 {
     private Client $client;
     private ?string $apiVersion = null;
+    private ?string $specificVersion = null;
     private ?Logger $logger = null;
     private \PDO $pdo;
 
@@ -28,6 +29,146 @@ class HarborService
         } catch (\Throwable $e) {
             return null;
         }
+    }
+
+    /**
+     * 获取 Harbor 具体版本号（如 '2.0.6'），探测失败返回 null。
+     * 惰性求值，首次探测后缓存（1h TTL）。
+     */
+    public function getHarborVersion(): ?string
+    {
+        try {
+            return $this->detectHarborVersion();
+        } catch (\Throwable $e) {
+            $this->logger?->warning('Harbor 具体版本探测异常', ['error' => $e->getMessage()]);
+            return null;
+        }
+    }
+
+    /**
+     * 判断当前 Harbor 是否支持机器人账户调用 REST API。
+     *
+     * Harbor 演进历史（已据官方文档/发布说明核实，非猜测）：
+     *  - v1.x ~ v2.1.x：机器人账户令牌为 JWT（legacy），仅可用于 Docker/Helm CLI，不能调用 REST API。
+     *  - v2.2.0 起：机器人账户改为 secret，可用 Basic Auth 调用 REST API。
+     * 版本边界为 v2.2.0。
+     *
+     * @return string 'supported'（>= 2.2.0）| 'unsupported'（< 2.2.0）| 'unknown'（版本探测失败）
+     */
+    public function getRobotAccountSupport(): string
+    {
+        $version = $this->getHarborVersion();
+        if ($version === null) {
+            return 'unknown';
+        }
+        return version_compare($version, '2.2.0', '>=') ? 'supported' : 'unsupported';
+    }
+
+    /**
+     * 惰性探测 Harbor 具体版本号（缓存 1h）。
+     */
+    private function detectHarborVersion(): ?string
+    {
+        if ($this->specificVersion !== null) {
+            return $this->specificVersion;
+        }
+
+        $cacheKey = \App\Config\AppConfig::CACHE_KEY_HARBOR_SPECIFIC_VERSION;
+        try {
+            $pdo = $this->pdo;
+            $row = $pdo->prepare("SELECT value FROM " . \App\Config\AppConfig::TABLE_CACHE . " WHERE cache_key = ? AND expires_at > ?");
+            $row->execute([$cacheKey, time()]);
+            $cached = $row->fetch();
+            if ($cached && (string) $cached['value'] !== '') {
+                $this->specificVersion = $cached['value'];
+                return $this->specificVersion;
+            }
+        } catch (\Exception $e) {}
+
+        $version = $this->probeHarborVersion();
+
+        if ($version !== null) {
+            try {
+                $pdo = $this->pdo;
+                $sql = \App\Service\Database::sqlUpsert(\App\Config\AppConfig::TABLE_CACHE, 'cache_key, value, expires_at', '?, ?, ?');
+                $pdo->prepare($sql)->execute([$cacheKey, $version, time() + \App\Config\AppConfig::TTL_CACHE]);
+            } catch (\Exception $e) {}
+        }
+
+        return $this->specificVersion = $version;
+    }
+
+    /**
+     * 通过 systeminfo 端点探测具体版本号：
+     *  1. 依次尝试 /api/v2.0/systeminfo（v2.x）与 /api/systeminfo（v1.x）。
+     *  2. 每个端点先匿名探测（2.0.6 等低版本 systeminfo 无需登录），再带认证重试（高版本可能需要登录）。
+     */
+    private function probeHarborVersion(): ?string
+    {
+        $paths = [
+            '/api/v2.0/systeminfo', // Harbor v2.x
+            '/api/systeminfo',      // Harbor v1.x
+        ];
+
+        foreach ($paths as $path) {
+            $clients = [
+                'anonymous'     => $this->makeAnonymousClient(),
+                'authenticated' => $this->client,
+            ];
+            foreach ($clients as $kind => $client) {
+                try {
+                    $res = $client->get($path, ['http_errors' => false]);
+                    $code = $res->getStatusCode();
+                    if ($code < 200 || $code >= 300) {
+                        continue; // 404/401/5xx → 下一个客户端或端点
+                    }
+                    $data = json_decode((string) $res->getBody(), true);
+                    $version = $this->normalizeHarborVersion((string) ($data['harbor_version'] ?? ''));
+                    if ($version !== null) {
+                        $this->logger?->info('Harbor 具体版本探测成功', [
+                            'path' => $path, 'kind' => $kind, 'version' => $version,
+                        ]);
+                        return $version;
+                    }
+                } catch (\Throwable $e) {
+                    $this->logger?->debug('Harbor systeminfo 探测失败', [
+                        'path' => $path, 'kind' => $kind, 'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 构造不带认证的匿名客户端（systeminfo 探测优先匿名，避免凭证错误导致探测失败）。
+     */
+    private function makeAnonymousClient(): Client
+    {
+        return new Client([
+            'base_uri'        => $this->client->getConfig('base_uri'),
+            'headers'         => ['Accept' => 'application/json'],
+            'connect_timeout' => 5,
+            'timeout'         => 10,
+            'http_errors'     => false,
+        ]);
+    }
+
+    /**
+     * 规范化 Harbor 版本号：'v2.0.6-f5884625' → '2.0.6'；'v1.10.1' → '1.10.1'。
+     * 无法识别的格式返回 null。
+     */
+    private function normalizeHarborVersion(string $raw): ?string
+    {
+        $v = trim($raw);
+        if ($v === '') {
+            return null;
+        }
+        $v = ltrim($v, 'vV');
+        if (($pos = strpos($v, '-')) !== false) {
+            $v = substr($v, 0, $pos); // 去掉 commit 后缀
+        }
+        return preg_match('/^\d+(\.\d+){1,2}$/', $v) ? $v : null;
     }
 
     /**

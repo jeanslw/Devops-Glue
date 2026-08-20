@@ -160,7 +160,7 @@ GET /api/main/git/discovery
 
 ## Build 模块 (`/api/build`) — v2.3.0
 
-> Jenkins 和 GitLab CI 的统一入口。旧版 `/api/jenkins/*` 路由已弃用。
+> Jenkins / GitLab CI（拉取式）与 Custom_Push（推送式，理论上支持所有 CI）的统一入口。旧版 `/api/jenkins/*` 路由已弃用。
 >
 > **认证：** 所有 Build 接口需要 Bearer Token（通过 `POST /api/admin/login` 获取）。请在请求中添加 `Authorization: Bearer <token>` 头。
 

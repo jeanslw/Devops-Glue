@@ -22,7 +22,7 @@ DevOps-Glue API is a Slim 4–based integration platform designed to enhance Dev
 > ✅ Make your distributed Jenkins instances, GitLab CI projects, and Custom CI manageable, observable, and auditable
 
 - 🔍 **Unified Build View**: Cross-engine search and aggregation of all build history — no more platform switching
-- 📝 **Custom_Push**: Orthogonal push-based CI — pull and push coexist simultaneously. [Use case](docs/ADMIN_MANUAL.md#12-configure-build-mode)
+- 📝 **Custom_Push**: Orthogonal push-based CI — pull and push coexist simultaneously. [\[**Use case**\]](docs/ADMIN_MANUAL.md#12-configure-build-mode)
 - 🔐 **Fine-grained RBAC**: More flexible access control than native plugins, tailored for team-scale organizations
 - 🚀 **Non-invasive Integration**: API-only connection with zero changes to existing CI configs — onboard in under 5 minutes
 
@@ -126,6 +126,8 @@ Visit `http://localhost:8080/api/docs` for interactive API docs (Swagger UI).
 | GitLab | v9.0+ (API v4) |
 | Harbor | v1.10.1 / v2.x |
 
+> **Harbor robot account:** calling the REST API via a robot account requires Harbor **v2.2.0+** (secret-based). On v1.x / v2.0.x / v2.1.x the robot token is a JWT (Docker/Helm CLI only) — use a normal account instead. See [docs/ADMIN_MANUAL.md](docs/ADMIN_MANUAL.md#11-connect-harbor).
+
 See [docs/ADMIN_MANUAL.md](docs/ADMIN_MANUAL.md) for full environment variable reference and CORS configuration.
 
 ## Documentation
@@ -136,6 +138,7 @@ See [docs/ADMIN_MANUAL.md](docs/ADMIN_MANUAL.md) for full environment variable r
 | [ARCHITECTURE](docs/ARCHITECTURE.md) | EN | Overall data flow, component relationships, deployment pattern matrix|
 | [Admin Manual](docs/ADMIN_MANUAL.md) | EN | Environment variables, mapping config, custom Git platform |
 | [Technical Guide](docs/Technical-Guide.md) | EN | Architecture, DB design, data flows, troubleshooting |
+| [Integrated Service Version Compatibility](docs/Integrated-Service-Version-Compatibility.md) | EN | Jenkins / GitLab / Gitea / Harbor version support and boundaries |
 | [FAQ](docs/FAQ.md) | EN | Common issues and troubleshooting |
 | [Changelog](docs/CHANGELOG.md) | — | Release notes |
 

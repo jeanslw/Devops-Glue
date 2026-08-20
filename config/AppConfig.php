@@ -166,6 +166,7 @@ class AppConfig
     public const CACHE_KEY_ADMIN_TOKEN_PREFIX = 'admin_token_';
     public const CACHE_KEY_MAP_LIST_PREFIX    = 'map_list_';
     public const CACHE_KEY_HARBOR_VERSION     = 'harbor_api_version';
+    public const CACHE_KEY_HARBOR_SPECIFIC_VERSION = 'harbor_specific_version';
 
     // ── TTL 常量（秒）──
     public const TTL_TOKEN = 86400;  // 登录 token 有效期（24h）
@@ -409,6 +410,16 @@ class AppConfig
     public function getHarborConfig(): array
     {
         return $this->config['harbor'] ?? [];
+    }
+
+    /**
+     * 判断当前配置的 Harbor 账号是否为机器人账户（用户名含 'robot$' 前缀）。
+     * Harbor v2.2.0 之前机器人账户是 JWT，无法调用 REST API，仅 Docker/Helm CLI 可用。
+     */
+    public function isHarborRobotAccount(): bool
+    {
+        $username = $this->config['harbor']['username'] ?? '';
+        return str_contains($username, 'robot$');
     }
 
     /**

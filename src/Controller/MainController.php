@@ -325,11 +325,11 @@ class MainController extends BaseController
                     }
                 }
                 $checks['harbor'] = !in_array(false, $componentResults, true);
-                $checks['harbor_version'] = 'v2';
+                $checks['harbor_version'] = $this->harbor->getHarborVersion() ?? 'v2';
                 $checks['harbor_components'] = $componentResults;
             } catch (\Exception $e) {
                 $checks['harbor'] = false;
-                $checks['harbor_version'] = 'v2';
+                $checks['harbor_version'] = $this->harbor->getHarborVersion() ?? 'v2';
                 $checks['harbor_components'] = null;
             }
         } else {

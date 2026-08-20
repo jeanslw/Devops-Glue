@@ -33,7 +33,7 @@ Appendices:
 
 ## 1. Overview
 
-Devops-Glue API is a Slim4-based unified API layer that provides a single management entry point for Jenkins + GitLab CI dual-channel builds, GitLab / Gitee / GitHub / Gitea multi-platform code, and the Harbor image registry — covering the full CI-to-CD flow. It is a CI enhancement component; the complete system requires the companion deployment service [Devops-Glue CD](https://gitee.com/jeanslw/devops_cd).
+Devops-Glue API is a Slim4-based unified API layer that provides a single management entry point for Jenkins / GitLab CI pull-based builds plus Custom_Push push-based builds (theoretically supporting all CI), GitLab / Gitee / GitHub / Gitea multi-platform code, and the Harbor image registry — covering the full CI-to-CD flow. It is a CI enhancement component; the complete system requires the companion deployment service [Devops-Glue CD](https://gitee.com/jeanslw/devops_cd).
 
 | Devops-Glue API | Devops-Glue CD |
 |:---:|:---:|
@@ -160,7 +160,7 @@ The admin panel sidebar contains the following modules:
 
 ## 9. Connect CI Platforms
 
-Devops-Glue supports dual build channels: Jenkins and GitLab CI.
+Devops-Glue integrates CI in two complementary ways, so **theoretically all CI systems are supported**: built-in pull-based (Jenkins and GitLab CI) and push-based Custom_Push (any CI script can report build results).
 
 **Jenkins** — fill in `.env`:
 
@@ -212,6 +212,18 @@ HARBOR_PASSWORD=your_password
 ```
 
 Harbor is used to associate build artifacts (image repositories) and to trigger image scans in the security audit.
+
+> **About robot accounts:** Devops-Glue calls the Harbor REST API via HTTP Basic Auth, so the account must be usable for the REST API:
+>
+> | Harbor version | Can a robot account call the REST API? |
+> |---|---|
+> | v1.x / v2.0.x / v2.1.x | ❌ No. The robot token is a JWT (legacy) and only works with Docker/Helm CLI |
+> | v2.2.0+ | ✅ Yes. The robot account uses a secret, so Basic Auth works against the REST API |
+>
+> - **Harbor ≥ 2.2.0**: `HARBOR_USER` may be `robot$xxx`, with `HARBOR_PASSWORD` set to the secret shown when creating the robot account.
+> - **Harbor < 2.2.0**: use a **normal account** (username/password) for `HARBOR_USER` / `HARBOR_PASSWORD`.
+>
+> The admin "Platform API Version" page detects the concrete Harbor version in real time and clearly shows whether robot accounts are supported.
 
 ---
 

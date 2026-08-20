@@ -8,6 +8,7 @@ use App\Service\AdminAuthService;
 use App\Service\AdminUserRepository;
 use App\Service\ApiTokenService;
 use App\Service\AutoDiscover;
+use App\Service\HarborService;
 use App\Service\I18nService;
 use App\Service\TokenService;
 
@@ -20,6 +21,7 @@ class AdminController extends BaseController
     private ?ApiTokenService $apiTokenService = null;
     private AdminAuthService $adminAuthService;
     private AdminUserRepository $adminUserRepository;
+    private ?HarborService $harbor;
 
     public function __construct(
         I18nService $i18n,
@@ -29,7 +31,8 @@ class AdminController extends BaseController
         AdminUserRepository $adminUserRepository,
         ?AutoDiscover $autoDiscover = null,
         ?TokenService $tokenService = null,
-        ?ApiTokenService $apiTokenService = null
+        ?ApiTokenService $apiTokenService = null,
+        ?HarborService $harbor = null
     ) {
         parent::__construct($i18n);
         $this->config             = $config;
@@ -39,6 +42,7 @@ class AdminController extends BaseController
         $this->apiTokenService    = $apiTokenService;
         $this->adminAuthService   = $adminAuthService;
         $this->adminUserRepository = $adminUserRepository;
+        $this->harbor             = $harbor;
     }
 
     /** POST /api/admin/discover — 自动扫描并保存未入库的项目 */
@@ -462,6 +466,13 @@ class AdminController extends BaseController
             $info['configured'] = in_array($name, $configuredGit) || $name === 'harbor';
         }
         unset($info);
+
+        // Harbor 附加探测信息：具体版本号 + 机器人账户支持情况（供管理界面明确提示）
+        if (isset($versions['harbor'])) {
+            $versions['harbor']['detected_version'] = $this->harbor?->getHarborVersion();
+            $versions['harbor']['robot_support']    = $this->harbor?->getRobotAccountSupport() ?? 'unknown';
+            $versions['harbor']['robot_account']    = $this->config->isHarborRobotAccount();
+        }
 
         return $this->output($response, ['versions' => $versions], $request);
     }

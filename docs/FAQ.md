@@ -152,11 +152,13 @@ docker exec -it <container> chmod 777 /var/www/html/config/data/
 
 ### Q: Which CI systems are supported?
 
-**Jenkins** and **GitLab CI**. Switch `build_mode` in the admin panel:
+Devops-Glue integrates via two complementary CI modes, so **theoretically all CI systems are supported**:
 
-- `jenkins` — Jenkins only
-- `gitlab_ci` — GitLab CI only
-- `both` — Both available simultaneously
+- **Pull-based CI (built-in)**: controlled by `build_mode`, with built-in support for **Jenkins** and **GitLab CI**:
+  - `jenkins` — Jenkins only
+  - `gitlab_ci` — GitLab CI only
+  - `both` — Both available simultaneously
+- **Push-based CI (Custom_Push)**: controlled by the independent `custom_push_enabled` switch. Users report build results by calling `/api/build/{path}/report` from their own CI scripts, so **any CI tool** (GitHub Actions, Drone, Gitee Go, Travis CI, CircleCI, self-hosted scripts, etc.) can be integrated.
 
 ### Q: build_mode switch doesn't take effect?
 

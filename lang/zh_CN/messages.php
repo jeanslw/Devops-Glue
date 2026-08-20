@@ -173,7 +173,7 @@ return [
     'platform.gitee_desc'   => 'API v5，SaaS 平台端点稳定',
     'platform.github_desc'  => '通过 X-GitHub-Api-Version Header 传递，仅影响显示',
     'platform.gitea_desc'   => 'API v1，自建平台',
-    'platform.harbor_desc'  => '支持 v1.10 / v2.0 自动探测',
+    'platform.harbor_desc'  => '支持 v1.10 / v2.x 自动探测；机器人账户需 v2.2.0+',
 
     // ── 安全审计 ──
     'security.scan_results' => '安全审计结果',
@@ -336,6 +336,13 @@ return [
     'js.version_source_admin'   => '管理界面',
     'js.version_source_default' => '系统默认',
     'js.version_config_readonly_title' => '此值由 config/settings.php 显式配置，优先级最高，如需修改请编辑配置文件',
+    // Harbor 版本探测 / 机器人账户兼容
+    'js.harbor_detected_version' => '探测版本',
+    'js.harbor_version_unknown'  => '未知',
+    'js.harbor_robot_supported'  => '支持机器人账户（Harbor ≥ 2.2.0，机器人账户使用 secret）',
+    'js.harbor_robot_unsupported'=> '不支持机器人账户（Harbor < 2.2.0，机器人账户为 JWT，仅可用于 Docker/Helm CLI）',
+    'js.harbor_robot_unknown'    => '无法探测 Harbor 版本，机器人账户支持情况未知',
+    'js.harbor_robot_warning'    => '当前配置的是机器人账户，但该 Harbor 版本不支持机器人账户调用 REST API，请改用普通账户（用户名/密码）。',
     // 配置模式
     'js.mode_persisted'         => '持久化',
     'js.mode_temp'              => '临时',

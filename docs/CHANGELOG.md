@@ -12,6 +12,9 @@
 - **Version correspondence** — Devops-Glue API v2.6 ↔ Devops-Glue CD v1.4.
 - **Release update** — Bumped app version to v2.6.0.
 - **Refinements** — Push records pagination (Custom_Push_Log); disabled Custom_Push now demotes new custom_push mappings to Pending and filters them in every build mode; Harbor repository-vs-tag existence checks; topology flow direction git → build → harbor.
+- **Harbor version detection** — Detect the concrete Harbor version (`/api/v2.0/systeminfo`, anonymous-first with authenticated fallback); robot-account REST API support is decided by version (boundary v2.2.0) and shown on the admin "Platform API Version" page.
+- **Service version compatibility doc** — Added `Integrated-Service-Version-Compatibility.md` (CN/EN) covering Jenkins / GitLab / Gitea / Harbor version support and boundaries.
+- **CI-support accuracy** — FAQ, admin manual, architecture, and API docs now state the push-based Custom_Push (theoretically all CI) alongside pull-based Jenkins / GitLab CI.
 
 ## v2.5.1 (2026-08-14)
 - **Permission list: built-in vs. registered + delete + registered-at** — The permissions list now distinguishes built-in vs. registered permissions (`is_builtin`), shows the registration time (`created_at`), and lets admins delete registered permissions (built-in keys are protected).
