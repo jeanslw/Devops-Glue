@@ -48,7 +48,7 @@ Devops-Glue API is a Slim4-based unified API layer that provides a single manage
 
 | Component | Version requirement |
 |---|---|
-| PHP | 8.0+ (the Docker image uses 8.3) |
+| PHP | 8.1+ (the Docker image uses 8.3) |
 | Database | SQLite (default) / MySQL 8.0+ / MariaDB 10.4+ |
 | Jenkins | v2.60+ |
 | GitLab | v9.0+ (API v4) |
