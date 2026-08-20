@@ -115,7 +115,7 @@ curl http://localhost:8080/api/health
 
 | 组件 | 版本要求 |
 |---|---|
-| PHP | 8.0+ |
+| PHP | 8.1+ |
 | 数据库 | SQLite（默认）/ MySQL 8.0+ / MariaDB 10.4+ |
 | Jenkins | v2.60+ |
 | GitLab | v9.0+（API v4） |
