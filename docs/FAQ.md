@@ -18,7 +18,7 @@
 
 ### Q: What are the runtime requirements?
 
-- **PHP 8.0+** with extensions: `pdo_sqlite` or `pdo_mysql`, `curl`, `json`
+- **PHP 8.1+** with extensions: `pdo_sqlite` or `pdo_mysql`, `curl`, `json`
 - Database: SQLite (out of the box) or MySQL 8.0+ / MariaDB 10.4+
 - With Docker, no manual dependency installation is needed
 
