@@ -120,7 +120,7 @@ Visit `http://localhost:8080/api/docs` for interactive API docs (Swagger UI).
 
 | Component | Version |
 |---|---|
-| PHP | 8.0+ |
+| PHP | 8.1+ |
 | Database | SQLite (default) / MySQL 8.0+ / MariaDB 10.4+ |
 | Jenkins | v2.60+ |
 | GitLab | v9.0+ (API v4) |

@@ -95,7 +95,7 @@
 
 **Framework:** Slim 4 + PHP-DI 7 + vlucas/phpdotenv 5.6 + GuzzleHTTP 7  
 **Database:** SQLite (default) / MySQL 8.0+ / MariaDB 10.4+  
-**PHP Minimum:** 8.0+
+**PHP Minimum:** 8.1+
 
 ---
 
