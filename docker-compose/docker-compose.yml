@@ -51,7 +51,7 @@ services:
 #    build:
 #      context: ../../devops_cd
 #      dockerfile: Dockerfile
-#    container_name: cd-service
+#    container_name: devops-cd
 #    image: devops-cd:latest
 #    env_file:
 #      - ../../devops_cd/.env
