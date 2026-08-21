@@ -87,7 +87,8 @@ Following the **Conventional Commits** specification is highly recommended:
 
 ## Code of Conduct
 
-Contributors to this project are expected to adhere to the [Contributor Covenant](https://www.contributor-covenant.org/zh-cn/version/2/0/code_of_conduct/). We expect all interactions to be open, inclusive, and respectful.
+Contributors to this project are expected to adhere to the [Contributor Covenant](https://www.contributor-covenant.org/version/2/0/code_of_conduct/). We expect all interactions to be open, inclusive, and respectful.
+
 
 ## Getting Help
 
