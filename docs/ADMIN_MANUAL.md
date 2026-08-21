@@ -300,7 +300,7 @@ Push-based CI reports the build result in **one call** — the terminal status a
 > - `finished_at`: the build completion time, hard-validated (400 if missing).
 > - `tag`: the image tag — required when `status=success`, hard-validated (400 if missing on success).
 
-`{path}` is the mapping's `current_path`. All JSON keys use lowercase snake_case.
+`{path}` may be either the mapping's `job_name` or `current_path`; both normalize to `job_name` (the mapping primary key). All JSON keys use lowercase snake_case. See [Push-name normalization](#push-name-normalization) for the keying rule.
 
 #### `POST /api/build/{path}/report` — Report terminal result
 
@@ -322,6 +322,29 @@ Called after the build completes (or is aborted); writes the terminal state dire
 | (custom variables) | | — | Any other JSON keys are stored in `variables_json` (e.g. `env`) |
 
 > **Tag write semantics:** when `status=success`, `tag` and a resolvable `harbor_repository` are mandatory, and `ci_pipeline_tags` is written (`project`, `pipeline_iid`, `tag`, `harbor_repository`, `finished_at` as `created_at`, `status`), read by the deployment (CD) layer. Non-successful builds never write a tag, so the deployment system never picks up a failed build's tag.
+
+### Push-name normalization
+
+`custom_push` uses the mapping's **`job_name` (the mapping primary key — the stable identity across `build_provider` switches) as the canonical local record key**. Whichever name the user CI pushes, the backend normalizes it to `job_name`:
+
+| Pushed `{path}` | Stored key (`ci_custom_builds.job_name`) |
+|---|---|
+| `job_name` (recommended) | `job_name` |
+| `current_path` | `job_name` (normalized) |
+
+- Pushing `job_name` and pushing `current_path` land on the **same record**, so Jenkins naming differences don't produce two split records.
+- `ci_pipeline_tags.project` (the deployment layer's delivery source) is also written to the normalized `job_name`, matching the CD side's `t.project IN (job_name, current_path)` join semantics.
+- **Why not use `current_path` as the key**: when converting Jenkins to custom_push, `job_name != current_path`; keying on `current_path` would split the same project into `java/registry` and `tools/registry` when it is later switched back to Jenkins.
+- If the mapping's `job_name` is empty (normally impossible — it's the primary key), it falls back to `current_path`.
+
+#### Converting Jenkins to custom_push
+
+Converting a Jenkins mapping (`build_provider=jenkins`) to custom_push (`build_provider=custom_push`) is supported. **Keep `job_name` unchanged** (it's the mapping primary key and the identity anchor when switching back to Jenkins); you only need to:
+
+1. Change `build_provider` to `custom_push`;
+2. Confirm no other `custom_push` mapping exists for that Git project, to avoid duplicates.
+
+Do not rewrite `job_name` to match `current_path` — that breaks identity continuity when switching back to Jenkins; backend normalization already ensures pushes with `current_path` land under `job_name`.
 
 ### Reporting example
 
@@ -526,7 +549,7 @@ Each job can be configured with the following fields. Only `job_name` is require
 | Field | Required | Description |
 |---|---|---|
 | `job_name` | ✅ | Jenkins Job or GitLab CI project full path, e.g. `"java/registry"` |
-| `build_provider` | | CI system: `jenkins` (default) / `gitlab_ci` |
+| `build_provider` | | CI system: `jenkins` (default) / `gitlab_ci` / `custom_push` |
 | `git_platform` | | **Strongly recommended** for self-hosted instances. Auto-detected from URL keywords if omitted; self-hosted GitLab/Gitea domains often lack platform keywords and will fall back to `DEFAULT_GIT_PLATFORM`. Values: `gitlab` `gitee` `github` `gitea` or custom name |
 | `git_remote` | | Auto-fetched from Jenkins Job SCM config if omitted |
 | `project_id` | | GitLab: auto-queried via API if omitted; GitHub/Gitee: fill if known |

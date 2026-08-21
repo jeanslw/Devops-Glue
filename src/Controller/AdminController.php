@@ -523,6 +523,7 @@ class AdminController extends BaseController
             'has_jenkins'   => $hasJenkins,
             'has_gitlab_ci' => $hasGitlabCi,
             'custom_push_enabled' => $this->config->getCustomPushEnabled(),
+            'stale_tag_cleanup_enabled' => $this->config->getStaleTagCleanupEnabled(),
             'custom_providers' => array_column($this->config->getCustomBuildProviders(), 'name'),
         ], $request);
     }
@@ -539,6 +540,7 @@ class AdminController extends BaseController
         $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
         $mode = trim($body['mode'] ?? '');
         $cpEnabled = !empty($body['custom_push_enabled']);
+        $staleCleanup = !empty($body['stale_tag_cleanup_enabled']);
 
         if (!in_array($mode, [AppConfig::BUILD_MODE_JENKINS, AppConfig::BUILD_MODE_GITLAB_CI, AppConfig::BUILD_MODE_BOTH])) {
             return $this->jsonError($response, 'build.mode_required', 400);
@@ -566,6 +568,7 @@ class AdminController extends BaseController
         try {
             $this->config->setBuildMode($mode);
             $this->config->setCustomPushEnabled($cpEnabled);
+            $this->config->setStaleTagCleanupEnabled($staleCleanup);
 
             // 切到单 provider 模式时，将其他 provider 的 active 记录降为 pending
             if ($mode === AppConfig::BUILD_MODE_JENKINS || $mode === AppConfig::BUILD_MODE_GITLAB_CI) {
@@ -606,7 +609,7 @@ class AdminController extends BaseController
                 }
             }
 
-            return $this->output($response, ['success' => true, 'mode' => $mode, 'custom_push_enabled' => $cpEnabled], $request);
+            return $this->output($response, ['success' => true, 'mode' => $mode, 'custom_push_enabled' => $cpEnabled, 'stale_tag_cleanup_enabled' => $staleCleanup], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.save_failed') . ': ' . $e->getMessage(), 500);
         }

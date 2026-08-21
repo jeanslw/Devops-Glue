@@ -46,12 +46,21 @@ COPY config/docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 RUN rm -f /etc/nginx/sites-enabled/default \
     && ln -sf /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default \
-    && mkdir -p /app/config/data /data/logs/ci-platform \
-    && chmod -R 777 /app/config/data /data/logs/ci-platform \
+    && mkdir -p /data/logs/ci-platform /data/db /data/backups /data/cache \
+    && chown -R www-data:www-data /data \
+    && chmod -R 755 /data \
     && echo '#!/bin/bash' > /entrypoint.sh \
-    && echo 'chmod -R 777 /app/config/data /data/logs/ci-platform 2>/dev/null || true' >> /entrypoint.sh \
+    && echo 'chown -R www-data:www-data /data 2>/dev/null || true' >> /entrypoint.sh \
+    && echo 'chmod -R 755 /data 2>/dev/null || true' >> /entrypoint.sh \
     && echo 'exec /usr/bin/supervisord -n -c /etc/supervisor/conf.d/supervisord.conf' >> /entrypoint.sh \
     && chmod +x /entrypoint.sh
+
+# 运行时数据统一到 /data（logs / db / backups / cache），www-data 拥有、755（弃用 777）。
+# ENV 是默认值；.env 里同名项（如 LOG_PATH）会覆盖，保持一致即可。
+ENV LOG_PATH=/data/logs/ci-platform/ \
+    DB_PATH=/data/db/data.db \
+    BACKUP_DIR=/data/backups \
+    GITLAB_ID_CACHE=/data/cache/gitlab_id_cache.php
 
 EXPOSE 80
 

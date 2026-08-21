@@ -129,6 +129,7 @@ return [
     'build.mode_both'       => 'Jenkins + GitLab',
     'build.mode_hint'       => 'Changes take effect immediately. Changing the build mode deactivates mappings that no longer match (demoted to Pending); unavailable options are disabled.',
     'build.mode_saved'      => 'Saved',
+    'build.stale_tag_cleanup_toggle' => '🧹 Enable stale tag cleanup',
 
     // ── Push records (Custom_Push build records) ──
     'push.job_name'        => 'job_name',
@@ -353,6 +354,8 @@ return [
     'js.mode_label_both'        => '⚡ Jenkins + 🐺 GitLab CI (dual-channel coexistence)',
     'js.mode_label_custom_push' => '📤 Custom_Push (user CI pushes build results, Devops-Glue only receives callbacks)',
     'js.custom_push_disable_confirm' => 'Confirm disabling Custom_Push? Active Custom_Push mappings will be demoted to pending.',
+    'js.stale_tag_cleanup_enable_confirm' => 'Confirm enabling stale tag cleanup? Rows whose tag no longer exists in Harbor will be removed (Harbor artifacts are never touched).',
+    'js.stale_tag_cleanup_disable_confirm' => 'Confirm disabling stale tag cleanup? Automatic cleanup of stale tag rows will stop.',
     'js.cp_disabled_hint'       => 'Custom_Push is disabled; selecting it will save the mapping as Pending',
     'js.cp_saved_as_pending'    => 'Custom_Push is disabled; mapping saved as Pending',
     'js.mode_mode'              => 'Mode',

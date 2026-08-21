@@ -433,6 +433,10 @@
                                 <input type="checkbox" id="custom-push-toggle" onchange="onCustomPushToggle()" style="width:16px;height:16px;cursor:pointer;">
                                 <span data-i18n="build.custom_push_toggle">📤 启用 Custom_Push</span>
                             </label>
+                            <label style="font-size:13px;font-weight:600;color:#374151;cursor:pointer;display:inline-flex;align-items:center;gap:4px;">
+                                <input type="checkbox" id="stale-tag-cleanup-toggle" onchange="onStaleTagCleanupToggle()" style="width:16px;height:16px;cursor:pointer;">
+                                <span data-i18n="build.stale_tag_cleanup_toggle">🧹 启用过期 tag 清理</span>
+                            </label>
                         </div>
                         <p style="text-align:center;font-size:11px;color:#9ca3af;margin-top:8px;" data-i18n="build.mode_hint">
                             修改后即时生效。更改构建模式会将不再匹配的映射记录停用（降为「待定」），不可用的选项会在下拉中禁用。

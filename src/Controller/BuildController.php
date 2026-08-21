@@ -8,6 +8,7 @@ use App\Service\Build\BuildProviderRegistry;
 use App\Service\HarborService;
 use App\Service\I18nService;
 use App\Service\MappingManager;
+use App\Service\PipelineTagService;
 use App\Service\Git\ProviderRegistry as GitProviderRegistry;
 
 class BuildController extends BaseController
@@ -15,30 +16,30 @@ class BuildController extends BaseController
     private BuildProviderRegistry $registry;
     private AppConfig $config;
     private MappingManager $mapping;
+    private PipelineTagService $pipelineTags;
     private ?HarborService $harbor;
     private ?GitProviderRegistry $gitRegistry;
     private \PDO $pdo;
 
-    public function __construct(I18nService $i18n, BuildProviderRegistry $registry, AppConfig $config, MappingManager $mapping, \PDO $pdo, ?HarborService $harbor = null, ?GitProviderRegistry $gitRegistry = null)
+    public function __construct(I18nService $i18n, BuildProviderRegistry $registry, AppConfig $config, MappingManager $mapping, \PDO $pdo, PipelineTagService $pipelineTags, ?HarborService $harbor = null, ?GitProviderRegistry $gitRegistry = null)
     {
         parent::__construct($i18n);
-        $this->registry    = $registry;
-        $this->config      = $config;
-        $this->mapping     = $mapping;
-        $this->pdo         = $pdo;
-        $this->harbor      = $harbor;
-        $this->gitRegistry = $gitRegistry;
+        $this->registry     = $registry;
+        $this->config       = $config;
+        $this->mapping      = $mapping;
+        $this->pdo          = $pdo;
+        $this->pipelineTags = $pipelineTags;
+        $this->harbor       = $harbor;
+        $this->gitRegistry  = $gitRegistry;
     }
 
     private function resolve(string $projectPath): array
     {
+        // resolveProject 已按 provider 归一化 projectId：
+        //   jenkins → job 路径；gitlab_ci → 数字 project_id；
+        //   custom_push → job_name（current_path 兜底），推 job_name/current_path 归一到同一条记录。
         $r = $this->mapping->resolveProject($projectPath);
-        // 内置 Provider（Jenkins/GitLab CI）用 project_id 调外部 CI API；
-        // 自定义推送式 CI（custom_push 等）用 job_name（= path）作为本地表查询键。
-        $projectId = in_array($r['provider'], [AppConfig::PROVIDER_JENKINS, AppConfig::PROVIDER_GITLAB_CI], true)
-            ? $r['projectId']
-            : $projectPath;
-        return [$r['provider'], $projectId];
+        return [$r['provider'], $r['projectId']];
     }
 
     public function jobsList(Request $request, Response $response): Response
@@ -743,6 +744,11 @@ class BuildController extends BaseController
     private function loadPipelineTags(): array
     {
         try {
+            // 先以 Harbor 为准清理过期 tag（不可达/不可校验时安全跳过，不误删）；受后台开关控制
+            if ($this->config->getStaleTagCleanupEnabled()) {
+                $this->pipelineTags->cleanupStaleTags();
+            }
+
             $pdo = $this->pdo;
             $rows = $pdo->query("SELECT project, pipeline_iid, tag, harbor_repository, status, created_at FROM " . AppConfig::TABLE_PIPELINE_TAGS . " ORDER BY created_at DESC")->fetchAll();
             $result = [];
@@ -753,62 +759,9 @@ class BuildController extends BaseController
                     'status' => $r['status'] ?? '',
                 ];
             }
-            // 清理 Harbor 中已不存在的 tag 记录
-            $this->cleanupStaleTags($result);
             return $result;
         } catch (\Exception $e) {
             return [];
-        }
-    }
-
-    /**
-     * 按 harbor_repository 检查已有 tag 是否仍存在于 Harbor，删除已过期的记录
-     * 如果 Harbor 不可达则跳过清理（避免误删有效数据）
-     */
-    private function cleanupStaleTags(array &$tagGroups): void
-    {
-        if (!$this->harbor) return;
-
-        $repoCache = [];  // harbor_repo => [tag1, tag2, ...] 或 null（Harbor不可达）
-        $staleKeys = [];  // [['project' => ..., 'pipeline_iid' => ...], ...]
-
-        foreach ($tagGroups as $project => $entries) {
-            foreach ($entries as $pipelineIid => $info) {
-                $harborRepo = $info['harbor'] ?? '';
-                $tag        = $info['tag'] ?? '';
-                if (empty($harborRepo) || empty($tag)) continue;
-
-                // 按仓库缓存 Harbor tag 列表，避免重复请求
-                if (!array_key_exists($harborRepo, $repoCache)) {
-                    $parts = explode('/', $harborRepo, 2);
-                    if (count($parts) === 2) {
-                        $tags = $this->harbor->getTags($parts[0], $parts[1]);
-                        // Harbor 不可达时置 null，跳过该仓库的清理
-                        $repoCache[$harborRepo] = isset($tags['error']) ? null : $tags;
-                    } else {
-                        $repoCache[$harborRepo] = [];
-                    }
-                }
-
-                $validTags = $repoCache[$harborRepo];
-                // null 表示 Harbor 不可达，跳过检查
-                if ($validTags !== null && !in_array($tag, $validTags)) {
-                    $staleKeys[] = ['project' => $project, 'pipeline_iid' => (int) $pipelineIid];
-                }
-            }
-        }
-
-        if (!empty($staleKeys)) {
-            try {
-                $pdo  = $this->pdo;
-                $stmt = $pdo->prepare("DELETE FROM " . AppConfig::TABLE_PIPELINE_TAGS . " WHERE project = ? AND pipeline_iid = ?");
-                foreach ($staleKeys as $key) {
-                    $stmt->execute([$key['project'], $key['pipeline_iid']]);
-                    unset($tagGroups[$key['project']][(string) $key['pipeline_iid']]);
-                }
-            } catch (\Exception $e) {
-                \App\Helper\Log::exception($e);
-            }
         }
     }
 

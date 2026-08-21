@@ -707,6 +707,34 @@ class AppConfig
         $pdo->prepare($sql)->execute(['custom_push_enabled', $enabled ? '1' : '0']);
     }
 
+    /**
+     * 过期 tag 清理开关（stale_tag_cleanup_enabled）。
+     * 默认关闭：刚装好时 ci_pipeline_tags 为空，且删除不可逆，需后台显式开启。
+     * 存储于 ci_app_settings 表，key = 'stale_tag_cleanup_enabled'，value = '1'/'0'。
+     */
+    public function getStaleTagCleanupEnabled(): bool
+    {
+        try {
+            $pdo = $this->getPdo();
+            $row = $pdo->query("SELECT value FROM " . self::TABLE_APP_SETTINGS . " WHERE setting_key = 'stale_tag_cleanup_enabled'")->fetch();
+            if ($row) {
+                return $row['value'] === '1';
+            }
+            // DB 无记录 → 首次运行，默认关闭（需后台开启）
+            $this->setStaleTagCleanupEnabled(false);
+            return false;
+        } catch (\Exception $e) {
+            return false;
+        }
+    }
+
+    public function setStaleTagCleanupEnabled(bool $enabled): void
+    {
+        $pdo = $this->getPdo();
+        $sql = \App\Service\Database::sqlUpsert(self::TABLE_APP_SETTINGS, 'setting_key, value, updated_at', '?, ?, ' . \App\Service\Database::sqlNow());
+        $pdo->prepare($sql)->execute(['stale_tag_cleanup_enabled', $enabled ? '1' : '0']);
+    }
+
     // 私有：获取平台默认 API 版本
     private function getDefaultApiVersion(string $platform): string
     {

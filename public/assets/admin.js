@@ -841,10 +841,12 @@ async function loadSettings() {
         const hasGitlab = data.has_gitlab_ci;
         const hasCustom = (data.custom_providers || []).length > 0;
         const cpEnabled = data.custom_push_enabled || false;
+        const staleCleanup = data.stale_tag_cleanup_enabled || false;
         const customNames = data.custom_providers || [];
         const source = data.source || 'env';
         currentBuildMode = mode;
         currentCpEnabled = cpEnabled;
+        currentStaleCleanupEnabled = staleCleanup;
 
         // 来源标识
         const srcLabel = source === 'database'
@@ -857,6 +859,10 @@ async function loadSettings() {
         // custom_push 开关
         if (cpToggle) {
             cpToggle.checked = cpEnabled;
+        }
+        const staleToggle = document.getElementById('stale-tag-cleanup-toggle');
+        if (staleToggle) {
+            staleToggle.checked = staleCleanup;
         }
         applyPushRecordsMenuVisibility(cpEnabled);
         configPanel.style.display = 'block';
@@ -968,6 +974,7 @@ async function loadSettings() {
 }
 
 let currentCpEnabled = false;
+let currentStaleCleanupEnabled = false;
 
 async function onBuildModeChange() {
     const sel = document.getElementById('build-mode-select');
@@ -999,7 +1006,7 @@ async function onBuildModeChange() {
         const res = await fetch('/api/admin/build_mode', {
             method: 'PUT',
             headers: Object.assign({'Content-Type':'application/json'}, authHeaders()),
-            body: JSON.stringify({mode: newMode, custom_push_enabled: currentCpEnabled})
+            body: JSON.stringify({mode: newMode, custom_push_enabled: currentCpEnabled, stale_tag_cleanup_enabled: currentStaleCleanupEnabled})
         });
         if (handle401(res)) { sel.value = oldMode; currentBuildMode = oldMode; updateBuildModeValue(); return; }
         if (res.ok) {
@@ -1040,7 +1047,7 @@ async function onCustomPushToggle() {
         const res = await fetch('/api/admin/build_mode', {
             method: 'PUT',
             headers: Object.assign({'Content-Type':'application/json'}, authHeaders()),
-            body: JSON.stringify({mode: currentBuildMode, custom_push_enabled: newEnabled})
+            body: JSON.stringify({mode: currentBuildMode, custom_push_enabled: newEnabled, stale_tag_cleanup_enabled: currentStaleCleanupEnabled})
         });
         if (handle401(res)) { cpToggle.checked = oldEnabled; return; }
         if (res.ok) {
@@ -1056,6 +1063,42 @@ async function onCustomPushToggle() {
     } catch(e) {
         toast(__.t('js.network_error') + ': ' + e.message, false);
         cpToggle.checked = oldEnabled;
+    }
+}
+
+async function onStaleTagCleanupToggle() {
+    const staleToggle = document.getElementById('stale-tag-cleanup-toggle');
+    const newEnabled = staleToggle.checked;
+    const oldEnabled = currentStaleCleanupEnabled;
+
+    if (!confirm(newEnabled
+        ? __.t('js.stale_tag_cleanup_enable_confirm')
+        : __.t('js.stale_tag_cleanup_disable_confirm'))) {
+        staleToggle.checked = oldEnabled;
+        return;
+    }
+
+    const statusEl = document.getElementById('build-mode-status');
+    statusEl.style.display = 'none';
+    try {
+        const res = await fetch('/api/admin/build_mode', {
+            method: 'PUT',
+            headers: Object.assign({'Content-Type':'application/json'}, authHeaders()),
+            body: JSON.stringify({mode: currentBuildMode, custom_push_enabled: currentCpEnabled, stale_tag_cleanup_enabled: newEnabled})
+        });
+        if (handle401(res)) { staleToggle.checked = oldEnabled; return; }
+        if (res.ok) {
+            currentStaleCleanupEnabled = newEnabled;
+            statusEl.style.display = 'inline';
+            setTimeout(() => statusEl.style.display = 'none', 2000);
+        } else {
+            const data = await res.json();
+            toast(data.message || __.t('js.save_failed'), false);
+            staleToggle.checked = oldEnabled;
+        }
+    } catch(e) {
+        toast(__.t('js.network_error') + ': ' + e.message, false);
+        staleToggle.checked = oldEnabled;
     }
 }
 

@@ -129,6 +129,7 @@ return [
     'build.mode_both'       => 'Jenkins + GitLab',
     'build.mode_hint'       => '修改后即时生效。更改构建模式会将不再匹配的映射记录停用（降为「待定」），不可用的选项会在下拉中禁用。',
     'build.mode_saved'      => '已保存',
+    'build.stale_tag_cleanup_toggle' => '🧹 启用过期 tag 清理',
 
     // ── push 记录（Custom_Push 构建记录） ──
     'push.job_name'        => 'job_name',
@@ -353,6 +354,8 @@ return [
     'js.mode_label_both'        => '⚡ Jenkins + 🐺 GitLab CI（双通道共存）',
     'js.mode_label_custom_push' => '📤 Custom_Push（用户 CI 推送构建结果，Devops-Glue 只接收回写）',
     'js.custom_push_disable_confirm' => '确认关闭 Custom_Push？已激活的 Custom_Push 映射将降为待定状态。',
+    'js.stale_tag_cleanup_enable_confirm' => '确认开启过期 tag 清理？将以 Harbor 为准删除已不存在的 tag 记录（不删除 Harbor 库的 tag）。',
+    'js.stale_tag_cleanup_disable_confirm' => '确认关闭过期 tag 清理？将停止自动清理过期 tag 记录。',
     'js.cp_disabled_hint'       => 'Custom_Push 未启用，选择后将保存为「待定」',
     'js.cp_saved_as_pending'    => 'Custom_Push 未启用，映射已按「待定」保存',
     'js.mode_mode'              => '模式',

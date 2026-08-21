@@ -7,6 +7,7 @@ use App\Service\GitRemoteResolver;
 use App\Service\AutoDiscover;
 use App\Service\HarborService;
 use App\Service\MappingManager;
+use App\Service\PipelineTagService;
 use App\Service\I18nService;
 use App\Service\TokenService;
 use App\Service\ApiTokenService;
@@ -342,12 +343,15 @@ return [
         } catch (\Throwable $e) {
             $logger = null;
         }
+        $gitlabIdCache = (isset($_ENV['GITLAB_ID_CACHE']) && $_ENV['GITLAB_ID_CACHE'] !== '')
+            ? $_ENV['GITLAB_ID_CACHE']
+            : (getenv('GITLAB_ID_CACHE') ?: __DIR__ . '/gitlab_id_cache.php');
         return new GitRemoteResolver(
             $c->get(JenkinsService::class),
             $c->get(ProviderRegistry::class),
             $config->getJobGitMap(),
             $config->getGitlabConfig(),
-            __DIR__ . '/gitlab_id_cache.php',
+            $gitlabIdCache,
             $config->getDefaultGitPlatform(),
             $logger,
             $c->get('gitlabHttpClient')
@@ -404,6 +408,7 @@ return [
             $c->get(AppConfig::class),
             $c->get(MappingManager::class),
             $c->get(\PDO::class),
+            $c->get(PipelineTagService::class),
             $c->get(HarborService::class),
             $c->get(ProviderRegistry::class)
         );
@@ -460,6 +465,10 @@ return [
             $logger = null;
         }
         return new HarborService($c->get('harborClient'), $c->get(\PDO::class), $logger);
+    },
+
+    PipelineTagService::class => function (\Psr\Container\ContainerInterface $c) {
+        return new PipelineTagService($c->get(\PDO::class), $c->get(HarborService::class));
     },
 
     HarborController::class => function (\Psr\Container\ContainerInterface $c) {
