@@ -107,9 +107,20 @@ class MappingManager
             if ($job === $projectPath || $cp === $projectPath || $job === str_replace('-', '/', $projectPath)) {
                 $bp = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
                 if (!empty($bp)) $provider = $bp;
-                if ($provider !== AppConfig::PROVIDER_JENKINS && !empty($m['project_id'])) {
+
+                if ($provider === AppConfig::PROVIDER_GITLAB_CI && !empty($m['project_id'])) {
+                    // GitLab CI：用数字 project_id 调外部 API
                     $projectId = (string) $m['project_id'];
+                } elseif ($provider !== AppConfig::PROVIDER_JENKINS) {
+                    // 推送式 CI（custom_push 及 settings.php 自定义 push provider）：
+                    // 以 job_name（映射主键，跨 build_provider 切换的稳定身份）为规范本地记录键，
+                    // current_path 兜底，让推 job_name / current_path 都归一化到同一条记录。
+                    // 不用 current_path 当键：jenkins 转 custom_push 时 job_name≠current_path，
+                    // 若按 current_path 落库，改回 jenkins 后同一项目会被当成两条（project 分裂）。
+                    $projectId = (string) ($job !== '' ? $job : ($cp !== '' ? $cp : $projectPath));
                 }
+                // jenkins：projectId 保持原始 path（JenkinsService 按路径拼 URL）
+
                 break;
             }
         }
