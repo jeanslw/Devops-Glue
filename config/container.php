@@ -54,7 +54,7 @@ return [
             $dsn = "mysql:host={$host};port={$port};dbname={$db};charset={$charset}";
             $pdo = new \PDO($dsn, $user, $pass, [\PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES {$charset}"]);
         } else {
-            $path = $_ENV['DB_PATH'] ?? __DIR__ . '/../../config/data/data.db';
+            $path = $_ENV['DB_PATH'] ?? __DIR__ . '/data/data.db';
             $dir = dirname($path);
             if (!is_dir($dir)) @mkdir($dir, 0777, true);
             $pdo = new \PDO('sqlite:' . $path);
