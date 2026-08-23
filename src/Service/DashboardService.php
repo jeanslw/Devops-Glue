@@ -2,153 +2,125 @@
 namespace App\Service;
 
 use App\Config\AppConfig;
+use App\Service\Build\BuildProviderRegistry;
 
 /**
  * 监控看板只读查询服务（Grafana Infinity 数据源消费）。
  *
- * 链路：ci_job_git_map ↔ ci_pipeline_tags ↔ cd_deploy_logs ↔ cd_registry_artifacts
+ * 三个端点按「数据源」严格隔离，互不 join：
+ *  - /api/dashboard/mapping     → 只读 ci_job_git_map（映射配置本身）
+ *  - /api/dashboard/deployment  → 只读 cd_deploy_logs（CD 部署日志）
+ *  - /api/dashboard/build       → ci_custom_builds（custom_push 构建）+ jenkins/gitlab 实时流水线
  *
- * 关键 join 语义（从代码反推的非显而易见坑，写 SQL 必须遵守）：
- *  - ci_pipeline_tags.project 是模糊匹配：落库时可能写 job_name 或 current_path，
- *    因此连接条件是 t.project IN (m.job_name, m.current_path)。
- *  - cd_deploy_logs.project 同理：dl.project IN (m.job_name, m.current_path)。
- *  - "project" 双关：ci_pipeline_tags.project / cd_deploy_logs.project 是 CI 项目名；
- *    cd_registry_repositories.project_name 是 Harbor 项目名。registry 段只能靠
- *    harbor_repository（"project/repo" 两段式）拼接 CONCAT(project_name,'/',repo_name) 连接，
- *    绝不能拿 project 去连 registry。
- *  - cd_registry_artifacts 一个 tag 可能多 digest（uk_repo_tag_digest），
- *    首版按 a.tag = t.tag 简单处理，用 MAX(push_time) 收敛脏数据。
- *  - cd_* 表由 CD 系统拥有，本服务只读；表不存在时优雅降级（对应字段返回 NULL），
- *    绝不让看板接口因为 CD 未部署而 500。
+ * 事实依据（字段名以真实建表脚本为准，禁止臆造）：
+ *  - cd_deploy_logs（Devops_CD database/init_mysql.sql）：id, deploy_id, project, tag, image,
+ *    deploy_type, target, status, output, triggered_by, deploy_note, duration_ms, stage_times, created_at。
+ *    其中 deploy_note/duration_ms/stage_times 是 v1.3.1 迁移后补列，output/stage_times 为大文本/JSON，
+ *    本服务只取「基础建表即有」的标量列，避免旧版 CD 缺列导致 SQL 报错。
+ *  - ci_custom_builds（Glue database/*_init.sql）：id, job_name, pipeline_iid, ref, sha,
+ *    variables_json, status, exit_code, log_url, web_url, triggered_at, started_at, finished_at。
+ *
+ * 降级约定：cd_deploy_logs 由 CD 系统拥有，Glue 不保证存在 → 表缺失返回空数组；
+ * jenkins/gitlab 实时查询失败按 job 降级为 error 字段，绝不让看板整体 500。
  */
 class DashboardService
 {
     private \PDO $pdo;
     private bool $isMysql;
+    private BuildProviderRegistry $buildRegistry;
+    private MappingManager $mapping;
 
     /** @var array<string,bool> 表存在性缓存（一次请求内只查一次） */
     private array $tableExistsCache = [];
 
-    public function __construct(\PDO $pdo)
+    public function __construct(\PDO $pdo, BuildProviderRegistry $buildRegistry, MappingManager $mapping)
     {
         $this->pdo = $pdo;
         $this->isMysql = $pdo->getAttribute(\PDO::ATTR_DRIVER_NAME) === 'mysql';
+        $this->buildRegistry = $buildRegistry;
+        $this->mapping = $mapping;
     }
 
     // ─────────────────────────── 对外查询 ───────────────────────────
 
     /**
-     * 扁平映射条目列表（喂 Grafana Table / Stat 面板）。
-     *
-     * 每行 = 一个 job 映射 + 最新 pipeline tag + 最近一次部署 + 镜像 artifact 概览。
+     * GET /api/dashboard/mapping —— 只输出 ci_job_git_map 字段。
      *
      * @return array<int,array<string,mixed>>
      */
     public function getMapping(): array
     {
-        $m  = AppConfig::TABLE_JOB_GIT_MAP;
-        $t  = AppConfig::TABLE_PIPELINE_TAGS;
-        $dl = 'cd_deploy_logs';
-        $rr = 'cd_registry_repositories';
-        $ra = 'cd_registry_artifacts';
-
-        $hasDeploy   = $this->tableExists($dl);
-        $hasRegistry = $this->tableExists($rr) && $this->tableExists($ra);
-
-        // 最新 tag 子查询：每个 project 取 created_at 最新的一条（并列取 pipeline_iid 最大）
-        $latestTag = "SELECT t1.* FROM {$t} t1
-            INNER JOIN (
-                SELECT project, MAX(created_at) AS max_created
-                FROM {$t} GROUP BY project
-            ) t2 ON t1.project = t2.project AND t1.created_at = t2.max_created
-            WHERE NOT EXISTS (
-                SELECT 1 FROM {$t} t3
-                WHERE t3.project = t1.project AND t3.created_at = t1.created_at
-                  AND t3.pipeline_iid > t1.pipeline_iid
-            )";
+        $m = AppConfig::TABLE_JOB_GIT_MAP;
 
         $sql = "SELECT
                 m.job_name,
                 m.git_platform,
                 m.build_provider,
+                m.project_id,
                 m.git_remote,
                 m.web_url,
                 m.current_path,
                 m.harbor_repository,
-                m.status        AS map_status,
-                t.pipeline_iid  AS latest_pipeline_iid,
-                t.tag           AS latest_tag,
-                t.status        AS latest_tag_status,
-                t.created_at    AS latest_tag_at";
-
-        if ($hasDeploy) {
-            $sql .= ",
-                dl.id           AS last_deploy_id,
-                dl.tag          AS last_deploy_tag,
-                dl.status       AS last_deploy_status,
-                dl.env          AS last_deploy_env,
-                dl.deployed_at  AS last_deployed_at";
-        } else {
-            $sql .= ",
-                NULL AS last_deploy_id, NULL AS last_deploy_tag,
-                NULL AS last_deploy_status, NULL AS last_deploy_env, NULL AS last_deployed_at";
-        }
-
-        if ($hasRegistry) {
-            $sql .= ",
-                ra.digest       AS artifact_digest,
-                ra.push_time    AS artifact_push_time,
-                ra.size         AS artifact_size";
-        } else {
-            $sql .= ",
-                NULL AS artifact_digest, NULL AS artifact_push_time, NULL AS artifact_size";
-        }
-
-        $sql .= " FROM {$m} m
-            LEFT JOIN ({$latestTag}) t
-                ON t.project IN (m.job_name, m.current_path)";
-
-        if ($hasDeploy) {
-            // 最近一次部署：同 project 模糊匹配，取 deployed_at 最新
-            $sql .= " LEFT JOIN {$dl} dl
-                ON dl.project IN (m.job_name, m.current_path)
-               AND dl.id = (
-                   SELECT dl2.id FROM {$dl} dl2
-                   WHERE dl2.project IN (m.job_name, m.current_path)
-                   ORDER BY dl2.deployed_at DESC, dl2.id DESC
-                   LIMIT 1
-               )";
-        }
-
-        if ($hasRegistry) {
-            // registry 段：harbor_repository = CONCAT(project_name,'/',repo_name)，
-            // 一个 tag 多 digest 时取 push_time 最新的一条
-            $concat = $this->isMysql
-                ? "CONCAT(rr.project_name,'/',rr.repo_name)"
-                : "(rr.project_name || '/' || rr.repo_name)";
-            $sql .= " LEFT JOIN {$rr} rr
-                ON m.harbor_repository <> '' AND {$concat} = m.harbor_repository
-               LEFT JOIN {$ra} ra
-                ON ra.repo_id = rr.id AND ra.tag = t.tag
-               AND ra.push_time = (
-                   SELECT MAX(ra2.push_time) FROM {$ra} ra2
-                   WHERE ra2.repo_id = rr.id AND ra2.tag = t.tag
-               )";
-        }
-
-        $sql .= " ORDER BY m.job_name";
+                m.status AS map_status
+            FROM {$m} m
+            WHERE m.status = 'active'
+            ORDER BY m.job_name";
 
         return $this->pdo->query($sql)->fetchAll();
     }
 
     /**
-     * 时序聚合（喂 Grafana Time-series 面板）。
+     * GET /api/dashboard/deployment —— 只输出 cd_deploy_logs 字段。
+     *
+     * 只取基础建表即有的标量列（见类注释），排除 output/stage_times 大字段与 v1.3.1 迁移补列。
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public function getDeploymentData(): array
+    {
+        $dl = 'cd_deploy_logs';
+
+        if (!$this->tableExists($dl)) {
+            return [];
+        }
+
+        $sql = "SELECT
+                dl.id,
+                dl.deploy_id,
+                dl.project,
+                dl.tag,
+                dl.image,
+                dl.deploy_type,
+                dl.target,
+                dl.status,
+                dl.triggered_by,
+                dl.created_at
+            FROM {$dl} dl
+            ORDER BY dl.created_at DESC, dl.id DESC
+            LIMIT 500";
+
+        return $this->pdo->query($sql)->fetchAll();
+    }
+
+    /**
+     * GET /api/dashboard/build —— ci_custom_builds 字段 + jenkins/gitlab 实时流水线。
+     *
+     * @return array{custom_builds: array, jenkins_gitlab: array}
+     */
+    public function getBuildData(): array
+    {
+        return [
+            'custom_builds'  => $this->customBuilds(),
+            'jenkins_gitlab' => $this->jenkinsGitlabPipelines(),
+        ];
+    }
+
+    /**
+     * GET /api/dashboard/trends —— 时序聚合（喂 Time-series 面板）。默认最近 30 天。
      *
      * 按天聚合：每日新增 tag 数、每日部署次数（成功/失败分列）。
      *
-     * @param string $from Y-m-d（含），默认 30 天前
-     * @param string $to   Y-m-d（含），默认今天
-     * @return array{tags: array, deploys: array}
+     * @return array{from: string, to: string, tags: array, deploys: array}
      */
     public function getTrends(string $from = '', string $to = ''): array
     {
@@ -158,8 +130,8 @@ class DashboardService
         $t  = AppConfig::TABLE_PIPELINE_TAGS;
         $dl = 'cd_deploy_logs';
 
-        $dayT  = $this->dayExpr('created_at');
-        $tags  = $this->pdo->query(
+        $dayT = $this->dayExpr('created_at');
+        $tags = $this->pdo->query(
             "SELECT {$dayT} AS day, COUNT(*) AS cnt
              FROM {$t}
              WHERE created_at >= '{$from}' AND created_at < '{$to} 23:59:59'
@@ -168,14 +140,15 @@ class DashboardService
 
         $deploys = [];
         if ($this->tableExists($dl)) {
-            $dayD = $this->dayExpr('deployed_at');
+            // cd_deploy_logs 无 deployed_at 列，真实时间列为 created_at（见类注释事实依据）
+            $dayD = $this->dayExpr('created_at');
             $deploys = $this->pdo->query(
                 "SELECT {$dayD} AS day,
                         COUNT(*) AS total,
                         SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS success,
                         SUM(CASE WHEN status <> 'success' THEN 1 ELSE 0 END) AS failed
                  FROM {$dl}
-                 WHERE deployed_at >= '{$from}' AND deployed_at < '{$to} 23:59:59'
+                 WHERE created_at >= '{$from}' AND created_at < '{$to} 23:59:59'
                  GROUP BY {$dayD} ORDER BY day"
             )->fetchAll();
         }
@@ -186,6 +159,97 @@ class DashboardService
             'tags'    => $tags,
             'deploys' => $deploys,
         ];
+    }
+
+    // ─────────────────────────── 数据子查询 ───────────────────────────
+
+    /** ci_custom_builds 全量（跨所有 job），按插入序倒排。 */
+    private function customBuilds(): array
+    {
+        $cb = AppConfig::TABLE_CUSTOM_BUILDS;
+
+        if (!$this->tableExists($cb)) {
+            return [];
+        }
+
+        $sql = "SELECT
+                cb.id,
+                cb.job_name,
+                cb.pipeline_iid,
+                cb.ref,
+                cb.sha,
+                cb.status,
+                cb.exit_code,
+                cb.log_url,
+                cb.web_url,
+                cb.triggered_at,
+                cb.started_at,
+                cb.finished_at
+            FROM {$cb} cb
+            ORDER BY cb.id DESC
+            LIMIT 500";
+
+        return $this->pdo->query($sql)->fetchAll();
+    }
+
+    /**
+     * jenkins / gitlab_ci 活跃映射的实时流水线列表。
+     *
+     * 只查外部 CI（jenkins、gitlab_ci）；custom_push 的构建在 ci_custom_builds，
+     * 由 customBuilds() 覆盖，此处跳过。每个 job 独立 try/catch，单点失败降级为 error 字段。
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    private function jenkinsGitlabPipelines(): array
+    {
+        $entries = [];
+        foreach ($this->mapping->activeMaps() as $m) {
+            $bp = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
+            if ($bp !== AppConfig::PROVIDER_JENKINS && $bp !== AppConfig::PROVIDER_GITLAB_CI) {
+                continue;
+            }
+
+            $job = (string) ($m['job_name'] ?? '');
+            if ($job === '') {
+                continue;
+            }
+
+            // resolveProject 已按 provider 归一化 projectId（gitlab→数字 id，jenkins→job 路径）
+            $resolved  = $this->mapping->resolveProject($job);
+            $provider  = $resolved['provider'];
+            $projectId = $resolved['projectId'];
+            if (!in_array($provider, [AppConfig::PROVIDER_JENKINS, AppConfig::PROVIDER_GITLAB_CI], true)) {
+                continue;
+            }
+
+            if (!$this->buildRegistry->isRegistered($provider)) {
+                $entries[] = [
+                    'job_name'   => $job,
+                    'provider'   => $provider,
+                    'project_id' => $projectId,
+                    'error'      => 'provider 未配置',
+                ];
+                continue;
+            }
+
+            try {
+                $pipelines = $this->buildRegistry->create($provider)->getPipelines($projectId);
+                $entries[] = [
+                    'job_name'   => $job,
+                    'provider'   => $provider,
+                    'project_id' => $projectId,
+                    'pipelines'  => $pipelines,
+                ];
+            } catch (\Throwable $e) {
+                $entries[] = [
+                    'job_name'   => $job,
+                    'provider'   => $provider,
+                    'project_id' => $projectId,
+                    'error'      => $e->getMessage(),
+                ];
+            }
+        }
+        return $entries;
     }
 
     // ─────────────────────────── 内部工具 ───────────────────────────

@@ -486,7 +486,11 @@ return [
     // ---------- Dashboard 模块（监控看板只读 API，Grafana 消费）----------
 
     DashboardService::class => function (\Psr\Container\ContainerInterface $c) {
-        return new DashboardService($c->get(\PDO::class));
+        return new DashboardService(
+            $c->get(\PDO::class),
+            $c->get(BuildProviderRegistry::class),
+            $c->get(MappingManager::class)
+        );
     },
 
     DashboardController::class => function (\Psr\Container\ContainerInterface $c) {
@@ -509,7 +513,8 @@ return [
         return new OAuthController(
             $c->get(I18nService::class),
             $c->get(OAuthService::class),
-            $c->get(AdminAuthService::class)
+            $c->get(AdminAuthService::class),
+            $c->get(AdminUserRepository::class)
         );
     },
 ];

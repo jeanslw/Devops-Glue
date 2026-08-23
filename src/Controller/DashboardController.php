@@ -39,9 +39,11 @@ class DashboardController extends BaseController
         try {
             return $this->output($response, $this->dashboard->getMapping(), $request);
         } catch (\Throwable $e) {
+            \App\Helper\Log::exception($e);
             return $this->jsonError($response, 'dashboard.query_failed', 500);
         }
     }
+
 
     /**
      * GET /api/dashboard/trends?from=YYYY-MM-DD&to=YYYY-MM-DD
@@ -61,7 +63,45 @@ class DashboardController extends BaseController
             );
             return $this->output($response, $data, $request);
         } catch (\Throwable $e) {
+            \App\Helper\Log::exception($e);
             return $this->jsonError($response, 'dashboard.query_failed', 500);
         }
     }
+
+    /**
+     * GET /api/dashboard/deployment
+     * 部署日志列表（只读 cd_deploy_logs，喂 Table / Stat 面板）。
+     */
+    public function deployment(Request $request, Response $response, array $args): Response
+    {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_MANAGE)) {
+            return $resp;
+        }
+        try {
+            return $this->output($response, $this->dashboard->getDeploymentData(), $request);
+        } catch (\Throwable $e) {
+            \App\Helper\Log::exception($e);
+            return $this->jsonError($response, 'dashboard.query_failed', 500);
+        }
+    }
+
+    /**
+     * GET /api/dashboard/build
+     * 构建数据：ci_custom_builds 字段 + jenkins/gitlab 实时流水线。
+     */
+    public function build(Request $request, Response $response, array $args): Response
+    {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_MANAGE)) {
+            return $resp;
+        }
+        try {
+            return $this->output($response, $this->dashboard->getBuildData(), $request);
+        } catch (\Throwable $e) {
+            \App\Helper\Log::exception($e);
+            return $this->jsonError($response, 'dashboard.query_failed', 500);
+        }
+    }
+
 }

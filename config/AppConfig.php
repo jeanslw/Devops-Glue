@@ -3,7 +3,7 @@ namespace App\Config;
 
 class AppConfig
 {
-    public const APP_VERSION = '2.6.0';
+    public const APP_VERSION = '2.6.1';
 
     // ── 表名常量 ──
     public const TABLE_JOB_GIT_MAP       = 'ci_job_git_map';
@@ -206,6 +206,8 @@ class AppConfig
         self::API_SCOPE_BUILD_WRITE  => [self::PERM_CI_TRIGGER],
         self::API_SCOPE_BUILD_REPORT => [self::PERM_CI_TRIGGER],
         self::API_SCOPE_HARBOR_SCAN  => [self::PERM_CI_TRIGGER],
+        // dashboard.read → ci.manage：DashboardController 内 requirePermission(ci.manage) 二次校验
+        self::API_SCOPE_DASHBOARD    => [self::PERM_CI_MANAGE],
     ];
 
     /**

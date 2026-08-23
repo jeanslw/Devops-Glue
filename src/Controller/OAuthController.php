@@ -6,6 +6,7 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Service\I18nService;
 use App\Service\OAuthService;
 use App\Service\AdminAuthService;
+use App\Service\AdminUserRepository;
 use App\Config\AppConfig;
 
 /**
@@ -24,7 +25,8 @@ class OAuthController extends BaseController
     public function __construct(
         I18nService $i18n,
         private OAuthService $oauth,
-        private AdminAuthService $auth
+        private AdminAuthService $auth,
+        private AdminUserRepository $users
     ) {
         parent::__construct($i18n);
     }
@@ -158,9 +160,49 @@ class OAuthController extends BaseController
             'sub'      => $data['user'],   // OAuth 标准唯一标识
             'username' => $data['user'],
             'name'     => $data['user'],
+            'email'    => $this->resolveEmail((string)$data['user']),
             'role'     => $data['role'] ?? '',
         ]));
+
+
         return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
+     * GET /oauth/userinfo/emails — GitHub 风格邮箱子端点（Grafana 兜底请求）
+     *
+     * userinfo 已含 email 时 Grafana 一般不会再调此端点；注册它是为了兼容
+     * 仍走 GitHub emails 流程的客户端，返回与 userinfo 一致的占位邮箱。
+     */
+    public function userinfoEmails(Request $request, Response $response): Response
+    {
+        $authHeader = (string)($request->getHeaderLine('Authorization') ?? '');
+        if (!preg_match('/^Bearer\s+(.+)$/i', $authHeader, $m)) {
+            return $this->oauthError($response, 'invalid_token', 401);
+        }
+
+        $data = $this->oauth->validateAccessToken(trim($m[1]));
+        if ($data === null) {
+            return $this->oauthError($response, 'invalid_token', 401);
+        }
+
+        $response->getBody()->write(json_encode([[
+            'email'    => $this->resolveEmail((string)$data['user']),
+            'primary'  => true,
+            'verified' => true,
+        ]]));
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
+     * 取用户邮箱：实时查库（token 期内 email 变更即时生效）；
+     * 用户不存在或 email 为空时退回 username@devops-glue.local 占位（Grafana 按 email 匹配用户，不能为空）。
+     */
+    private function resolveEmail(string $username): string
+    {
+        $user = $this->users->findByUsername($username);
+        $email = trim((string)($user['email'] ?? ''));
+        return $email !== '' ? $email : $username . '@devops-glue.local';
     }
 
     /**
@@ -191,58 +233,33 @@ class OAuthController extends BaseController
     }
 
     /**
-     * 渲染内嵌登录表单（无 session，每次请求独立）
+     * 渲染登录表单（模板：templates/oauth_login.html，占位符 {{key}} 替换）
      */
     private function renderLoginForm(string $clientId, string $redirectUri, string $state, string $error): string
     {
-        $e = $error !== ''
+        $template = file_get_contents(__DIR__ . '/../../templates/oauth_login.html');
+        if ($template === false) {
+            // 模板缺失属部署异常，直接抛错暴露问题，不静默降级
+            throw new \RuntimeException('OAuth 登录模板缺失: templates/oauth_login.html');
+        }
+
+        $errorHtml = $error !== ''
             ? '<div class="err">' . htmlspecialchars($error, ENT_QUOTES, 'UTF-8') . '</div>'
             : '';
-        $cid = htmlspecialchars($clientId, ENT_QUOTES, 'UTF-8');
 
-        $ruri = htmlspecialchars($redirectUri, ENT_QUOTES, 'UTF-8');
-        $st = htmlspecialchars($state, ENT_QUOTES, 'UTF-8');
-        $title = $this->__('oauth.login_title');
-        $userLabel = $this->__('admin.account_placeholder');
-        $passLabel = $this->__('admin.password_placeholder');
-        $btnLabel = $this->__('auth.login');
-
-        return <<<HTML
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{$title} — Devops-Glue</title>
-<style>
-  body{font-family:system-ui,-apple-system,sans-serif;background:#f0f2f5;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0}
-  .card{background:#fff;padding:2rem 2.5rem;border-radius:8px;box-shadow:0 2px 12px rgba(0,0,0,.1);width:320px}
-  h2{margin:0 0 1.5rem;font-size:1.25rem;text-align:center;color:#333}
-  label{display:block;margin-bottom:.25rem;font-size:.875rem;color:#555}
-  input[type=text],input[type=password]{width:100%;padding:.5rem .75rem;margin-bottom:1rem;border:1px solid #d9d9d9;border-radius:4px;box-sizing:border-box;font-size:1rem}
-  button{width:100%;padding:.6rem;background:#1677ff;color:#fff;border:none;border-radius:4px;font-size:1rem;cursor:pointer}
-  button:hover{background:#4096ff}
-  .err{color:#ff4d4f;font-size:.875rem;margin-bottom:1rem;text-align:center}
-</style>
-</head>
-<body>
-<div class="card">
-  <h2>{$title}</h2>
-  {$e}
-
-  <form method="post" action="">
-    <input type="hidden" name="client_id" value="{$cid}">
-    <input type="hidden" name="redirect_uri" value="{$ruri}">
-    <input type="hidden" name="state" value="{$st}">
-    <label>{$userLabel}</label>
-    <input type="text" name="username" required autofocus>
-    <label>{$passLabel}</label>
-    <input type="password" name="password" required>
-    <button type="submit">{$btnLabel}</button>
-  </form>
-</div>
-</body>
-</html>
-HTML;
+        return str_replace(
+            ['{{title}}', '{{error}}', '{{client_id}}', '{{redirect_uri}}', '{{state}}', '{{user_label}}', '{{pass_label}}', '{{btn_label}}'],
+            [
+                htmlspecialchars($this->__('oauth.login_title'), ENT_QUOTES, 'UTF-8'),
+                $errorHtml,
+                htmlspecialchars($clientId, ENT_QUOTES, 'UTF-8'),
+                htmlspecialchars($redirectUri, ENT_QUOTES, 'UTF-8'),
+                htmlspecialchars($state, ENT_QUOTES, 'UTF-8'),
+                htmlspecialchars($this->__('admin.account_placeholder'), ENT_QUOTES, 'UTF-8'),
+                htmlspecialchars($this->__('admin.password_placeholder'), ENT_QUOTES, 'UTF-8'),
+                htmlspecialchars($this->__('auth.login'), ENT_QUOTES, 'UTF-8'),
+            ],
+            $template
+        );
     }
 }

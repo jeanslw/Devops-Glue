@@ -108,8 +108,10 @@ $app->group('/api', function (RouteCollectorProxy $api) {
 
     // 监控看板只读端点（Grafana Infinity 数据源消费，复用 RBAC）
     $api->group('/dashboard', function (RouteCollectorProxy $dash) {
-        $dash->get('/mapping', [DashboardController::class, 'mapping']);
-        $dash->get('/trends',  [DashboardController::class, 'trends']);
+        $dash->get('/mapping',    [DashboardController::class, 'mapping']);
+        $dash->get('/deployment', [DashboardController::class, 'deployment']);
+        $dash->get('/build',      [DashboardController::class, 'build']);
+        $dash->get('/trends',     [DashboardController::class, 'trends']);
     })->add(AuthMiddleware::class);
 
     $api->group('/git', function (RouteCollectorProxy $git) {
@@ -131,6 +133,9 @@ $app->group('/oauth', function (RouteCollectorProxy $oauth) {
     $oauth->get('/authorize',  [OAuthController::class, 'authorizeForm']);
     $oauth->post('/authorize', [OAuthController::class, 'authorizeSubmit']);
     $oauth->post('/token',     [OAuthController::class, 'token']);
-    $oauth->get('/userinfo',   [OAuthController::class, 'userinfo']);
+    // Grafana 等客户端取 email 时可能用 POST 请求 userinfo，GET/POST 都注册
+    $oauth->map(['GET', 'POST'], '/userinfo', [OAuthController::class, 'userinfo']);
+    // GitHub 风格邮箱子端点（Grafana 兜底请求 /userinfo/emails）
+    $oauth->get('/userinfo/emails', [OAuthController::class, 'userinfoEmails']);
 });
 

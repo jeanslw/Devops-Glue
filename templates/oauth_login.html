@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{title}} — Devops-Glue</title>
+<style>
+  body{font-family:system-ui,-apple-system,sans-serif;background:#f0f2f5;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0}
+  .card{background:#fff;padding:2rem 2.5rem;border-radius:8px;box-shadow:0 2px 12px rgba(0,0,0,.1);width:320px}
+  h2{margin:0 0 1.5rem;font-size:1.25rem;text-align:center;color:#333}
+  label{display:block;margin-bottom:.25rem;font-size:.875rem;color:#555}
+  input[type=text],input[type=password]{width:100%;padding:.5rem .75rem;margin-bottom:1rem;border:1px solid #d9d9d9;border-radius:4px;box-sizing:border-box;font-size:1rem}
+  button{width:100%;padding:.6rem;background:#1677ff;color:#fff;border:none;border-radius:4px;font-size:1rem;cursor:pointer}
+  button:hover{background:#4096ff}
+  .err{color:#ff4d4f;font-size:.875rem;margin-bottom:1rem;text-align:center}
+</style>
+</head>
+<body>
+<div class="card">
+  <h2>{{title}}</h2>
+  {{error}}
+
+  <form method="post" action="">
+    <input type="hidden" name="client_id" value="{{client_id}}">
+    <input type="hidden" name="redirect_uri" value="{{redirect_uri}}">
+    <input type="hidden" name="state" value="{{state}}">
+    <label>{{user_label}}</label>
+    <input type="text" name="username" required autofocus>
+    <label>{{pass_label}}</label>
+    <input type="password" name="password" required>
+    <button type="submit">{{btn_label}}</button>
+  </form>
+</div>
+</body>
+</html>
