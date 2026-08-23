@@ -159,10 +159,10 @@ return [
      * └──────────────┴──────┴──────────────────────────────────────────────────┘
      */
     'oauth_clients' => [
-         'grafana' => [
-             'secret'       => env('GRAFANA_OAUTH_SECRET', 'BihQdwWjZAPnQ0NPltL-d1O2GNUSvIPr6s4oX96RIyEdMr6BAlmrRqlv_gKnUFdQ'),
-             'redirect_uri' => 'http://localhost:3000/login/generic_oauth',
-         ],
+        'grafana' => [
+            'secret'       => env('GRAFANA_OAUTH_SECRET', ''),
+            'redirect_uri' => 'http://localhost:3000/login/generic_oauth',
+        ],
     ],
     'job_git_map' => [], // ⚠️ 已由 SQLite 接管，此处永远为空，修改无效！请使用 /admin 管理界面
 ];

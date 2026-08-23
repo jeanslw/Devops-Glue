@@ -18,10 +18,20 @@ class OAuthService
     private const CODE_TTL           = 60;      // 授权码有效期（秒）
     private const ACCESS_TOKEN_TTL   = 3600;    // 访问令牌有效期（秒）
 
-    public function __construct(
-        private \PDO $pdo,
-        private array $clients = []
-    ) {}
+    private \PDO $pdo;
+    private array $clients;
+
+    public function __construct(\PDO $pdo, array $clients = [])
+    {
+        $this->pdo = $pdo;
+        // fail-closed：secret 为空/纯空白的客户端视为未配置，直接剔除。
+        // 否则「忘了设 GRAFANA_OAUTH_SECRET、用空默认」时，空 secret 与空输入 hash_equals 相等，
+        // token 端点可被空 secret 绕过——等价于公开默认密钥的带病运行。
+        $this->clients = array_filter(
+            $clients,
+            fn($c) => is_array($c) && trim((string)($c['secret'] ?? '')) !== ''
+        );
+    }
 
     /**
      * 校验客户端：client_id 存在且（如提供）redirect_uri 匹配
