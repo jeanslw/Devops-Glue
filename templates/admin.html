@@ -497,6 +497,10 @@
                             <label data-i18n="user.systems">可登录系统</label>
                             <select id="new-systems" style="width:100%;"></select>
                         </div>
+                        <div style="margin-bottom:10px;">
+                            <label data-i18n="user.email">邮箱</label>
+                            <input type="email" id="new-email" data-i18n-placeholder="user.email_placeholder" placeholder="user@example.com" autocomplete="off">
+                        </div>
                         <button type="submit" class="btn btn-save">💾 <span data-i18n="user.save_user">保存</span></button>
                         <button type="button" class="btn" onclick="hideUserForm()" data-i18n="user.cancel">取消</button>
                         <span id="user-msg" style="margin-left:12px;font-size:13px;"></span>
@@ -509,12 +513,13 @@
                                 <th data-i18n="user.username">用户名</th>
                                 <th data-i18n="user.role">角色</th>
                                 <th data-i18n="user.systems">可登录系统</th>
+                                <th data-i18n="user.email">邮箱</th>
                                 <th data-i18n="user.updated_at">更新时间</th>
                                 <th data-i18n="user.actions">操作</th>
                             </tr>
                         </thead>
                         <tbody id="user-tbody">
-                            <tr><td colspan="5" style="text-align:center;color:#9ca3af;" data-i18n="common.loading">加载中...</td></tr>
+                            <tr><td colspan="6" style="text-align:center;color:#9ca3af;" data-i18n="common.loading">加载中...</td></tr>
                         </tbody>
                     </table>
                 </div>

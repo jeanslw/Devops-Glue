@@ -77,6 +77,7 @@ CREATE TABLE IF NOT EXISTS `admin_users` (
     `password_hash` TEXT NOT NULL,
     `role`          VARCHAR(32) NOT NULL DEFAULT 'admin',
     `systems`       VARCHAR(128) NOT NULL DEFAULT 'ci,cd',
+    `email`         VARCHAR(255) NOT NULL DEFAULT '',
     `updated_at`    DATETIME DEFAULT (NOW())
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

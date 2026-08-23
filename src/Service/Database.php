@@ -275,6 +275,7 @@ class Database
             password_hash TEXT NOT NULL,
             role {$VARCHAR} NOT NULL DEFAULT '" . \App\Config\AppConfig::ROLE_ADMIN . "',
             systems {$VARCHAR} NOT NULL DEFAULT 'ci,cd',
+            email {$VARCHAR} NOT NULL DEFAULT '',
             updated_at {$TS_TYPE} DEFAULT ({$NOW})
         ){$ENGINE}");
 
@@ -408,6 +409,9 @@ class Database
             \App\Config\AppConfig::TABLE_PERMISSIONS => [
                 'parent_key' => $isMySQL ? 'VARCHAR(128)' : 'TEXT', // 权限层级
                 'created_at' => "{$TS_TYPE} DEFAULT NULL",          // 注册时间：内置为 NULL
+            ],
+            \App\Config\AppConfig::TABLE_ADMIN_USERS => [
+                'email' => "{$VARCHAR} NOT NULL DEFAULT ''", // 用户邮箱（OAuth userinfo 用，空则占位兜底）
             ],
         ];
         // 补列循环：遍历有限映射，天然有界、必然终止（无 while/递归，无需显式 break）。

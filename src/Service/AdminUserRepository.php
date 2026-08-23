@@ -10,19 +10,19 @@ class AdminUserRepository
     public function findByUsername(string $username): ?array
     {
         $stmt = $this->pdo->prepare(
-            "SELECT username, password_hash, systems, role FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE username = ?"
+            "SELECT username, password_hash, systems, role, email FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE username = ?"
         );
         $stmt->execute([$username]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
         return $row ?: null;
     }
 
-    public function createUser(string $username, string $passwordHash, string $role, string $systems = 'ci,cd'): void
+    public function createUser(string $username, string $passwordHash, string $role, string $systems = 'ci,cd', string $email = ''): void
     {
         $stmt = $this->pdo->prepare(
-            "INSERT INTO " . AppConfig::TABLE_ADMIN_USERS . " (username, password_hash, role, systems, updated_at) VALUES (?, ?, ?, ?, " . Database::sqlNow() . ")"
+            "INSERT INTO " . AppConfig::TABLE_ADMIN_USERS . " (username, password_hash, role, systems, email, updated_at) VALUES (?, ?, ?, ?, ?, " . Database::sqlNow() . ")"
         );
-        $stmt->execute([$username, $passwordHash, $role, $systems]);
+        $stmt->execute([$username, $passwordHash, $role, $systems, $email]);
     }
 
     public function updatePassword(string $username, string $passwordHash): void
@@ -53,9 +53,9 @@ class AdminUserRepository
     public function listUsers(bool $includeAdmin = true): array
     {
         if ($includeAdmin) {
-            return $this->pdo->query("SELECT username, role, systems, updated_at FROM " . AppConfig::TABLE_ADMIN_USERS . " ORDER BY username")->fetchAll();
+            return $this->pdo->query("SELECT username, role, systems, email, updated_at FROM " . AppConfig::TABLE_ADMIN_USERS . " ORDER BY username")->fetchAll();
         }
-        return $this->pdo->query("SELECT username, role, systems, updated_at FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE role NOT IN ('" . AppConfig::ROLE_ADMIN . "', '" . AppConfig::ROLE_SUPER_ADMIN . "') ORDER BY username")->fetchAll();
+        return $this->pdo->query("SELECT username, role, systems, email, updated_at FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE role NOT IN ('" . AppConfig::ROLE_ADMIN . "', '" . AppConfig::ROLE_SUPER_ADMIN . "') ORDER BY username")->fetchAll();
     }
 
     public function findUser(string $username): ?array
@@ -66,7 +66,7 @@ class AdminUserRepository
         return $row ?: null;
     }
 
-    public function updateUser(string $username, ?string $passwordHash, ?string $role): void
+    public function updateUser(string $username, ?string $passwordHash, ?string $role, ?string $email = null): void
     {
         $fields = [];
         $params = [];
@@ -78,6 +78,10 @@ class AdminUserRepository
         if ($passwordHash !== null) {
             $fields[] = 'password_hash = ?';
             $params[] = $passwordHash;
+        }
+        if ($email !== null) {
+            $fields[] = 'email = ?';
+            $params[] = $email;
         }
         if (empty($fields)) {
             return;

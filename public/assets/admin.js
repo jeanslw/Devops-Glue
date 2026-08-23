@@ -1680,7 +1680,7 @@ async function loadUsers() {
         const users = isAdminRole(currentUserRole) ? allUsers : allUsers.filter(u => !isAdminRole(u.role));
         const tbody = document.getElementById('user-tbody');
         if (!users.length) {
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#9ca3af;">' + __.t('user.no_users') + '</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#9ca3af;">' + __.t('user.no_users') + '</td></tr>';
             return;
         }
         tbody.innerHTML = users.map(u => {
@@ -1694,8 +1694,14 @@ async function loadUsers() {
                 ? `<button class="btn btn-sm btn-edit" onclick="modifyUserPassword('${escJs(esc(u.username))}')">🔑 ${__.t('user.modify_password')}</button>`
                 : '';
             if (isSuperAdmin) {
-                actions = modPwBtn || `<span style="color:#9ca3af;font-size:12px;">${__.t('user.role_super_admin')}</span>`;
+                // 根账号本人可编辑自己的资料（email），但不可删除
+                if (isSelf) {
+                    actions = `<button class="btn btn-sm btn-edit" onclick='showUserEditForm(${js(u)})'>✏️ ${__.t('common.edit')}</button>`;
+                } else {
+                    actions = modPwBtn || `<span style="color:#9ca3af;font-size:12px;">${__.t('user.role_super_admin')}</span>`;
+                }
             } else if (isSelf) {
+
                 actions = `<span style="color:#9ca3af;font-size:12px;">${__.t('user.role_admin')}</span>`;
             } else if (isAdmin) {
                 if (currentUserIsRoot) {
@@ -1711,12 +1717,13 @@ async function loadUsers() {
                 <td><strong>${esc(u.username)}</strong></td>
                 <td>${roleLabel(u)}</td>
                 <td>${esc(u.systems || '-')}</td>
+                <td style="font-size:12px;color:#6b7280;">${esc(u.email || '-')}</td>
                 <td style="font-size:12px;color:#6b7280;">${esc(time)}</td>
                 <td style="white-space:nowrap">${actions}</td>
             </tr>`;
         }).join('');
     } catch (e) {
-        document.getElementById('user-tbody').innerHTML = '<tr><td colspan="5" style="text-align:center;color:#ef4444;">' + __.t('js.load_failed') + ': ' + e.message + '</td></tr>';
+        document.getElementById('user-tbody').innerHTML = '<tr><td colspan="6" style="text-align:center;color:#ef4444;">' + __.t('js.load_failed') + ': ' + e.message + '</td></tr>';
     }
 }
 
@@ -1740,6 +1747,7 @@ async function showUserForm() {
     }
     document.getElementById('new-systems-wrap').style.display = 'block';
     populateSystemsSelect('cd');
+    document.getElementById('new-email').value = '';
     document.getElementById('user-msg').textContent = '';
 }
 
@@ -1762,8 +1770,14 @@ async function showUserEditForm(user) {
         return;
     }
     document.getElementById('new-systems-wrap').style.display = 'none';
+    document.getElementById('new-email').value = user.email || '';
+    // 根账号（.env ADMIN_USER）编辑自己：仅允许修改 email，角色/密码字段禁用
+    const isRootSelf = (user.username === currentUserName) && currentUserIsRoot;
+    document.getElementById('new-role').disabled = isRootSelf;
+    document.getElementById('new-password').disabled = isRootSelf;
     document.getElementById('user-msg').textContent = '';
 }
+
 
 // 根据当前用户角色动态填充角色下拉（从后端 roles 表获取）
 async function populateRoleSelect(selected) {
@@ -1801,7 +1815,11 @@ function hideUserForm() {
     document.getElementById('user-form').style.display = 'none';
     document.getElementById('edit-target-username').value = '';
     document.getElementById('new-password').required = true;
+    // 恢复可能被「编辑根账号」禁用的字段
+    document.getElementById('new-role').disabled = false;
+    document.getElementById('new-password').disabled = false;
 }
+
 
 async function submitUserForm(e) {
     e.preventDefault();
@@ -1811,6 +1829,7 @@ async function submitUserForm(e) {
     const password = document.getElementById('new-password').value;
     const role = document.getElementById('new-role').value;
     const systems = document.getElementById('new-systems').value;
+    const email = document.getElementById('new-email').value.trim();
     const msg = document.getElementById('user-msg');
 
     if (!isEdit && password.length < 8) { msg.textContent = __.t('auth.new_password_short'); msg.style.color = '#ef4444'; return; }
@@ -1823,9 +1842,12 @@ async function submitUserForm(e) {
 
     try {
         const url = isEdit ? '/api/admin/users/' + encodeURIComponent(targetUser) : '/api/admin/users';
+        // 根账号编辑自己：只提交 email（角色/密码字段已禁用，后端也会拦截）
+        const isRootSelf = isEdit && (targetUser === currentUserName) && currentUserIsRoot;
         const body = isEdit
-            ? { ...(password ? { password } : {}), role }
-            : { username, password, role, systems };
+            ? (isRootSelf ? { email } : { ...(password ? { password } : {}), role, email })
+            : { username, password, role, systems, email };
+
 
         const res = await fetch(url, {
             method: isEdit ? 'PUT' : 'POST',

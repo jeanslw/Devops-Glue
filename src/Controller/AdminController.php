@@ -719,6 +719,10 @@ class AdminController extends BaseController
         $password = $body['password'] ?? '';
         $role     = trim($body['role'] ?? AppConfig::ROLE_DEPLOYER);
         $systems  = trim($body['systems'] ?? AppConfig::SYSTEM_CD);
+        $email    = trim($body['email'] ?? '');
+        if ($email !== '' && !\filter_var($email, \FILTER_VALIDATE_EMAIL)) {
+            return $this->jsonError($response, 'user.invalid_email', 400);
+        }
 
         if ($username === '' || strlen($password) < 8) {
             return $this->jsonError($response, 'auth.new_password_short', 400);
@@ -751,7 +755,7 @@ class AdminController extends BaseController
             }
 
             $hash = password_hash($password, PASSWORD_BCRYPT);
-            $this->adminUserRepository->createUser($username, $hash, $role, $systems);
+            $this->adminUserRepository->createUser($username, $hash, $role, $systems, $email);
 
             return $this->output($response, ['success' => true, 'username' => $username], $request);
         } catch (\Exception $e) {
@@ -777,6 +781,10 @@ class AdminController extends BaseController
         $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
         $password = $body['password'] ?? null;
         $role     = isset($body['role']) ? trim($body['role']) : null;
+        $email    = array_key_exists('email', $body) ? trim((string)$body['email']) : null;
+        if ($email !== null && $email !== '' && !\filter_var($email, \FILTER_VALIDATE_EMAIL)) {
+            return $this->jsonError($response, 'user.invalid_email', 400);
+        }
 
         try {
             $target = $this->adminUserRepository->findUser($targetUser);
@@ -784,10 +792,13 @@ class AdminController extends BaseController
                 return $this->jsonError($response, 'user.not_found', 404);
             }
 
-            // 内置根账号（.env ADMIN_USER）不可通过用户管理接口修改（改自己密码走 PUT /api/admin/password）
+            // 内置根账号（.env ADMIN_USER）：仅允许本人修改自己的 email 资料；
+            // 角色不可改（防自降权锁死），密码走 PUT /api/admin/password（需旧密码）
             $rootAdmin = $this->config->getRootAdminUser();
             if ($targetUser === $rootAdmin) {
-                return $this->jsonError($response, 'user.cannot_edit_root', 403);
+                if ($targetUser !== $this->currentUser || $role !== null || ($password !== null && $password !== '')) {
+                    return $this->jsonError($response, 'user.cannot_edit_root', 403);
+                }
             }
 
             // 修改管理员账号需要 ci.users.manage_admin 权限
@@ -814,11 +825,11 @@ class AdminController extends BaseController
                 $passwordHash = password_hash($password, PASSWORD_BCRYPT);
             }
 
-            if ($role === null && $passwordHash === null) {
+            if ($role === null && $passwordHash === null && $email === null) {
                 return $this->jsonError($response, 'user.nothing_to_update', 400);
             }
 
-            $this->adminUserRepository->updateUser($targetUser, $passwordHash, $role);
+            $this->adminUserRepository->updateUser($targetUser, $passwordHash, $role, $email);
             return $this->output($response, ['success' => true], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.modify_failed') . ': ' . $e->getMessage(), 500);

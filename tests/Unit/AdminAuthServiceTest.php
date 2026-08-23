@@ -30,6 +30,7 @@ class AdminAuthServiceTest extends TestCase
             password_hash TEXT NOT NULL,
             role TEXT NOT NULL,
             systems TEXT NOT NULL,
+            email TEXT NOT NULL DEFAULT "",
             updated_at TEXT
         )');
         $this->repo = new AdminUserRepository($this->pdo);

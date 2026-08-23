@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS admin_users (
     password_hash TEXT NOT NULL,
     role          TEXT NOT NULL DEFAULT 'admin',
     systems       TEXT NOT NULL DEFAULT 'ci,cd',
+    email         TEXT NOT NULL DEFAULT '',
     updated_at    TEXT DEFAULT (datetime('now','localtime'))
 );
 

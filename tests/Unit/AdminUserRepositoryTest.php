@@ -153,6 +153,7 @@ class AdminUserRepositoryTest extends TestCase
             password_hash TEXT NOT NULL,
             role TEXT NOT NULL DEFAULT "' . AppConfig::ROLE_ADMIN . '",
             systems TEXT NOT NULL DEFAULT "ci,cd",
+            email TEXT NOT NULL DEFAULT "",
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         )');
         return $pdo;
