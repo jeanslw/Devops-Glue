@@ -139,3 +139,8 @@ $app->group('/oauth', function (RouteCollectorProxy $oauth) {
     $oauth->get('/userinfo/emails', [OAuthController::class, 'userinfoEmails']);
 });
 
+// OIDC Discovery / JWKS（供 Jenkins oic-auth / Harbor OIDC / GitLab OmniAuth 自动发现）
+// 顶层、不挂 AuthMiddleware：公开元数据，仅含公钥，不泄露私钥。
+$app->get('/.well-known/openid-configuration', [OAuthController::class, 'discovery']);
+$app->get('/.well-known/jwks.json',              [OAuthController::class, 'jwks']);
+

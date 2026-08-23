@@ -27,6 +27,7 @@ use App\Controller\DashboardController;
 use App\Controller\OAuthController;
 use App\Service\DashboardService;
 use App\Service\OAuthService;
+use App\Service\OidcService;
 
 use App\Middleware\CorsMiddleware;
 use App\Middleware\AuthMiddleware;
@@ -500,7 +501,7 @@ return [
         );
     },
 
-    // ---------- OAuth2 Provider（Grafana 等外部系统用 Glue 账号登录）----------
+    // ---------- OAuth2 / OIDC Provider（Grafana / Jenkins / Harbor / GitLab 用 Glue 账号登录）----------
 
     OAuthService::class => function (\Psr\Container\ContainerInterface $c) use ($settings) {
         return new OAuthService(
@@ -509,12 +510,17 @@ return [
         );
     },
 
+    OidcService::class => function (\Psr\Container\ContainerInterface $c) use ($settings) {
+        return new OidcService($settings['oidc'] ?? []);
+    },
+
     OAuthController::class => function (\Psr\Container\ContainerInterface $c) {
         return new OAuthController(
             $c->get(I18nService::class),
             $c->get(OAuthService::class),
             $c->get(AdminAuthService::class),
-            $c->get(AdminUserRepository::class)
+            $c->get(AdminUserRepository::class),
+            $c->get(OidcService::class)
         );
     },
 ];

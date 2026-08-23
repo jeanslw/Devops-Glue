@@ -1,0 +1,233 @@
+# Devops-Glue OIDC 单点登录
+
+> Glue 内置一个完整的 **OIDC Provider**（基于 OpenID Connect 1.0 / RFC 8414 Discovery / RFC 7517 JWKS），
+> 让 **Jenkins、Harbor、GitLab、Grafana** 四家系统都能用 Glue 账号登录，并把 Glue 角色（`groups`）映射到各家本地角色。
+>
+> 本文档覆盖：Glue 侧开启步骤、四家系统的对接配置示例、`groups`（Glue 角色）→ 各系统角色的映射表。
+
+## 目录
+
+1. [能力总览](#1-能力总览)
+2. [Glue 侧开启步骤](#2-glue-侧开启步骤)
+3. [对接配置示例](#3-对接配置示例)
+   - [3.1 Harbor](#31-harbor)
+   - [3.2 Jenkins](#32-jenkins)
+   - [3.3 GitLab](#33-gitlab)
+   - [3.4 Grafana](#34-grafana)
+4. [groups → 角色映射表](#4-groups--角色映射表)
+5. [验证](#5-验证)
+
+---
+
+## 1. 能力总览
+
+Glue 暴露以下 OIDC 端点（`<issuer>` 为 Glue 对外地址）：
+
+| 端点 | 路径 | 说明 |
+|:---|:---|:---|
+| 授权入口 | `<issuer>/oauth/authorize` | 浏览器跳转，出登录表单 |
+| 令牌端点 | `<issuer>/oauth/token` | code 换 `access_token` + `id_token` |
+| 用户信息 | `<issuer>/oauth/userinfo` | Bearer token 返回用户信息 |
+| Discovery | `<issuer>/.well-known/openid-configuration` | OIDC 自动发现文档 |
+| JWKS | `<issuer>/.well-known/jwks.json` | 发布 RS256 公钥（`n`/`e`/`kid`，绝不含私钥） |
+
+关键特性：
+
+- **签名算法**：`id_token` 用 **RS256** 非对称签名，私钥只存在 Glue 侧，公钥通过 JWKS 发布，各家系统只靠 `jwks.json` 验签。
+- **支持的 scope**：`openid profile email`。
+- **`groups` claim**：`id_token` 与 `userinfo` 均返回 `groups`，其值为 Glue 用户角色的数组（如 `["super_admin"]`），各家系统把它映射到本地角色。
+- **向后兼容**：授权请求不带 `scope=openid` 时，走纯 OAuth2（Grafana 原有方式），不签发 `id_token`，现有 Grafana 对接不受影响。
+- **nonce 透传**：授权请求带 `nonce` 时，`id_token` 原样回显，供客户端防重放。
+
+---
+
+## 2. Glue 侧开启步骤
+
+### 2.1 生成/配置签名私钥
+
+Glue 首次签发 `id_token` 时若没有私钥，会**自动生成 RSA-2048** 并持久化到 `OIDC_KEY_FILE`（默认 `config/data/oidc_rsa.pem`，落盘后 `chmod 0600`）。
+
+生产环境强烈建议**显式固定**私钥，保证跨重启 / 多实例时 `kid` 与 JWKS 稳定不变。在 `config/.env` 中配置：
+
+```ini
+# Glue 作为 OIDC Provider 的对外地址（issuer）。留空则运行时从请求 scheme+host+port 推导。
+# 生产环境必须显式配置为对外可达的完整 URL（如 https://glue.example.com）。
+OIDC_ISSUER=https://glue.example.com
+
+# id_token 签名私钥（RS256，RSA >= 2048 位 PEM）。留空则自动生成并持久化到 OIDC_KEY_FILE。
+# 多行 PEM 用 \n 转义，或由 k8s secret 注入。
+# OIDC_RSA_PRIVATE_KEY=
+
+# 自动生成私钥时的持久化路径（默认 config/data/oidc_rsa.pem）
+# OIDC_KEY_FILE=
+
+# id_token 有效期（秒，默认 3600）
+# OIDC_ID_TOKEN_TTL=3600
+```
+
+> ⚠️ `OIDC_ISSUER` 必须是各家系统**实际访问 Glue 的 URL**（含 scheme、host，非默认端口时含端口），
+> 且与 Discovery 文档中的 `issuer` 完全一致——OIDC 客户端会校验 `issuer` 与请求地址一致，不一致会拒绝登录。
+
+### 2.2 注册客户端
+
+在 `config/settings.php` 的 `oauth_clients` 中为每家系统注册一个客户端（`client_id` + `secret` + 精确匹配的 `redirect_uri`）：
+
+```php
+'oauth_clients' => [
+    'grafana' => [
+        'secret'       => env('GRAFANA_OAUTH_SECRET', ''),
+        'redirect_uri' => 'http://localhost:3000/login/generic_oauth',
+    ],
+    'harbor'  => [
+        'secret'       => env('HARBOR_OIDC_SECRET', ''),
+        'redirect_uri' => 'https://harbor.example.com/c/oidc/callback',
+    ],
+    'jenkins' => [
+        'secret'       => env('JENKINS_OIDC_SECRET', ''),
+        'redirect_uri' => 'https://jenkins.example.com/securityRealm/finishLogin',
+    ],
+    'gitlab'  => [
+        'secret'       => env('GITLAB_OIDC_SECRET', ''),
+        'redirect_uri' => 'https://gitlab.example.com/users/auth/openid_connect/callback',
+    ],
+],
+```
+
+> ⚠️ 安全约定（fail-closed）：`secret` 为空或纯空白的客户端会被**直接剔除**（视为未配置）。
+> 不要用空 secret 当默认值——那会让 token 端点被空 secret 绕过。每个客户端必须设强随机 secret。
+>
+> ⚠️ `redirect_uri` 采用**精确匹配**（`hash_equals`），各家系统配置的回调地址必须与此处**逐字符一致**（含 scheme、host、端口、路径），否则 authorize 会拒绝。
+
+### 2.3 确认私钥已就绪
+
+重启 Glue 后访问 `https://glue.example.com/.well-known/jwks.json`，确认返回 `keys[0]` 含 `kid`/`n`/`e` 且无 `d`（私钥参数）。
+
+---
+
+## 3. 对接配置示例
+
+以下示例中的 `<issuer>` = `OIDC_ISSUER`（如 `https://glue.example.com`），client 凭据与 2.2 注册的 `secret` 一致。
+
+### 3.1 Harbor
+
+Harbor 原生支持 OIDC（`AUTH_MODE=oidc_auth`）。在 `harbor.yml`（或 Helm `values.yaml`）配置：
+
+```yaml
+auth_mode: oidc_auth
+oidc_name: Devops-Glue
+oidc_endpoint: <issuer>                 # 例如 https://glue.example.com
+oidc_client_id: harbor
+oidc_client_secret: <secret>            # 与 settings.php 中 harbor 客户端 secret 一致
+oidc_scope: openid,profile,email
+oidc_groups_claim: groups               # 从 id_token 的 groups 读取角色
+oidc_user_claim: preferred_username
+oidc_auto_onboard: "true"
+oidc_verify_cert: "true"
+# 属于该 group 的登录用户授予 Harbor admin（映射 Glue 角色，见第 4 节）
+# oidc_admin_group: super_admin
+```
+
+> Harbor 回跳地址固定为 `https://<harbor>/c/oidc/callback`，需与 2.2 的 `redirect_uri` 一致。
+> Docker/Helm CLI 无法走浏览器 OIDC 跳转，Harbor 为 OIDC 用户提供 **CLI secret**（登录后「用户信息」页生成），
+> 用 `docker login -u <user> -p <cli_secret> <harbor>` 使用。
+
+### 3.2 Jenkins
+
+Jenkins 使用 **oic-auth** 插件（OpenId Connect Authentication），通过 Discovery 自动填充。JCasC（`jenkins.yaml`）配置：
+
+```yaml
+jenkins:
+  securityRealm:
+    oic:
+      wellKnownOpenIDConfigurationUrl: "<issuer>/.well-known/openid-configuration"
+      clientId: jenkins
+      clientSecret: <secret>            # 与 settings.php 中 jenkins 客户端 secret 一致
+      userNameField: preferred_username
+      fullNameFieldName: name
+      emailFieldName: email
+      groupsFieldName: groups           # 从 id_token 的 groups 读取角色
+      scopes: "openid profile email"
+      disableSslVerification: false
+      # 授权成功后回跳地址：<jenkins>/securityRealm/finishLogin（与 redirect_uri 一致）
+  authorizationStrategy:
+    roleBased:
+      roles:
+        - name: "admin"                 # Jenkins 角色名
+          permissions:
+            - "Overall/Administer"
+          assignments:
+            - "super_admin"             # OIDC group 值（= Glue 角色）
+        - name: "developer"
+          permissions:
+            - "Overall/Read"
+            - "Job/Build"
+          assignments:
+            - "ci_admin"                # 示例：其余 Glue 角色按需映射
+```
+
+> UI 配置等价项：`Global Security` → `Security Realm` → `OpenID Connect`，填 `Well-known configuration endpoint` = `<issuer>/.well-known/openid-configuration`，
+> 再填 `Client id` / `Client secret`，`User name field` = `preferred_username`，`Groups field name` = `groups`。
+> 角色映射依赖 **Role-based Authorization Strategy** 插件：`assignments` 里填的是 **OIDC group 值**（即 Glue 角色），不是 Jenkins 角色名。
+
+### 3.3 GitLab
+
+GitLab 通过 OmniAuth `openid_connect` 接入。Omnibus 安装改 `/etc/gitlab/gitlab.rb`：
+
+```ruby
+gitlab_rails['omniauth_providers'] = [
+  {
+    name: "openid_connect",            # 固定值，不要改
+    label: "Devops-Glue",              # 登录按钮文案
+    args: {
+      name: "openid_connect",
+      scope: ["openid", "profile", "email"],
+      response_type: "code",
+      issuer: "<issuer>",              # 例如 https://glue.example.com
+      discovery: true,                 # 用 <issuer>/.well-known/openid-configuration 自动发现
+      client_auth_method: "basic",     # client_secret_basic，Glue 已支持
+      uid_field: "preferred_username",
+      client_options: {
+        identifier: "gitlab",
+        secret: "<secret>",            # 与 settings.php 中 gitlab 客户端 secret 一致
+        redirect_uri: "https://gitlab.example.com/users/auth/openid_connect/callback"
+      }
+    }
+  }
+]
+```
+
+修改后执行 `gitlab-ctl reconfigure` 生效。
+
+> GitLab 回跳地址为 `https://<gitlab>/users/auth/openid_connect/callback`，需与 2.2 的 `redirect_uri` 一致。
+> `groups` claim 默认通过 OmniAuth 的 `groups_attribute`（默认 `groups`）映射到 GitLab 的 external groups，
+> 可在 `args` 里用 `groups_attribute` 覆盖；管理员组映射用 `admin_group`。具体字段名以所用 GitLab 版本为准。
+
+### 3.4 Grafana
+
+Grafana 走 **Generic OAuth**（纯 OAuth2，无需 OIDC），**保持不变**，详见 [管理员配置手册 · 附录 E](管理员配置手册.md#附录-egrafana-oauth-对接)。
+
+---
+
+## 4. groups → 角色映射表
+
+Glue 角色作为 `groups` claim（数组）下发，各家系统的映射方式如下：
+
+| Glue 角色（`groups` 值） | Harbor | Jenkins（Role Strategy） | GitLab（external groups） | Grafana |
+|:---|:---|:---|:---|:---|
+| `super_admin` | `oidc_admin_group` 指定 → 管理员 | `assignments` 挂到含 `Overall/Administer` 的角色 | `admin_group` → 管理员 | `Admin` |
+| `ci_admin` 等自定义角色 | 普通用户（按项目权限另行分配） | `assignments` 挂到对应角色 | 对应 external group | `Viewer` |
+| 未配置角色 | 普通用户 | 无映射（默认无权限，需另配） | 无映射 | `Viewer` |
+
+映射原则：
+
+- 每家的映射都是「**读 `groups` 里的字符串 → 本地角色**」，Glue 侧只负责把用户角色原样放进 `groups`，不感知各家本地角色名。
+- 新增 Glue 角色时，需在每家系统同步新增一条映射，否则该角色登录后落到「无权限 / 默认组」。
+
+---
+
+## 5. 验证
+
+1. **Discovery**：`curl https://glue.example.com/.well-known/openid-configuration`，确认 `issuer`、四个端点、`id_token_signing_alg_values_supported` 含 `RS256`。
+2. **JWKS**：`curl https://glue.example.com/.well-known/jwks.json`，确认 `keys[0]` 含 `kid`/`n`/`e`。
+3. **id_token**：把授权码流程拿到的 `id_token` 粘贴到 [jwt.io](https://jwt.io)，确认验签通过、`alg=RS256`、`kid` 与 jwks.json 一致、claims 含 `iss/sub/aud/exp/nonce/name/preferred_username/email/groups`。
+4. **端到端**：在各家系统登录页选择「Sign in with Devops-Glue」，用 Glue 账号登录，确认进入后角色与映射一致。

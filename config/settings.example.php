@@ -108,24 +108,52 @@ return [
         // ],
     ],
     /*
-     * OAuth2 客户端白名单（供 Grafana 等外部系统用 Glue 账号登录）
+     * OAuth2 / OIDC 客户端白名单（供 Grafana / Jenkins / Harbor / GitLab 用 Glue 账号登录）
      *
      * 每个客户端需配置：
-     *   client_id     — 客户端标识（如 grafana）
-     *   secret        — 客户端密钥（建议用随机长字符串）
-     *   redirect_uri  — 授权回调地址（必须与外部系统配置完全一致）
+     *   client_id     — 客户端标识（数组键名，如 grafana / jenkins）
+     *   secret        — 客户端密钥（必须设强随机字符串；空/纯空白会被 fail-closed 剔除）
+     *   redirect_uri  — 授权回调地址（必须与外部系统配置逐字符一致，含 scheme/host/端口/路径）
      *
-     * 示例（Grafana）：
-     *   'grafana' => [
-     *       'secret'       => env('GRAFANA_OAUTH_SECRET', 'change-me-to-random'),
-     *       'redirect_uri' => 'http://your-grafana:3000/login/generic_oauth',
-     *   ],
+     * 各家回调地址：
+     *   Grafana — http://your-grafana:3000/login/generic_oauth
+     *   Jenkins — http://your-jenkins/securityRealm/finishLogin
+     *   Harbor  — https://your-harbor/c/oidc/callback
+     *   GitLab  — https://your-gitlab/users/auth/openid_connect/callback
      */
     'oauth_clients' => [
         // 'grafana' => [
         //     'secret'       => env('GRAFANA_OAUTH_SECRET', ''),
-        //     'redirect_uri' => 'http://localhost:3000/login/generic_oauth',
+        //     'redirect_uri' => 'http://your-grafana:3000/login/generic_oauth',
         // ],
+        // 'jenkins' => [
+        //     'secret'       => env('JENKINS_OIDC_SECRET', ''),
+        //     'redirect_uri' => 'http://your-jenkins/securityRealm/finishLogin',
+        // ],
+        // 'harbor' => [
+        //     'secret'       => env('HARBOR_OIDC_SECRET', ''),
+        //     'redirect_uri' => 'https://your-harbor/c/oidc/callback',
+        // ],
+        // 'gitlab' => [
+        //     'secret'       => env('GITLAB_OIDC_SECRET', ''),
+        //     'redirect_uri' => 'https://your-gitlab/users/auth/openid_connect/callback',
+        // ],
+    ],
+
+    /*
+     * OIDC Provider 配置（Glue 作为 OIDC Provider，供 Jenkins / Harbor / GitLab 单点登录）
+     *
+     *   issuer       — Glue 对外地址（issuer）。留空则运行时从请求 scheme+host+port 推导；
+     *                  生产环境建议显式配置为对外可达的完整 URL（如 https://glue.example.com）。
+     *   private_key  — id_token 签名私钥（RS256，RSA >= 2048 位 PEM）。留空则自动生成并持久化到 key_file。
+     *   key_file     — 自动生成私钥时的持久化路径（落盘后 chmod 0600）。
+     *   id_token_ttl — id_token 有效期（秒）。
+     */
+    'oidc' => [
+        'issuer'       => env('OIDC_ISSUER', ''),
+        'private_key'  => env('OIDC_RSA_PRIVATE_KEY', ''),
+        'key_file'     => env('OIDC_KEY_FILE', __DIR__ . '/data/oidc_rsa.pem'),
+        'id_token_ttl' => (int) env('OIDC_ID_TOKEN_TTL', '3600'),
     ],
 ];
 

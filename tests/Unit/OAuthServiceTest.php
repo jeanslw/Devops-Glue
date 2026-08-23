@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace App\Test\Unit;
 
 use App\Service\OAuthService;
+use App\Config\AppConfig;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -60,5 +61,48 @@ class OAuthServiceTest extends TestCase
 
         $this->assertFalse($svc->validateClient('ghost', 'http://g:3000/login'));
         $this->assertFalse($svc->validateClientSecret('ghost', 'anything'));
+    }
+
+    /** 建带 cache 表的 PDO（issueCode/consumeCode 需要），返回 OAuthService */
+    private function makeServiceWithCache(array $clients): OAuthService
+    {
+        $pdo = new \PDO('sqlite::memory:');
+        $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $pdo->exec('CREATE TABLE ' . AppConfig::TABLE_CACHE . ' (
+            cache_key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            expires_at INTEGER NOT NULL
+        )');
+        return new OAuthService($pdo, $clients);
+    }
+
+    public function testIssueCodeCarriesScopeAndNonce(): void
+    {
+        $svc = $this->makeServiceWithCache([
+            'grafana' => ['secret' => 's3cret', 'redirect_uri' => 'http://g:3000/login'],
+        ]);
+
+        $code = $svc->issueCode('grafana', 'http://g:3000/login', 'alice', 'ci_admin', 'openid profile email', 'nonce-123');
+        $data = $svc->consumeCode($code, 'grafana', 'http://g:3000/login');
+
+        $this->assertNotNull($data);
+        $this->assertSame('openid profile email', $data['scope']);
+        $this->assertSame('nonce-123', $data['nonce']);
+        $this->assertSame('alice', $data['user']);
+        $this->assertSame('ci_admin', $data['role']);
+    }
+
+    public function testIssueCodeDefaultsEmptyScopeAndNullNonce(): void
+    {
+        $svc = $this->makeServiceWithCache([
+            'grafana' => ['secret' => 's3cret', 'redirect_uri' => 'http://g:3000/login'],
+        ]);
+
+        $code = $svc->issueCode('grafana', 'http://g:3000/login', 'alice', 'ci_admin');
+        $data = $svc->consumeCode($code, 'grafana', 'http://g:3000/login');
+
+        $this->assertNotNull($data);
+        $this->assertSame('', $data['scope']);
+        $this->assertNull($data['nonce']);
     }
 }

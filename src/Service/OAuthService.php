@@ -73,8 +73,11 @@ class OAuthService
 
     /**
      * 签发授权码（认证成功后调用）
+     *
+     * scope/nonce 为 OIDC 扩展字段：随授权码透传到 token 端点，
+     * 决定是否签发 id_token 以及 nonce 回显。默认空值保持纯 OAuth2 向后兼容。
      */
-    public function issueCode(string $clientId, string $redirectUri, string $username, string $role): string
+    public function issueCode(string $clientId, string $redirectUri, string $username, string $role, string $scope = '', ?string $nonce = null): string
     {
         $code = bin2hex(random_bytes(32));
         $value = json_encode([
@@ -82,6 +85,8 @@ class OAuthService
             'redirect_uri' => $redirectUri,
             'user'         => $username,
             'role'         => $role,
+            'scope'        => $scope,
+            'nonce'        => $nonce,
         ]);
         $sql = Database::sqlUpsert(AppConfig::TABLE_CACHE, 'cache_key, value, expires_at', '?, ?, ?');
         $this->pdo->prepare($sql)->execute([

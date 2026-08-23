@@ -163,6 +163,21 @@ return [
             'secret'       => env('GRAFANA_OAUTH_SECRET', ''),
             'redirect_uri' => 'http://localhost:3000/login/generic_oauth',
         ],
+        'jenkins' => [
+            'secret'       => env('JENKINS_OIDC_SECRET', ''),
+            'redirect_uri' => 'http://192.168.137.5:8083/securityRealm/finishLogin',
+        ],
     ],
+
+    // ==================== OIDC Provider（Jenkins / Harbor / GitLab 单点登录）====================
+    // issuer 为空时运行时从请求 scheme+host 推导；私钥优先读 OIDC_RSA_PRIVATE_KEY，
+    // 否则从 key_file 读，都没有则自动生成 RSA-2048 并持久化到 key_file（chmod 0600）。
+    'oidc' => [
+        'issuer'       => env('OIDC_ISSUER', ''),
+        'private_key'  => env('OIDC_RSA_PRIVATE_KEY', ''),
+        'key_file'     => env('OIDC_KEY_FILE', __DIR__ . '/data/oidc_rsa.pem'),
+        'id_token_ttl' => (int) env('OIDC_ID_TOKEN_TTL', '3600'),
+    ],
+
     'job_git_map' => [], // ⚠️ 已由 SQLite 接管，此处永远为空，修改无效！请使用 /admin 管理界面
 ];

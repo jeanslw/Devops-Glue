@@ -5,18 +5,21 @@ use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Service\I18nService;
 use App\Service\OAuthService;
+use App\Service\OidcService;
 use App\Service\AdminAuthService;
 use App\Service\AdminUserRepository;
 use App\Config\AppConfig;
 
 /**
- * 极简 OAuth2 Provider 控制器（授权码流程）
+ * OAuth2 / OIDC Provider 控制器（授权码流程）
  *
  * 端点：
- *   GET  /oauth/authorize  — 浏览器跳转入口，出登录表单
- *   POST /oauth/authorize  — 表单提交，认证成功 302 回 redirect_uri?code=xxx&state=xxx
- *   POST /oauth/token      — code 换 access_token（client_secret 校验）
- *   GET  /oauth/userinfo   — Bearer token 返回用户信息
+ *   GET  /oauth/authorize                  — 浏览器跳转入口，出登录表单
+ *   POST /oauth/authorize                  — 表单提交，认证成功 302 回 redirect_uri?code=xxx&state=xxx
+ *   POST /oauth/token                      — code 换 access_token（+ id_token，OIDC）
+ *   GET  /oauth/userinfo                   — Bearer token 返回用户信息
+ *   GET  /.well-known/openid-configuration — OIDC Discovery
+ *   GET  /.well-known/jwks.json            — OIDC JWKS 公钥
  *
  * 注意：本组路由不挂 AuthMiddleware（authorize 是浏览器跳转，token/userinfo 各自校验）。
  */
@@ -26,7 +29,8 @@ class OAuthController extends BaseController
         I18nService $i18n,
         private OAuthService $oauth,
         private AdminAuthService $auth,
-        private AdminUserRepository $users
+        private AdminUserRepository $users,
+        private OidcService $oidc
     ) {
         parent::__construct($i18n);
     }
@@ -40,13 +44,15 @@ class OAuthController extends BaseController
         $clientId     = (string)($q['client_id'] ?? '');
         $redirectUri  = (string)($q['redirect_uri'] ?? '');
         $state        = (string)($q['state'] ?? '');
+        $scope        = (string)($q['scope'] ?? '');
+        $nonce        = (string)($q['nonce'] ?? '');
         $responseType = (string)($q['response_type'] ?? 'code');
 
         if ($responseType !== 'code' || !$this->oauth->validateClient($clientId, $redirectUri)) {
             return $this->jsonError($response, 'oauth.invalid_request', 400);
         }
 
-        $response->getBody()->write($this->renderLoginForm($clientId, $redirectUri, $state, ''));
+        $response->getBody()->write($this->renderLoginForm($clientId, $redirectUri, $state, $scope, $nonce, ''));
         return $response->withHeader('Content-Type', 'text/html; charset=utf-8');
     }
 
@@ -59,6 +65,8 @@ class OAuthController extends BaseController
         $clientId    = (string)($body['client_id'] ?? '');
         $redirectUri = (string)($body['redirect_uri'] ?? '');
         $state       = (string)($body['state'] ?? '');
+        $scope       = (string)($body['scope'] ?? '');
+        $nonce       = (string)($body['nonce'] ?? '');
         $username    = trim((string)($body['username'] ?? ''));
         $password    = (string)($body['password'] ?? '');
 
@@ -70,7 +78,7 @@ class OAuthController extends BaseController
         $result = $this->auth->authenticate($username, $password, AppConfig::SYSTEM_CI);
         if (empty($result['success'])) {
             $response->getBody()->write($this->renderLoginForm(
-                $clientId, $redirectUri, $state, $this->__($result['errorKey'] ?? 'auth.wrong_credentials')
+                $clientId, $redirectUri, $state, $scope, $nonce, $this->__($result['errorKey'] ?? 'auth.wrong_credentials')
             ));
             return $response->withStatus(401)->withHeader('Content-Type', 'text/html; charset=utf-8');
         }
@@ -79,7 +87,9 @@ class OAuthController extends BaseController
             $clientId,
             $redirectUri,
             (string)$result['user'],
-            (string)$result['role']
+            (string)$result['role'],
+            $scope,
+            $nonce !== '' ? $nonce : null
         );
 
         $sep = str_contains($redirectUri, '?') ? '&' : '?';
@@ -130,11 +140,28 @@ class OAuthController extends BaseController
             $clientId
         );
 
-        $response->getBody()->write(json_encode([
+        $scope = (string)($data['scope'] ?? '');
+        $nonce = isset($data['nonce']) ? (string)$data['nonce'] : null;
+
+        $payload = [
             'access_token' => $accessToken,
             'token_type'   => 'Bearer',
             'expires_in'   => 3600,
-        ]));
+        ];
+
+        // OIDC：仅当授权请求 scope 含 openid 才签发 id_token（纯 OAuth2/Grafana 不签，保持向后兼容）
+        if ($this->hasOpenidScope($scope)) {
+            $payload['id_token'] = $this->oidc->signIdToken(
+                $this->buildIdTokenClaims((string)$data['user'], (string)$data['role'], $this->resolveIssuer($request)),
+                $clientId,
+                $nonce
+            );
+        }
+        if ($scope !== '') {
+            $payload['scope'] = $scope;
+        }
+
+        $response->getBody()->write(json_encode($payload));
         return $response->withHeader('Content-Type', 'application/json')
             ->withHeader('Cache-Control', 'no-store');
     }
@@ -156,14 +183,18 @@ class OAuthController extends BaseController
             return $this->oauthError($response, 'invalid_token', 401);
         }
 
+        $username = (string)$data['user'];
+        $role     = (string)($data['role'] ?? '');
         $response->getBody()->write(json_encode([
-            'sub'      => $data['user'],   // OAuth 标准唯一标识
-            'username' => $data['user'],
-            'name'     => $data['user'],
-            'email'    => $this->resolveEmail((string)$data['user']),
-            'role'     => $data['role'] ?? '',
+            'sub'                => $username,   // OAuth/OIDC 标准唯一标识
+            'username'           => $username,
+            'preferred_username' => $username,
+            'name'               => $username,
+            'email'              => $this->resolveEmail($username),
+            'email_verified'     => true,
+            'role'               => $role,
+            'groups'             => $this->oidc->groupsFromRole($role),
         ]));
-
 
         return $response->withHeader('Content-Type', 'application/json');
     }
@@ -195,6 +226,27 @@ class OAuthController extends BaseController
     }
 
     /**
+     * GET /.well-known/openid-configuration — OIDC Discovery 文档
+     */
+    public function discovery(Request $request, Response $response): Response
+    {
+        $response->getBody()->write(json_encode(
+            $this->oidc->discovery($this->resolveIssuer($request)),
+            JSON_UNESCAPED_SLASHES
+        ));
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
+     * GET /.well-known/jwks.json — OIDC 公钥集合（仅公钥，绝不含私钥）
+     */
+    public function jwks(Request $request, Response $response): Response
+    {
+        $response->getBody()->write(json_encode($this->oidc->jwks(), JSON_UNESCAPED_SLASHES));
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
      * 取用户邮箱：实时查库（token 期内 email 变更即时生效）；
      * 用户不存在或 email 为空时退回 username@devops-glue.local 占位（Grafana 按 email 匹配用户，不能为空）。
      */
@@ -203,6 +255,55 @@ class OAuthController extends BaseController
         $user = $this->users->findByUsername($username);
         $email = trim((string)($user['email'] ?? ''));
         return $email !== '' ? $email : $username . '@devops-glue.local';
+    }
+
+    /**
+     * scope 是否包含 openid（决定是否签发 id_token）
+     */
+    private function hasOpenidScope(string $scope): bool
+    {
+        if (trim($scope) === '') {
+            return false;
+        }
+        $parts = preg_split('/\s+/', trim($scope));
+        return is_array($parts) && in_array(OidcService::SCOPE_OPENID, $parts, true);
+    }
+
+    /**
+     * 组装 id_token 的 claims（iss/sub 由 OidcService 补 exp/iat/aud/nonce）
+     */
+    private function buildIdTokenClaims(string $username, string $role, string $issuer): array
+    {
+        return [
+            'iss'                => $issuer,
+            'sub'                => $username,
+            'name'               => $username,
+            'preferred_username' => $username,
+            'email'              => $this->resolveEmail($username),
+            'email_verified'     => true,
+            'groups'             => $this->oidc->groupsFromRole($role),
+        ];
+    }
+
+    /**
+     * 确定 issuer：优先 OIDC_ISSUER 配置，缺省从当前请求 scheme+host 推导
+     */
+    private function resolveIssuer(Request $request): string
+    {
+        $configured = $this->oidc->issuer();
+        if ($configured !== '') {
+            return $configured;
+        }
+        $uri    = $request->getUri();
+        $scheme = $uri->getScheme() !== '' ? $uri->getScheme() : 'http';
+        $host   = $uri->getHost();
+        $port   = $uri->getPort();
+        // 非默认端口（80/443）需拼回 issuer，否则 discovery 文档里的端点 URL 会丢端口，
+        // 客户端（Harbor/Jenkins/GitLab）按文档拿到的端点就无法访问。
+        if ($port !== null && !(($scheme === 'http' && $port === 80) || ($scheme === 'https' && $port === 443))) {
+            $host .= ':' . $port;
+        }
+        return $scheme . '://' . $host;
     }
 
     /**
@@ -235,7 +336,7 @@ class OAuthController extends BaseController
     /**
      * 渲染登录表单（模板：templates/oauth_login.html，占位符 {{key}} 替换）
      */
-    private function renderLoginForm(string $clientId, string $redirectUri, string $state, string $error): string
+    private function renderLoginForm(string $clientId, string $redirectUri, string $state, string $scope, string $nonce, string $error): string
     {
         $template = file_get_contents(__DIR__ . '/../../templates/oauth_login.html');
         if ($template === false) {
@@ -248,13 +349,15 @@ class OAuthController extends BaseController
             : '';
 
         return str_replace(
-            ['{{title}}', '{{error}}', '{{client_id}}', '{{redirect_uri}}', '{{state}}', '{{user_label}}', '{{pass_label}}', '{{btn_label}}'],
+            ['{{title}}', '{{error}}', '{{client_id}}', '{{redirect_uri}}', '{{state}}', '{{scope}}', '{{nonce}}', '{{user_label}}', '{{pass_label}}', '{{btn_label}}'],
             [
                 htmlspecialchars($this->__('oauth.login_title'), ENT_QUOTES, 'UTF-8'),
                 $errorHtml,
                 htmlspecialchars($clientId, ENT_QUOTES, 'UTF-8'),
                 htmlspecialchars($redirectUri, ENT_QUOTES, 'UTF-8'),
                 htmlspecialchars($state, ENT_QUOTES, 'UTF-8'),
+                htmlspecialchars($scope, ENT_QUOTES, 'UTF-8'),
+                htmlspecialchars($nonce, ENT_QUOTES, 'UTF-8'),
                 htmlspecialchars($this->__('admin.account_placeholder'), ENT_QUOTES, 'UTF-8'),
                 htmlspecialchars($this->__('admin.password_placeholder'), ENT_QUOTES, 'UTF-8'),
                 htmlspecialchars($this->__('auth.login'), ENT_QUOTES, 'UTF-8'),
