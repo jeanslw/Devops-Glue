@@ -28,6 +28,7 @@ Appendices:
 - [Appendix B: CORS Configuration](#appendix-b-cors-configuration)
 - [Appendix C: Multi-Environment Deployment](#appendix-c-multi-environment-deployment)
 - [Appendix D: Custom Git Platform Integration](#appendix-d-custom-git-platform-integration)
+- [Appendix E: Single Sign-On (OAuth2 / OIDC)](Single-Sign-On.md)
 
 ---
 
@@ -823,3 +824,11 @@ To add a built-in platform (GitLab/Gitee/GitHub/Gitea style), modify:
 - `config/AppConfig.php` (`getXxxConfig` + `getDefaultApiVersion` + `getGitPlatformsConfig`)
 - `config/settings.php` + `settings.example.php` (config sections)
 - `config/.env.example` (environment variable declarations)
+
+---
+
+## Appendix E: Single Sign-On (OAuth2 / OIDC)
+
+Glue ships a built-in OAuth2 / OIDC Provider, letting Grafana (OAuth2) and Jenkins / Harbor / GitLab (OIDC) sign in with a Glue account.
+
+See [Single-Sign-On.md](Single-Sign-On.md) for setup steps, per-system integration config, and role mapping.

@@ -137,6 +137,7 @@ See [docs/ADMIN_MANUAL.md](docs/ADMIN_MANUAL.md) for full environment variable r
 | [API Reference](docs/API_Documents.md) | EN | API endpoints, request/response formats, quick tests |
 | [ARCHITECTURE](docs/ARCHITECTURE.md) | EN | Overall data flow, component relationships, deployment pattern matrix|
 | [Admin Manual](docs/ADMIN_MANUAL.md) | EN | Environment variables, mapping config, custom Git platform |
+| [Single Sign-On](docs/Single-Sign-On.md) | EN | OAuth2 / OIDC SSO for Grafana / Jenkins / Harbor / GitLab |
 | [Technical Guide](docs/Technical-Guide.md) | EN | Architecture, DB design, data flows, troubleshooting |
 | [Integrated Service Version Compatibility](docs/Integrated-Service-Version-Compatibility.md) | EN | Jenkins / GitLab / Gitea / Harbor version support and boundaries |
 | [FAQ](docs/FAQ.md) | EN | Common issues and troubleshooting |

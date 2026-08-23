@@ -135,6 +135,7 @@ curl http://localhost:8080/api/health
 | [API 参考](docs/API_文档.md) | 中文 | API 接口、请求/响应格式、快速测试 |
 | [架构全景图](docs/架构全景图.md) | 中文 | 整体数据流、组件关系、部署模式矩阵|
 | [管理员手册](docs/管理员配置手册.md) | 中文 | 环境变量、映射配置、自定义 Git 平台 |
+| [单点登录](docs/单点登录.md) | 中文 | Grafana / Jenkins / Harbor / GitLab 用 Glue 账号单点登录（OAuth2 / OIDC） |
 | [技术文档](docs/技术文档.md) | 中文 | 架构设计、数据库设计、数据流程、故障排查（中文） |
 | [对接服务版本兼容性说明](docs/对接服务版本兼容性说明.md) | 中文 | Jenkins / GitLab / Gitea / Harbor 版本支持情况与边界 |
 | [常见问题](docs/常见问题.md) | 中文 | 常见问题与排查指南（中文） |

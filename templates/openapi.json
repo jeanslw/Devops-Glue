@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Devops-Glue API",
-    "version": "2.6.0",
+    "version": "2.6.2",
     "description": "DevOps 工具链集成接口 —— Jenkins/GitLab CI、GitLab/Gitee/GitHub/Gitea、Harbor 统一 API。",
     "contact": {
       "email": "jeanslw@qq.com"
@@ -21,7 +21,8 @@
     { "name": "Git", "description": "代码仓库分支" },
     { "name": "Harbor", "description": "镜像仓库与安全扫描" },
     { "name": "Admin", "description": "管理后台（需 Bearer Token）" },
-    { "name": "RBAC", "description": "权限与角色管理（数据驱动，含权限注册、隐含规则、角色管理）" }
+    { "name": "RBAC", "description": "权限与角色管理（数据驱动，含权限注册、隐含规则、角色管理）" },
+    { "name": "SSO", "description": "OAuth2 / OIDC 单点登录（Grafana / Jenkins / Harbor / GitLab）" }
   ],
   "components": {
     "securitySchemes": {
@@ -401,6 +402,68 @@
         "properties": {
           "id": { "type": "integer", "example": 1 },
           "token": { "type": "string", "description": "一次性明文 Token（dg_ 前缀 + 64 位十六进制），仅返回一次", "example": "dg_8f3a4b1c…" }
+        }
+      },
+      "OidcDiscovery": {
+        "type": "object",
+        "description": "OIDC Discovery 文档（RFC 8414）",
+        "properties": {
+          "issuer": { "type": "string", "example": "https://glue.example.com" },
+          "authorization_endpoint": { "type": "string", "example": "https://glue.example.com/oauth/authorize" },
+          "token_endpoint": { "type": "string", "example": "https://glue.example.com/oauth/token" },
+          "userinfo_endpoint": { "type": "string", "example": "https://glue.example.com/oauth/userinfo" },
+          "jwks_uri": { "type": "string", "example": "https://glue.example.com/.well-known/jwks.json" },
+          "response_types_supported": { "type": "array", "items": { "type": "string" }, "example": ["code"] },
+          "subject_types_supported": { "type": "array", "items": { "type": "string" }, "example": ["public"] },
+          "id_token_signing_alg_values_supported": { "type": "array", "items": { "type": "string" }, "example": ["RS256"] },
+          "scopes_supported": { "type": "array", "items": { "type": "string" }, "example": ["openid", "profile", "email"] },
+          "claims_supported": { "type": "array", "items": { "type": "string" } },
+          "token_endpoint_auth_methods_supported": { "type": "array", "items": { "type": "string" }, "example": ["client_secret_basic", "client_secret_post"] }
+        }
+      },
+      "Jwks": {
+        "type": "object",
+        "description": "OIDC JWKS 公钥集合（仅公钥 n/e/kid，绝不含私钥）",
+        "properties": {
+          "keys": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kty": { "type": "string", "example": "RSA" },
+                "use": { "type": "string", "example": "sig" },
+                "alg": { "type": "string", "example": "RS256" },
+                "kid": { "type": "string", "example": "oidc-rsa-0123456789abcdef" },
+                "n": { "type": "string", "description": "RSA 模数（base64url）" },
+                "e": { "type": "string", "description": "RSA 公钥指数（base64url）", "example": "AQAB" }
+              }
+            }
+          }
+        }
+      },
+      "OAuthTokenResponse": {
+        "type": "object",
+        "description": "OAuth2 / OIDC 令牌端点响应",
+        "properties": {
+          "access_token": { "type": "string", "example": "…" },
+          "token_type": { "type": "string", "example": "Bearer" },
+          "expires_in": { "type": "integer", "example": 3600 },
+          "scope": { "type": "string", "nullable": true, "example": "openid profile email" },
+          "id_token": { "type": "string", "nullable": true, "description": "仅当授权请求 scope 含 openid 时返回（RS256 签名）" }
+        }
+      },
+      "OidcUserInfo": {
+        "type": "object",
+        "description": "OAuth2 / OIDC userinfo 端点响应",
+        "properties": {
+          "sub": { "type": "string", "example": "admin" },
+          "username": { "type": "string", "example": "admin" },
+          "preferred_username": { "type": "string", "example": "admin" },
+          "name": { "type": "string", "example": "admin" },
+          "email": { "type": "string", "example": "admin@devops-glue.local" },
+          "email_verified": { "type": "boolean", "example": true },
+          "role": { "type": "string", "example": "super_admin" },
+          "groups": { "type": "array", "items": { "type": "string" }, "example": ["super_admin"] }
         }
       }
     }
@@ -2039,6 +2102,165 @@
           "401": { "$ref": "#/components/responses/401" },
           "403": { "description": "非 super_admin" },
           "503": { "description": "API Token 服务不可用" }
+        }
+      }
+    },
+
+    "/.well-known/openid-configuration": {
+      "get": {
+        "tags": ["SSO"],
+        "summary": "OIDC Discovery 文档",
+        "description": "返回 OIDC 自动发现文档（RFC 8414），供 Jenkins/Harbor/GitLab 客户端自动发现各端点。",
+        "operationId": "oidcDiscovery",
+        "responses": {
+          "200": {
+            "description": "Discovery 文档",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OidcDiscovery" } } }
+          }
+        }
+      }
+    },
+    "/.well-known/jwks.json": {
+      "get": {
+        "tags": ["SSO"],
+        "summary": "OIDC JWKS 公钥",
+        "description": "返回 RS256 签名公钥（n/e/kid），供客户端验签 id_token。绝不含私钥。",
+        "operationId": "oidcJwks",
+        "responses": {
+          "200": {
+            "description": "JWKS 公钥集合",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Jwks" } } }
+          }
+        }
+      }
+    },
+    "/oauth/authorize": {
+      "get": {
+        "tags": ["SSO"],
+        "summary": "OAuth 授权登录页",
+        "description": "浏览器跳转入口，校验 client_id/redirect_uri 后渲染登录表单（HTML）。",
+        "operationId": "oauthAuthorizeForm",
+        "parameters": [
+          { "name": "client_id", "in": "query", "required": true, "schema": { "type": "string" }, "description": "客户端标识（如 grafana）" },
+          { "name": "redirect_uri", "in": "query", "required": true, "schema": { "type": "string" }, "description": "授权回调地址（须与注册值逐字符一致）" },
+          { "name": "state", "in": "query", "schema": { "type": "string" }, "description": "客户端状态，回跳时原样带回" },
+          { "name": "scope", "in": "query", "schema": { "type": "string" }, "description": "空格分隔 scope，含 openid 时走 OIDC" },
+          { "name": "nonce", "in": "query", "schema": { "type": "string" }, "description": "OIDC nonce，id_token 回显" },
+          { "name": "response_type", "in": "query", "schema": { "type": "string" }, "description": "固定 code" }
+        ],
+        "responses": {
+          "200": { "description": "登录表单（HTML）", "content": { "text/html": { "schema": { "type": "string" } } } },
+          "400": { "$ref": "#/components/responses/400" }
+        }
+      },
+      "post": {
+        "tags": ["SSO"],
+        "summary": "提交登录，签发授权码",
+        "description": "表单提交（application/x-www-form-urlencoded）。认证成功 302 回跳 redirect_uri?code=xxx&state=xxx，失败 401 返回登录表单。",
+        "operationId": "oauthAuthorizeSubmit",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": ["client_id", "redirect_uri", "username", "password"],
+                "properties": {
+                  "client_id": { "type": "string" },
+                  "redirect_uri": { "type": "string" },
+                  "state": { "type": "string" },
+                  "scope": { "type": "string" },
+                  "nonce": { "type": "string" },
+                  "username": { "type": "string" },
+                  "password": { "type": "string", "format": "password" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "302": { "description": "认证成功，回跳 redirect_uri 并携带 code/state" },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "description": "用户名或密码错误，返回登录表单" }
+        }
+      }
+    },
+    "/oauth/token": {
+      "post": {
+        "tags": ["SSO"],
+        "summary": "授权码换访问令牌",
+        "description": "code 换 access_token（scope 含 openid 时另返回 id_token）。client 凭据支持 form 或 HTTP Basic Auth（RFC 6749 §2.3.1）。",
+        "operationId": "oauthToken",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "grant_type": { "type": "string", "example": "authorization_code" },
+                  "code": { "type": "string" },
+                  "redirect_uri": { "type": "string" },
+                  "client_id": { "type": "string" },
+                  "client_secret": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "令牌响应",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OAuthTokenResponse" } } }
+          },
+          "400": { "description": "invalid_grant / unsupported_grant_type" },
+          "401": { "description": "invalid_client" }
+        }
+      }
+    },
+    "/oauth/userinfo": {
+      "get": {
+        "tags": ["SSO"],
+        "summary": "用户信息",
+        "description": "用 Bearer access_token 换取用户信息（含 groups=Glue 角色）。",
+        "operationId": "oauthUserInfo",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "用户信息",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OidcUserInfo" } } }
+          },
+          "401": { "description": "invalid_token" }
+        }
+      }
+    },
+    "/oauth/userinfo/emails": {
+      "get": {
+        "tags": ["SSO"],
+        "summary": "邮箱列表（GitHub 风格）",
+        "description": "Grafana 兜底请求的邮箱子端点，返回与 userinfo 一致的占位邮箱。",
+        "operationId": "oauthUserInfoEmails",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "邮箱数组",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "email": { "type": "string" },
+                      "primary": { "type": "boolean" },
+                      "verified": { "type": "boolean" }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "invalid_token" }
         }
       }
     }
