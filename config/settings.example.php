@@ -97,6 +97,7 @@ return [
      */
     'job_git_map' => [
         // [
+
         //     'job_name'          => 'java/registry',   // ✅ 必填
         //     'git_platform'      => 'gitlab',           //   自建实例必须
         //     'git_remote'        => 'http://git.company.com/group/project.git',
@@ -106,4 +107,25 @@ return [
         //     'harbor_repository' => 'mycode/code-runtime',
         // ],
     ],
+    /*
+     * OAuth2 客户端白名单（供 Grafana 等外部系统用 Glue 账号登录）
+     *
+     * 每个客户端需配置：
+     *   client_id     — 客户端标识（如 grafana）
+     *   secret        — 客户端密钥（建议用随机长字符串）
+     *   redirect_uri  — 授权回调地址（必须与外部系统配置完全一致）
+     *
+     * 示例（Grafana）：
+     *   'grafana' => [
+     *       'secret'       => env('GRAFANA_OAUTH_SECRET', 'change-me-to-random'),
+     *       'redirect_uri' => 'http://your-grafana:3000/login/generic_oauth',
+     *   ],
+     */
+    'oauth_clients' => [
+        // 'grafana' => [
+        //     'secret'       => env('GRAFANA_OAUTH_SECRET', ''),
+        //     'redirect_uri' => 'http://localhost:3000/login/generic_oauth',
+        // ],
+    ],
 ];
+

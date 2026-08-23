@@ -181,6 +181,7 @@ class AppConfig
     public const API_SCOPE_HARBOR_SCAN  = 'harbor.scan';
     public const API_SCOPE_BUILD_READ   = 'build.read';
     public const API_SCOPE_BUILD_WRITE  = 'build.write';
+    public const API_SCOPE_DASHBOARD    = 'dashboard.read';
     public const API_SCOPE_BUILD_REPORT = 'build.report';
 
     /** 可选 scope 目录：key => i18n 翻译键 */
@@ -191,6 +192,7 @@ class AppConfig
         self::API_SCOPE_HARBOR_SCAN  => 'api.scope.harbor_scan',
         self::API_SCOPE_BUILD_READ   => 'api.scope.build_read',
         self::API_SCOPE_BUILD_WRITE  => 'api.scope.build_write',
+        self::API_SCOPE_DASHBOARD    => 'api.scope.dashboard',
         self::API_SCOPE_BUILD_REPORT => 'api.scope.build_report',
     ];
 
@@ -239,6 +241,9 @@ class AppConfig
         // MAIN：只读
         if (preg_match('#^/api/main($|/)#', $path)) {
             return self::API_SCOPE_MAIN;
+        }
+        if (preg_match('#^/api/dashboard($|/)#', $path)) {
+            return self::API_SCOPE_DASHBOARD;
         }
 
         // GIT：只读

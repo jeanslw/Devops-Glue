@@ -581,4 +581,10 @@ return [
     'api.scope.build_read'      => 'Build read',
     'api.scope.build_write'     => 'Build write (trigger/retry/cancel)',
     'api.scope.build_report'    => 'Build report (scan-sync/commit-status/report)',
+    'api.scope.dashboard'       => 'Dashboard (read-only)',
+    'dashboard.query_failed'    => 'Dashboard query failed',
+
+    // ── OAuth2 Provider ──
+    'oauth.login_title'      => 'Sign in to Devops-Glue',
+    'oauth.invalid_request'  => 'Invalid OAuth request (client_id or redirect_uri mismatch)',
 ];

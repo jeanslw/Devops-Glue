@@ -23,6 +23,11 @@ use App\Controller\GitController;
 use App\Controller\HarborController;
 use App\Controller\AdminController;
 use App\Controller\BuildController;
+use App\Controller\DashboardController;
+use App\Controller\OAuthController;
+use App\Service\DashboardService;
+use App\Service\OAuthService;
+
 use App\Middleware\CorsMiddleware;
 use App\Middleware\AuthMiddleware;
 use App\Service\Logger;
@@ -477,4 +482,35 @@ return [
             $c->get(HarborService::class)
         );
     },
+
+    // ---------- Dashboard 模块（监控看板只读 API，Grafana 消费）----------
+
+    DashboardService::class => function (\Psr\Container\ContainerInterface $c) {
+        return new DashboardService($c->get(\PDO::class));
+    },
+
+    DashboardController::class => function (\Psr\Container\ContainerInterface $c) {
+        return new DashboardController(
+            $c->get(I18nService::class),
+            $c->get(DashboardService::class)
+        );
+    },
+
+    // ---------- OAuth2 Provider（Grafana 等外部系统用 Glue 账号登录）----------
+
+    OAuthService::class => function (\Psr\Container\ContainerInterface $c) use ($settings) {
+        return new OAuthService(
+            $c->get(\PDO::class),
+            $settings['oauth_clients'] ?? []
+        );
+    },
+
+    OAuthController::class => function (\Psr\Container\ContainerInterface $c) {
+        return new OAuthController(
+            $c->get(I18nService::class),
+            $c->get(OAuthService::class),
+            $c->get(AdminAuthService::class)
+        );
+    },
 ];
+

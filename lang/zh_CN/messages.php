@@ -579,4 +579,11 @@ return [
     'api.scope.build_read'      => '构建查询',
     'api.scope.build_write'     => '构建执行（触发/重试/取消）',
     'api.scope.build_report'    => '构建回写（scan-sync/commit-status/report）',
+    'api.scope.dashboard'       => '监控看板（只读）',
+    'dashboard.query_failed'    => '看板查询失败',
+
+    // ── OAuth2 Provider ──
+    'oauth.login_title'      => '登录 Devops-Glue',
+    'oauth.invalid_request'  => '无效的 OAuth 请求（client_id 或 redirect_uri 不匹配）',
 ];
+

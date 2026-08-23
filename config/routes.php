@@ -6,7 +6,10 @@ use App\Controller\MainController;
 use App\Controller\HarborController;
 use App\Controller\AdminController;
 use App\Controller\BuildController;
+use App\Controller\DashboardController;
+use App\Controller\OAuthController;
 use App\Middleware\AuthMiddleware;
+
 
 // 本文件由 public/index.php 在 $app 就绪后直接 require（不走容器）。
 // 防御：$app 缺失/类型错误时在启动阶段显式失败，而不是留下 undefined variable 运行时错。
@@ -103,6 +106,12 @@ $app->group('/api', function (RouteCollectorProxy $api) {
         $build->map(['GET', 'POST'], '/{path:.+}/tag', [BuildController::class, 'tagQuery']);
     })->add(AuthMiddleware::class);
 
+    // 监控看板只读端点（Grafana Infinity 数据源消费，复用 RBAC）
+    $api->group('/dashboard', function (RouteCollectorProxy $dash) {
+        $dash->get('/mapping', [DashboardController::class, 'mapping']);
+        $dash->get('/trends',  [DashboardController::class, 'trends']);
+    })->add(AuthMiddleware::class);
+
     $api->group('/git', function (RouteCollectorProxy $git) {
         $git->map(['GET', 'POST'], '/{path:.+}/branches', [GitController::class, 'branches']);
     })->add(AuthMiddleware::class);
@@ -115,3 +124,13 @@ $app->group('/api', function (RouteCollectorProxy $api) {
         $harbor->map(['GET'], '/{project}/repositories/{repository}/tags/{tag}/scan', [HarborController::class, 'getScanReport']);
     })->add(AuthMiddleware::class);
 });
+
+// OAuth2 Provider（授权码流程，供 Grafana 等外部系统用 Glue 账号登录）
+// 注意：本组路由不挂 AuthMiddleware —— authorize 是浏览器跳转，token/userinfo 各自校验。
+$app->group('/oauth', function (RouteCollectorProxy $oauth) {
+    $oauth->get('/authorize',  [OAuthController::class, 'authorizeForm']);
+    $oauth->post('/authorize', [OAuthController::class, 'authorizeSubmit']);
+    $oauth->post('/token',     [OAuthController::class, 'token']);
+    $oauth->get('/userinfo',   [OAuthController::class, 'userinfo']);
+});
+
