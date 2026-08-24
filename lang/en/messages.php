@@ -415,6 +415,7 @@ return [
     'user.cannot_edit_root'    => 'Built-in super admin cannot be modified',
     'user.cannot_promote_admin' => 'Cannot promote user to admin',
     'user.cannot_promote_super_admin' => 'Promoting to super admin requires super admin privilege',
+    'user.only_one_super_admin' => 'Only one super admin is allowed',
     'user.nothing_to_update'   => 'Nothing to update',
     'user.cd_no_ci_access' => 'CD-created users cannot have CI access',
     'user.username_exists' => 'Username already exists',

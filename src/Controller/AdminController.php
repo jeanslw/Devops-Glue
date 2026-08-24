@@ -732,6 +732,10 @@ class AdminController extends BaseController
         if ($role === AppConfig::ROLE_SUPER_ADMIN && $this->currentRole !== AppConfig::ROLE_SUPER_ADMIN) {
             return $this->jsonError($response, 'user.cannot_create_super_admin', 403);
         }
+        // 系统只允许一个 super_admin：已存在则禁止再建（唯一性约束，防后台造出第二个超级管理员）
+        if ($role === AppConfig::ROLE_SUPER_ADMIN && $this->adminUserRepository->countByRole(AppConfig::ROLE_SUPER_ADMIN) > 0) {
+            return $this->jsonError($response, 'user.only_one_super_admin', 409);
+        }
 
         // 只有拥有 ci.users.manage_admin 权限的用户能创建管理员角色
         if ($role === AppConfig::ROLE_ADMIN || $role === AppConfig::ROLE_SUPER_ADMIN) {
@@ -810,6 +814,12 @@ class AdminController extends BaseController
                 // 提升为 super_admin 必须由 super_admin 操作（防普通 admin 提权）
                 if ($role === AppConfig::ROLE_SUPER_ADMIN && $this->currentRole !== AppConfig::ROLE_SUPER_ADMIN) {
                     return $this->jsonError($response, 'user.cannot_promote_super_admin', 403);
+                }
+                // 系统只允许一个 super_admin：目标非 super_admin 且已存在 super_admin 时，禁止再提升
+                if ($role === AppConfig::ROLE_SUPER_ADMIN
+                    && $target['role'] !== AppConfig::ROLE_SUPER_ADMIN
+                    && $this->adminUserRepository->countByRole(AppConfig::ROLE_SUPER_ADMIN) > 0) {
+                    return $this->jsonError($response, 'user.only_one_super_admin', 409);
                 }
                 // 提升为管理员需要 ci.users.manage_admin 权限
                 if (($role === AppConfig::ROLE_ADMIN || $role === AppConfig::ROLE_SUPER_ADMIN) && !$this->hasPermission(AppConfig::PERM_CI_USERS_MANAGE_ADMIN)) {

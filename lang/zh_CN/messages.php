@@ -415,6 +415,7 @@ return [
     'user.cannot_edit_root'    => '内置超级管理员不可修改',
     'user.cannot_promote_admin' => '不能将用户提升为管理员',
     'user.cannot_promote_super_admin' => '提升为超级管理员需要超级管理员权限',
+    'user.only_one_super_admin' => '系统只允许一个超级管理员',
     'user.nothing_to_update'   => '没有可更新的内容',
     'user.cd_no_ci_access' => 'CD 侧创建的用户不能拥有 CI 登录权限',
     'user.username_exists' => '用户名已存在',
