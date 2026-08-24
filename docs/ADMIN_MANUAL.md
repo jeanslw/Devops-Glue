@@ -110,7 +110,7 @@ Two databases are supported, selected by `DB_DRIVER`:
 **Option 1: Docker Compose (recommended)**
 
 ```bash
-cd docker-compose && docker compose up -d --build
+docker compose up -d --build
 ```
 
 **Option 2: PHP built-in server**

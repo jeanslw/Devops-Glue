@@ -103,7 +103,7 @@ cp config/.env.example config/.env
 # 4. 启动（PHP 内置服务器或 Docker）
 php -S 0.0.0.0:8080 -t public/
 # 或
-cd docker-compose && docker compose up -d --build
+docker compose up -d --build
 
 # 5. 验证
 curl http://localhost:8080/api/health
@@ -151,7 +151,7 @@ curl http://localhost:8080/api/health
 ```
 config/         # 服务端配置（.env、DI 容器、路由、设置）
 database/       # MySQL 和 SQLite 初始化脚本
-docker-compose/ # Docker Compose（PHP + MySQL 8.4）
+docker-compose.yml # Docker Compose（PHP + MySQL 8.4）
 public/         # Web 根目录（index.php、静态资源）
 src/            # 控制器与服务层
 templates/      # HTML 模板（admin、swagger、openapi）

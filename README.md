@@ -105,7 +105,7 @@ cp config/.env.example config/.env
 # 4. Start (PHP built-in server or Docker)
 php -S 0.0.0.0:8080 -t public/
 # OR
-cd docker-compose && docker compose up -d --build
+docker compose up -d --build
 
 # 5. Verify
 curl http://localhost:8080/api/health
@@ -153,7 +153,7 @@ See [docs/ADMIN_MANUAL.md](docs/ADMIN_MANUAL.md) for full environment variable r
 ```
 config/         # Server config (.env, DI container, routes, settings)
 database/       # MySQL & SQLite init scripts
-docker-compose/ # Docker Compose (PHP + MySQL 8.4)
+docker-compose.yml # Docker Compose (PHP + MySQL 8.4)
 public/         # Web root (index.php, static assets)
 src/            # Controllers & Services
 templates/      # HTML templates (admin, swagger, openapi)

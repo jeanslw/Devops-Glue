@@ -5,13 +5,15 @@
 .laragon
 .idea
 config/.env
+.env
+.env.local
 .editorconfig
 vendor/
 Dockerfile
 tests
 *.md
 LICENSE
-docker-compose/
+docker-compose.yml
 system_info.png
 system_running.png
 system_info_zh.png

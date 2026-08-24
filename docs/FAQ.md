@@ -35,7 +35,7 @@ Open `http://localhost:8080` in your browser. Default credentials come from `ADM
 
 ### Q: How to deploy with Docker?
 
-`docker-compose/docker-compose.yml` provides a full deployment setup with MySQL included.
+`docker-compose.yml` (repo root) provides a full deployment setup with MySQL included.
 
 ```bash
 docker build -t devops-glue .
@@ -50,11 +50,10 @@ There are three deployment modes for the CI (devops-glue) and CD (devops-cd) ser
 
 **1. Same host — single `docker-compose.yml` (recommended)**
 
-`docker-compose/docker-compose.yml` already contains a commented `cd-service` block. Uncomment it:
+`docker-compose.yml` already contains a commented `devops-cd` block. Uncomment it:
 
 ```bash
-cd docker-compose/
-# Edit docker-compose.yml, uncomment the cd-service section (# cd-service: → cd-service:)
+# Edit docker-compose.yml, uncomment the devops-cd section (# devops-cd: → devops-cd:)
 docker compose up -d
 ```
 
@@ -67,7 +66,6 @@ Deploy CI and CD independently. They share MySQL, so you must create a shared ne
 ```bash
 # In the CI project
 docker network create devops-net
-cd docker-compose/
 docker compose up -d
 
 # In the CD project

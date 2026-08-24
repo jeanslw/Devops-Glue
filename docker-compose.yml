@@ -1,19 +1,19 @@
 services:
   devops-glue:
     build:
-      context: ..
+      context: .
       dockerfile: Dockerfile
     image: devops-glue:latest
     container_name: devops-glue
     env_file:
-      - ../config/.env
+      - .env
     volumes:
-      - ../config/.env:/app/config/.env:ro
-      - ../config/docker/nginx.conf:/etc/nginx/sites-available/default:ro
-      - ../config/docker/php-fpm.conf:/usr/local/etc/php-fpm.d/zz-custom.conf:ro
-      - ../config/docker/supervisord.conf:/etc/supervisor/conf.d/supervisord.conf:ro
-      #- ../config/data:/app/config/data
-      - ../applog:/data/logs/ci-platform
+      - ./config/.env:/app/config/.env:ro
+      - ./config/docker/nginx.conf:/etc/nginx/sites-available/default:ro
+      - ./config/docker/php-fpm.conf:/usr/local/etc/php-fpm.d/zz-custom.conf:ro
+      - ./config/docker/supervisord.conf:/etc/supervisor/conf.d/supervisord.conf:ro
+      #- ./config/data:/app/config/data
+      - ./applog:/data/logs/ci-platform
     ports:
       - "8080:80"
     restart: unless-stopped
@@ -38,38 +38,27 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
-      
+
 # ──────────────────────────────────────
-# Devops CD Service (separate compose)
+# Devops CD Service — 与 CI/MySQL 共用根目录 .env
 # ──────────────────────────────────────
-# How to use:
-#   1. In devops_cd dir: cp .env.example .env → set DB_HOST=devops-mysql
-#   2. cd devops_cd && docker compose up -d (start individually)
-#   3. Or uncomment below to start together in the same compose:
+# 集中部署时取消下方注释即可。DB / Harbor / SECRET_KEY / CI_API_TOKEN 由 .env 注入；
+# 镜像 Dockerfile 已内置 CMD（uvicorn 0.0.0.0:8081）与 HEALTHCHECK，无需在此重复。
+# 单机单独部署 CD 时仍用 Devops_CD 仓库自带的 .env + docker compose up。
 #
 #  devops-cd:
 #    build:
-#      context: ../../devops_cd
+#      context: ../Devops_CD
 #      dockerfile: Dockerfile
 #    container_name: devops-cd
 #    image: devops-cd:latest
 #    env_file:
-#      - ../../devops_cd/.env
+#      - .env
 #    environment:
-#      PYTHONUNBUFFERED: "1"
-#      HOST: 0.0.0.0
-#      PORT: 8081
 #      CI_API_URL: http://devops-glue
-#      CI_API_TOKEN: dg_xxx #API token (recommended) OR service account (deprecated)
 #    ports:
 #      - "8081:8081"
 #    restart: unless-stopped
-#    healthcheck:
-#      test: ["CMD", "python", "-c", "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8081/health', timeout=3).status == 200 else 1)"]
-#      interval: 30s
-#      timeout: 5s
-#      retries: 3
-#      start_period: 20s
 #    depends_on:
 #      mysql:
 #        condition: service_healthy
