@@ -10,7 +10,7 @@ class AdminUserRepository
     public function findByUsername(string $username): ?array
     {
         $stmt = $this->pdo->prepare(
-            "SELECT username, password_hash, systems, role, email FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE username = ?"
+            "SELECT username, password_hash, systems, role, email, status, avatar_url FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE username = ?"
         );
         $stmt->execute([$username]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -20,7 +20,7 @@ class AdminUserRepository
     public function createUser(string $username, string $passwordHash, string $role, string $systems = 'ci,cd', string $email = ''): void
     {
         $stmt = $this->pdo->prepare(
-            "INSERT INTO " . AppConfig::TABLE_ADMIN_USERS . " (username, password_hash, role, systems, email, updated_at) VALUES (?, ?, ?, ?, ?, " . Database::sqlNow() . ")"
+            "INSERT INTO " . AppConfig::TABLE_ADMIN_USERS . " (username, password_hash, role, systems, email, created_at) VALUES (?, ?, ?, ?, ?, " . Database::sqlNow() . ")"
         );
         $stmt->execute([$username, $passwordHash, $role, $systems, $email]);
     }
@@ -53,9 +53,9 @@ class AdminUserRepository
     public function listUsers(bool $includeAdmin = true): array
     {
         if ($includeAdmin) {
-            return $this->pdo->query("SELECT username, role, systems, email, updated_at FROM " . AppConfig::TABLE_ADMIN_USERS . " ORDER BY username")->fetchAll();
+            return $this->pdo->query("SELECT username, role, systems, email, status, created_at, updated_at FROM " . AppConfig::TABLE_ADMIN_USERS . " ORDER BY username")->fetchAll();
         }
-        return $this->pdo->query("SELECT username, role, systems, email, updated_at FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE role NOT IN ('" . AppConfig::ROLE_ADMIN . "', '" . AppConfig::ROLE_SUPER_ADMIN . "') ORDER BY username")->fetchAll();
+        return $this->pdo->query("SELECT username, role, systems, email, status, created_at, updated_at FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE role NOT IN ('" . AppConfig::ROLE_ADMIN . "', '" . AppConfig::ROLE_SUPER_ADMIN . "') ORDER BY username")->fetchAll();
     }
 
     public function findUser(string $username): ?array
@@ -91,6 +91,24 @@ class AdminUserRepository
         $params[] = $username;
         $sql = 'UPDATE ' . AppConfig::TABLE_ADMIN_USERS . ' SET ' . implode(', ', $fields) . ' WHERE username = ?';
         $this->pdo->prepare($sql)->execute($params);
+    }
+
+    /**
+     * 启用/停用用户（status: 1=启用, 0=停用）。更新状态同时刷新 updated_at。
+     */
+    public function setStatus(string $username, int $status): void
+    {
+        // 先查存在性、再 UPDATE：不能依赖 rowCount —— MySQL 下 rowCount 是「变更行数」而非「命中行数」，
+        // 同一秒内重复 toggle（status 值未变）时 rowCount 会误报 0，导致误抛「未命中用户」。
+        if (!$this->userExists($username)) {
+            throw new \RuntimeException("setStatus: 未命中用户 {$username}");
+        }
+        $stmt = $this->pdo->prepare(
+            "UPDATE " . AppConfig::TABLE_ADMIN_USERS
+            . " SET status = ?, updated_at = " . Database::sqlNow()
+            . " WHERE username = ?"
+        );
+        $stmt->execute([$status, $username]);
     }
 
     public function deleteUser(string $username): void

@@ -3,7 +3,8 @@ namespace App\Config;
 
 class AppConfig
 {
-    public const APP_VERSION = '2.6.2';
+    public const APP_VERSION = '2.6.3';
+
 
     // ── 表名常量 ──
     public const TABLE_JOB_GIT_MAP       = 'ci_job_git_map';
@@ -19,6 +20,7 @@ class AppConfig
     public const TABLE_ROLE_PERMISSIONS  = 'role_permissions';
     public const TABLE_IMPLIED_RULES     = 'implied_rules';
     public const TABLE_API_TOKENS        = 'api_tokens';
+    public const TABLE_USER_IDENTITIES   = 'user_identities'; // 身份源关联表（v2.6.3 引入，支持 ldap/local 等多登录方式）
 
     // ── 角色常量 ──
     public const ROLE_SUPER_ADMIN = 'super_admin';
@@ -555,6 +557,33 @@ class AppConfig
         return [
             'user'     => $this->getRootAdminUser(),
             'password' => $this->config['admin']['password'] ?? '',
+        ];
+    }
+
+    /**
+     * LDAP 身份源配置。
+     * 仅在 settings.php 的 ldap.enabled=true 时启用；密码源、DN 模板、过滤等均从 .env 读取。
+     */
+    public function getLdapConfig(): array
+    {
+        $cfg = $this->config['ldap'] ?? [];
+        $enabled = (bool)($cfg['enabled'] ?? false);
+        if (!$enabled) {
+            return ['enabled' => false];
+        }
+        return [
+            'enabled'         => true,
+            'host'            => (string)($cfg['host'] ?? ''),
+            'port'            => (int)($cfg['port'] ?? 389),
+            'use_tls'         => (bool)($cfg['use_tls'] ?? false),  // LDAP_CONNECT 之后 STARTTLS
+            'use_ldaps'       => (bool)($cfg['use_ldaps'] ?? false), // ldap_connect 时直接用 ldaps://
+            'base_dn'         => (string)($cfg['base_dn'] ?? ''),
+            'bind_dn'         => (string)($cfg['bind_dn'] ?? ''),   // 先以管理员绑定搜索用户 DN，再切回用户密码校验
+            'bind_password'   => (string)($cfg['bind_password'] ?? ''),
+            'user_filter'     => (string)($cfg['user_filter'] ?? '(uid=%s)'), // %s → 用户名
+            'user_dn_pattern' => (string)($cfg['user_dn_pattern'] ?? ''),     // 若已固定 DN 模板（如 uid=%s,ou=users,dc=x），跳过管理员搜索
+            'attrs'           => is_array($cfg['attrs'] ?? null) ? $cfg['attrs'] : ['uid', 'cn', 'mail', 'dn'],
+            'network_timeout' => (int)($cfg['network_timeout'] ?? 5),
         ];
     }
 

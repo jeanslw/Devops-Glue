@@ -40,6 +40,11 @@ class TokenService
                 }
                 $role = array_pop($parts);
                 $user = implode('|', $parts);
+                // 停用/删除账号即时踢下线：token 命中缓存后仍要回查账号状态，
+                // 否则管理员停用某账号后，其尚未过期的旧 token 依然能继续调接口。
+                if (!$this->isAccountActive($user)) {
+                    return null;
+                }
                 return [
                     'user' => $user,
                     'role' => $role !== '' ? $role : AppConfig::ROLE_ADMIN,
@@ -48,6 +53,31 @@ class TokenService
         } catch (\Exception $e) {
         }
         return null;
+    }
+
+    /**
+     * 回查账号是否仍有效（未停用、未删除）。
+     *
+     * - status 明确为 0（停用）→ false，token 立即失效（踢下线）。
+     * - 查无此行（账号已被删除）→ false，同样失效。
+     * - 查询抛异常（DB 不可达 / 旧库无 status 列）→ true 放行：
+     *   状态检查故障不能反过来锁死灾难恢复（env 兜底登录）路径。
+     */
+    private function isAccountActive(string $username): bool
+    {
+        try {
+            $stmt = $this->pdo->prepare(
+                "SELECT status FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE username = ?"
+            );
+            $stmt->execute([$username]);
+            $status = $stmt->fetchColumn();
+            if ($status === false) {
+                return false; // 无此行 = 账号已删除
+            }
+            return $status === null ? true : (int)$status !== 0;
+        } catch (\Exception $e) {
+            return true;
+        }
     }
 
     /**

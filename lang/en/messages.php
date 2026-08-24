@@ -64,6 +64,9 @@ return [
     'auth.new_password'       => 'New Password',
     'auth.confirm_password'   => 'Confirm New Password',
     'auth.update_password'    => 'Update Password',
+    // LDAP
+    'auth.ldap_not_bound'     => 'This LDAP account is not bound to any system user, please contact your administrator',
+    'auth.user_disabled'      => 'This account has been disabled, please contact your administrator',
 
     // ── Mapping ──
     'map.job_name_required'       => 'job_name is required',
@@ -392,6 +395,12 @@ return [
     'user.created'     => 'User created',
     'user.deleted'     => 'User deleted',
     'user.no_users'    => 'No users',
+    'user.status'      => 'Status',
+    'user.enable'      => 'Enable',
+    'user.disable'     => 'Disable',
+    'user.status_updated' => 'Status updated',
+    'user.cannot_disable_root' => 'The built-in root account cannot be disabled',
+    'user.cannot_disable_self' => 'You cannot disable your own account',
     'user.confirm_delete' => 'Confirm delete user',
     'user.edit_user'    => 'Edit User',
     'user.updated'      => 'User updated',

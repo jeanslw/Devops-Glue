@@ -269,15 +269,20 @@ class Database
             )");
         }
 
-        // admin_users
+        // admin_users（v2.6.3 起：id 为主键，username 降为唯一约束；新增 avatar_url/status/created_at）
         $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_ADMIN_USERS . " (
-            username {$TEXT_PK},
+            id " . ($isMySQL ? 'BIGINT AUTO_INCREMENT PRIMARY KEY' : 'INTEGER PRIMARY KEY AUTOINCREMENT') . ",
+            username " . ($isMySQL ? 'VARCHAR(255)' : 'TEXT') . " NOT NULL UNIQUE,
             password_hash TEXT NOT NULL,
             role {$VARCHAR} NOT NULL DEFAULT '" . \App\Config\AppConfig::ROLE_ADMIN . "',
             systems {$VARCHAR} NOT NULL DEFAULT 'ci,cd',
             email {$VARCHAR} NOT NULL DEFAULT '',
+            avatar_url TEXT,
+            status " . ($isMySQL ? 'TINYINT' : 'INTEGER') . " NOT NULL DEFAULT 1,
+            created_at {$TS_TYPE} DEFAULT ({$NOW}),
             updated_at {$TS_TYPE} DEFAULT ({$NOW})
         ){$ENGINE}");
+
 
         // ci_app_settings（应用运行时配置，与缓存分离）
         if ($isMySQL) {
@@ -376,6 +381,38 @@ class Database
             )");
         }
 
+        // user_identities（身份源关联：一个 admin_users.username 可绑 ldap/local 等多个登录方式）
+        // 与 admin_users 解耦：admin_users 只保留"用户存在 + 角色 + 系统范围"，
+        // 而"通过哪种身份源登录、对应的标识符/凭据"在此，便于未来接入 oauth/saml 等。
+        if ($isMySQL) {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_USER_IDENTITIES . " (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                username VARCHAR(255) NOT NULL,
+                provider_type VARCHAR(32) NOT NULL,
+                provider_uid VARCHAR(255) NOT NULL,
+                credential TEXT,
+                email VARCHAR(255) NOT NULL DEFAULT '',
+                raw_profile MEDIUMTEXT,
+                bound_at {$TS_TYPE} DEFAULT ({$NOW}),
+                updated_at {$TS_TYPE} DEFAULT ({$NOW}),
+                UNIQUE KEY uniq_provider (provider_type, provider_uid(191)),
+                KEY idx_username (username)
+            ){$ENGINE}");
+        } else {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_USER_IDENTITIES . " (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL,
+                provider_type TEXT NOT NULL,
+                provider_uid TEXT NOT NULL,
+                credential TEXT,
+                email TEXT NOT NULL DEFAULT '',
+                raw_profile TEXT,
+                bound_at TEXT DEFAULT (datetime('now','localtime')),
+                updated_at TEXT DEFAULT (datetime('now','localtime')),
+                UNIQUE (provider_type, provider_uid)
+            )");
+        }
+
         // api_tokens（服务账号 / 第三方调用的 API token，独立于 RBAC 权限体系）
         $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_API_TOKENS . " (
             id {$PK},
@@ -411,7 +448,16 @@ class Database
                 'created_at' => "{$TS_TYPE} DEFAULT NULL",          // 注册时间：内置为 NULL
             ],
             \App\Config\AppConfig::TABLE_ADMIN_USERS => [
-                'email' => "{$VARCHAR} NOT NULL DEFAULT ''", // 用户邮箱（OAuth userinfo 用，空则占位兜底）
+                'email'      => "{$VARCHAR} NOT NULL DEFAULT ''", // 用户邮箱（OAuth userinfo 用，空则占位兜底）
+                'avatar_url' => 'TEXT',                                        // 头像 URL
+                'status'     => ($isMySQL ? 'TINYINT' : 'INTEGER') . " NOT NULL DEFAULT 1", // 1=启用 0=停用
+                'created_at' => "{$TS_TYPE} NULL DEFAULT NULL",                // 注册时间（存量行为 NULL，新行为 NOW）
+                // 注：id 主键不通过此 ALTER 自动补——MySQL 中 AUTO_INCREMENT 主键列无法幂等补加、
+                // 且涉及旧主键（username）变更风险；存量库 id 主键由部署方手动迁移。
+            ],
+
+            // user_identities 为 v2.6.3 新增整表，不存在存量列；若后续给该表新加列再据此追加
+            \App\Config\AppConfig::TABLE_USER_IDENTITIES => [
             ],
         ];
         // 补列循环：遍历有限映射，天然有界、必然终止（无 while/递归，无需显式 break）。

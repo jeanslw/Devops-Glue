@@ -31,6 +31,9 @@ class AdminAuthServiceTest extends TestCase
             role TEXT NOT NULL,
             systems TEXT NOT NULL,
             email TEXT NOT NULL DEFAULT "",
+            status INTEGER NOT NULL DEFAULT 1,
+            avatar_url TEXT,
+            created_at TEXT,
             updated_at TEXT
         )');
         $this->repo = new AdminUserRepository($this->pdo);
@@ -104,5 +107,22 @@ class AdminAuthServiceTest extends TestCase
 
         $this->assertTrue($service->verifyCurrentPassword('admin', 'dbpass1234'));
         $this->assertFalse($service->verifyCurrentPassword('admin', 'envpass1234'), '改密码校验同样不应接受 .env 明文密码');
+    }
+
+    public function testDisabledAccountReportsDisabledNotWrongPassword(): void
+    {
+        $this->seedRoot('admin', 'dbpass1234');
+        $this->repo->setStatus('admin', 0); // 停用
+        $service = $this->makeService(['admin' => ['user' => 'admin', 'password' => 'envpass1234']]);
+
+        // 密码正确 → 也必须提示「已停用」，而非放行
+        $correct = $service->authenticate('admin', 'dbpass1234', AppConfig::SYSTEM_CI);
+        $this->assertFalse($correct['success']);
+        $this->assertSame('auth.user_disabled', $correct['errorKey']);
+
+        // 密码错误 → 同样提示「已停用」，不能落回「账号或密码错误」误导用户（#1 修复点）
+        $wrong = $service->authenticate('admin', 'totally_wrong', AppConfig::SYSTEM_CI);
+        $this->assertFalse($wrong['success']);
+        $this->assertSame('auth.user_disabled', $wrong['errorKey']);
     }
 }

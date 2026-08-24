@@ -883,6 +883,54 @@ class AdminController extends BaseController
     }
 
     /**
+     * PUT /api/admin/users/{username}/status — 启用/停用用户
+     * Body: { "enabled": true|false }
+     * 保护：root 账号不可停用；不能停用自己。
+     */
+    public function userSetStatus(Request $request, Response $response, array $args): Response
+    {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_USERS_MANAGE_ADMIN)) {
+            return $resp;
+        }
+
+        $targetUser = $args['username'] ?? '';
+        if ($targetUser === '') {
+            return $this->jsonError($response, 'user.invalid_username', 400);
+        }
+
+        $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
+        // enabled=true/false（Bool 语义清晰）；兼容直接传 status=0/1
+        $enabled = array_key_exists('enabled', $body)
+            ? \filter_var($body['enabled'], \FILTER_VALIDATE_BOOLEAN)
+            : !empty($body['status']);
+
+        try {
+            $target = $this->adminUserRepository->findUser($targetUser);
+            if (!$target) {
+                return $this->jsonError($response, 'user.not_found', 404);
+            }
+
+            $rootAdmin = $this->config->getRootAdminUser();
+            if (!$enabled && $targetUser === $rootAdmin) {
+                return $this->jsonError($response, 'user.cannot_disable_root', 403);
+            }
+            if (!$enabled && $targetUser === $this->currentUser) {
+                return $this->jsonError($response, 'user.cannot_disable_self', 403);
+            }
+            // 停用管理员需相应权限
+            if (!$enabled && $this->isTargetAdmin($target['role']) && !$this->hasPermission(AppConfig::PERM_CI_USERS_MANAGE_ADMIN)) {
+                return $this->jsonError($response, 'user.cannot_edit_admin', 403);
+            }
+
+            $this->adminUserRepository->setStatus($targetUser, $enabled ? 1 : 0);
+            return $this->output($response, ['success' => true, 'enabled' => $enabled], $request);
+        } catch (\Exception $e) {
+            return $this->jsonError($response, $this->__('build.modify_failed') . ': ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
      * DELETE /api/admin/users/{username} — 删除用户
      */
     public function userDelete(Request $request, Response $response, array $args): Response

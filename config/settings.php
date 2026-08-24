@@ -116,7 +116,31 @@ return [
         'password' => env('ADMIN_PASSWORD', ''),
     ],
 
+    // ==================== LDAP 外部身份源登录 ====================
+    // 依赖 PHP ext-ldap 扩展（php.ini 启用 extension=ldap），未加载则自动降级，仅本地登录可用。
+    // 启用后登录顺序：本地 admin_users → LDAP（须已在 user_identities 绑定）→ .env 兜底。
+    //
+    // 两种连接模式（二选一）：
+    //   1. 管理员搜索模式（通用）：配 bind_dn + bind_password + base_dn + user_filter，
+    //      先以管理员身份搜索用户 DN，再用该 DN + 用户密码绑定校验。
+    //   2. 直连模式：配 user_dn_pattern（如 uid=%s,ou=users,dc=example,dc=com），
+    //      跳过搜索，直接用模板拼出 DN 绑定。
+    'ldap' => [
+        'enabled'         => env('LDAP_ENABLED', 'false') === 'true',
+        'host'            => env('LDAP_HOST', ''),
+        'port'            => (int) env('LDAP_PORT', '389'),
+        'use_tls'         => env('LDAP_USE_TLS', 'false') === 'true',   // 连接后 STARTTLS
+        'use_ldaps'       => env('LDAP_USES_LDAPS', 'false') === 'true', // 直接 ldaps://（通常端口 636）
+        'base_dn'         => env('LDAP_BASE_DN', ''),
+        'bind_dn'         => env('LDAP_BIND_DN', ''),
+        'bind_password'   => env('LDAP_BIND_PASSWORD', ''),
+        'user_filter'     => env('LDAP_USER_FILTER', '(uid=%s)'),        // %s → 登录用户名
+        'user_dn_pattern' => env('LDAP_USER_DN_PATTERN', ''),            // 非空则走直连模式
+        'network_timeout' => (int) env('LDAP_NETWORK_TIMEOUT', '5'),
+    ],
+
     // ==================== CORS ====================
+
     'cors' => [
         'allowed_origins' => env('CORS_ORIGIN', '*') === '*'
             ? ['*']

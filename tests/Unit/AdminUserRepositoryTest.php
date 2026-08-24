@@ -129,6 +129,30 @@ class AdminUserRepositoryTest extends TestCase
         $repo->updatePassword('ghost', password_hash('x', PASSWORD_BCRYPT));
     }
 
+    public function testSetStatusTogglesAndRetoggleDoesNotThrow(): void
+    {
+        $pdo = $this->createMemoryDatabase();
+        $repo = new AdminUserRepository($pdo);
+        $repo->createUser('grace', password_hash('password123', PASSWORD_BCRYPT), AppConfig::ROLE_DEPLOYER, 'cd');
+
+        $repo->setStatus('grace', 0);
+        $this->assertSame(0, (int)$repo->findByUsername('grace')['status']);
+
+        // 同一秒内重复 toggle（status 值未变）不得误报「未命中用户」——这正是 rowCount 方案会误伤的场景
+        $repo->setStatus('grace', 0);
+        $repo->setStatus('grace', 1);
+        $this->assertSame(1, (int)$repo->findByUsername('grace')['status']);
+    }
+
+    public function testSetStatusThrowsForUnknownUser(): void
+    {
+        $pdo = $this->createMemoryDatabase();
+        $repo = new AdminUserRepository($pdo);
+
+        $this->expectException(\RuntimeException::class);
+        $repo->setStatus('ghost', 0);
+    }
+
     public function testCountByRoleAndUpdateRoleName(): void
     {
         $pdo = $this->createMemoryDatabase();
@@ -154,6 +178,9 @@ class AdminUserRepositoryTest extends TestCase
             role TEXT NOT NULL DEFAULT "' . AppConfig::ROLE_ADMIN . '",
             systems TEXT NOT NULL DEFAULT "ci,cd",
             email TEXT NOT NULL DEFAULT "",
+            status INTEGER NOT NULL DEFAULT 1,
+            avatar_url TEXT,
+            created_at TEXT,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         )');
         return $pdo;

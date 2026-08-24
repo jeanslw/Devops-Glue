@@ -42,6 +42,22 @@ class TokenServiceTest extends TestCase
         $stmt->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . $token, $value, time() + $expiresAt]);
     }
 
+    private function createAdminUsersTable(): void
+    {
+        $this->pdo->exec('CREATE TABLE ' . AppConfig::TABLE_ADMIN_USERS . ' (
+            username TEXT PRIMARY KEY,
+            status INTEGER NOT NULL DEFAULT 1
+        )');
+    }
+
+    private function seedUser(string $username, int $status): void
+    {
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO ' . AppConfig::TABLE_ADMIN_USERS . ' (username, status) VALUES (?, ?)'
+        );
+        $stmt->execute([$username, $status]);
+    }
+
     public function testNormalUsernameParsesRoleCorrectly(): void
     {
         $this->seedToken('tok_normal', 'alice|admin');
@@ -77,5 +93,42 @@ class TokenServiceTest extends TestCase
     {
         $this->seedToken('tok_expired', 'alice|admin', -1);
         $this->assertNull($this->service->validate('tok_expired'));
+    }
+
+    public function testDisabledUserTokenIsInvalidated(): void
+    {
+        // 停用账号（status=0）：token 命中缓存但账号已停用 → 立即失效（踢下线）
+        $this->createAdminUsersTable();
+        $this->seedUser('alice', 0);
+        $this->seedToken('tok_disabled', 'alice|admin');
+        $this->assertNull($this->service->validate('tok_disabled'));
+    }
+
+    public function testEnabledUserTokenRemainsValid(): void
+    {
+        $this->createAdminUsersTable();
+        $this->seedUser('alice', 1);
+        $this->seedToken('tok_enabled', 'alice|admin');
+        $result = $this->service->validate('tok_enabled');
+        $this->assertNotNull($result);
+        $this->assertSame('alice', $result['user']);
+        $this->assertSame('admin', $result['role']);
+    }
+
+    public function testDeletedUserTokenIsInvalidated(): void
+    {
+        // 账号已删除：admin_users 无此行 → token 同样失效
+        $this->createAdminUsersTable();
+        $this->seedToken('tok_deleted', 'ghost|admin');
+        $this->assertNull($this->service->validate('tok_deleted'));
+    }
+
+    public function testMissingStatusColumnDoesNotLockOut(): void
+    {
+        // 旧库无 status 列（或 DB 不可达）：状态检查抛异常 → 放行，灾难恢复不被误锁
+        $this->seedToken('tok_legacy', 'alice|admin');
+        $result = $this->service->validate('tok_legacy');
+        $this->assertNotNull($result);
+        $this->assertSame('alice', $result['user']);
     }
 }

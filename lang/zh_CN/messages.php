@@ -65,6 +65,9 @@ return [
     'auth.new_password'       => '新密码',
     'auth.confirm_password'   => '确认新密码',
     'auth.update_password'    => '更新密码',
+    // LDAP
+    'auth.ldap_not_bound'     => '该 LDAP 账号未绑定本系统用户，请联系管理员绑定后再登录',
+    'auth.user_disabled'      => '该账号已被停用，请联系管理员',
 
     // ── 映射管理 ──
     'map.job_name_required'      => 'job_name 为必填字段',
@@ -392,6 +395,12 @@ return [
     'user.created'     => '用户创建成功',
     'user.deleted'     => '用户已删除',
     'user.no_users'    => '暂无用户',
+    'user.status'      => '状态',
+    'user.enable'      => '启用',
+    'user.disable'     => '停用',
+    'user.status_updated' => '状态已更新',
+    'user.cannot_disable_root' => '内置根账号不允许停用',
+    'user.cannot_disable_self' => '不能停用自己的账号',
     'user.confirm_delete' => '确认删除用户',
     'user.edit_user'    => '编辑用户',
     'user.updated'      => '用户已更新',

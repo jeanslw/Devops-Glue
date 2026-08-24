@@ -1,5 +1,30 @@
 # Changelog
 
+## v2.6.3 (2026-08-24)
+- **LDAP login support** — Added PHP ext-ldap based LDAP authentication (zero new Composer deps): supports `user_dn_pattern` direct mode and `bind_dn + base_dn + user_filter` admin-search mode, LDAPS / StartTLS, and filter & DN escaping against injection.
+- **Auth chain integration** — `AdminAuthService` login order: local DB → LDAP → env fallback; a successful LDAP bind must map to a local account bound in `user_identities`, otherwise rejected (`auth.ldap_not_bound`); `ldap_bind_failed` / `ldap_user_not_found` both map to "wrong credentials".
+- **Identity binding table** — Added `user_identities` (globally unique on `provider_type + provider_uid`), supporting local / ldap multi-source binding; LDAP identities keep credential NULL, and login auto-refreshes email & raw_profile.
+- **admin_users structure expansion** — Added `id` (BIGINT/INTEGER auto-increment PK), `avatar_url`, `status` (1=active, 0=disabled), and `created_at`; fresh DBs get the full schema via `mysql_init.sql` / `sqlite_init.sql`, existing DBs get `avatar_url` / `status` / `created_at` via idempotent columnMigrations — the `id` PK requires manual migration by the deployer (a MySQL AUTO_INCREMENT PK column cannot be added idempotently via ALTER, and it touches the old username PK).
+- **User enable/disable (kick offline)** — Login checks `admin_users.status`, rejecting disabled (status=0) accounts; token validation re-checks account status so a disabled account's unexpired token is invalidated immediately. Admin user list gains a "status" column and enable/disable button (`PUT /api/admin/users/{username}/status`); root and self cannot be disabled.
+- **Timestamp semantics fix** — Creating a user writes only `created_at`; `updated_at` is written only on update.
+- **CD parity** — Devops_CD login and token validation now check `status` in sync (with column-existence fallback for old DBs), matching CI behavior.
+- **Config** — `config/settings.php` gains an `ldap` block (enabled / host / port / use_tls / use_ldaps / base_dn / bind_dn / bind_password / user_filter / user_dn_pattern / attrs / network_timeout), with `.env.example` examples; `APP_VERSION` bumped to 2.6.3.
+- **i18n** — CN/EN language packs add `auth.ldap_not_bound` and `auth.user_disabled`.
+
+## v2.6.2 (2026-08-23)
+- **OIDC Provider upgrade** — Added an OIDC Provider (Discovery + JWKS + RS256 id_token), letting Jenkins / Harbor / GitLab log in with Glue accounts on top of OAuth2 (Grafana stays backward-compatible).
+- **OAuth secret fail-closed** — Rejects empty/whitespace OAuth client secrets outright, eliminating the empty-secret bypass.
+- **SSO documentation** — Unified OAuth2/OIDC single-sign-on docs (CN/EN); README/OpenAPI now list the SSO endpoints.
+
+## v2.6.1 (2026-08-23)
+- **OAuth2 Provider** — Added an authorization-code OAuth2 Provider (`/oauth/authorize` + `/oauth/token` + `/oauth/userinfo`), enabling Grafana single sign-on with Glue accounts.
+- **Relationship dashboard read-only API** — Added read-only dashboard endpoints serving CI→CD chain data to Grafana panels; OAuth userinfo enhanced with additional user attributes.
+- **Account management enhancements** — super_admin can now edit their own profile; `admin_users` gains an `email` field.
+- **Expired tag cleanup** — Added expired-tag cleanup (admin toggle + read-time cleanup + scheduled CLI), unified writable directories to 755.
+- **Mapping key normalization** — custom_push record keys normalized to `job_name`, avoiding `project` fragmentation.
+- **Dependency tightening** — Pinned minimum PHP to 8.1, downgraded PHPUnit to ^10.5.
+- **DB fix** — Fixed SQLite default path overshooting by one directory level, preventing silent empty-DB creation outside the project.
+
 ## v2.6.0 (2026-08-19)
 - **Custom Push CI (custom_push)** — Added a push-based CI build mode where users push build status, log URL, and image tags via their own CI scripts. Devops-Glue only stores metadata and does not participate in build execution.
 - **New API endpoint** — Added `POST /api/build/{path}/report` (terminal build result + image tag write-back in one call), reusing the `build.report` scope.

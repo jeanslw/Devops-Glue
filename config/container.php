@@ -13,6 +13,9 @@ use App\Service\TokenService;
 use App\Service\ApiTokenService;
 use App\Service\AdminAuthService;
 use App\Service\AdminUserRepository;
+use App\Service\LdapService;
+use App\Service\UserIdentityRepository;
+
 use App\Service\Git\ProviderRegistry;
 use App\Service\Git\GitProviderFactory;
 use App\Service\Build\BuildProviderRegistry;
@@ -145,14 +148,27 @@ return [
         );
     },
 
+    // 用户身份源（user_identities）仓储：维护 ldap/local 等外部身份与 admin_users 的绑定
+    UserIdentityRepository::class => function (\Psr\Container\ContainerInterface $c) {
+        return new UserIdentityRepository($c->get(\PDO::class));
+    },
+
+    // LDAP 认证客户端：仅在 ldap.enabled=true 且 PHP ext-ldap 加载时工作
+    LdapService::class => function (\Psr\Container\ContainerInterface $c) {
+        return new LdapService($c->get(AppConfig::class));
+    },
+
     // 管理认证服务
     AdminAuthService::class => function (\Psr\Container\ContainerInterface $c) {
         return new AdminAuthService(
             $c->get(\PDO::class),
             $c->get(AdminUserRepository::class),
-            $c->get(AppConfig::class)
+            $c->get(AppConfig::class),
+            $c->get(LdapService::class),
+            $c->get(UserIdentityRepository::class)
         );
     },
+
 
     // 鉴权中间件
     AuthMiddleware::class => function (\Psr\Container\ContainerInterface $c) {

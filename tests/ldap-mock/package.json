@@ -1,0 +1,13 @@
+{
+  "name": "glue-ldap-mock",
+  "version": "1.0.0",
+  "private": true,
+  "description": "In-memory mock LDAP server for exercising the PHP ext-ldap login flow without a real OpenLDAP",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ldapjs": "^3.0.7"
+  }
+}

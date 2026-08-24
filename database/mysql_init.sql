@@ -72,13 +72,38 @@ CREATE TABLE IF NOT EXISTS `ci_app_settings` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ── 7. admin_users（管理员账号）──
+-- v2.6.3: id 设为主键（BIGINT AUTO_INCREMENT）；username 降为 UNIQUE，
+--         保持原有 username 业务主键语义不变（下游代码均以 username 定位用户），
+--         id 仅作内部自增序号 / 未来跨系统 idp 关联用，旧库由 Database::columnMigrations 幂等补齐。
 CREATE TABLE IF NOT EXISTS `admin_users` (
-    `username`      VARCHAR(255) PRIMARY KEY,
+    `id`            BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `username`      VARCHAR(255) NOT NULL UNIQUE,
     `password_hash` TEXT NOT NULL,
     `role`          VARCHAR(32) NOT NULL DEFAULT 'admin',
     `systems`       VARCHAR(128) NOT NULL DEFAULT 'ci,cd',
     `email`         VARCHAR(255) NOT NULL DEFAULT '',
+    `avatar_url`    TEXT,
+    `status`        TINYINT NOT NULL DEFAULT 1 COMMENT '1=启用, 0=停用',
+    `created_at`    DATETIME DEFAULT (NOW()),
     `updated_at`    DATETIME DEFAULT (NOW())
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+
+-- ── 7.1 user_identities（用户身份源关联表，支持一个 username 绑定 ldap/local 等多种登录方式）──
+-- provider_type + provider_uid 全局唯一，避免不同 LDAP 目录 / 未来 OAuth provider 冲突
+-- credential 只允许 local 身份存 bcrypt hash，其它 provider 一律为 NULL，避免旁路
+CREATE TABLE IF NOT EXISTS `user_identities` (
+    `id`            INT AUTO_INCREMENT PRIMARY KEY,
+    `username`      VARCHAR(255) NOT NULL COMMENT '关联 admin_users.username，不复制 user 信息',
+    `provider_type` VARCHAR(32)  NOT NULL COMMENT 'ldap / local / oauth_*',
+    `provider_uid`  VARCHAR(255) NOT NULL COMMENT 'LDAP: 完整 DN / entryUUID；local: username',
+    `credential`    TEXT         DEFAULT NULL COMMENT '仅 local 存 bcrypt hash，ldap 为 NULL',
+    `email`         VARCHAR(255) NOT NULL DEFAULT '',
+    `raw_profile`   MEDIUMTEXT   COMMENT 'JSON 快照，避免每次登录查 LDAP',
+    `bound_at`      DATETIME DEFAULT (NOW()),
+    `updated_at`    DATETIME DEFAULT (NOW()),
+    UNIQUE KEY `uniq_provider` (`provider_type`(32), `provider_uid`(191)),
+    KEY `idx_username` (`username`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ── 8. ci_security_checks（安全扫描审计）──

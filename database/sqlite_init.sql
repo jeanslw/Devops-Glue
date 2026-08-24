@@ -71,14 +71,36 @@ CREATE TABLE IF NOT EXISTS ci_app_settings (
 );
 
 -- ── 7. admin_users（管理员账号）──
+-- v2.6.3: id 设为主键（INTEGER AUTOINCREMENT）；username 降为 UNIQUE，
+--         保持原有 username 业务主键语义不变；旧库由 Database::columnMigrations 幂等补齐。
 CREATE TABLE IF NOT EXISTS admin_users (
-    username      TEXT PRIMARY KEY,
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    username      TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     role          TEXT NOT NULL DEFAULT 'admin',
     systems       TEXT NOT NULL DEFAULT 'ci,cd',
     email         TEXT NOT NULL DEFAULT '',
+    avatar_url    TEXT,
+    status        INTEGER NOT NULL DEFAULT 1,    -- 1=启用, 0=停用
+    created_at    TEXT DEFAULT (datetime('now','localtime')),
     updated_at    TEXT DEFAULT (datetime('now','localtime'))
 );
+
+
+-- ── 7.1 user_identities（用户身份源关联表，与 admin_users 拆分）──
+CREATE TABLE IF NOT EXISTS user_identities (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    username      TEXT NOT NULL,           -- 关联 admin_users.username
+    provider_type TEXT NOT NULL,           -- ldap / local / oauth_*
+    provider_uid  TEXT NOT NULL,           -- LDAP: DN/entryUUID；local: username
+    credential    TEXT,                    -- 仅 local 存 bcrypt hash，其余 NULL
+    email         TEXT NOT NULL DEFAULT '',
+    raw_profile   TEXT,                    -- JSON 快照
+    bound_at      TEXT DEFAULT (datetime('now','localtime')),
+    updated_at    TEXT DEFAULT (datetime('now','localtime')),
+    UNIQUE (provider_type, provider_uid)
+);
+CREATE INDEX IF NOT EXISTS idx_user_identities_username ON user_identities(username);
 
 -- ── 8. ci_security_checks（安全扫描审计）──
 CREATE TABLE IF NOT EXISTS ci_security_checks (

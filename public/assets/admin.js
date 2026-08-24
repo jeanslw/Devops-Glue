@@ -1680,7 +1680,7 @@ async function loadUsers() {
         const users = isAdminRole(currentUserRole) ? allUsers : allUsers.filter(u => !isAdminRole(u.role));
         const tbody = document.getElementById('user-tbody');
         if (!users.length) {
-            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#9ca3af;">' + __.t('user.no_users') + '</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#9ca3af;">' + __.t('user.no_users') + '</td></tr>';
             return;
         }
         tbody.innerHTML = users.map(u => {
@@ -1688,6 +1688,17 @@ async function loadUsers() {
             const isSuperAdmin = u.role === 'super_admin';
             const isAdmin = u.role === 'admin';
             const isSelf = u.username === currentUserName;
+            const isEnabled = Number(u.status === undefined || u.status === null ? 1 : u.status) !== 0;
+            const statusBadge = isEnabled
+                ? '<span style="color:#16a34a;font-size:12px;">● ' + __.t('common.enabled') + '</span>'
+                : '<span style="color:#ef4444;font-size:12px;">● ' + __.t('common.disabled') + '</span>';
+            // 启停按钮：root 与自己不可操作
+            const canToggle = !isSuperAdmin && !isSelf && (currentUserIsRoot || currentUserRole === 'super_admin' || hasPermission('ci.users.manage_admin'));
+            const toggleBtn = canToggle
+                ? (isEnabled
+                    ? `<button class="btn btn-sm btn-del" onclick="toggleUserStatus('${escJs(esc(u.username))}', false)">🚫 ${__.t('user.disable')}</button>`
+                    : `<button class="btn btn-sm btn-save" onclick="toggleUserStatus('${escJs(esc(u.username))}', true)">✅ ${__.t('user.enable')}</button>`)
+                : '';
             let actions = '';
             // 超级管理员可修改任意用户（deployer/admin/viewer）的密码；根账号（自己）走「修改密码」菜单
             const modPwBtn = (currentUserRole === 'super_admin' && !isSelf)
@@ -1719,11 +1730,35 @@ async function loadUsers() {
                 <td>${esc(u.systems || '-')}</td>
                 <td style="font-size:12px;color:#6b7280;">${esc(u.email || '-')}</td>
                 <td style="font-size:12px;color:#6b7280;">${esc(time)}</td>
-                <td style="white-space:nowrap">${actions}</td>
+                <td>${statusBadge}</td>
+                <td style="white-space:nowrap">${toggleBtn}${actions}</td>
             </tr>`;
         }).join('');
     } catch (e) {
-        document.getElementById('user-tbody').innerHTML = '<tr><td colspan="6" style="text-align:center;color:#ef4444;">' + __.t('js.load_failed') + ': ' + e.message + '</td></tr>';
+        document.getElementById('user-tbody').innerHTML = '<tr><td colspan="7" style="text-align:center;color:#ef4444;">' + __.t('js.load_failed') + ': ' + e.message + '</td></tr>';
+    }
+}
+
+/** 启用 / 停用用户（调用 PUT /api/admin/users/{username}/status） */
+async function toggleUserStatus(username, enable) {
+    const actionLabel = enable ? __.t('user.enable') : __.t('user.disable');
+    if (!confirm(actionLabel + ' ' + username + ' ?')) return;
+    try {
+        const res = await fetch('/api/admin/users/' + encodeURIComponent(username) + '/status', {
+            method: 'PUT',
+            headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: enable })
+        });
+        if (handle401(res)) return;
+        const data = await res.json();
+        if (res.ok) {
+            toast(__.t('user.status_updated') + ': ' + username, true);
+            await loadUsers();
+        } else {
+            alert(data.message || __.t('common.failed'));
+        }
+    } catch (e) {
+        alert(e.message);
     }
 }
 
