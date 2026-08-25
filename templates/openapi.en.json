@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Devops-Glue API",
-    "version": "2.6.2",
+    "version": "2.6.4",
     "description": "DevOps toolchain integration API — unified interface for Jenkins / GitLab CI, GitLab / Gitee / GitHub / Gitea, and Harbor.",
     "contact": {
       "email": "jeanslw@qq.com"

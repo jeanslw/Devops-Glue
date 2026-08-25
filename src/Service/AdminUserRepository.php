@@ -87,10 +87,18 @@ class AdminUserRepository
             return;
         }
 
+        // 先查存在性、再 UPDATE：不能依赖 rowCount —— MySQL 下 rowCount 是「变更行数」而非「命中行数」，
+        // 同一秒内重复提交（role/email 值未变，updated_at 的 NOW() 为秒级精度也未变）时 rowCount 会误报 0，
+        // 导致对存在的用户误抛「未命中用户」。同 setStatus()。
+        if (!$this->userExists($username)) {
+            throw new \RuntimeException("updateUser: 未命中用户 {$username}");
+        }
+
         $fields[] = 'updated_at = ' . Database::sqlNow();
         $params[] = $username;
         $sql = 'UPDATE ' . AppConfig::TABLE_ADMIN_USERS . ' SET ' . implode(', ', $fields) . ' WHERE username = ?';
-        $this->pdo->prepare($sql)->execute($params);
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
     }
 
     /**

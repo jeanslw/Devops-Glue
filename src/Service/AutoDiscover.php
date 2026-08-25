@@ -281,9 +281,21 @@ class AutoDiscover
     private function normalizeRemote(string $remote): string
     {
         $r = trim($remote);
+        if (empty($r)) return '';
 
-        // 去掉协议前缀
-        $r = preg_replace('#^(https?|ssh|git)://#i', '', $r);
+        // 处理 ssh://user@host:port/path 格式（带端口）
+        if (preg_match('#^ssh://#i', $r)) {
+            $parts = parse_url($r);
+            if (isset($parts['path'])) {
+                $path = ltrim($parts['path'], '/');
+                $path = preg_replace('#\.git$#i', '', $path);
+                return strtolower($path);
+            }
+            return '';
+        }
+
+        // 去掉其他协议前缀 (http, https, git)
+        $r = preg_replace('#^(https?|git)://#i', '', $r);
 
         // git@host:path → host/path
         if (preg_match('#^git@([^:]+):(.+)#', $r, $m)) {

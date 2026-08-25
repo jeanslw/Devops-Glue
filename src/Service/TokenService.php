@@ -51,6 +51,7 @@ class TokenService
                 ];
             }
         } catch (\Exception $e) {
+            \App\Helper\Log::exception($e);
         }
         return null;
     }

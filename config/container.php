@@ -61,7 +61,7 @@ return [
             $pass = $_ENV['DB_PASS'] ?? '';
             $charset = $_ENV['DB_CHARSET'] ?? 'utf8mb4';
             $dsn = "mysql:host={$host};port={$port};dbname={$db};charset={$charset}";
-            $pdo = new \PDO($dsn, $user, $pass, [\PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES {$charset}"]);
+            $pdo = new \PDO($dsn, $user, $pass, [\PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES {$charset}", \PDO::ATTR_EMULATE_PREPARES => false]);
         } else {
             $path = $_ENV['DB_PATH'] ?? __DIR__ . '/data/data.db';
             $dir = dirname($path);

@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.6.4 (2026-08-25)
+- **Prepared-statement hardening** — MySQL connections now disable emulated prepares (`PDO::ATTR_EMULATE_PREPARES = false`) and use server-side native prepares, removing the injection surface introduced by the emulation layer's own quoting; applied to both connection sites (`config/container.php` and `Service/Database.php`).
+- **Error-handler status-code guard** — The default error handler now range-checks Slim `HttpException` status codes against 400–599, falling back to 500 when out of range (e.g. a bare `HttpException` with code 0), preventing `withStatus(0)` from throwing a second exception *inside* the error handler and blanking the page.
+- **Git remote normalization fix** — Fixed parsing of `ssh://user@host:port/path` remotes: the old logic folded the port number into the repository path (`2222/org/repo`), so the same repository reached over https and over ssh normalized to two different canonical keys and broke CI→CD chain matching. Both now yield `org/repo`.
+- **User-update existence check** — `updateUser()` now verifies the user exists before the UPDATE and raises explicitly when it does not, instead of silently updating nothing. Existence is determined by a dedicated query rather than `rowCount()` (on MySQL `rowCount()` reports *changed* rows, not *matched* rows, so re-submitting identical values falsely reports 0), matching `setStatus()` behavior.
+- **Logging observability** — `Helper\Log` is now a singleton, so recording an exception no longer reloads the config and rebuilds the Logger on every call; the previously silent `catch` blocks in `Database::ensureIndexes()` and `TokenService::validate()` now log, so index-creation failures and database errors during token validation are no longer swallowed.
+- **Versioning** — `APP_VERSION` bumped to 2.6.4; the OpenAPI `version` field, which had lagged at 2.6.2, is realigned to 2.6.4 (both CN and EN specs).
+
 ## v2.6.3 (2026-08-24)
 - **LDAP login support** — Added PHP ext-ldap based LDAP authentication (zero new Composer deps): supports `user_dn_pattern` direct mode and `bind_dn + base_dn + user_filter` admin-search mode, LDAPS / StartTLS, and filter & DN escaping against injection.
 - **Auth chain integration** — `AdminAuthService` login order: local DB → LDAP → env fallback; a successful LDAP bind must map to a local account bound in `user_identities`, otherwise rejected (`auth.ldap_not_bound`); `ldap_bind_failed` / `ldap_user_not_found` both map to "wrong credentials".

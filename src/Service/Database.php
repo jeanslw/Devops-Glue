@@ -130,6 +130,7 @@ class Database
         $dsn  = "mysql:host={$cfg['host']};port={$cfg['port']};dbname={$cfg['database']};charset={$cfg['charset']}";
         return new \PDO($dsn, $cfg['username'], $cfg['password'], [
             \PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES {$cfg['charset']}",
+            \PDO::ATTR_EMULATE_PREPARES => false,
         ]);
     }
 
@@ -512,7 +513,8 @@ class Database
                 self::$pdo->exec("CREATE INDEX IF NOT EXISTS {$index} ON {$table} ({$columns})");
             }
         } catch (\Exception $e) {
-            // 索引非关键路径，失败不阻断启动
+            // 索引非关键路径，失败不阻断启动，但记录日志以便排查
+            \App\Helper\Log::exception($e);
         }
     }
 

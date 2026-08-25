@@ -93,6 +93,37 @@ class AdminUserRepositoryTest extends TestCase
         $this->assertEquals(AppConfig::ROLE_ADMIN, $updated['role']);
     }
 
+    public function testUpdateUserThrowsWhenUserMissing(): void
+    {
+        $pdo = $this->createMemoryDatabase();
+        $repo = new AdminUserRepository($pdo);
+
+        $this->expectException(\RuntimeException::class);
+        $repo->updateUser('ghost', null, AppConfig::ROLE_ADMIN);
+    }
+
+    /**
+     * 幂等重提交不得误报「未命中用户」。
+     *
+     * 存在性必须靠 userExists() 判定，不能靠 rowCount()：MySQL 下 rowCount 是「变更行数」，
+     * 同一秒内用相同 role/email 重复提交（updated_at 的 NOW() 为秒级精度也不变）会返回 0，
+     * 对存在的用户误抛异常。SQLite 的 changes() 语义不同，本用例在 sqlite 上属回归护栏、
+     * 真正的判别环境是 MySQL。
+     */
+    public function testUpdateUserIsIdempotentOnUnchangedValues(): void
+    {
+        $pdo = $this->createMemoryDatabase();
+        $repo = new AdminUserRepository($pdo);
+        $repo->createUser('erin', password_hash('password123', PASSWORD_BCRYPT), AppConfig::ROLE_DEPLOYER, 'cd');
+
+        $repo->updateUser('erin', null, AppConfig::ROLE_ADMIN, 'erin@example.com');
+        $repo->updateUser('erin', null, AppConfig::ROLE_ADMIN, 'erin@example.com');
+
+        $updated = $repo->findUser('erin');
+        $this->assertNotNull($updated);
+        $this->assertEquals(AppConfig::ROLE_ADMIN, $updated['role']);
+    }
+
     public function testDeleteUserRemovesUser(): void
     {
         $pdo = $this->createMemoryDatabase();

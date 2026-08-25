@@ -2,6 +2,7 @@
 namespace App;
 
 use Psr\Http\Message\ResponseFactoryInterface;
+use Psr\Http\Message\ServerRequestInterface;
 use Slim\Middleware\ErrorMiddleware;
 use App\Exceptions\ApiException;
 
@@ -40,7 +41,11 @@ class ErrorHandlerFactory
                 $code = $exception->getStatusCode();
                 $message = $exception->getMessage();
             } elseif ($exception instanceof \Slim\Exception\HttpException) {
-                $code = $exception->getCode();
+                // Slim 4 的 HttpException 没有 getStatusCode()，状态码存在 $code 上
+                // （各特化子类写死 protected $code = 4xx，由构造函数透传给父类）。
+                // 裸 new HttpException() 时 code 为 0，兜底到 500，避免 withStatus(0) 抛异常。
+                $c = $exception->getCode();
+                $code = ($c >= 400 && $c <= 599) ? $c : 500;
             }
 
             $lang = $resolveErrorLocale($request);
@@ -102,7 +107,7 @@ class ErrorHandlerFactory
         }
     }
 
-    private static function renderErrorHtml($request, int $code, ?string $detail, callable $resolveErrorLocale, ResponseFactoryInterface $responseFactory): \Psr\Http\Message\ResponseInterface
+    private static function renderErrorHtml(ServerRequestInterface $request, int $code, ?string $detail, callable $resolveErrorLocale, ResponseFactoryInterface $responseFactory): \Psr\Http\Message\ResponseInterface
     {
         $response = $responseFactory->createResponse();
         $lang = $resolveErrorLocale($request);
