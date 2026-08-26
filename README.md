@@ -7,10 +7,12 @@ DevOps-Glue API is a Slim 4–based integration platform designed to enhance Dev
 </p>
 
 <p align="center">
-  <a href="https://github.com/jeanslw/Devops_CD"><img src="https://img.shields.io/badge/Paired_CD-Devops__CD-green?logo=python" alt="CD"></a>
-  <img src="https://img.shields.io/badge/PHP-8.1+-777BB4?logo=php&logoColor=white" alt="PHP">
-  <img src="https://img.shields.io/badge/Slim-4-00A650?logo=slim&logoColor=white" alt="Slim">
-  <img src="https://img.shields.io/github/license/jeanslw/Devops-Glue" alt="License">
+  <a href="https://github.com/jeanslw/Devops_CD"><img src="https://img.shields.io/badge/Paired-Devops__CD-green?logo=python" alt="CD"></a>
+  <a href="https://github.com/jeanslw/devops-glue/releases/tag/v2.6"><img src="https://img.shields.io/github/v/release/jeanslw/Devops-Glue?style=flat-square&label=Release" alt="Release"></a>
+  <a href="https://github.com/jeanslw/devops-glue"><img src="https://img.shields.io/github/last-commit/jeanslw/Devops-Glue?style=flat-square&label=Last%20Commit" alt="Last Commit"></a>
+  <a href="https://github.com/jeanslw/devops-glue/blob/main/LICENSE"><img src="https://img.shields.io/github/license/jeanslw/Devops-Glue" alt="License">
+  <a href="https://www.php.net"><img src="https://img.shields.io/badge/PHP-8.1+-777BB4?logo=php&logoColor=white" alt="PHP">
+  <a href="https://www.slimframework.com"><img src="https://img.shields.io/badge/Slim-4-00A650?logo=slim&logoColor=white" alt="Slim">
 </p>
 
 > 🔗 **This is a CI enhancement component** | Full system requires the CD deployment service → [Devops_CD](https://github.com/jeanslw/Devops_CD)
