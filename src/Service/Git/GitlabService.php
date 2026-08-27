@@ -39,12 +39,20 @@ class GitlabService implements GitProviderInterface
         return 'v4';
     }
 
+    /**
+     * $repository 已由上游 GitService::parseRepositoryPath() 预先 urlencode
+     * （形如 group%2Frepo）。此处必须原样拼接入 URL，严禁再次 urlencode，
+     * 否则会把 %2F 二次编码成 %252F，导致 GitLab API 找不到项目。
+     */
     public function getBranches(string $repository): array
     {
         $path = "/api/v4/projects/{$repository}/repository/branches";
         return $this->paginatedList($path, 'name');
     }
 
+    /**
+     * @see getBranches()：$repository 同为上游已 urlencode 的 path，不得二次编码。
+     */
     public function getTags(string $repository): array
     {
         $path = "/api/v4/projects/{$repository}/repository/tags";
@@ -53,6 +61,9 @@ class GitlabService implements GitProviderInterface
 
     public function setCommitStatus(string $repository, string $sha, string $state, string $context, string $description, string $targetUrl = ''): array
     {
+        // 注意：本方法入参与 getBranches/getTags 不同——调用方（BuildController）三级回退传入
+        // 的是「未编码」值（数字 project_id，或原始 owner/repo 路径），故需在此 urlencode。
+        // 纯数字 project_id 经 urlencode 无副作用；原始路径则被正确编码为 group%2Frepo。
         $encoded = urlencode($repository);
         $url = "{$this->baseUrl}/api/v4/projects/{$encoded}/statuses/{$sha}";
         try {

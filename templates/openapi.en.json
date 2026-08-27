@@ -461,7 +461,7 @@
           "preferred_username": { "type": "string", "example": "admin" },
           "name": { "type": "string", "example": "admin" },
           "email": { "type": "string", "example": "admin@devops-glue.local" },
-          "email_verified": { "type": "boolean", "example": true },
+          "email_verified": { "type": "boolean", "example": false },
           "role": { "type": "string", "example": "super_admin" },
           "groups": { "type": "array", "items": { "type": "string" }, "example": ["super_admin"] }
         }

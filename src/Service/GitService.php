@@ -82,6 +82,8 @@ class GitService
     {
         if (preg_match('#[:/]([^/]+/[^/]+?)(\.git)?$#', $remoteUrl, $matches)) {
             $path = $matches[1];
+            // GitLab 的 projects API 需接受 urlencode 后的 path 作为项目标识，
+            // 故在此编码后再下传 GitlabService::getBranches/getTags（下游不得再编码）。
             return $platform === 'gitlab' ? urlencode($path) : $path;
         }
         return '';

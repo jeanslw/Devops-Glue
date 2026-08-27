@@ -183,15 +183,16 @@ class OAuthController extends BaseController
             return $this->oauthError($response, 'invalid_token', 401);
         }
 
-        $username = (string)$data['user'];
-        $role     = (string)($data['role'] ?? '');
+        $username  = (string)$data['user'];
+        $role      = (string)($data['role'] ?? '');
+        $emailInfo = $this->resolveEmailInfo($username);
         $response->getBody()->write(json_encode([
             'sub'                => $username,   // OAuth/OIDC 标准唯一标识
             'username'           => $username,
             'preferred_username' => $username,
             'name'               => $username,
-            'email'              => $this->resolveEmail($username),
-            'email_verified'     => true,
+            'email'              => $emailInfo['email'],
+            'email_verified'     => $emailInfo['verified'],
             'role'               => $role,
             'groups'             => $this->oidc->groupsFromRole($role),
         ]));
@@ -217,10 +218,11 @@ class OAuthController extends BaseController
             return $this->oauthError($response, 'invalid_token', 401);
         }
 
+        $emailInfo = $this->resolveEmailInfo((string)$data['user']);
         $response->getBody()->write(json_encode([[
-            'email'    => $this->resolveEmail((string)$data['user']),
+            'email'    => $emailInfo['email'],
             'primary'  => true,
-            'verified' => true,
+            'verified' => $emailInfo['verified'],
         ]]));
         return $response->withHeader('Content-Type', 'application/json');
     }
@@ -250,11 +252,16 @@ class OAuthController extends BaseController
      * 取用户邮箱：实时查库（token 期内 email 变更即时生效）；
      * 用户不存在或 email 为空时退回 username@devops-glue.local 占位（Grafana 按 email 匹配用户，不能为空）。
      */
-    private function resolveEmail(string $username): string
+    private function resolveEmailInfo(string $username): array
     {
-        $user = $this->users->findByUsername($username);
+        $user  = $this->users->findByUsername($username);
         $email = trim((string)($user['email'] ?? ''));
-        return $email !== '' ? $email : $username . '@devops-glue.local';
+        if ($email !== '') {
+            return ['email' => $email, 'verified' => true];
+        }
+        // 用户未配置邮箱时退回 username@devops-glue.local 占位（Grafana 按 email 匹配用户，不能为空）。
+        // 该占位域是系统虚构、OP 无法验证，故 email_verified/verified 必须为 false，不得撒谎为已验证。
+        return ['email' => $username . '@devops-glue.local', 'verified' => false];
     }
 
     /**
@@ -274,13 +281,14 @@ class OAuthController extends BaseController
      */
     private function buildIdTokenClaims(string $username, string $role, string $issuer): array
     {
+        $emailInfo = $this->resolveEmailInfo($username);
         return [
             'iss'                => $issuer,
             'sub'                => $username,
             'name'               => $username,
             'preferred_username' => $username,
-            'email'              => $this->resolveEmail($username),
-            'email_verified'     => true,
+            'email'              => $emailInfo['email'],
+            'email_verified'     => $emailInfo['verified'],
             'groups'             => $this->oidc->groupsFromRole($role),
         ];
     }
