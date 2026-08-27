@@ -75,11 +75,13 @@ class GiteeService implements GitProviderInterface
                 'message' => $response->getStatusCode() < 400 ? 'status 已回写' : '回写失败',
             ];
         } catch (GuzzleException $e) {
+            // 原始异常（含完整 URL / repo / SHA）只进服务端日志，绝不下发到接口响应或落库，
+            // 避免把内部 Git 拓扑泄露给 API 调用方。
             $this->logger?->warning('Gitee commit status 回写失败', [
                 'repository' => $repository, 'sha' => $sha, 'error' => $e->getMessage(),
             ]);
-            $hint = 'Gitee 公开版不支持 commit status API，企业版未知';
-            return ['success' => false, 'message' => '回写失败: ' . $e->getMessage() . '（' . $hint . '）'];
+            $hint = 'Gitee 公开版不支持 commit status API（企业版未知）';
+            return ['success' => false, 'message' => $hint];
         }
     }
 

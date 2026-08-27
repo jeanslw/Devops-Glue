@@ -374,14 +374,11 @@ class MainController extends BaseController
     }
 
     /**
-     * 从远程 URL 提取项目路径
+     * 从远程 URL 提取项目路径（保留 GitLab 子群组层级）
      */
     private function extractProjectPath(string $remote): string
     {
-        if (preg_match('#[:/]([^/]+/[^/]+?)(\.git)?$#', $remote, $matches)) {
-            return $matches[1];
-        }
-        return '';
+        return \App\Helper\GitRemote::extractPath($remote) ?? '';
     }
 
     // ────────────────────────── i18n / docs / openapi ──────────────────────────

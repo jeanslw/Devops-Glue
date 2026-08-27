@@ -539,8 +539,12 @@ class BuildController extends BaseController
 
         // 4. Harbor 扫描 + commit status 回写（通过 Git Provider，跨所有平台）
         $vulnCount = 0;
-        $state     = 'unknown';
-        $result    = ['success' => false, 'message' => ''];
+        // scanState 只表达「Harbor 扫描结果」，与 commit status 回写是否成功解耦。
+        // 二者不可再共用一个变量：回写失败（如 Gitee 公开版不支持 commit status API）
+        // 不等于扫描失败，CI 按 scan_state 判断漏洞时不能把回写失败误读成「镜像有毒」。
+        $scanState      = 'unknown';
+        $writebackState = 'unknown';
+        $result         = ['success' => false, 'message' => ''];
 
         // commit status 通过 Git 平台回写（不依赖 CI 系统）
         $canWriteBack = $sha && $gitPlatform && $this->gitRegistry
@@ -548,43 +552,49 @@ class BuildController extends BaseController
 
         if ($canWriteBack) {
             if (!$this->harbor) {
-                $state  = 'pending';
-                $result = ['success' => false, 'message' => 'Harbor 未配置'];
+                $scanState      = 'pending';
+                $writebackState = 'pending';
+                $result         = ['success' => false, 'message' => 'Harbor 未配置'];
             } else {
                 try {
                     $scan = $this->harbor->getScanReport($harborProject, $harborRepoName, $tag);
                     if (isset($scan['error']) || isset($scan['code'])) {
-                        $state  = 'pending';
-                        $result = ['success' => false, 'message' => $scan['message'] ?? '扫描功能未启用'];
+                        $scanState = 'pending';
+                        $result    = ['success' => false, 'message' => $scan['message'] ?? '扫描功能未启用'];
                     } else {
                         // getScanReport 签名返回 array（永不为 null），?? [] 是不可达的死代码
                         $vulns = $scan['vulnerabilities'] ?? $scan;
                         $vulnCount = is_array($vulns) ? count($vulns) : 0;
-                        $state = $vulnCount > 0 ? 'failed' : 'success';
+                        $scanState = $vulnCount > 0 ? 'failed' : 'success';
                     }
-                    $desc  = "#{$iid} → {$tag} · " . ($vulnCount > 0 ? "{$vulnCount} vulns" : ($state === 'pending' ? '扫描未启用' : 'clean'));
+                    // 回写状态默认跟随扫描结果；仅当回写自身失败时才降为 error，绝不反改 scanState
+                    $writebackState = $scanState;
+                    $desc  = "#{$iid} → {$tag} · " . ($vulnCount > 0 ? "{$vulnCount} vulns" : ($scanState === 'pending' ? '扫描未启用' : 'clean'));
                     $harborUrl = $this->config->getHarborConfig()['url'] ?? '';
                     // 通过 Git Provider 回写 commit status（所有平台统一接口）
                     $gitProvider = $this->gitRegistry->create($gitPlatform);
                     // 三级回退：project_id（数字）→ current_path（真实路径）→ Jenkins 短名
                     $gitRepo = $gitProjectId ? (string) $gitProjectId
                         : (!empty($gitCurrentPath) ? $gitCurrentPath : $path);
-                    $result = $gitProvider->setCommitStatus($gitRepo, $sha, $state, 'harbor-scan', $desc, $harborUrl);
+                    $result = $gitProvider->setCommitStatus($gitRepo, $sha, $writebackState, 'harbor-scan', $desc, $harborUrl);
                 } catch (\Exception $e) {
-                    $state  = 'pending';
-                    $result = ['success' => false, 'message' => $e->getMessage()];
+                    // 扫描/回写过程抛异常：仅标记回写为 error，scanState 保持现状（unknown/pending/failed/success），
+                    // 不能让回写失败污染扫描结果。原始异常进服务端日志，不外泄给调用方。
+                    \App\Helper\Log::exception($e);
+                    $writebackState = 'error';
+                    $result = ['success' => false, 'message' => '回写失败：' . $e->getMessage()];
                 }
             }
         }
 
         // 5. 记录 pipeline → tag 映射（含扫描状态）
         if (!empty($iid)) {
-            $this->recordPipelineTag($path, (int)$iid, $tag, $harborRepo, $state);
+            $this->recordPipelineTag($path, (int)$iid, $tag, $harborRepo, $scanState);
         }
 
         // 6. 记录回写结果到 ci_security_checks（审计追踪）
         $writebackStatus = !$canWriteBack ? 'skipped' : (($result['success'] ?? false) ? 'success' : 'failed');
-        $this->recordSecurityCheck($path, $sha, $state, 'harbor-scan', $desc ?? '', 'harbor-scan', $tag, $writebackStatus, $result['message'] ?? '');
+        $this->recordSecurityCheck($path, $sha, $scanState, 'harbor-scan', $desc ?? '', 'harbor-scan', $tag, $writebackStatus, $result['message'] ?? '');
 
         return $this->output($response, [
             'build_provider'       => $provider,
@@ -592,7 +602,7 @@ class BuildController extends BaseController
             'tag'                  => $tag,
             'harbor_repository'    => $harborRepo,
             'vulnerability_count'  => $vulnCount,
-            'scan_state'           => $state,
+            'scan_state'           => $scanState,
             'commit_status'        => $result,
         ], $request);
     }

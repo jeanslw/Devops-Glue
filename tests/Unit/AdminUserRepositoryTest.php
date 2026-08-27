@@ -19,8 +19,72 @@ class AdminUserRepositoryTest extends TestCase
 
     protected function tearDown(): void
     {
-        unset($_ENV['ADMIN_USER'], $_ENV['ADMIN_PASSWORD']);
+        unset($_ENV['ADMIN_USER'], $_ENV['ADMIN_PASSWORD'], $_ENV['ADMIN_EMAIL']);
         parent::tearDown();
+    }
+
+    /** 读取某用户的 email 原始值（findUser 只返回 username/role） */
+    private function emailOf(\PDO $pdo, string $username): ?string
+    {
+        $stmt = $pdo->prepare('SELECT email FROM ' . AppConfig::TABLE_ADMIN_USERS . ' WHERE username = ?');
+        $stmt->execute([$username]);
+        $v = $stmt->fetchColumn();
+        return $v === false ? null : ($v === null ? null : (string)$v);
+    }
+
+    public function testSeedAdminWritesAdminEmailWhenConfigured(): void
+    {
+        $_ENV['ADMIN_EMAIL'] = 'ops@example.com';
+        $pdo = $this->createMemoryDatabase();
+        AdminUserRepository::seedAdminFromEnv($pdo);
+
+        $this->assertSame('ops@example.com', $this->emailOf($pdo, 'admin'));
+    }
+
+    public function testSeedAdminDefaultsToPlaceholderEmail(): void
+    {
+        // 未配置 ADMIN_EMAIL 时，落占位地址，保证 SSO 的 userinfo/id_token 有 email 可用
+        $pdo = $this->createMemoryDatabase();
+        AdminUserRepository::seedAdminFromEnv($pdo);
+
+        $this->assertSame('admin@example.com', $this->emailOf($pdo, 'admin'));
+    }
+
+    public function testSeedAdminIgnoresMalformedAdminEmail(): void
+    {
+        $_ENV['ADMIN_EMAIL'] = 'not-an-email';
+        $pdo = $this->createMemoryDatabase();
+        AdminUserRepository::seedAdminFromEnv($pdo);
+
+        // 脏值不得落库：回落到占位地址
+        $this->assertSame('admin@example.com', $this->emailOf($pdo, 'admin'));
+    }
+
+    public function testSeedAdminBackfillsEmptyEmailOnExistingDatabase(): void
+    {
+        // 先建号（无 ADMIN_EMAIL），模拟存量库
+        $pdo = $this->createMemoryDatabase();
+        AdminUserRepository::seedAdminFromEnv($pdo);
+        $this->assertSame('admin@example.com', $this->emailOf($pdo, 'admin'));
+
+        // 事后配置 ADMIN_EMAIL，再次启动应回填（仅 email 为空时）
+        $_ENV['ADMIN_EMAIL'] = 'ops@example.com';
+        AdminUserRepository::seedAdminFromEnv($pdo);
+
+        $this->assertSame('ops@example.com', $this->emailOf($pdo, 'admin'));
+    }
+
+    public function testSeedAdminDoesNotOverwriteExistingEmail(): void
+    {
+        $_ENV['ADMIN_EMAIL'] = 'seed@example.com';
+        $pdo = $this->createMemoryDatabase();
+        AdminUserRepository::seedAdminFromEnv($pdo);
+
+        // 用户在后台把邮箱改成了别的，之后重启不得被 ADMIN_EMAIL 覆盖回去
+        (new AdminUserRepository($pdo))->updateUser('admin', null, null, 'changed@example.com');
+        AdminUserRepository::seedAdminFromEnv($pdo);
+
+        $this->assertSame('changed@example.com', $this->emailOf($pdo, 'admin'));
     }
 
     public function testSeedAdminCreatesSuperAdminRootUserWhenTableIsEmpty(): void

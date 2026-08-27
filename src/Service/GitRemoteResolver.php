@@ -178,12 +178,10 @@ class GitRemoteResolver
         return $id;
     }
 
+    /** 提取项目路径（保留 GitLab 子群组层级，供 fetchGitlabProjectId 编码后查询） */
     private function extractProjectPath(string $remote): ?string
     {
-        if (preg_match('#[:/]([^/]+/[^/]+?)(\.git)?$#', $remote, $matches)) {
-            return $matches[1];
-        }
-        return null;
+        return \App\Helper\GitRemote::extractPath($remote);
     }
 
     private function fetchGitlabProjectId(string $projectPath): ?int

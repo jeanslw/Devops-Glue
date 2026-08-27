@@ -55,6 +55,29 @@ class ApiTokenScopeTest extends TestCase
         );
     }
 
+    public function testApiScopeCapabilitiesCoverEveryScope(): void
+    {
+        // 每个可选 scope 都应在能力目录中有登记，确保列表能展开展示具体端点能力
+        foreach (AppConfig::API_SCOPES as $scope => $_label) {
+            $this->assertArrayHasKey(
+                $scope,
+                AppConfig::API_SCOPE_CAPABILITIES,
+                "scope '{$scope}' 必须在 API_SCOPE_CAPABILITIES 中登记能力清单"
+            );
+        }
+    }
+
+    public function testBuildReportScopeExpandsToWritebackEndpoints(): void
+    {
+        // build.report 实际回写三个端点：scan-sync / commit-status / report，
+        // 列表需展开展示，避免用户只见抽象 scope 键而误判权限。
+        $this->assertSame(
+            ['scan-sync', 'commit-status', 'report'],
+            AppConfig::API_SCOPE_CAPABILITIES[AppConfig::API_SCOPE_BUILD_REPORT] ?? [],
+            'build.report scope 应展开为 scan-sync / commit-status / report 三个端点'
+        );
+    }
+
     public static function routeProvider(): array
     {
         return [

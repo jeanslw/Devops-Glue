@@ -80,12 +80,13 @@ class GitService
 
     private function parseRepositoryPath(string $remoteUrl, string $platform): string
     {
-        if (preg_match('#[:/]([^/]+/[^/]+?)(\.git)?$#', $remoteUrl, $matches)) {
-            $path = $matches[1];
-            // GitLab 的 projects API 需接受 urlencode 后的 path 作为项目标识，
-            // 故在此编码后再下传 GitlabService::getBranches/getTags（下游不得再编码）。
-            return $platform === 'gitlab' ? urlencode($path) : $path;
+        $path = \App\Helper\GitRemote::extractPath($remoteUrl);
+        if ($path === null) {
+            return '';
         }
-        return '';
+        // GitLab 的 projects API 需接受 urlencode 后的 path 作为项目标识（子群组的
+        // group/sub/repo 会被整体编码为 group%2Fsub%2Frepo），
+        // 故在此编码后再下传 GitlabService::getBranches/getTags（下游不得再编码）。
+        return $platform === 'gitlab' ? urlencode($path) : $path;
     }
 }

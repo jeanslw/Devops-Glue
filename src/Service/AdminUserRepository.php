@@ -143,6 +143,17 @@ class AdminUserRepository
 
     public static function seedAdminFromEnv(\PDO $pdo): void
     {
+        // 种子账号邮箱：ADMIN_EMAIL 未配置时落一个占位地址，保证 OIDC/OAuth 的 userinfo
+        // 与 id_token 始终有 email 可用（部分下游按 email 匹配/建号，不能为空）。
+        // 配置 ADMIN_EMAIL 后即改用真实邮箱；占位值可在后台自由改回真实邮箱。
+        $adminEmail = trim((string)($_ENV['ADMIN_EMAIL'] ?? ''));
+        if ($adminEmail !== '' && !filter_var($adminEmail, FILTER_VALIDATE_EMAIL)) {
+            $adminEmail = ''; // 格式非法则忽略，回落到占位地址，不把脏值写进库
+        }
+        if ($adminEmail === '') {
+            $adminEmail = 'admin@example.com'; // 占位，等待部署方在后台改成真实邮箱
+        }
+
         $cnt = (int)$pdo->query("SELECT count(*) c FROM " . AppConfig::TABLE_ADMIN_USERS)->fetch()['c'];
         if ($cnt === 0) {
             // 统一小写存储，与登录/建号规范化一致（SQLite 大小写敏感）
@@ -150,13 +161,29 @@ class AdminUserRepository
             $pass = $_ENV['ADMIN_PASSWORD'] ?? '';
             if ($pass !== '') {
                 $hash = password_hash($pass, PASSWORD_BCRYPT);
-                $pdo->prepare("INSERT INTO " . AppConfig::TABLE_ADMIN_USERS . " (username, password_hash, role, systems) VALUES (?, ?, ?, 'ci,cd')")
-                    ->execute([$user, $hash, AppConfig::ROLE_SUPER_ADMIN]);
+                if ($adminEmail !== '') {
+                    $pdo->prepare("INSERT INTO " . AppConfig::TABLE_ADMIN_USERS . " (username, password_hash, role, systems, email) VALUES (?, ?, ?, 'ci,cd', ?)")
+                        ->execute([$user, $hash, AppConfig::ROLE_SUPER_ADMIN, $adminEmail]);
+                } else {
+                    $pdo->prepare("INSERT INTO " . AppConfig::TABLE_ADMIN_USERS . " (username, password_hash, role, systems) VALUES (?, ?, ?, 'ci,cd')")
+                        ->execute([$user, $hash, AppConfig::ROLE_SUPER_ADMIN]);
+                }
             }
         }
 
         $rootUser = strtolower($_ENV['ADMIN_USER'] ?? 'admin');
         $pdo->prepare("UPDATE " . AppConfig::TABLE_ADMIN_USERS . " SET role = ? WHERE username = ? AND role = ?")
             ->execute([AppConfig::ROLE_SUPER_ADMIN, $rootUser, AppConfig::ROLE_ADMIN]);
+
+        // 存量库回填：仅在 email 为空、或仍是占位地址时补写，绝不覆盖用户已在界面上改过的邮箱。
+        // 旧库（auto_migrate=false 的手工建库模式）可能尚无 email 列，失败不阻断启动。
+        try {
+            $pdo->prepare(
+                "UPDATE " . AppConfig::TABLE_ADMIN_USERS
+                . " SET email = ? WHERE username = ? AND (email IS NULL OR email = '' OR email = ?)"
+            )->execute([$adminEmail, $rootUser, 'admin@example.com']);
+        } catch (\Throwable $e) {
+            \App\Helper\Log::exception($e);
+        }
     }
 }

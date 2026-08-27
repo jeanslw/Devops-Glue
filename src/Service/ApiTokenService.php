@@ -149,14 +149,34 @@ class ApiTokenService
         return array_values(array_filter(array_map('trim', explode(',', $scopes)), fn($s) => $s !== ''));
     }
 
+    /**
+     * 把 scope 数组展开为具体接口能力清单（去重、保持目录定义顺序）。
+     * 未在 API_SCOPE_CAPABILITIES 登记时，退化为展示 scope 键本身。
+     */
+    private function capabilitiesFor(array $scopes): array
+    {
+        $out = [];
+        foreach ($scopes as $scope) {
+            $caps = AppConfig::API_SCOPE_CAPABILITIES[$scope] ?? [$scope];
+            foreach ($caps as $cap) {
+                if (!in_array($cap, $out, true)) {
+                    $out[] = $cap;
+                }
+            }
+        }
+        return $out;
+    }
+
     private function decorate(array $row): array
     {
         $expiresAt = $row['expires_at'] !== null ? (int)$row['expires_at'] : null;
+        $scopes = $this->scopesToArray($row['scopes']);
         return [
-            'id'         => (int)$row['id'],
-            'name'       => $row['name'],
-            'scopes'     => $this->scopesToArray($row['scopes']),
-            'enabled'    => (int)$row['enabled'] === 1,
+            'id'           => (int)$row['id'],
+            'name'         => $row['name'],
+            'scopes'       => $scopes,
+            'capabilities' => $this->capabilitiesFor($scopes),
+            'enabled'      => (int)$row['enabled'] === 1,
             'expires_at' => $expiresAt,
             'expired'    => $expiresAt !== null && $expiresAt <= time(),
             'created_by' => $row['created_by'],

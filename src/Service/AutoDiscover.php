@@ -324,11 +324,13 @@ class AutoDiscover
         catch (\Exception $e) { return $this->config->getDefaultGitPlatform(); }
     }
 
+    /**
+     * 提取仓库展示路径（保留 GitLab 子群组层级）。
+     * 注意与 normalizeRemote() 区分：那个产出的是小写去 host 的 canonical 去重键，
+     * 这里保持原始大小写，用于展示与回传平台 API。
+     */
     private function extractPath(string $remote, string $jobName): string
     {
-        if (preg_match('#[:/]([^/]+/[^/]+?)(\.git)?$#', $remote, $m)) {
-            return $m[1];
-        }
-        return $jobName;
+        return \App\Helper\GitRemote::extractPath($remote) ?? $jobName;
     }
 }

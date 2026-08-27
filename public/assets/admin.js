@@ -2423,7 +2423,7 @@ async function loadApiTokens() {
             empty.style.display = 'block';
         } else {
             tbody.innerHTML = rows.map(function(t) {
-                var scopes = (t.scopes || []).map(esc).join(', ');
+                var scopes = (t.capabilities || t.scopes || []).map(esc).join(', ');
                 var exp = t.expires_at ? fmtYmd(t.expires_at) : esc(__.t('api_token.never'));
                 var status = t.enabled === false
                     ? '<span style="color:#9ca3af;">🚫 ' + esc(__.t('api_token.disabled')) + '</span>'

@@ -213,6 +213,22 @@ class AppConfig
     ];
 
     /**
+     * scope → 该 scope 实际可访问的接口能力清单（用于「API 管理」列表展示）。
+     * 值直接以英文端点/操作名呈现（不经过 i18n），让用户一眼看清 token 具体能调哪些接口，
+     * 避免只看到 `build.report` 这样抽象的 scope 键而误以为权限没设置好。
+     */
+    public const API_SCOPE_CAPABILITIES = [
+        self::API_SCOPE_MAIN         => ['main'],
+        self::API_SCOPE_GIT          => ['git'],
+        self::API_SCOPE_HARBOR_READ  => ['harbor.read'],
+        self::API_SCOPE_HARBOR_SCAN  => ['harbor.scan'],
+        self::API_SCOPE_BUILD_READ   => ['build.read'],
+        self::API_SCOPE_BUILD_WRITE  => ['trigger', 'retry', 'cancel'],
+        self::API_SCOPE_DASHBOARD    => ['dashboard'],
+        self::API_SCOPE_BUILD_REPORT => ['scan-sync', 'commit-status', 'report'],
+    ];
+
+    /**
      * 根据 HTTP 方法 + 路径解析所需的 API scope。
      *
      * 返回值约定：
