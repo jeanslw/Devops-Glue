@@ -3,7 +3,7 @@ namespace App\Config;
 
 class AppConfig
 {
-    public const APP_VERSION = '2.6.4';
+    public const APP_VERSION = '2.7.0';
 
 
     // ── 表名常量 ──
@@ -60,6 +60,8 @@ class AppConfig
     public const PERM_CD_NOTIFY  = 'cd.notification-manage';
     public const PERM_CD_BOT     = 'cd.bot';
     public const PERM_CD_WEBHOOK = 'cd.webhook';
+    public const PERM_CD_APPROVAL_CENTER = 'cd.approval-center'; // 审批中心一级菜单
+    public const PERM_CD_APPROVE         = 'cd.deploy.approve';  // 审批/驳回操作（刻意挂在 cd.approval-center 一级菜单下，不走 cd.deploy 菜单）
 
     /** 默认权限种子数据：key => ['name' => '显示名', 'parent' => null|parent_key]（英文规范数据，UI 通过 i18n 翻译） */
     public const DEFAULT_PERMISSIONS = [
@@ -98,6 +100,9 @@ class AppConfig
         'cd.monitor.system' => ['name' => 'System Resources', 'parent' => self::PERM_CD_MONITOR],
         'cd.monitor.custom' => ['name' => 'Custom Resources', 'parent' => self::PERM_CD_MONITOR],
         'cd.monitor.alert'  => ['name' => 'Alert Rules', 'parent' => self::PERM_CD_MONITOR],
+        // CD 审批中心（一级菜单 + 审批操作子权限，2 个）
+        self::PERM_CD_APPROVAL_CENTER => ['name' => 'Approval Center', 'parent' => null],
+        self::PERM_CD_APPROVE         => ['name' => 'Approve', 'parent' => self::PERM_CD_APPROVAL_CENTER],
     ];
 
     /**
@@ -126,11 +131,33 @@ class AppConfig
         //   子→父：选了 Bot/WebHook 自动显示「通知管理」一级菜单
         self::PERM_CD_BOT     => [self::PERM_CD_NOTIFY],
         self::PERM_CD_WEBHOOK => [self::PERM_CD_NOTIFY],
+        // 审批操作 → 审批中心（选了二级自动显示一级菜单）
+        self::PERM_CD_APPROVE => [self::PERM_CD_APPROVAL_CENTER],
     ];
 
-    /** 默认角色种子数据：只有 root 内置，'*' 表示拥有所有权限 */
+    /** 默认角色种子数据：super_admin 内置全权限（'*'），viewer 内置只读（CI + CD 两侧的纯读视图 key）。
+     *  只同步系统角色（不碰后台自定义角色），每次 bootstrap 幂等重建。 */
     public const DEFAULT_ROLES = [
         self::ROLE_SUPER_ADMIN => '*',
+        self::ROLE_VIEWER      => [
+            // CI 侧只读：用户列表 + 权限列表。
+            // 刻意不含 ci.manage——它除了 gate 安全扫描/看板外，还是 isAdminRole() 的判定源（=管理员标记），非纯读。
+            self::PERM_CI_USERS_LIST,        // CI 用户列表
+            self::PERM_CI_PERMISSIONS_LIST,  // CI 权限列表
+            // CD 侧只读。刻意不含 cd.image-registry——它在 CD 同时 gate 删除 tag 等写操作。
+            self::PERM_CD_BUILD,            // CI 构建结果
+            self::PERM_CD_HISTORY,          // 部署记录
+            self::PERM_CD_MONITOR,          // 资源监控父菜单
+            'cd.monitor.app',               // 应用资源
+            'cd.monitor.system',            // 系统资源
+            self::PERM_CD_APPROVAL_CENTER,  // 审批中心
+        ],
+    ];
+
+    /** 系统角色描述（roles.description 种子）：CD 侧审批角色目录把它当显示名（空则回退 name），故用简短中文名。 */
+    public const DEFAULT_ROLE_DESCRIPTIONS = [
+        self::ROLE_SUPER_ADMIN => '超级管理员',
+        self::ROLE_VIEWER      => '只读',
     ];
 
     // ── 状态常量 ──
@@ -141,6 +168,7 @@ class AppConfig
     // ── 系统内置角色（不可删除）──
     public const DEFAULT_SYSTEM_ROLES = [
         self::ROLE_SUPER_ADMIN,
+        self::ROLE_VIEWER,
     ];
 
     // ── 系统类型常量 ──
@@ -185,6 +213,7 @@ class AppConfig
     public const API_SCOPE_BUILD_WRITE  = 'build.write';
     public const API_SCOPE_DASHBOARD    = 'dashboard.read';
     public const API_SCOPE_BUILD_REPORT = 'build.report';
+    public const API_SCOPE_RBAC_USER_WRITE = 'rbac.user.write';
 
     /** 可选 scope 目录：key => i18n 翻译键 */
     public const API_SCOPES = [
@@ -196,6 +225,7 @@ class AppConfig
         self::API_SCOPE_BUILD_WRITE  => 'api.scope.build_write',
         self::API_SCOPE_DASHBOARD    => 'api.scope.dashboard',
         self::API_SCOPE_BUILD_REPORT => 'api.scope.build_report',
+        self::API_SCOPE_RBAC_USER_WRITE => 'api.scope.rbac_user_write',
     ];
 
     /**
@@ -226,6 +256,7 @@ class AppConfig
         self::API_SCOPE_BUILD_WRITE  => ['trigger', 'retry', 'cancel'],
         self::API_SCOPE_DASHBOARD    => ['dashboard'],
         self::API_SCOPE_BUILD_REPORT => ['scan-sync', 'commit-status', 'report'],
+        self::API_SCOPE_RBAC_USER_WRITE => ['rbac.users', 'rbac.roles'],
     ];
 
     /**
@@ -256,6 +287,13 @@ class AppConfig
         // 管理端点：API token 一律禁止（super_admin 交互式专属）
         if (preg_match('#^/api/admin($|/)#', $path)) {
             return null;
+        }
+
+        // RBAC（CD 服务账号专用）：用户读写（建/读/改/删/校验密码）+ 角色目录，统一 scope。
+        // 复用 rbac.user.write 而非新增 read scope：CD 是单一 trusted 消费方，token 本就有写权限，
+        // 读操作不构成额外提权，也避免为读接口再重签 token。不落入 /api/admin fail-closed。
+        if (preg_match('#^/api/rbac($|/)#', $path)) {
+            return self::API_SCOPE_RBAC_USER_WRITE;
         }
 
         // MAIN：只读

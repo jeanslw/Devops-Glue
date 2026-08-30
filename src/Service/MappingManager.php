@@ -104,7 +104,7 @@ class MappingManager
         foreach ($this->activeMaps() as $m) {
             $job = $m['job_name'] ?? '';
             $cp  = $m['current_path'] ?? '';
-            if ($job === $projectPath || $cp === $projectPath || $job === str_replace('-', '/', $projectPath)) {
+            if ($job === $projectPath || $cp === $projectPath) {
                 $bp = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
                 if (!empty($bp)) $provider = $bp;
 

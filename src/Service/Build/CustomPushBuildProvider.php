@@ -73,6 +73,7 @@ class CustomPushBuildProvider implements BuildProviderInterface
                     'ref'        => $r['ref'] ?? '',
                     'sha'        => $r['sha'] ?? '',
                     'web_url'    => $r['web_url'] ?? '',
+                    'log_url'    => $r['log_url'] ?? '',
                     'created_at' => $r['triggered_at'] ?? '',
                     // 完成时间：构建列表按此展示；未完成（无 finished_at）时留空，不回落 triggered_at
                     'updated_at' => $r['finished_at'] ?? '',

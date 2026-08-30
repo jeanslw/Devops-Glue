@@ -262,6 +262,31 @@ class AdminUserRepositoryTest extends TestCase
         $this->assertEquals(2, $repo->countByRole('custom_deployer'));
     }
 
+    public function testRoleExistsChecksRolesTable(): void
+    {
+        $pdo = $this->createMemoryDatabaseWithRoles();
+        $repo = new AdminUserRepository($pdo);
+
+        // 真实存在的角色 → true
+        $pdo->exec("INSERT INTO " . AppConfig::TABLE_ROLES . " (name, description, is_system) VALUES ('deployer', '', 0)");
+        $this->assertTrue($repo->roleExists('deployer'));
+
+        // 不存在的角色 → false（建号/改号应据此拦下悬空角色名）
+        $this->assertFalse($repo->roleExists('ghost_role'));
+    }
+
+    private function createMemoryDatabaseWithRoles(): \PDO
+    {
+        $pdo = $this->createMemoryDatabase();
+        $pdo->exec('CREATE TABLE ' . AppConfig::TABLE_ROLES . ' (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            description TEXT,
+            is_system INTEGER NOT NULL DEFAULT 0
+        )');
+        return $pdo;
+    }
+
     private function createMemoryDatabase(): \PDO
     {
         $pdo = new \PDO('sqlite::memory:');

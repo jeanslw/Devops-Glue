@@ -25,6 +25,7 @@ use App\Controller\MainController;
 use App\Controller\GitController;
 use App\Controller\HarborController;
 use App\Controller\AdminController;
+use App\Controller\RbacController;
 use App\Controller\BuildController;
 use App\Controller\DashboardController;
 use App\Controller\OAuthController;
@@ -419,6 +420,15 @@ return [
             $c->get(TokenService::class),
             $c->get(ApiTokenService::class),
             $c->get(HarborService::class)
+        );
+    },
+
+    // RBAC 用户写控制器（CD 服务账号专用，仅 API token）
+    RbacController::class => function (\Psr\Container\ContainerInterface $c) {
+        return new RbacController(
+            $c->get(I18nService::class),
+            $c->get(AppConfig::class),
+            $c->get(AdminUserRepository::class)
         );
     },
 

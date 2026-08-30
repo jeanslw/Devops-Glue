@@ -5,6 +5,7 @@ use App\Controller\GitController;
 use App\Controller\MainController;
 use App\Controller\HarborController;
 use App\Controller\AdminController;
+use App\Controller\RbacController;
 use App\Controller\BuildController;
 use App\Controller\DashboardController;
 use App\Controller\OAuthController;
@@ -90,9 +91,23 @@ $app->group('/api', function (RouteCollectorProxy $api) {
         })->add(AuthMiddleware::class);
     });
 
+    // RBAC 接口（CD 服务账号专用，仅 API token + rbac.user.write scope）
+    $api->group('/rbac', function (RouteCollectorProxy $rbac) {
+        // 写
+        $rbac->map(['POST'], '/users', [RbacController::class, 'userCreate']);
+        $rbac->map(['PUT'], '/users/{username}', [RbacController::class, 'userUpdate']);
+        $rbac->map(['DELETE'], '/users/{username}', [RbacController::class, 'userDelete']);
+        // 读
+        $rbac->map(['GET'], '/users', [RbacController::class, 'userList']);
+        $rbac->map(['GET'], '/users/{username}', [RbacController::class, 'userGet']);
+        $rbac->map(['POST'], '/users/{username}/verify-password', [RbacController::class, 'userVerifyPassword']);
+        $rbac->map(['GET'], '/roles', [RbacController::class, 'roleList']);
+    })->add(AuthMiddleware::class);
+
     $api->group('/build', function (RouteCollectorProxy $build) {
         $build->map(['GET', 'POST'], '/jobs/list', [BuildController::class, 'jobsList']);
         $build->map(['GET'], '/config-mode', [BuildController::class, 'configMode']);
+        $build->map(['GET', 'POST'], '/projects', [BuildController::class, 'projectsList']);
         $build->map(['GET', 'POST'], '/{path:.+}/pipelines', [BuildController::class, 'pipelines']);
         $build->map(['GET', 'POST'], '/{path:.+}/pipelines/{id:\d+}', [BuildController::class, 'pipelineDetail']);
         $build->map(['POST'], '/{path:.+}/pipelines/{id:\d+}/retry', [BuildController::class, 'retry']);
@@ -105,6 +120,7 @@ $app->group('/api', function (RouteCollectorProxy $api) {
         $build->map(['POST'], '/{path:.+}/commit-status', [BuildController::class, 'commitStatus']);
         $build->map(['POST'], '/{path:.+}/report', [BuildController::class, 'report']);
         $build->map(['GET', 'POST'], '/{path:.+}/tag', [BuildController::class, 'tagQuery']);
+        $build->map(['GET', 'POST'], '/{path:.+}/tags', [BuildController::class, 'tagsList']);
     })->add(AuthMiddleware::class);
 
     // 监控看板只读端点（Grafana Infinity 数据源消费，复用 RBAC）

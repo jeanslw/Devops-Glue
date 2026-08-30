@@ -2133,7 +2133,10 @@ async function loadRoleList() {
                 actions = '<button class="btn btn-sm btn-edit" onclick="showRoleForm(' + r.id + ',\'' + escJs(esc(r.name)) + '\',\'' + escJs(esc(r.description||'')) + '\',' + js(rPerms) + ')" data-i18n-title="map.edit" title="编辑">✏️</button> '
                     + '<button class="btn btn-sm btn-del" onclick="deleteRole(' + r.id + ',\'' + escJs(esc(r.name)) + '\')" data-i18n-title="map.delete" title="删除">🗑</button>';
             }
-            var displayName = r.description || __.t('user.role_' + r.name) || r.name;
+            var roleKey = 'user.role_' + r.name;
+            var i18nName = __.t(roleKey);
+            // i18n 优先、description 兜底：找不到翻译（返回 key 本身）时再回退到 description / role name
+            var displayName = (i18nName && i18nName !== roleKey) ? i18nName : (r.description || r.name);
             html += '<tr>'
                 + '<td class="mono">' + esc(r.name) + '</td>'
                 + '<td>' + esc(displayName) + '</td>'
@@ -2301,13 +2304,29 @@ function fmtYmd(ts) {
 }
 
 async function loadApiTokenScopes() {
-    if (_apiScopes.length) return;
+    // 按当前语言请求 scope 标签，避免英文界面仍显示后端默认中文
+    var lang = __.lang === 'en' ? 'en' : 'zh_CN';
     try {
-        var res = await fetch('/api/admin/api_tokens/scopes', { headers: authHeaders() });
+        var res = await fetch('/api/admin/api_tokens/scopes?lang=' + lang, { headers: authHeaders() });
         if (handle401(res)) return;
         var data = await res.json();
         _apiScopes = data.scopes || [];
     } catch(e) {}
+}
+
+function renderApiTokenScopes(preserveChecked) {
+    var box = document.getElementById('api-token-scopes');
+    if (!box) return;
+    var checked = {};
+    if (preserveChecked) {
+        box.querySelectorAll('input[data-scope]:checked').forEach(function(i) { checked[i.value] = true; });
+    }
+    box.innerHTML = _apiScopes.map(function(s) {
+        return '<label style="display:grid; grid-template-columns:1fr 9fr;gap:5px;font-size:10px;padding:5px 10px;border:1px solid #d1d5db;border-radius:6px;cursor:pointer;">' +
+            '<input type="checkbox" value="' + esc(s.key) + '" data-scope' + (checked[s.key] ? ' checked' : '') + '>' +
+            '<span>' + esc(s.label) + '</span>' +
+        '</label>';
+    }).join('');
 }
 
 async function showApiTokenForm() {
@@ -2318,17 +2337,18 @@ async function showApiTokenForm() {
     document.getElementById('api-token-note').value = '';
     document.getElementById('api-token-msg').textContent = '';
     await loadApiTokenScopes();
-    var box = document.getElementById('api-token-scopes');
-    box.innerHTML = _apiScopes.map(function(s) {
-        return '<label style="display:grid; grid-template-columns:1fr 9fr;gap:5px;font-size:10px;padding:5px 10px;border:1px solid #d1d5db;border-radius:6px;cursor:pointer;">' +
-            '<input type="checkbox" value="' + esc(s.key) + '" data-scope>' +
-            '<span>' + esc(s.label) + '</span>' +
-        '</label>';
-    }).join('');
+    renderApiTokenScopes(false);
 }
 
 function hideApiTokenForm() {
     document.getElementById('api-token-form').style.display = 'none';
+}
+
+// 语言切换时刷新 API Token 页签：scope 标签（保留已勾选）+ 列表状态文案
+async function refreshApiTokenView() {
+    await loadApiTokenScopes();
+    renderApiTokenScopes(true);
+    loadApiTokens();
 }
 
 async function submitApiTokenForm(e) {
@@ -2491,6 +2511,7 @@ document.addEventListener('i18n-changed', function() {
         else if (tabName === 'versions') loadVersions();
         else if (tabName === 'mode') loadSettings();
         else if (tabName === 'roles') loadRoleList();
+        else if (tabName === 'api-tokens') refreshApiTokenView();
     }
 });
 if (token) {

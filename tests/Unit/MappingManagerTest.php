@@ -133,6 +133,21 @@ class MappingManagerTest extends TestCase
         $this->assertSame('java/registry', $r['projectId']);
     }
 
+    public function testDashPathIsNotNormalizedToSlashJob(): void
+    {
+        // dash 与 slash 是 Jenkins 中不同的 job 身份，不做归并：
+        // 顶层 job `java-registry` ≠ folder 下 job `java/registry`
+        $this->insertMap([
+            'job_name'       => 'java/registry',
+            'build_provider' => AppConfig::PROVIDER_JENKINS,
+            'current_path'   => 'java/registry',
+        ]);
+
+        $r = $this->makeManager()->resolveProject('java-registry');
+        // 精确匹配失败 → 保持原始 path，未命中 java/registry
+        $this->assertSame('java-registry', $r['projectId']);
+    }
+
     public function testGitlabCiUsesNumericProjectId(): void
     {
         $this->insertMap([

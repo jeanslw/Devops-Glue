@@ -421,6 +421,9 @@ return [
     'user.username_exists' => 'Username already exists',
     'user.not_found'    => 'User not found',
     'user.invalid_username' => 'Invalid username',
+    'user.password_required' => 'Password is required',
+    'user.invalid_role' => 'Invalid role',
+    'user.role_not_found' => 'Role does not exist',
     'user.role_super_admin' => 'Super Admin',
     'user.role_deployer' => 'Deployer',
     'user.role_viewer'   => 'Viewer',
@@ -490,6 +493,8 @@ return [
     'role.perm_cd_monitor_system'      => 'System Resources',
     'role.perm_cd_monitor_custom'      => 'Custom Resources',
     'role.perm_cd_monitor_alert'       => 'Alert Rules',
+    'role.perm_cd_approval-center'     => 'Approval Center',
+    'role.perm_cd_deploy_approve'      => 'Approve',
     'role.perm_ci_group'              => 'CI Permissions',
     'role.perm_cd_group'              => 'CD Permissions',
     'role.select_all'                 => 'Select All',
@@ -595,6 +600,7 @@ return [
     'api.scope.build_write'     => 'Build write (trigger/retry/cancel)',
     'api.scope.build_report'    => 'Build report (scan-sync/commit-status/report)',
     'api.scope.dashboard'       => 'Dashboard (read-only)',
+    'api.scope.rbac_user_write' => 'RBAC user write (create/update/delete users)',
     'dashboard.query_failed'    => 'Dashboard query failed',
 
     // ── OAuth2 Provider ──

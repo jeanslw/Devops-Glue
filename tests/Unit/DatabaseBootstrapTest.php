@@ -47,6 +47,11 @@ class DatabaseBootstrapTest extends TestCase
         $stmt->execute([AppConfig::ROLE_SUPER_ADMIN]);
         $this->assertNotFalse($stmt->fetch(), 'super_admin 角色应被种子写入');
 
+        // super_admin 描述被种子写入
+        $descStmt = $pdo->prepare('SELECT description FROM ' . AppConfig::TABLE_ROLES . ' WHERE name = ?');
+        $descStmt->execute([AppConfig::ROLE_SUPER_ADMIN]);
+        $this->assertSame(AppConfig::DEFAULT_ROLE_DESCRIPTIONS[AppConfig::ROLE_SUPER_ADMIN], $descStmt->fetchColumn(), 'super_admin 描述应被种子写入');
+
         // 权限定义非空
         $permCount = (int)$pdo->query('SELECT count(*) FROM ' . AppConfig::TABLE_PERMISSIONS)->fetchColumn();
         $this->assertGreaterThan(0, $permCount, 'permissions 应被种子写入');
@@ -65,6 +70,42 @@ class DatabaseBootstrapTest extends TestCase
         $admin = $stmt->fetch();
         $this->assertNotFalse($admin, '根管理员应被种子写入');
         $this->assertEquals(AppConfig::ROLE_SUPER_ADMIN, $admin['role']);
+    }
+
+    public function testBootstrapSeedsViewerAsReadOnlySystemRole(): void
+    {
+        Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
+        $pdo = $this->createMemoryPdo();
+        Database::bootstrap($pdo);
+
+        // viewer 被种子写入且是系统内置角色（不可删）
+        $stmt = $pdo->prepare('SELECT is_system FROM ' . AppConfig::TABLE_ROLES . ' WHERE name = ?');
+        $stmt->execute([AppConfig::ROLE_VIEWER]);
+        $row = $stmt->fetch();
+        $this->assertNotFalse($row, 'viewer 角色应被种子写入');
+        $this->assertEquals(1, (int)$row['is_system'], 'viewer 应为系统内置角色（不可删）');
+
+        // viewer 描述被种子写入
+        $descStmt = $pdo->prepare('SELECT description FROM ' . AppConfig::TABLE_ROLES . ' WHERE name = ?');
+        $descStmt->execute([AppConfig::ROLE_VIEWER]);
+        $this->assertSame(AppConfig::DEFAULT_ROLE_DESCRIPTIONS[AppConfig::ROLE_VIEWER], $descStmt->fetchColumn(), 'viewer 描述应被种子写入');
+
+        // 只读 = 恰好 8 个纯读视图 key（6 CD + 2 CI），无任何写 key，尤其不含 cd.image-registry 与 ci.manage
+        $keys = $pdo->query(
+            'SELECT rp.perm_key FROM ' . AppConfig::TABLE_ROLE_PERMISSIONS . ' rp'
+            . ' JOIN ' . AppConfig::TABLE_ROLES . ' r ON r.id = rp.role_id'
+            . " WHERE r.name = '" . AppConfig::ROLE_VIEWER . "'"
+        )->fetchAll(\PDO::FETCH_COLUMN);
+        $this->assertEqualsCanonicalizing([
+            AppConfig::PERM_CD_APPROVAL_CENTER,
+            AppConfig::PERM_CD_BUILD,
+            AppConfig::PERM_CD_HISTORY,
+            AppConfig::PERM_CD_MONITOR,
+            'cd.monitor.app',
+            'cd.monitor.system',
+            AppConfig::PERM_CI_USERS_LIST,
+            AppConfig::PERM_CI_PERMISSIONS_LIST,
+        ], $keys, 'viewer 应恰好拥有 8 个纯读视图 key（6 CD + 2 CI）');
     }
 
     public function testBootstrapSkipsSeedWhenSchemaVersionMatches(): void

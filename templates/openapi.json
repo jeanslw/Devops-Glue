@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Devops-Glue API",
-    "version": "2.6.4",
+    "version": "2.7.0",
     "description": "DevOps 工具链集成接口 —— Jenkins/GitLab CI、GitLab/Gitee/GitHub/Gitea、Harbor 统一 API。",
     "contact": {
       "email": "jeanslw@qq.com"
@@ -302,6 +302,24 @@
           "is_root": { "type": "boolean", "description": "是否为 .env ADMIN_USER 指定的内置根账号，根账号不可删除" }
         }
       },
+      "RbacUserEntry": {
+        "type": "object",
+        "description": "RBAC 服务账号读接口的用户条目（不含密码哈希）",
+        "properties": {
+          "username": { "type": "string", "example": "alice" },
+          "role": { "type": "string", "description": "关联角色名", "example": "deployer" },
+          "systems": { "type": "string", "description": "逗号分隔系统标识：ci/cd", "example": "cd" },
+          "status": { "type": "integer", "description": "1=启用, 0=停用", "example": 1 }
+        }
+      },
+      "RbacRoleEntry": {
+        "type": "object",
+        "description": "RBAC 角色目录条目（供审批规则选角色）",
+        "properties": {
+          "name": { "type": "string", "description": "角色唯一名称", "example": "deployer" },
+          "description": { "type": "string", "nullable": true, "example": "部署人员" }
+        }
+      },
       "RoleEntry": {
         "type": "object",
         "description": "角色及其权限定义",
@@ -597,8 +615,8 @@
     "/api/build/jobs/list": {
       "get": {
         "tags": ["Build"],
-        "summary": "Build 视角的 Job 列表",
-        "description": "返回所有活跃映射的 job，含 ci_provider、project_id、current_path。?format=raw 返回纯 job 名数组。",
+        "summary": "Build 视角的 Job 列表（CI 管理页）",
+        "description": "返回当前 build_mode 下的活跃映射，含 ci_provider、project_id、current_path、harbor_repository、git_platform。?format=raw 返回纯 job 名数组。CD 部署侧的项目列表请用 /api/build/projects。",
         "operationId": "buildJobsList",
         "security": [{ "bearerAuth": [] }],
         "parameters": [{ "$ref": "#/components/parameters/format" }],
@@ -615,7 +633,44 @@
                       "job_name": { "type": "string" },
                       "ci_provider": { "type": "string", "enum": ["jenkins", "gitlab_ci"] },
                       "project_id": { "type": "string" },
-                      "current_path": { "type": "string" }
+                      "current_path": { "type": "string" },
+                      "harbor_repository": { "type": "string" },
+                      "git_platform": { "type": "string" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/build/projects": {
+      "get": {
+        "tags": ["Build"],
+        "summary": "活跃映射 + 每项目最新 tag（CD 部署侧）",
+        "description": "返回所有活跃映射（不过滤 build_mode），并为每项目附带最新镜像 tag（latest_tag / latest_pipeline / tag_time）。供 CD 列表/部署解析使用；CI 管理页的 Job 列表请用 /api/build/jobs/list。",
+        "operationId": "buildProjectsList",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "活跃映射数组，每项含 job_name/build_provider/current_path/harbor_repository/git_platform/status 及 latest_tag/latest_pipeline/tag_time",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "job_name": { "type": "string" },
+                      "build_provider": { "type": "string" },
+                      "current_path": { "type": "string" },
+                      "harbor_repository": { "type": "string" },
+                      "git_platform": { "type": "string" },
+                      "status": { "type": "string" },
+                      "latest_tag": { "type": "string" },
+                      "latest_pipeline": { "type": "string" },
+                      "tag_time": { "type": "string" }
                     }
                   }
                 }
@@ -978,6 +1033,49 @@
           "200": {
             "description": "pipeline→tag 映射",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TagQueryResult" } } }
+          }
+        }
+      }
+    },
+    "/api/build/{path}/tags": {
+      "get": {
+        "tags": ["Build"],
+        "summary": "项目 tag 列表（分页）",
+        "description": "返回指定项目的镜像 tag 列表（分页），键解析精确匹配 job_name / current_path。?page=1&page_size=50。",
+        "operationId": "buildTagsList",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" }, "example": "php/myapp" },
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 }, "description": "页码" },
+          { "name": "page_size", "in": "query", "schema": { "type": "integer", "default": 50 }, "description": "每页条数（1-200）" }
+        ],
+        "responses": {
+          "200": {
+            "description": "分页 tag 列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "tag": { "type": "string" },
+                          "pipeline_iid": { "type": "string" },
+                          "created_at": { "type": "string" }
+                        }
+                      }
+                    },
+                    "total": { "type": "integer" },
+                    "page": { "type": "integer" },
+                    "page_size": { "type": "integer" },
+                    "total_pages": { "type": "integer" }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -2261,6 +2359,237 @@
             }
           },
           "401": { "description": "invalid_token" }
+        }
+      }
+    },
+
+    "/api/rbac/users": {
+      "get": {
+        "tags": ["RBAC"],
+        "summary": "列出所有用户（CD 服务账号读）",
+        "description": "返回全部用户（按 username 升序，无分页，不含密码哈希）。仅 API token（rbac.user.write scope）可访问，交互式登录态一律 403。",
+        "operationId": "rbacUserList",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "用户列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "users": { "type": "array", "items": { "$ref": "#/components/schemas/RbacUserEntry" } }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "description": "非 API token 或缺少 rbac.user.write scope" },
+          "500": { "$ref": "#/components/responses/500" }
+        }
+      },
+      "post": {
+        "tags": ["RBAC"],
+        "summary": "建号（CD 服务账号写）",
+        "description": "创建 CD 用户：systems 恒为 cd（不接受入参），用户名后端转小写，密码最短 8 位，禁止创建 super_admin；role 必须是 roles 表里真实存在的角色（否则 400 role_not_found）。仅 API token（rbac.user.write scope）。",
+        "operationId": "rbacUserCreate",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["username", "password", "role"],
+                "properties": {
+                  "username": { "type": "string", "description": "登录用户名（唯一，后端转小写）", "example": "alice" },
+                  "password": { "type": "string", "minLength": 8, "description": "明文密码，后端 bcrypt 哈希存储", "example": "MyPassw0rd!" },
+                  "role": { "type": "string", "description": "角色名（不可为 super_admin，必须是 roles 表里已存在的角色）", "example": "deployer" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "创建成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "example": true },
+                    "username": { "type": "string", "example": "alice" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "description": "非 API token / 缺少 scope / 尝试创建 super_admin" },
+          "409": { "description": "用户名已存在" },
+          "500": { "$ref": "#/components/responses/500" }
+        }
+      }
+    },
+
+    "/api/rbac/users/{username}": {
+      "get": {
+        "tags": ["RBAC"],
+        "summary": "查询单个用户（CD 服务账号读）",
+        "description": "返回指定用户（不含密码哈希），不存在返回 404。仅 API token（rbac.user.write scope）。",
+        "operationId": "rbacUserGet",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "username", "in": "path", "required": true, "schema": { "type": "string" }, "description": "目标用户名", "example": "alice" }
+        ],
+        "responses": {
+          "200": {
+            "description": "用户条目",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RbacUserEntry" } } }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "description": "非 API token 或缺少 scope" },
+          "404": { "$ref": "#/components/responses/404" },
+          "500": { "$ref": "#/components/responses/500" }
+        }
+      },
+      "put": {
+        "tags": ["RBAC"],
+        "summary": "改角色 / 改密码（CD 服务账号写）",
+        "description": "部分更新：password 非空时改密码（最短 8 位）；role 传入时改角色（不可为 super_admin，必须是 roles 表里已存在的角色，否则 400）。内置根账号与既有 super_admin 不可改。仅 API token（rbac.user.write scope）。",
+        "operationId": "rbacUserUpdate",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "username", "in": "path", "required": true, "schema": { "type": "string" }, "description": "目标用户名", "example": "alice" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "minProperties": 1,
+                "properties": {
+                  "password": { "type": "string", "minLength": 8, "description": "新密码（可选，空则不改）", "example": "NewPassw0rd!" },
+                  "role": { "type": "string", "description": "新角色名（可选，不传则不改；必须是 roles 表里已存在的角色）", "example": "viewer" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新成功",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object", "properties": { "success": { "type": "boolean", "example": true } } }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "description": "非 API token / 缺少 scope / 尝试改 root 或 super_admin" },
+          "404": { "$ref": "#/components/responses/404" },
+          "500": { "$ref": "#/components/responses/500" }
+        }
+      },
+      "delete": {
+        "tags": ["RBAC"],
+        "summary": "删号（CD 服务账号写）",
+        "description": "删除指定用户。内置根账号与 super_admin 不可删。仅 API token（rbac.user.write scope）。",
+        "operationId": "rbacUserDelete",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "username", "in": "path", "required": true, "schema": { "type": "string" }, "description": "目标用户名", "example": "alice" }
+        ],
+        "responses": {
+          "200": {
+            "description": "删除成功",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object", "properties": { "success": { "type": "boolean", "example": true } } }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "description": "非 API token / 缺少 scope / 尝试删 root 或 super_admin" },
+          "404": { "$ref": "#/components/responses/404" },
+          "500": { "$ref": "#/components/responses/500" }
+        }
+      }
+    },
+
+    "/api/rbac/users/{username}/verify-password": {
+      "post": {
+        "tags": ["RBAC"],
+        "summary": "校验密码（CD 服务账号读）",
+        "description": "校验指定用户的密码，仅返回布尔（密码哈希不出 Glue），用户不存在返回 404。仅 API token（rbac.user.write scope）。",
+        "operationId": "rbacUserVerifyPassword",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "username", "in": "path", "required": true, "schema": { "type": "string" }, "description": "目标用户名", "example": "alice" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["password"],
+                "properties": {
+                  "password": { "type": "string", "description": "待校验密码", "example": "MyPassw0rd!" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "校验结果",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object", "properties": { "valid": { "type": "boolean", "example": true } } }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "description": "非 API token 或缺少 scope" },
+          "404": { "$ref": "#/components/responses/404" },
+          "500": { "$ref": "#/components/responses/500" }
+        }
+      }
+    },
+
+    "/api/rbac/roles": {
+      "get": {
+        "tags": ["RBAC"],
+        "summary": "角色目录（CD 服务账号读）",
+        "description": "返回全部角色（name + description，按 name 升序），供审批规则选角色。仅 API token（rbac.user.write scope）。",
+        "operationId": "rbacRoleList",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "角色目录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "roles": { "type": "array", "items": { "$ref": "#/components/schemas/RbacRoleEntry" } }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "description": "非 API token 或缺少 rbac.user.write scope" },
+          "500": { "$ref": "#/components/responses/500" }
         }
       }
     }

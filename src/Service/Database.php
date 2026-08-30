@@ -551,7 +551,8 @@ class Database
         $insertRoleStmt = $pdo->prepare("INSERT INTO " . \App\Config\AppConfig::TABLE_ROLES . " (name, description, is_system) VALUES (?, ?, ?)");
         $updateRoleStmt = $pdo->prepare("UPDATE " . \App\Config\AppConfig::TABLE_ROLES . " SET description = ?, is_system = ? WHERE id = ?");
         foreach (\App\Config\AppConfig::DEFAULT_ROLES as $roleName => $perms) {
-            $roleDesc = ''; // 不硬编码描述，由前端 i18n（user.role_{name}）渲染
+            // 系统角色描述从 DEFAULT_ROLE_DESCRIPTIONS 取（供 CD 角色目录 / 后台列表展示），自定义角色不在此处种子
+            $roleDesc = \App\Config\AppConfig::DEFAULT_ROLE_DESCRIPTIONS[$roleName] ?? '';
             $isSystem = in_array($roleName, \App\Config\AppConfig::DEFAULT_SYSTEM_ROLES) ? 1 : 0;
             try {
                 $findRoleStmt->execute([$roleName]);

@@ -66,6 +66,44 @@ class AdminUserRepository
         return $row ?: null;
     }
 
+    /**
+     * API 用户列表（CD 读接口用）：只回 username/role/systems/status，
+     * 绝不携带 password_hash / email，收口 CD 直读 admin_users 的哈希暴露面。
+     */
+    public function listUsersForApi(): array
+    {
+        return $this->pdo->query(
+            "SELECT username, role, systems, status FROM " . AppConfig::TABLE_ADMIN_USERS . " ORDER BY username"
+        )->fetchAll();
+    }
+
+    /** API 单用户读（CD 读接口用）：同样不含 password_hash。 */
+    public function findUserForApi(string $username): ?array
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT username, role, systems, status FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE username = ?"
+        );
+        $stmt->execute([$username]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        return $row ?: null;
+    }
+
+    /** API 角色目录（供 CD 审批规则选角色）：只回 name/description，不含 is_system/created_at。 */
+    public function listRolesForApi(): array
+    {
+        return $this->pdo->query(
+            "SELECT name, description FROM " . AppConfig::TABLE_ROLES . " ORDER BY name"
+        )->fetchAll();
+    }
+
+    /** 角色是否已存在于 roles 表（建号/改号前校验，防「角色名悬空」导致权限加载为空）。 */
+    public function roleExists(string $role): bool
+    {
+        $stmt = $this->pdo->prepare("SELECT 1 FROM " . AppConfig::TABLE_ROLES . " WHERE name = ?");
+        $stmt->execute([$role]);
+        return (bool)$stmt->fetchColumn();
+    }
+
     public function updateUser(string $username, ?string $passwordHash, ?string $role, ?string $email = null): void
     {
         $fields = [];

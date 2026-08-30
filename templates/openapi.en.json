@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Devops-Glue API",
-    "version": "2.6.4",
+    "version": "2.7.0",
     "description": "DevOps toolchain integration API — unified interface for Jenkins / GitLab CI, GitLab / Gitee / GitHub / Gitea, and Harbor.",
     "contact": {
       "email": "jeanslw@qq.com"
@@ -302,6 +302,24 @@
           "is_root": { "type": "boolean", "description": "Whether this is the built-in root account from .env ADMIN_USER; root cannot be deleted" }
         }
       },
+      "RbacUserEntry": {
+        "type": "object",
+        "description": "User entry returned by RBAC service-account read endpoints (without password hash)",
+        "properties": {
+          "username": { "type": "string", "example": "alice" },
+          "role": { "type": "string", "description": "Associated role name", "example": "deployer" },
+          "systems": { "type": "string", "description": "Comma-separated system flags: ci/cd", "example": "cd" },
+          "status": { "type": "integer", "description": "1=enabled, 0=disabled", "example": 1 }
+        }
+      },
+      "RbacRoleEntry": {
+        "type": "object",
+        "description": "RBAC role catalog entry (for approval-rule role selection)",
+        "properties": {
+          "name": { "type": "string", "description": "Unique role name", "example": "deployer" },
+          "description": { "type": "string", "nullable": true, "example": "Deployment Operator" }
+        }
+      },
       "RoleEntry": {
         "type": "object",
         "description": "Role and its permissions",
@@ -591,8 +609,8 @@
     "/api/build/jobs/list": {
       "get": {
         "tags": ["Build"],
-        "summary": "Build-oriented Job list",
-        "description": "Returns all active mapped jobs with ci_provider, project_id, current_path. ?format=raw returns plain job name array.",
+        "summary": "Build-oriented Job list (CI admin page)",
+        "description": "Returns active mappings under the current build_mode, with ci_provider, project_id, current_path, harbor_repository, git_platform. ?format=raw returns a plain job name array. For the CD deployment-side project list, use /api/build/projects.",
         "operationId": "buildJobsList",
         "security": [{ "bearerAuth": [] }],
         "parameters": [{ "$ref": "#/components/parameters/format" }],
@@ -609,7 +627,44 @@
                       "job_name": { "type": "string" },
                       "ci_provider": { "type": "string", "enum": ["jenkins", "gitlab_ci"] },
                       "project_id": { "type": "string" },
-                      "current_path": { "type": "string" }
+                      "current_path": { "type": "string" },
+                      "harbor_repository": { "type": "string" },
+                      "git_platform": { "type": "string" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/build/projects": {
+      "get": {
+        "tags": ["Build"],
+        "summary": "Active mappings + latest tag per project (CD deployment side)",
+        "description": "Returns all active mappings (no build_mode filtering) with each project's latest image tag (latest_tag / latest_pipeline / tag_time). For CD list/deploy resolution. For the CI admin page job list, use /api/build/jobs/list.",
+        "operationId": "buildProjectsList",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Active mapping array; each item has job_name/build_provider/current_path/harbor_repository/git_platform/status plus latest_tag/latest_pipeline/tag_time",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "job_name": { "type": "string" },
+                      "build_provider": { "type": "string" },
+                      "current_path": { "type": "string" },
+                      "harbor_repository": { "type": "string" },
+                      "git_platform": { "type": "string" },
+                      "status": { "type": "string" },
+                      "latest_tag": { "type": "string" },
+                      "latest_pipeline": { "type": "string" },
+                      "tag_time": { "type": "string" }
                     }
                   }
                 }
@@ -972,6 +1027,49 @@
           "200": {
             "description": "pipeline→tag mapping",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TagQueryResult" } } }
+          }
+        }
+      }
+    },
+    "/api/build/{path}/tags": {
+      "get": {
+        "tags": ["Build"],
+        "summary": "Project tag list (paginated)",
+        "description": "Returns the paginated image tag list for a project. Key resolution exactly matches job_name / current_path. ?page=1&page_size=50.",
+        "operationId": "buildTagsList",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" }, "example": "php/myapp" },
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 }, "description": "Page number" },
+          { "name": "page_size", "in": "query", "schema": { "type": "integer", "default": 50 }, "description": "Page size (1-200)" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated tag list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "tag": { "type": "string" },
+                          "pipeline_iid": { "type": "string" },
+                          "created_at": { "type": "string" }
+                        }
+                      }
+                    },
+                    "total": { "type": "integer" },
+                    "page": { "type": "integer" },
+                    "page_size": { "type": "integer" },
+                    "total_pages": { "type": "integer" }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -2255,6 +2353,237 @@
             }
           },
           "401": { "description": "invalid_token" }
+        }
+      }
+    },
+
+    "/api/rbac/users": {
+      "get": {
+        "tags": ["RBAC"],
+        "summary": "List all users (CD service account read)",
+        "description": "Returns all users (sorted by username ascending, unpaginated, no password hash). API token only (rbac.user.write scope); interactive login sessions always get 403.",
+        "operationId": "rbacUserList",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "User list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "users": { "type": "array", "items": { "$ref": "#/components/schemas/RbacUserEntry" } }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "description": "Not an API token, or missing rbac.user.write scope" },
+          "500": { "$ref": "#/components/responses/500" }
+        }
+      },
+      "post": {
+        "tags": ["RBAC"],
+        "summary": "Create user (CD service account write)",
+        "description": "Creates a CD user: systems is always cd (not accepted from input), username is lowercased server-side, password must be at least 8 chars, and creating super_admin is forbidden; role must be a role that already exists in the roles table (otherwise 400 role_not_found). API token only (rbac.user.write scope).",
+        "operationId": "rbacUserCreate",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["username", "password", "role"],
+                "properties": {
+                  "username": { "type": "string", "description": "Login username (unique; lowercased server-side)", "example": "alice" },
+                  "password": { "type": "string", "minLength": 8, "description": "Plaintext password, stored as bcrypt hash server-side", "example": "MyPassw0rd!" },
+                  "role": { "type": "string", "description": "Role name (must not be super_admin; must be a role that already exists in the roles table)", "example": "deployer" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "example": true },
+                    "username": { "type": "string", "example": "alice" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "description": "Not an API token / missing scope / attempt to create super_admin" },
+          "409": { "description": "Username already exists" },
+          "500": { "$ref": "#/components/responses/500" }
+        }
+      }
+    },
+
+    "/api/rbac/users/{username}": {
+      "get": {
+        "tags": ["RBAC"],
+        "summary": "Get a single user (CD service account read)",
+        "description": "Returns the specified user (without password hash); 404 if not found. API token only (rbac.user.write scope).",
+        "operationId": "rbacUserGet",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "username", "in": "path", "required": true, "schema": { "type": "string" }, "description": "Target username", "example": "alice" }
+        ],
+        "responses": {
+          "200": {
+            "description": "User entry",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RbacUserEntry" } } }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "description": "Not an API token, or missing scope" },
+          "404": { "$ref": "#/components/responses/404" },
+          "500": { "$ref": "#/components/responses/500" }
+        }
+      },
+      "put": {
+        "tags": ["RBAC"],
+        "summary": "Update role / password (CD service account write)",
+        "description": "Partial update: password changes the password when non-empty (min 8 chars); role changes the role when provided (must not be super_admin, must be a role that already exists in the roles table, otherwise 400). The built-in root account and existing super_admin users cannot be modified. API token only (rbac.user.write scope).",
+        "operationId": "rbacUserUpdate",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "username", "in": "path", "required": true, "schema": { "type": "string" }, "description": "Target username", "example": "alice" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "minProperties": 1,
+                "properties": {
+                  "password": { "type": "string", "minLength": 8, "description": "New password (optional; empty means unchanged)", "example": "NewPassw0rd!" },
+                  "role": { "type": "string", "description": "New role name (optional; omitted means unchanged; must be a role that already exists in the roles table)", "example": "viewer" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object", "properties": { "success": { "type": "boolean", "example": true } } }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "description": "Not an API token / missing scope / attempt to modify root or super_admin" },
+          "404": { "$ref": "#/components/responses/404" },
+          "500": { "$ref": "#/components/responses/500" }
+        }
+      },
+      "delete": {
+        "tags": ["RBAC"],
+        "summary": "Delete user (CD service account write)",
+        "description": "Deletes the specified user. The built-in root account and super_admin users cannot be deleted. API token only (rbac.user.write scope).",
+        "operationId": "rbacUserDelete",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "username", "in": "path", "required": true, "schema": { "type": "string" }, "description": "Target username", "example": "alice" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object", "properties": { "success": { "type": "boolean", "example": true } } }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "description": "Not an API token / missing scope / attempt to delete root or super_admin" },
+          "404": { "$ref": "#/components/responses/404" },
+          "500": { "$ref": "#/components/responses/500" }
+        }
+      }
+    },
+
+    "/api/rbac/users/{username}/verify-password": {
+      "post": {
+        "tags": ["RBAC"],
+        "summary": "Verify password (CD service account read)",
+        "description": "Verifies the password of the specified user, returning a boolean only (the password hash never leaves Glue); 404 if the user does not exist. API token only (rbac.user.write scope).",
+        "operationId": "rbacUserVerifyPassword",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "username", "in": "path", "required": true, "schema": { "type": "string" }, "description": "Target username", "example": "alice" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["password"],
+                "properties": {
+                  "password": { "type": "string", "description": "Password to verify", "example": "MyPassw0rd!" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Verification result",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object", "properties": { "valid": { "type": "boolean", "example": true } } }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "description": "Not an API token, or missing scope" },
+          "404": { "$ref": "#/components/responses/404" },
+          "500": { "$ref": "#/components/responses/500" }
+        }
+      }
+    },
+
+    "/api/rbac/roles": {
+      "get": {
+        "tags": ["RBAC"],
+        "summary": "List roles (CD service account read)",
+        "description": "Returns all roles (name + description, sorted by name ascending) for approval-rule role selection. API token only (rbac.user.write scope).",
+        "operationId": "rbacRoleList",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Role catalog",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "roles": { "type": "array", "items": { "$ref": "#/components/schemas/RbacRoleEntry" } }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "description": "Not an API token, or missing rbac.user.write scope" },
+          "500": { "$ref": "#/components/responses/500" }
         }
       }
     }

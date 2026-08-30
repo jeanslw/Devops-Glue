@@ -39,7 +39,7 @@ Devops-Glue API 是基于 Slim4 为小团队打造的 DevOps 工具链增强集�
 - **多平台 Git** — GitLab · GitHub · Gitee · Gitea，自托管或 SaaS 均可
 - **全链路映射** — Job ↔ Git 仓库 ↔ Harbor 镜像，构建→代码→产物自动关联
 - **安全扫描审计** — SAST、密钥扫描、依赖漏洞检测，通过 Commit Status 回写
-- **角色权限分级（数据驱动 RBAC）** — `super_admin` > `admin` > `deployer` > `viewer`，权限键与隐含规则全部存数据库。
+- **角色权限（数据驱动 RBAC）** — 多级自定义角色，权限按角色可配置。仅 `super_admin` 为内置系统角色，其余角色及其权限由管理员在后台创建，权限键与隐含规则全部存数据库。
 - **国际化** — 中/英文双语界面，`?lang=` 即时切换，基于 `symfony/translation`
 - **管理面板** — 服务监控、映射配置、安全扫描、用户管理
 - **零配置启动** — 默认 SQLite，一键切换 MySQL / MariaDB

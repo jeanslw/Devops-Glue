@@ -753,6 +753,11 @@ class AdminController extends BaseController
             return $this->jsonError($response, 'user.cd_no_ci_access', 403);
         }
 
+        // 防「角色名悬空」：role 必须是 roles 表里真实存在的角色，否则该用户权限加载为空
+        if (!$this->adminUserRepository->roleExists($role)) {
+            return $this->jsonError($response, 'user.role_not_found', 400);
+        }
+
         try {
             if ($this->adminUserRepository->userExists($username)) {
                 return $this->jsonError($response, 'user.username_exists', 409);
@@ -824,6 +829,10 @@ class AdminController extends BaseController
                 // 提升为管理员需要 ci.users.manage_admin 权限
                 if (($role === AppConfig::ROLE_ADMIN || $role === AppConfig::ROLE_SUPER_ADMIN) && !$this->hasPermission(AppConfig::PERM_CI_USERS_MANAGE_ADMIN)) {
                     return $this->jsonError($response, 'user.cannot_promote_admin', 403);
+                }
+                // 防「角色名悬空」：role 必须是 roles 表里真实存在的角色
+                if (!$this->adminUserRepository->roleExists($role)) {
+                    return $this->jsonError($response, 'user.role_not_found', 400);
                 }
             }
 
@@ -1353,9 +1362,10 @@ class AdminController extends BaseController
         if ($resp = $this->requireSuperAdmin($response)) {
             return $resp;
         }
+        $locale = $this->getLocale($request);
         $scopes = [];
         foreach (AppConfig::API_SCOPES as $key => $labelKey) {
-            $scopes[] = ['key' => $key, 'label' => $this->__($labelKey)];
+            $scopes[] = ['key' => $key, 'label' => $this->i18n->trans($labelKey, [], $locale)];
         }
         $response->getBody()->write(json_encode(['scopes' => $scopes], JSON_UNESCAPED_UNICODE));
         return $response->withHeader('Content-Type', 'application/json');

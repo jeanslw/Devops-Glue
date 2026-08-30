@@ -40,7 +40,7 @@ DevOps-Glue API is a Slim 4–based integration platform designed to enhance Dev
 - **Multi-Platform Git** — GitLab · GitHub · Gitee · Gitea, self-hosted or SaaS
 - **Full-Chain Mapping** — Job ↔ Git repo ↔ Harbor image, build→code→artifact auto-association
 - **Security Scan Audit** — SAST, secret scanning, dependency vulns written back via Commit Status
-- **Role-Based Access (Data-Driven RBAC)** — `super_admin` > `admin` > `deployer` > `viewer`. Permission keys and implied rules are stored in DB and fully managed via the admin UI; no code change required when new menus/modules are added.
+- **Role-Based Access (Data-Driven RBAC)** — custom multi-level roles with per-role permissions. Only `super_admin` is a built-in system role; every other role and its permission set is user-defined in the admin UI. Permission keys and implied rules are stored in DB; no code change required when new menus/modules are added.
 - **i18n** — Chinese / English bilingual interface, `?lang=` instant switching via `symfony/translation`
 - **Admin Dashboard** — service monitoring, mapping config, security scan, user management
 - **Zero-Config Startup** — SQLite by default, MySQL / MariaDB with one-click switch

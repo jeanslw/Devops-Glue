@@ -421,6 +421,9 @@ return [
     'user.username_exists' => '用户名已存在',
     'user.not_found'    => '用户不存在',
     'user.invalid_username' => '无效的用户名',
+    'user.password_required' => '请提供密码',
+    'user.invalid_role' => '无效的角色',
+    'user.role_not_found' => '角色不存在',
     'user.role_super_admin' => '超级管理员',
     'user.role_deployer' => '部署者',
     'user.role_viewer'   => '只读',
@@ -488,6 +491,8 @@ return [
     'role.perm_cd_monitor_system'      => '系统资源',
     'role.perm_cd_monitor_custom'      => '自定义资源',
     'role.perm_cd_monitor_alert'       => '告警规则',
+    'role.perm_cd_approval-center'     => '审批中心',
+    'role.perm_cd_deploy_approve'      => '审批操作',
     'role.perm_ci_group'              => 'CI 权限',
     'role.perm_cd_group'              => 'CD 权限',
     'role.select_all'                 => '全选',
@@ -593,6 +598,7 @@ return [
     'api.scope.build_write'     => '构建执行（触发/重试/取消）',
     'api.scope.build_report'    => '构建回写（scan-sync/commit-status/report）',
     'api.scope.dashboard'       => '监控看板（只读）',
+    'api.scope.rbac_user_write' => 'RBAC 用户写（建号/改号/删号）',
     'dashboard.query_failed'    => '看板查询失败',
 
     // ── OAuth2 Provider ──

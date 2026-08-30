@@ -92,8 +92,8 @@
 
 ## v2.4.0 (2026-07-28)
 - **i18n** — Added `symfony/translation` dependency, supports Chinese/English bilingual UI.
-- **Super Admin** — Introduced `super_admin` role, stored in DB, with permissions above regular `admin`.
-- **User Permission Levels** — 4-tier RBAC; admin accounts at the same level cannot modify or delete each other.
+- **Super Admin** — Introduced `super_admin` role, stored in DB, a built-in system role with wildcard `*` permissions above all user-defined roles.
+- **User Permission Levels** — Data-driven multi-level RBAC; roles are user-defined with customizable permissions, and admin accounts at the same level cannot modify or delete each other.
 - **Root Admin Protection** — Built-in root account cannot be deleted or modified.
 - **Admin Dashboard Enhancements** — User list now shows roles; top bar displays current logged-in user.
 

@@ -42,15 +42,18 @@ class BuildController extends BaseController
         return [$r['provider'], $r['projectId']];
     }
 
+    /** GET /api/build/jobs/list — CI 管理页视角的 Job 列表（按 build_mode 过滤）。CD 部署侧的项目列表请用 projectsList。 */
     public function jobsList(Request $request, Response $response): Response
     {
         $all = [];
         foreach ($this->mapping->activeMaps() as $m) {
             $all[] = [
-                'job_name'     => $m['job_name'] ?? '',
-                'ci_provider'  => $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS,
-                'project_id'   => $m['project_id'] ?? ($m['current_path'] ?? $m['job_name']),
-                'current_path' => $m['current_path'] ?? '',
+                'job_name'         => $m['job_name'] ?? '',
+                'ci_provider'      => $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS,
+                'project_id'       => $m['project_id'] ?? ($m['current_path'] ?? $m['job_name']),
+                'current_path'     => $m['current_path'] ?? '',
+                'harbor_repository'=> $m['harbor_repository'] ?? '',
+                'git_platform'     => $m['git_platform'] ?? '',
             ];
         }
         // ?format=raw → 纯 job 名数组
@@ -58,6 +61,143 @@ class BuildController extends BaseController
             return $this->output($response, array_column($all, 'job_name'), $request);
         }
         return $this->output($response, $all, $request);
+    }
+
+    /** GET /api/build/projects — 活跃映射 + 每项目最新 tag（供 CD 列表/部署解析；不过滤 build_mode）。CI 管理页的 Job 列表请用 jobsList。 */
+    public function projectsList(Request $request, Response $response): Response
+    {
+        $maps = array_values(array_filter(
+            $this->config->getJobGitMap(),
+            fn($m) => ($m['status'] ?? AppConfig::STATUS_ACTIVE) === AppConfig::STATUS_ACTIVE
+        ));
+
+        // 只取每个 project 的最新一条 tag：DB 侧 GROUP BY + MAX(created_at) 聚合，
+        // 避免全表读入内存（与 loadPipelineTags 不同，这里只需每项目最新一条）。
+        $latest = [];
+        try {
+            $rows = $this->pdo->query(
+                'SELECT t.project, t.pipeline_iid, t.tag, t.created_at'
+                . ' FROM ' . AppConfig::TABLE_PIPELINE_TAGS . ' t'
+                . ' INNER JOIN (SELECT project, MAX(created_at) AS max_created_at'
+                . ' FROM ' . AppConfig::TABLE_PIPELINE_TAGS . ' GROUP BY project) m'
+                . ' ON t.project = m.project AND t.created_at = m.max_created_at'
+                . ' ORDER BY t.created_at DESC'
+            )->fetchAll();
+            foreach ($rows as $r) {
+                if (!isset($latest[$r['project']])) {
+                    $latest[$r['project']] = [
+                        'tag'          => $r['tag'] ?? '',
+                        'pipeline_iid' => $r['pipeline_iid'] ?? '',
+                        'created_at'   => $r['created_at'] ?? '',
+                    ];
+                }
+            }
+        } catch (\Exception $e) {
+            $latest = [];
+        }
+
+        $result = [];
+        foreach ($maps as $m) {
+            $job = $m['job_name'] ?? '';
+            $cp  = $m['current_path'] ?? '';
+            $lt  = null;
+            // 同一项目可能同时以 job_name / current_path 落 tag，取 created_at 更大者
+            foreach (array_unique([$job, $cp]) as $k) {
+                if ($k === '' || !isset($latest[$k])) {
+                    continue;
+                }
+                if ($lt === null || ($latest[$k]['created_at'] ?? '') > ($lt['created_at'] ?? '')) {
+                    $lt = $latest[$k];
+                }
+            }
+            $result[] = [
+                'job_name'          => $job,
+                'build_provider'    => $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS,
+                'current_path'      => $cp,
+                'harbor_repository' => $m['harbor_repository'] ?? '',
+                'git_platform'      => $m['git_platform'] ?? '',
+                'status'            => $m['status'] ?? AppConfig::STATUS_ACTIVE,
+                'latest_tag'        => $lt['tag'] ?? '',
+                'latest_pipeline'   => $lt['pipeline_iid'] ?? '',
+                'tag_time'          => $lt['created_at'] ?? '',
+            ];
+        }
+        return $this->output($response, $result, $request);
+    }
+
+    /** GET /api/build/{path}/tags — 项目 tag 列表（分页），keys = job_name + current_path */
+    public function tagsList(Request $request, Response $response, array $args): Response
+    {
+        $path     = $args['path'] ?? '';
+        $page     = max(1, (int) ($request->getQueryParams()['page'] ?? 1));
+        $pageSize = (int) ($request->getQueryParams()['page_size'] ?? 50);
+        if ($pageSize < 1 || $pageSize > 200) {
+            $pageSize = 50;
+        }
+
+        // 解析 keys：精确匹配 job_name 或 current_path，两键都纳入 tag 查询。
+        // 注意：dash 与 slash 是 Jenkins 中不同的 job 身份（java-registry 为顶层 job，
+        // java/registry 为 folder 下 job），不互相归并。
+        $keys = [$path];
+        foreach ($this->config->getJobGitMap() as $m) {
+            $job = $m['job_name'] ?? '';
+            $cp  = $m['current_path'] ?? '';
+            if ($job === $path || $cp === $path) {
+                foreach (['job_name', 'current_path'] as $f) {
+                    if (!empty($m[$f]) && $m[$f] !== $path) {
+                        $keys[] = $m[$f];
+                    }
+                }
+            }
+        }
+        $keys = array_values(array_unique($keys));
+
+        try {
+            $pdo = $this->pdo;
+            $ph  = implode(',', array_fill(0, count($keys), '?'));
+
+            $stmt = $pdo->prepare('SELECT COUNT(*) AS c FROM ' . AppConfig::TABLE_PIPELINE_TAGS . ' WHERE project IN (' . $ph . ')');
+            $stmt->execute($keys);
+            $total = (int) $stmt->fetch()['c'];
+
+            $totalPages = $total ? max(1, (int) ceil($total / $pageSize)) : 1;
+            if ($page > $totalPages) {
+                $page = $totalPages;
+            }
+            $offset = ($page - 1) * $pageSize;
+
+            $stmt = $pdo->prepare(
+                'SELECT tag, pipeline_iid, created_at FROM ' . AppConfig::TABLE_PIPELINE_TAGS .
+                ' WHERE project IN (' . $ph . ') ORDER BY created_at DESC LIMIT ? OFFSET ?'
+            );
+            foreach ($keys as $i => $k) {
+                $stmt->bindValue($i + 1, $k, \PDO::PARAM_STR);
+            }
+            $stmt->bindValue(count($keys) + 1, $pageSize, \PDO::PARAM_INT);
+            $stmt->bindValue(count($keys) + 2, $offset, \PDO::PARAM_INT);
+            $stmt->execute();
+            $items = array_map(fn($r) => [
+                'tag'          => $r['tag'] ?? '',
+                'pipeline_iid' => $r['pipeline_iid'] ?? '',
+                'created_at'   => $r['created_at'] ?? '',
+            ], $stmt->fetchAll());
+
+            return $this->output($response, [
+                'items'       => $items,
+                'total'       => $total,
+                'page'        => $page,
+                'page_size'   => $pageSize,
+                'total_pages' => $totalPages,
+            ], $request);
+        } catch (\Exception $e) {
+            return $this->output($response, [
+                'items'       => [],
+                'total'       => 0,
+                'page'        => $page,
+                'page_size'   => $pageSize,
+                'total_pages' => 1,
+            ], $request);
+        }
     }
 
     public function configMode(Request $request, Response $response): Response

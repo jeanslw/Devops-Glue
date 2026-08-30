@@ -166,7 +166,8 @@ Returns configured and unconfigured Git platform list.
 
 | Endpoint | Method | Description |
 |---|---|---|
-| `/api/build/jobs/list` | GET/POST | Build job list (raw: job name array; json: with provider info) |
+| `/api/build/jobs/list` | GET/POST | Build job list for CI admin page (raw: job name array; json: with provider info). CD deploy side uses `/api/build/projects` |
+| `/api/build/projects` | GET/POST | Active mappings + latest tag per project (for CD deploy side; not filtered by build_mode) |
 | `/api/build/config-mode` | GET | Build config mode (`{mode, source, has_jenkins, has_gitlab_ci}`) |
 | `/api/build/{path}/trigger` | GET/POST | Trigger build (JSON body: `{"ref":"","variables":{"param":"value"}}`) |
 | `/api/build/{path}/variables` | GET/POST | Build parameters / CI variables (raw: param name array; json: full metadata) |
@@ -178,6 +179,7 @@ Returns configured and unconfigured Git platform list.
 | `/api/build/{path}/pipelines/{id}/cancel` | POST | Cancel pipeline (GitLab CI only) |
 | `/api/build/{path}/scan-sync` | POST | Harbor scan sync (`{"tag":"v3.0.0"}`, tag optional = latest) |
 | `/api/build/{path}/tag` | GET/POST | Pipeline -> Tag mapping (`?pipeline=10`) |
+| `/api/build/{path}/tags` | GET/POST | Paginated project tag list (`?page=1&page_size=50`) |
 | `/api/build/{path}/commit-status` | POST | Commit status write-back (security scans) |
 | `/api/build/{path}/report` | POST | Custom Push CI result report (custom_push only, single terminal write) |
 
@@ -229,7 +231,7 @@ Custom variables: any other field (e.g. `env`) is stored in `variables_json`.
 }
 ```
 
-> On `success`, `tag` and a resolvable `harbor_repository` are mandatory and `ci_pipeline_tags` is written (project, pipeline_iid, tag, harbor_repository, finished_at, status), read by the CD layer via `GET /api/build/{path}/tag`.
+> On `success`, `tag` and a resolvable `harbor_repository` are mandatory and `ci_pipeline_tags` is written (project, pipeline_iid, tag, harbor_repository, finished_at, status), read by the CD layer via `GET /api/build/{path}/tag` (list views use `GET /api/build/projects` / `GET /api/build/{path}/tags`).
 > Fields outside control fields (`pipeline_iid`/`status`/`finished_at`/`started_at`/`ref`/`sha`/`exit_code`/`log_url`/`web_url`/`tag`/`harbor_repository`) are stored in `variables_json`.
 > `(job_name, pipeline_iid)` is a unique key; duplicate reports overwrite (UPDATE) the existing record.
 

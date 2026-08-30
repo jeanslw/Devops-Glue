@@ -15,9 +15,9 @@ use PHPUnit\Framework\TestCase;
  */
 class ApiTokenScopeTest extends TestCase
 {
-    public function testApiScopesCatalogHasEightScopes(): void
+    public function testApiScopesCatalogHasNineScopes(): void
     {
-        $this->assertCount(8, AppConfig::API_SCOPES);
+        $this->assertCount(9, AppConfig::API_SCOPES);
         $expected = [
             AppConfig::API_SCOPE_MAIN,
             AppConfig::API_SCOPE_GIT,
@@ -27,6 +27,7 @@ class ApiTokenScopeTest extends TestCase
             AppConfig::API_SCOPE_BUILD_WRITE,
             AppConfig::API_SCOPE_DASHBOARD,
             AppConfig::API_SCOPE_BUILD_REPORT,
+            AppConfig::API_SCOPE_RBAC_USER_WRITE,
         ];
         foreach ($expected as $scope) {
             $this->assertArrayHasKey($scope, AppConfig::API_SCOPES, "scope '{$scope}' 必须在 API_SCOPES 目录中");
@@ -100,6 +101,13 @@ class ApiTokenScopeTest extends TestCase
             'build pipelines 读'      => ['GET', '/api/build/static/pipelines', AppConfig::API_SCOPE_BUILD_READ],
             'build logs 读'           => ['GET', '/api/build/static/logs/1', AppConfig::API_SCOPE_BUILD_READ],
             'build tag 读'            => ['GET', '/api/build/static/tag', AppConfig::API_SCOPE_BUILD_READ],
+            'rbac 用户写'             => ['POST', '/api/rbac/users', AppConfig::API_SCOPE_RBAC_USER_WRITE],
+            'rbac 用户改'             => ['PUT', '/api/rbac/users/alice', AppConfig::API_SCOPE_RBAC_USER_WRITE],
+            'rbac 用户删'             => ['DELETE', '/api/rbac/users/alice', AppConfig::API_SCOPE_RBAC_USER_WRITE],
+            'rbac 用户列表读'          => ['GET', '/api/rbac/users', AppConfig::API_SCOPE_RBAC_USER_WRITE],
+            'rbac 单用户读'           => ['GET', '/api/rbac/users/alice', AppConfig::API_SCOPE_RBAC_USER_WRITE],
+            'rbac 校验密码'           => ['POST', '/api/rbac/users/alice/verify-password', AppConfig::API_SCOPE_RBAC_USER_WRITE],
+            'rbac 角色目录'           => ['GET', '/api/rbac/roles', AppConfig::API_SCOPE_RBAC_USER_WRITE],
             '未知路径 fail-closed'     => ['GET', '/api/unknown/thing', null],
         ];
     }

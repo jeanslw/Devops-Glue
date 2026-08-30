@@ -166,7 +166,8 @@ GET /api/main/git/discovery
 
 | 接口 | 方法 | 说明 |
 |---|---|---|
-| `/api/build/jobs/list` | GET/POST | 构建 Job 列表（raw: Job 名数组；json: 含 Provider 信息） |
+| `/api/build/jobs/list` | GET/POST | CI 管理页视角的构建 Job 列表（raw: Job 名数组；json: 含 Provider 信息）。CD 部署侧请用 `/api/build/projects` |
+| `/api/build/projects` | GET/POST | 活跃映射 + 每项目最新 tag（供 CD 部署侧；不过滤 build_mode） |
 | `/api/build/config-mode` | GET | 构建配置模式（`{mode, source, has_jenkins, has_gitlab_ci}`） |
 | `/api/build/{path}/trigger` | GET/POST | 触发构建（JSON body: `{"ref":"","variables":{"param":"value"}}`） |
 | `/api/build/{path}/variables` | GET/POST | 构建参数 / CI 变量（raw: 参数名数组；json: 完整元数据） |
@@ -178,6 +179,7 @@ GET /api/main/git/discovery
 | `/api/build/{path}/pipelines/{id}/cancel` | POST | 取消流水线（仅 GitLab CI） |
 | `/api/build/{path}/scan-sync` | POST | Harbor 扫描同步（`{"tag":"v3.0.0"}`，tag 可选，不传取最新） |
 | `/api/build/{path}/tag` | GET/POST | 流水线 → 标签映射（`?pipeline=10`） |
+| `/api/build/{path}/tags` | GET/POST | 项目 tag 列表（分页，`?page=1&page_size=50`） |
 | `/api/build/{path}/commit-status` | POST | 提交状态回写（安全扫描） |
 | `/api/build/{path}/report` | POST | 自定义推送式 CI 构建结果上报（custom_push 专用，单次终态写入） |
 
@@ -229,7 +231,7 @@ custom_push 构建源专用：用户 CI 在构建完成后一次性上报终态�
 }
 ```
 
-> `success` 时必须带 `tag` 且能解析出 `harbor_repository`，同步写入 `ci_pipeline_tags`（project、pipeline_iid、tag、harbor_repository、finished_at、status），CD 层通过 `GET /api/build/{path}/tag` 读取。
+> `success` 时必须带 `tag` 且能解析出 `harbor_repository`，同步写入 `ci_pipeline_tags`（project、pipeline_iid、tag、harbor_repository、finished_at、status），CD 层通过 `GET /api/build/{path}/tag` 读取（列表视图可用 `GET /api/build/projects` / `GET /api/build/{path}/tags`）。
 > 控制字段（`pipeline_iid`/`status`/`finished_at`/`started_at`/`ref`/`sha`/`exit_code`/`log_url`/`web_url`/`tag`/`harbor_repository`）以外的字段存入 `variables_json`。
 > `(job_name, pipeline_iid)` 为唯一键，重复上报按覆盖（UPDATE）处理。
 ```
