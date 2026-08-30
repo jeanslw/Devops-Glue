@@ -1,4 +1,4 @@
-# Devops-Glue API Reference v2.6
+# Devops-Glue API Reference v2.7
 
 Base URL: `http://your-domain.com/api`
 

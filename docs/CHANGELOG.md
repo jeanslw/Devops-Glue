@@ -11,6 +11,7 @@
 - **Git remote normalization fix** — dash vs slash are distinct Jenkins job identities (`java-registry` top-level job vs `java/registry` folder job); mapping matching no longer conflates them.
 - **Custom Push log URL** — Build detail now returns the `log_url` field.
 - **API token scope language** — Scope labels now follow the current language, so the English UI no longer shows backend-default Chinese.
+- **Version correspondence** — Devops-Glue API v2.7 maps to Devops-Glue CD v1.5.
 - **Versioning** — `APP_VERSION` bumped to 2.7.0; OpenAPI `version` synced (CN/EN).
 
 ## v2.6.4 (2026-08-25)

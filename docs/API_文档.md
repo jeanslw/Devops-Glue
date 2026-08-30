@@ -1,4 +1,4 @@
-# Devops-Glue API 参考 v2.6
+# Devops-Glue API 参考 v2.7
 
 基础 URL: `http://your-domain.com/api`
 

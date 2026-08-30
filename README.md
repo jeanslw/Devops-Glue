@@ -1,4 +1,4 @@
-# Devops-Glue API v2.6
+# Devops-Glue API v2.7
 DevOps-Glue API is a Slim 4–based integration platform designed to enhance DevOps toolchains for small teams. It provides a unified view, RBAC, and RESTful APIs, with support for multiple mainstream Git platforms and CI-agnostic integration.
 
 <p align="center">
@@ -8,7 +8,7 @@ DevOps-Glue API is a Slim 4–based integration platform designed to enhance Dev
 
 <p align="center">
   <a href="https://github.com/jeanslw/Devops_CD"><img src="https://img.shields.io/badge/Paired-Devops__CD-green?logo=python" alt="CD"></a>
-  <a href="https://github.com/jeanslw/devops-glue/releases/tag/v2.6"><img src="https://img.shields.io/github/v/release/jeanslw/Devops-Glue?style=flat-square&label=Release" alt="Release"></a>
+  <a href="https://github.com/jeanslw/devops-glue/releases/tag/v2.7"><img src="https://img.shields.io/github/v/release/jeanslw/Devops-Glue?style=flat-square&label=Release" alt="Release"></a>
   <a href="https://github.com/jeanslw/devops-glue"><img src="https://img.shields.io/github/last-commit/jeanslw/Devops-Glue?style=flat-square&label=Last%20Commit" alt="Last Commit"></a>
   <a href="https://github.com/jeanslw/devops-glue/blob/main/LICENSE"><img src="https://img.shields.io/github/license/jeanslw/Devops-Glue" alt="License">
   <a href="https://www.php.net"><img src="https://img.shields.io/badge/PHP-8.1+-777BB4?logo=php&logoColor=white" alt="PHP">
