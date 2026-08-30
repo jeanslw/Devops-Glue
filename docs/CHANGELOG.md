@@ -1,5 +1,18 @@
 # Changelog
 
+## v2.7.0 (2026-08-31)
+- **Viewer read-only role** — New `viewer` built-in system role (is_system, non-deletable) seeded with 8 read-only keys: 6 CD (build results / deploy records / resource monitor / app resources / system resources / approval center) + 2 CI (user list / permission list). Deliberately excludes write keys (`cd.image-registry`, `ci.manage`, `cd.deploy.approve`, etc.) and never expands implied rules, preventing privilege escalation via `cd.build-manage → ci.trigger`.
+- **CD user read/write API** — New `/api/rbac/*` (7 endpoints: create / read / update / delete / verify-password / role catalog) for the CD service account to integrate via API token, reusing the `rbac.user.write` scope; read endpoints never return `password_hash`, verify-password returns only a boolean, so bcrypt hashes never leave Glue.
+- **Role existence validation** — User create/update now verifies the role exists in the `roles` table, returning 400 `user.role_not_found` otherwise, preventing dangling role names that would load zero permissions.
+- **System role description seed** — `roles.description` for `super_admin` / `viewer` is seeded from `DEFAULT_ROLE_DESCRIPTIONS` (超级管理员 / 只读), consumed by the CD role catalog as the display name.
+- **Role display name i18n-first** — The admin role list now prefers i18n (`user.role_{name}`) and falls back to description → role name, so custom roles without a translation no longer show the raw i18n key.
+- **Approval-center permissions** — New `cd.approval-center` (top-level menu) and `cd.deploy.approve` (approve/reject action) keys, with the implied rule `cd.deploy.approve → cd.approval-center`.
+- **Build project/tag endpoints** — New `GET /api/build/projects` (active mappings + latest tag per project, for CD listing/deploy resolution) and `GET /api/build/{path}/tags` (paginated tag list).
+- **Git remote normalization fix** — dash vs slash are distinct Jenkins job identities (`java-registry` top-level job vs `java/registry` folder job); mapping matching no longer conflates them.
+- **Custom Push log URL** — Build detail now returns the `log_url` field.
+- **API token scope language** — Scope labels now follow the current language, so the English UI no longer shows backend-default Chinese.
+- **Versioning** — `APP_VERSION` bumped to 2.7.0; OpenAPI `version` synced (CN/EN).
+
 ## v2.6.4 (2026-08-25)
 - **Prepared-statement hardening** — MySQL connections now disable emulated prepares (`PDO::ATTR_EMULATE_PREPARES = false`) and use server-side native prepares, removing the injection surface introduced by the emulation layer's own quoting; applied to both connection sites (`config/container.php` and `Service/Database.php`).
 - **Error-handler status-code guard** — The default error handler now range-checks Slim `HttpException` status codes against 400–599, falling back to 500 when out of range (e.g. a bare `HttpException` with code 0), preventing `withStatus(0)` from throwing a second exception *inside* the error handler and blanking the page.
