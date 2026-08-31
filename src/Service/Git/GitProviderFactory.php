@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Service\Git;
 
 /**
@@ -9,7 +10,9 @@ namespace App\Service\Git;
  */
 class GitProviderFactory
 {
-    public function __construct(private ProviderRegistry $registry) {}
+    public function __construct(private ProviderRegistry $registry)
+    {
+    }
 
     /**
      * 根据平台名创建 Provider 实例

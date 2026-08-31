@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Service\Git;
 
 interface GitProviderInterface

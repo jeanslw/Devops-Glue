@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Service;
 
 use App\Config\AppConfig;
@@ -21,7 +22,9 @@ use App\Config\AppConfig;
  */
 class LdapService
 {
-    public function __construct(private AppConfig $config) {}
+    public function __construct(private AppConfig $config)
+    {
+    }
 
     /** extension=ldap 是否加载（未加载时 LDAP 登录不可用，本地登录不受影响） */
     public function isAvailable(): bool

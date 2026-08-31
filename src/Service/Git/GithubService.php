@@ -83,7 +83,9 @@ class GithubService implements GitProviderInterface
             'description' => $description,
             'context'     => $context,
         ];
-        if ($targetUrl) $body['target_url'] = $targetUrl;
+        if ($targetUrl) {
+            $body['target_url'] = $targetUrl;
+        }
 
         $result = $this->request('POST', "/repos/{$owner}/{$repo}/statuses/{$sha}", ['json' => $body]);
         $ok = !isset($result['error']);
@@ -98,7 +100,9 @@ class GithubService implements GitProviderInterface
         do {
             $fullPath = "{$path}?per_page=" . self::PER_PAGE . "&page={$page}";
             $data = $this->request('GET', $fullPath);
-            if (isset($data['error']) || !is_array($data) || empty($data)) break;
+            if (isset($data['error']) || !is_array($data) || empty($data)) {
+                break;
+            }
             $all = array_merge($all, array_column($data, $key));
             $page++;
         } while (count($data) === self::PER_PAGE && $page <= self::MAX_PAGES);

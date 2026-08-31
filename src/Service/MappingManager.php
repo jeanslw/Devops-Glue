@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Service;
 
 use App\Config\AppConfig;
@@ -50,14 +51,14 @@ class MappingManager
 
         if ($mode === AppConfig::BUILD_MODE_GITLAB_CI) {
             // gitlab_ci 模式：保留 gitlab_ci + custom_push（如果开启）
-            $maps = array_filter($maps, function($m) use ($cpEnabled) {
+            $maps = array_filter($maps, function ($m) use ($cpEnabled) {
                 $bp = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
                 return $bp === AppConfig::PROVIDER_GITLAB_CI
                     || ($cpEnabled && $bp === AppConfig::PROVIDER_CUSTOM_PUSH);
             });
         } elseif ($mode === AppConfig::BUILD_MODE_JENKINS) {
             // jenkins 模式：保留 jenkins + custom_push（如果开启）
-            $maps = array_filter($maps, function($m) use ($cpEnabled) {
+            $maps = array_filter($maps, function ($m) use ($cpEnabled) {
                 $bp = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
                 return $bp !== AppConfig::PROVIDER_GITLAB_CI
                     && !(!$cpEnabled && $bp === AppConfig::PROVIDER_CUSTOM_PUSH);
@@ -65,7 +66,7 @@ class MappingManager
         } else {
             // both 模式：保留 jenkins + gitlab_ci，custom_push 仅在开启时保留
             if (!$cpEnabled) {
-                $maps = array_filter($maps, function($m) {
+                $maps = array_filter($maps, function ($m) {
                     return ($m['build_provider'] ?? AppConfig::PROVIDER_JENKINS) !== AppConfig::PROVIDER_CUSTOM_PUSH;
                 });
             }
@@ -85,7 +86,9 @@ class MappingManager
         $platforms = [];
         foreach ($this->activeMaps() as $m) {
             $p = $m['git_platform'] ?? '';
-            if ($p && !in_array($p, $platforms)) $platforms[] = $p;
+            if ($p && !in_array($p, $platforms)) {
+                $platforms[] = $p;
+            }
         }
         return $platforms;
     }
@@ -106,7 +109,9 @@ class MappingManager
             $cp  = $m['current_path'] ?? '';
             if ($job === $projectPath || $cp === $projectPath) {
                 $bp = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
-                if (!empty($bp)) $provider = $bp;
+                if (!empty($bp)) {
+                    $provider = $bp;
+                }
 
                 if ($provider === AppConfig::PROVIDER_GITLAB_CI && !empty($m['project_id'])) {
                     // GitLab CI：用数字 project_id 调外部 API

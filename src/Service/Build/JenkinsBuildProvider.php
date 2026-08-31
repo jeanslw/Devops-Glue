@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Service\Build;
 
 use App\Service\JenkinsService;
@@ -19,7 +20,10 @@ class JenkinsBuildProvider implements BuildProviderInterface
         $this->logger = $logger;
     }
 
-    public function getName(): string { return AppConfig::PROVIDER_JENKINS; }
+    public function getName(): string
+    {
+        return AppConfig::PROVIDER_JENKINS;
+    }
 
     public function getPipelines(string $projectId, int $perPage = 20): array
     {

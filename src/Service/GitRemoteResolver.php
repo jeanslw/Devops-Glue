@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Service;
 
 use GuzzleHttp\Client;
@@ -84,7 +85,7 @@ class GitRemoteResolver
                     'project_id'       => $m['project_id'] ?? null,
                     'web_url'          => $m['web_url'] ?? '',
                     'current_path'     => $m['current_path'] ?? '',
-                    'harbor_repository'=> $m['harbor_repository'] ?? '',
+                    'harbor_repository' => $m['harbor_repository'] ?? '',
                 ], $m);
             }
             return null;

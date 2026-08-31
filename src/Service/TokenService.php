@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Service;
 
 use App\Config\AppConfig;
@@ -15,7 +16,8 @@ class TokenService
         private \PDO $pdo,
         private AppConfig $config,
         private ?ApiTokenService $apiTokenService = null
-    ) {}
+    ) {
+    }
 
     /**
      * 验证 cache 中的随机 token

@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Service\Build;
 
 use GuzzleHttp\Client;
@@ -22,7 +23,10 @@ class GitlabCiBuildProvider implements BuildProviderInterface
         ]);
     }
 
-    public function getName(): string { return AppConfig::PROVIDER_GITLAB_CI; }
+    public function getName(): string
+    {
+        return AppConfig::PROVIDER_GITLAB_CI;
+    }
 
     public function getPipelines(string $projectId, int $perPage = 20): array
     {
@@ -31,7 +35,9 @@ class GitlabCiBuildProvider implements BuildProviderInterface
         try {
             $resp = $this->http->get($url);
             $data = json_decode($resp->getBody(), true);
-            if (!is_array($data)) return [];
+            if (!is_array($data)) {
+                return [];
+            }
             return array_map(fn($p) => [
                 'id'         => $p['id'] ?? 0,
                 'iid'        => $p['iid'] ?? 0,
@@ -50,7 +56,9 @@ class GitlabCiBuildProvider implements BuildProviderInterface
 
     private function fmtTime(string $iso): string
     {
-        if (empty($iso)) return '';
+        if (empty($iso)) {
+            return '';
+        }
         $ts = strtotime($iso);
         return $ts ? date('Y-m-d H:i:s', $ts) : $iso;
     }
@@ -62,7 +70,9 @@ class GitlabCiBuildProvider implements BuildProviderInterface
         try {
             $resp = $this->http->get($url);
             $data = json_decode($resp->getBody(), true);
-            if (!is_array($data)) return [];
+            if (!is_array($data)) {
+                return [];
+            }
             return array_map(fn($j) => [
                 'id'         => $j['id'] ?? 0,
                 'name'       => $j['name'] ?? '',
@@ -160,7 +170,9 @@ class GitlabCiBuildProvider implements BuildProviderInterface
         try {
             $resp = $this->http->get($url);
             $data = json_decode($resp->getBody(), true);
-            if (!is_array($data)) return [];
+            if (!is_array($data)) {
+                return [];
+            }
             return array_map(fn($v) => [
                 'key'       => $v['key'] ?? '',
                 'value'     => '***',    // 脱敏
@@ -181,7 +193,9 @@ class GitlabCiBuildProvider implements BuildProviderInterface
         try {
             $resp = $this->http->get($url);
             $data = json_decode($resp->getBody(), true);
-            if (!is_array($data)) return [];
+            if (!is_array($data)) {
+                return [];
+            }
             return array_map(fn($b) => $b['name'] ?? '', $data);
         } catch (\Exception $e) {
             $this->logger?->warning('GitLab 分支查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
@@ -199,7 +213,9 @@ class GitlabCiBuildProvider implements BuildProviderInterface
                 'name'        => $name,
                 'description' => $description,
             ];
-            if ($targetUrl) $body['target_url'] = $targetUrl;
+            if ($targetUrl) {
+                $body['target_url'] = $targetUrl;
+            }
 
             $resp = $this->http->post($url, ['json' => $body]);
             $data = json_decode($resp->getBody(), true);

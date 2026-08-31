@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Controller;
 
 use Psr\Http\Message\ResponseInterface as Response;
@@ -60,12 +61,17 @@ class AdminController extends BaseController
             // 分离错误信息
             $errors = [];
             $found = array_filter($raw, function ($i) use (&$errors) {
-                if (($i['source'] ?? '') === '_errors') { $errors = $i['_errors'] ?? []; return false; }
+                if (($i['source'] ?? '') === '_errors') {
+                    $errors = $i['_errors'] ?? [];
+                    return false;
+                }
                 return true;
             });
             $found = array_values($found);
             $saved = $this->autoDiscover->saveDiscovered($found);
-            if ($saved > 0) $this->invalidateTopologyCache();
+            if ($saved > 0) {
+                $this->invalidateTopologyCache();
+            }
             return $this->output($response, [
                 'found' => count($found),
                 'saved' => $saved,
@@ -336,7 +342,9 @@ class AdminController extends BaseController
             $s = mb_strtolower($search);
             $filtered = array_filter($filtered, function ($m) use ($s) {
                 foreach (['job_name','git_remote','current_path','harbor_repository'] as $f) {
-                    if (mb_strpos(mb_strtolower($m[$f] ?? ''), $s) !== false) return true;
+                    if (mb_strpos(mb_strtolower($m[$f] ?? ''), $s) !== false) {
+                        return true;
+                    }
                 }
                 return false;
             });
@@ -624,8 +632,10 @@ class AdminController extends BaseController
                 $maps = $this->config->getJobGitMap();
                 $changed = false;
                 foreach ($maps as &$m) {
-                    if (($m['build_provider'] ?? '') === AppConfig::PROVIDER_CUSTOM_PUSH
-                        && ($m['status'] ?? AppConfig::STATUS_ACTIVE) !== AppConfig::STATUS_PENDING) {
+                    if (
+                        ($m['build_provider'] ?? '') === AppConfig::PROVIDER_CUSTOM_PUSH
+                        && ($m['status'] ?? AppConfig::STATUS_ACTIVE) !== AppConfig::STATUS_PENDING
+                    ) {
                         $m['status'] = AppConfig::STATUS_PENDING;
                         $changed = true;
                     }
@@ -848,9 +858,11 @@ class AdminController extends BaseController
                     return $this->jsonError($response, 'user.cannot_promote_super_admin', 403);
                 }
                 // 系统只允许一个 super_admin：目标非 super_admin 且已存在 super_admin 时，禁止再提升
-                if ($role === AppConfig::ROLE_SUPER_ADMIN
+                if (
+                    $role === AppConfig::ROLE_SUPER_ADMIN
                     && $target['role'] !== AppConfig::ROLE_SUPER_ADMIN
-                    && $this->adminUserRepository->countByRole(AppConfig::ROLE_SUPER_ADMIN) > 0) {
+                    && $this->adminUserRepository->countByRole(AppConfig::ROLE_SUPER_ADMIN) > 0
+                ) {
                     return $this->jsonError($response, 'user.only_one_super_admin', 409);
                 }
                 // 提升为管理员需要 ci.users.manage_admin 权限
@@ -1071,7 +1083,11 @@ class AdminController extends BaseController
             $permInsert = $pdo->prepare("INSERT INTO " . AppConfig::TABLE_ROLE_PERMISSIONS . " (role_id, perm_key) VALUES (?, ?)");
             foreach ($expanded as $pk) {
                 if (in_array($pk, $validKeys, true)) {
-                    try { $permInsert->execute([$roleId, $pk]); } catch (\Exception $e) { \App\Helper\Log::exception($e); }
+                    try {
+                        $permInsert->execute([$roleId, $pk]);
+                    } catch (\Exception $e) {
+                        \App\Helper\Log::exception($e);
+                    }
                 }
             }
             return $this->output($response, ['success' => true, 'id' => (int)$roleId, 'name' => $name], $request);
@@ -1146,7 +1162,11 @@ class AdminController extends BaseController
                 $permInsert = $pdo->prepare("INSERT INTO " . AppConfig::TABLE_ROLE_PERMISSIONS . " (role_id, perm_key) VALUES (?, ?)");
                 foreach ($expanded as $pk) {
                     if (in_array($pk, $validKeys, true)) {
-                        try { $permInsert->execute([$roleId, $pk]); } catch (\Exception $e) { \App\Helper\Log::exception($e); }
+                        try {
+                            $permInsert->execute([$roleId, $pk]);
+                        } catch (\Exception $e) {
+                            \App\Helper\Log::exception($e);
+                        }
                     }
                 }
             }
@@ -1577,9 +1597,11 @@ class AdminController extends BaseController
             $entry['job_name'] = '';
         }
         // 未启用 Custom_Push 时，新增/编辑为 custom_push 的映射强制降为待定，避免「关了开关仍能新增一条 active」
-        if (($entry['build_provider'] ?? '') === AppConfig::PROVIDER_CUSTOM_PUSH
+        if (
+            ($entry['build_provider'] ?? '') === AppConfig::PROVIDER_CUSTOM_PUSH
             && !$this->config->getCustomPushEnabled()
-            && ($entry['status'] ?? AppConfig::STATUS_ACTIVE) === AppConfig::STATUS_ACTIVE) {
+            && ($entry['status'] ?? AppConfig::STATUS_ACTIVE) === AppConfig::STATUS_ACTIVE
+        ) {
             $entry['status'] = AppConfig::STATUS_PENDING;
         }
         return $entry;

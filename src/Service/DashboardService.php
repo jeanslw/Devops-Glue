@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Service;
 
 use App\Config\AppConfig;
@@ -291,7 +292,9 @@ class DashboardService
     private function sanitizeDate(string $d): string
     {
         $d = trim($d);
-        if ($d === '') return '';
+        if ($d === '') {
+            return '';
+        }
         $dt = \DateTime::createFromFormat('!Y-m-d', $d);
         return ($dt && $dt->format('Y-m-d') === $d) ? $d : '';
     }

@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Controller;
 
 use Psr\Http\Message\ResponseInterface as Response;
@@ -103,5 +104,4 @@ class DashboardController extends BaseController
             return $this->jsonError($response, 'dashboard.query_failed', 500);
         }
     }
-
 }

@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Service\Git;
 
 use GuzzleHttp\Client;
@@ -72,7 +73,9 @@ class GitlabService implements GitProviderInterface
                 'name'        => $context,
                 'description' => $description,
             ];
-            if ($targetUrl) $body['target_url'] = $targetUrl;
+            if ($targetUrl) {
+                $body['target_url'] = $targetUrl;
+            }
 
             $response = $this->client->post($url, ['json' => $body]);
             return [
@@ -97,7 +100,9 @@ class GitlabService implements GitProviderInterface
             try {
                 $response = $this->client->get($url);
                 $data = json_decode($response->getBody(), true);
-                if (!is_array($data) || empty($data)) break;
+                if (!is_array($data) || empty($data)) {
+                    break;
+                }
                 $all = array_merge($all, array_column($data, $key));
                 $page++;
             } catch (GuzzleException $e) {

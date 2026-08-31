@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Middleware;
 
 use Psr\Http\Message\ResponseInterface as Response;
@@ -20,7 +21,8 @@ class AuthMiddleware implements MiddlewareInterface
         private I18nService $i18n,
         private ResponseFactoryInterface $responseFactory,
         private TokenService $tokenService
-    ) {}
+    ) {
+    }
 
     public function process(Request $request, Handler $handler): Response
     {

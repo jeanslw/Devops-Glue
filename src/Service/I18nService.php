@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Service;
 
 use Symfony\Component\Translation\Translator;
@@ -30,7 +31,9 @@ class I18nService
         $locales = ['zh_CN', 'en'];
         foreach ($locales as $locale) {
             $dir = $langDir . '/' . $locale;
-            if (!is_dir($dir)) continue;
+            if (!is_dir($dir)) {
+                continue;
+            }
 
             foreach (glob($dir . '/*.php') as $file) {
                 $domain = pathinfo($file, PATHINFO_FILENAME);
@@ -94,8 +97,12 @@ class I18nService
             if (preg_match('/^([a-z]{2})/i', trim($acceptLang), $m)) {
                 $lang = strtolower($m[1]);
                 // 'zh' 映射到 zh_CN
-                if ($lang === 'zh') return 'zh_CN';
-                if ($lang === 'en') return 'en';
+                if ($lang === 'zh') {
+                    return 'zh_CN';
+                }
+                if ($lang === 'en') {
+                    return 'en';
+                }
             }
         }
 

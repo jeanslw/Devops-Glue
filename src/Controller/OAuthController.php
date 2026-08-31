@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Controller;
 
 use Psr\Http\Message\ResponseInterface as Response;
@@ -78,7 +79,12 @@ class OAuthController extends BaseController
         $result = $this->auth->authenticate($username, $password, AppConfig::SYSTEM_CI);
         if (empty($result['success'])) {
             $response->getBody()->write($this->renderLoginForm(
-                $clientId, $redirectUri, $state, $scope, $nonce, $this->__($result['errorKey'] ?? 'auth.wrong_credentials')
+                $clientId,
+                $redirectUri,
+                $state,
+                $scope,
+                $nonce,
+                $this->__($result['errorKey'] ?? 'auth.wrong_credentials')
             ));
             return $response->withStatus(401)->withHeader('Content-Type', 'text/html; charset=utf-8');
         }
@@ -118,8 +124,12 @@ class OAuthController extends BaseController
         // Grafana 等客户端默认用 HTTP Basic Auth 传 client_id/client_secret（RFC 6749 §2.3.1）
         if ($clientId === '' || $clientSecret === '') {
             [$basicId, $basicSecret] = $this->parseBasicAuth($request);
-            if ($clientId === '')     $clientId = $basicId;
-            if ($clientSecret === '') $clientSecret = $basicSecret;
+            if ($clientId === '') {
+                $clientId = $basicId;
+            }
+            if ($clientSecret === '') {
+                $clientSecret = $basicSecret;
+            }
         }
 
         if ($grantType !== 'authorization_code' || $code === '') {

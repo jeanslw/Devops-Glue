@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Service;
 
 use App\Service\Git\ProviderRegistry;
@@ -42,14 +43,22 @@ class AutoDiscover
             // 单 provider 模式：排斥对方 provider 的记录，杜绝交叉污染
             if ($buildMode !== AppConfig::BUILD_MODE_BOTH && $bp !== $buildMode) {
                 // 但 custom_push 记录在 custom_push_enabled 时始终纳入去重
-                if (!($cpEnabled && $bp === AppConfig::PROVIDER_CUSTOM_PUSH)) continue;
+                if (!($cpEnabled && $bp === AppConfig::PROVIDER_CUSTOM_PUSH)) {
+                    continue;
+                }
             }
 
-            if (!empty($m['job_name'])) $existingNames[] = $m['job_name'];
-            if (empty($m['git_remote'])) continue;
+            if (!empty($m['job_name'])) {
+                $existingNames[] = $m['job_name'];
+            }
+            if (empty($m['git_remote'])) {
+                continue;
+            }
             if (($m['status'] ?? AppConfig::STATUS_ACTIVE) === AppConfig::STATUS_ACTIVE) {
                 $key = $this->normalizeRemote($m['git_remote']);
-                if ($key) $activeRemotes[] = $key;
+                if ($key) {
+                    $activeRemotes[] = $key;
+                }
             }
         }
 
@@ -101,20 +110,28 @@ class AutoDiscover
             $bp = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
             if ($buildMode !== AppConfig::BUILD_MODE_BOTH && $bp !== $buildMode) {
                 // custom_push 记录在 custom_push_enabled 时始终纳入去重
-                if (!($cpEnabled && $bp === AppConfig::PROVIDER_CUSTOM_PUSH)) continue;
+                if (!($cpEnabled && $bp === AppConfig::PROVIDER_CUSTOM_PUSH)) {
+                    continue;
+                }
             }
-            if (!empty($m['job_name'])) $names[] = $m['job_name'];
+            if (!empty($m['job_name'])) {
+                $names[] = $m['job_name'];
+            }
         }
 
         foreach ($discovered as $item) {
             $e = $item['entry'] ?? null;
-            if (!$e || empty($e['job_name']) || in_array($e['job_name'], $names)) continue;
+            if (!$e || empty($e['job_name']) || in_array($e['job_name'], $names)) {
+                continue;
+            }
             // 新发现全部设为 pending，用户手动启用后才变 active
             $e['status'] = AppConfig::STATUS_PENDING;
             $maps[] = $e;
             $saved++;
         }
-        if ($saved > 0) $this->config->saveJobGitMap($maps);
+        if ($saved > 0) {
+            $this->config->saveJobGitMap($maps);
+        }
         return $saved;
     }
 
@@ -130,12 +147,20 @@ class AutoDiscover
                 $remote   = $remotes[0] ?? '';
                 $rKey     = $remote ? $this->normalizeRemote($remote) : '';
                 // 该仓库已被当前模式的已有 active 记录映射（归一化 key 比对，跨协议生效）
-                if ($rKey && in_array($rKey, $activeRemotes)) continue;
+                if ($rKey && in_array($rKey, $activeRemotes)) {
+                    continue;
+                }
                 // 本 provider 内同一仓库不重复显示
-                if ($rKey && in_array($rKey, $seen)) continue;
-                if (in_array($jobName, $existingNames)) continue;
+                if ($rKey && in_array($rKey, $seen)) {
+                    continue;
+                }
+                if (in_array($jobName, $existingNames)) {
+                    continue;
+                }
                 $platform = $this->detectPlatform($remote);
-                if ($rKey) $seen[] = $rKey;
+                if ($rKey) {
+                    $seen[] = $rKey;
+                }
 
                 $found[] = ['entry' => [
                     'job_name'       => $jobName,
@@ -161,7 +186,9 @@ class AutoDiscover
         $found = [];
         $glCfg = $this->config->getGitlabConfig();
         $base  = rtrim($glCfg['base_url'] ?? '', '/');
-        if (empty($base) || !$this->gitlabClient) return $found;
+        if (empty($base) || !$this->gitlabClient) {
+            return $found;
+        }
 
         try {
             // 快速验证认证
@@ -174,7 +201,9 @@ class AutoDiscover
             while ($page <= 10) {
                 $resp = $this->gitlabClient->get("{$base}/api/v4/projects?per_page=100&page={$page}&membership=true&order_by=last_activity_at");
                 $data = json_decode($resp->getBody(), true);
-                if (!is_array($data) || empty($data)) break;
+                if (!is_array($data) || empty($data)) {
+                    break;
+                }
 
                 foreach ($data as $p) {
                     $path = $p['path_with_namespace'] ?? '';
@@ -182,11 +211,19 @@ class AutoDiscover
                     $remote = $p['http_url_to_repo'] ?? '';
                     $rKey   = $remote ? $this->normalizeRemote($remote) : '';
                     // 该仓库已被当前模式的已有 active 记录映射（归一化 key 比对，跨协议生效）
-                    if ($rKey && in_array($rKey, $activeRemotes)) continue;
+                    if ($rKey && in_array($rKey, $activeRemotes)) {
+                        continue;
+                    }
                     // 本 provider 内同一仓库不重复显示
-                    if ($rKey && in_array($rKey, $seen)) continue;
-                    if (in_array($path, $existingNames)) continue;
-                    if ($rKey) $seen[] = $rKey;
+                    if ($rKey && in_array($rKey, $seen)) {
+                        continue;
+                    }
+                    if (in_array($path, $existingNames)) {
+                        continue;
+                    }
+                    if ($rKey) {
+                        $seen[] = $rKey;
+                    }
 
                     $found[] = ['entry' => [
                         'job_name'       => $path,
@@ -229,16 +266,26 @@ class AutoDiscover
                     while ($page <= 10) {
                         $resp = $this->gitlabClient->get("{$base}/api/v4/projects?per_page=100&page={$page}&membership=true&order_by=last_activity_at");
                         $data = json_decode($resp->getBody(), true);
-                        if (!is_array($data) || empty($data)) break;
+                        if (!is_array($data) || empty($data)) {
+                            break;
+                        }
 
                         foreach ($data as $p) {
                             $path = $p['path_with_namespace'] ?? '';
                             $remote = $p['http_url_to_repo'] ?? '';
                             $rKey   = $remote ? $this->normalizeRemote($remote) : '';
-                            if ($rKey && in_array($rKey, $activeRemotes)) continue;
-                            if ($rKey && in_array($rKey, $seen)) continue;
-                            if (in_array($path, $existingNames)) continue;
-                            if ($rKey) $seen[] = $rKey;
+                            if ($rKey && in_array($rKey, $activeRemotes)) {
+                                continue;
+                            }
+                            if ($rKey && in_array($rKey, $seen)) {
+                                continue;
+                            }
+                            if (in_array($path, $existingNames)) {
+                                continue;
+                            }
+                            if ($rKey) {
+                                $seen[] = $rKey;
+                            }
 
                             $found[] = ['entry' => [
                                 'job_name'       => $path,
@@ -281,7 +328,9 @@ class AutoDiscover
     private function normalizeRemote(string $remote): string
     {
         $r = trim($remote);
-        if (empty($r)) return '';
+        if (empty($r)) {
+            return '';
+        }
 
         // 处理 ssh://user@host:port/path 格式（带端口）
         if (preg_match('#^ssh://#i', $r)) {
@@ -319,9 +368,14 @@ class AutoDiscover
 
     private function detectPlatform(string $remote): string
     {
-        if (empty($remote)) return $this->config->getDefaultGitPlatform();
-        try { return $this->gitRegistry->detect($remote); }
-        catch (\Exception $e) { return $this->config->getDefaultGitPlatform(); }
+        if (empty($remote)) {
+            return $this->config->getDefaultGitPlatform();
+        }
+        try {
+            return $this->gitRegistry->detect($remote);
+        } catch (\Exception $e) {
+            return $this->config->getDefaultGitPlatform();
+        }
     }
 
     /**

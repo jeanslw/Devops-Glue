@@ -4,7 +4,6 @@ config/.env
 .env.*.local
 *.docx
 *.db
-phpstan.neon.dist
 
 #test
 .claude/
@@ -16,8 +15,7 @@ backups/
 tests/report.py
 tests/smoke_api_tokens
 
-# tests: 冒烟测试 smoke_test.php 与单元测试 tests/Unit 纳入版本控制；
-# smoke_api_tokens.php（api_tokens 冒烟辅助）不纳入
+# tests: smoke_test.php tests/Unit 
 tests/smoke_api_tokens.php
 
 # IDE
@@ -41,10 +39,8 @@ Thumbs.db
 *.cache
 config/gitlab_id_cache.php
 
-# 运行时数据（SQLite 库、OIDC 私钥等自动生成文件，勿提交）
+#backup && database
 config/data/
-
-# 数据库备份（bin/backup.php 导出）
 backups/
 
 .github/copilot-instructions.md

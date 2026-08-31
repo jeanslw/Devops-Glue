@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Controller;
 
 use Psr\Http\Message\ResponseInterface as Response;
@@ -12,7 +13,9 @@ class BaseController
     protected string $currentRole = AppConfig::ROLE_ADMIN;
     protected array $userPermissions = [];
 
-    public function __construct(protected I18nService $i18n) {}
+    public function __construct(protected I18nService $i18n)
+    {
+    }
 
     /**
      * 翻译快捷方法

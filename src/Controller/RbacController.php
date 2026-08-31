@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Controller;
 
 use App\Config\AppConfig;
@@ -131,8 +132,10 @@ class RbacController extends BaseController
                 return $this->jsonError($response, 'user.not_found', 404);
             }
             // 内置根账号 / 既有 super_admin 均不可被服务账号改动
-            if ($targetUser === $this->config->getRootAdminUser()
-                || $target['role'] === AppConfig::ROLE_SUPER_ADMIN) {
+            if (
+                $targetUser === $this->config->getRootAdminUser()
+                || $target['role'] === AppConfig::ROLE_SUPER_ADMIN
+            ) {
                 return $this->jsonError($response, 'user.cannot_edit_root', 403);
             }
 
@@ -161,8 +164,10 @@ class RbacController extends BaseController
             if (!$target) {
                 return $this->jsonError($response, 'user.not_found', 404);
             }
-            if ($targetUser === $this->config->getRootAdminUser()
-                || $target['role'] === AppConfig::ROLE_SUPER_ADMIN) {
+            if (
+                $targetUser === $this->config->getRootAdminUser()
+                || $target['role'] === AppConfig::ROLE_SUPER_ADMIN
+            ) {
                 return $this->jsonError($response, 'user.cannot_delete_root', 403);
             }
 

@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Service;
 
 use GuzzleHttp\Client;
@@ -83,7 +84,8 @@ class HarborService
                 $this->specificVersion = $cached['value'];
                 return $this->specificVersion;
             }
-        } catch (\Exception $e) {}
+        } catch (\Exception $e) {
+        }
 
         $version = $this->probeHarborVersion();
 
@@ -92,7 +94,8 @@ class HarborService
                 $pdo = $this->pdo;
                 $sql = \App\Service\Database::sqlUpsert(\App\Config\AppConfig::TABLE_CACHE, 'cache_key, value, expires_at', '?, ?, ?');
                 $pdo->prepare($sql)->execute([$cacheKey, $version, time() + \App\Config\AppConfig::TTL_CACHE]);
-            } catch (\Exception $e) {}
+            } catch (\Exception $e) {
+            }
         }
 
         return $this->specificVersion = $version;
@@ -197,7 +200,8 @@ class HarborService
                 $this->apiVersion = $cached['value'];
                 return $this->apiVersion;
             }
-        } catch (\Exception $e) {}
+        } catch (\Exception $e) {
+        }
 
         // 直接用 v2 项目列表端点探测，比 HEAD systeminfo 更可靠
         try {
@@ -236,7 +240,8 @@ class HarborService
             $pdo = $this->pdo;
             $sql = \App\Service\Database::sqlUpsert(\App\Config\AppConfig::TABLE_CACHE, 'cache_key, value, expires_at', '?, ?, ?');
             $pdo->prepare($sql)->execute([\App\Config\AppConfig::CACHE_KEY_HARBOR_VERSION, $this->apiVersion, time() + \App\Config\AppConfig::TTL_CACHE]);
-        } catch (\Exception $e) {}
+        } catch (\Exception $e) {
+        }
         return $this->apiVersion;
     }
 
@@ -402,7 +407,9 @@ class HarborService
 
         // v1: 先根据项目名找到 project_id
         $projectsData = $this->request('GET', '/api/projects', ['query' => ['name' => $project]]);
-        if (isset($projectsData['error'])) return $projectsData;
+        if (isset($projectsData['error'])) {
+            return $projectsData;
+        }
         $projectId = null;
         foreach ($projectsData as $p) {
             if (($p['name'] ?? '') === $project) {

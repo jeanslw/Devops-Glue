@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Service;
 
 use Firebase\JWT\JWT;

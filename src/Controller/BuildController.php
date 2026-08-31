@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Controller;
 
 use Psr\Http\Message\ResponseInterface as Response;
@@ -52,7 +53,7 @@ class BuildController extends BaseController
                 'ci_provider'      => $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS,
                 'project_id'       => $m['project_id'] ?? ($m['current_path'] ?? $m['job_name']),
                 'current_path'     => $m['current_path'] ?? '',
-                'harbor_repository'=> $m['harbor_repository'] ?? '',
+                'harbor_repository' => $m['harbor_repository'] ?? '',
                 'git_platform'     => $m['git_platform'] ?? '',
             ];
         }
@@ -349,10 +350,14 @@ class BuildController extends BaseController
         // 合并：POST body 根级 + variables 嵌套 + Query String，全部当参数
         $vars = $body['variables'] ?? [];
         foreach ($body as $k => $v) {
-            if (!in_array($k, ['ref','variables','format','token']) && !isset($vars[$k])) $vars[$k] = $v;
+            if (!in_array($k, ['ref','variables','format','token']) && !isset($vars[$k])) {
+                $vars[$k] = $v;
+            }
         }
         foreach ($qs as $k => $v) {
-            if (!in_array($k, ['format','token','ref']) && !isset($vars[$k])) $vars[$k] = $v;
+            if (!in_array($k, ['format','token','ref']) && !isset($vars[$k])) {
+                $vars[$k] = $v;
+            }
         }
         // ref 的自动映射交给 provider 处理（通过参数 _class 动态识别 Git 参数名）
 
@@ -1009,8 +1014,12 @@ class BuildController extends BaseController
     private function recordPipelineTag(string $path, int $pipelineIid, string $tag, string $harborRepo = '', string $status = '', ?string $createdAt = null): void
     {
         // 基础输入校验：ci_pipeline_tags 是最终部署依据，关键字段必须真实非空
-        if (empty($path) || $pipelineIid <= 0 || empty($tag) || empty($harborRepo)) return;
-        if (mb_strlen($tag) > 255 || mb_strlen($path) > 255) return;
+        if (empty($path) || $pipelineIid <= 0 || empty($tag) || empty($harborRepo)) {
+            return;
+        }
+        if (mb_strlen($tag) > 255 || mb_strlen($path) > 255) {
+            return;
+        }
         try {
             $pdo = $this->pdo;
             if ($createdAt !== null && $createdAt !== '') {

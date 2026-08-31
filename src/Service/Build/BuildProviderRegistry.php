@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Service\Build;
 
 use App\Exceptions\ApiException;
@@ -34,8 +35,14 @@ class BuildProviderRegistry
         }
     }
 
-    public function isRegistered(string $name): bool { return isset($this->factories[$name]); }
+    public function isRegistered(string $name): bool
+    {
+        return isset($this->factories[$name]);
+    }
 
     /** @return string[] */
-    public function getRegisteredNames(): array { return array_keys($this->factories); }
+    public function getRegisteredNames(): array
+    {
+        return array_keys($this->factories);
+    }
 }

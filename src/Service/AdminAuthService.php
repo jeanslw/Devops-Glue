@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Service;
 
 use App\Config\AppConfig;
@@ -11,7 +12,8 @@ class AdminAuthService
         private AppConfig $config,
         private ?LdapService $ldap = null,
         private ?UserIdentityRepository $identities = null
-    ) {}
+    ) {
+    }
 
 
     /**
@@ -80,7 +82,9 @@ class AdminAuthService
                         $email = (string)($attrs['mail'] ?? $attrs['email'] ?? $identity['email'] ?? '');
                         try {
                             $this->identities->refreshProfile('ldap', $dn, $email, $attrs === [] ? null : $attrs);
-                        } catch (\Throwable $e) { /* 缓存写入失败不影响登录 */ }
+                        } catch (\Throwable $e) {
+                            // 缓存写入失败不影响登录
+                        }
 
                         return [
                             'success' => true,

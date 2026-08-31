@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Service;
 
 use App\Config\AppConfig;
@@ -123,8 +124,10 @@ class OAuthService
                 return null;
             }
             // 授权码绑定 client_id + redirect_uri
-            if (($data['client_id'] ?? '') !== $clientId
-                || ($data['redirect_uri'] ?? '') !== $redirectUri) {
+            if (
+                ($data['client_id'] ?? '') !== $clientId
+                || ($data['redirect_uri'] ?? '') !== $redirectUri
+            ) {
                 return null;
             }
             return $data;

@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Controller;
 
 use Psr\Http\Message\ResponseInterface as Response;
@@ -160,20 +161,20 @@ class MainController extends BaseController
         $configured = [];
         $unconfigured = [];
         foreach ($usedPlatforms as $name) {
-           if ($this->config->isPlatformConfigured($name)) {
-    // 从配置数组中找出该平台的 api_base_url
-    $apiBaseUrl = '';
-        foreach ($this->config->getGitPlatformsConfig() as $cfg) {
-            if (($cfg['name'] ?? '') === $name) {
-                $apiBaseUrl = $cfg['api_base_url'] ?? '';
-                break;
-            }
-        }
-        $configured[] = [
-            'name' => $name,
-            'api_base_url' => $apiBaseUrl,
-        ];
-    } else {
+            if ($this->config->isPlatformConfigured($name)) {
+     // 从配置数组中找出该平台的 api_base_url
+                $apiBaseUrl = '';
+                foreach ($this->config->getGitPlatformsConfig() as $cfg) {
+                    if (($cfg['name'] ?? '') === $name) {
+                        $apiBaseUrl = $cfg['api_base_url'] ?? '';
+                        break;
+                    }
+                }
+                $configured[] = [
+                'name' => $name,
+                'api_base_url' => $apiBaseUrl,
+                ];
+            } else {
                 $exampleRemote = '';
                 foreach ($this->config->getJobGitMap() as $map) {
                     if (($map['git_platform'] ?? '') === $name && !empty($map['git_remote'])) {
@@ -182,8 +183,8 @@ class MainController extends BaseController
                     }
                 }
                 $unconfigured[] = [
-                    'name' => $name,
-                    'example_remote' => $exampleRemote,
+                'name' => $name,
+                'example_remote' => $exampleRemote,
                 ];
             }
         }
@@ -352,7 +353,8 @@ class MainController extends BaseController
             $stats['active_maps'] = (int)$stmt->fetchColumn();
             $stats['git_platforms'] = (int)$pdo->query("SELECT count(DISTINCT git_platform) FROM " . AppConfig::TABLE_JOB_GIT_MAP . " WHERE git_platform IS NOT NULL AND git_platform != ''")->fetchColumn();
             $stats['harbor_repos'] = (int)$pdo->query("SELECT count(DISTINCT harbor_repository) FROM " . AppConfig::TABLE_JOB_GIT_MAP . " WHERE harbor_repository IS NOT NULL AND harbor_repository != ''")->fetchColumn();
-        } catch (\Exception $e) {}
+        } catch (\Exception $e) {
+        }
 
         $data = [
             'status'                => $status,

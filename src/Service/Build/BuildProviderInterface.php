@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Service\Build;
 
 interface BuildProviderInterface

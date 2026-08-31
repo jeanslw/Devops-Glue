@@ -1,4 +1,5 @@
 <?php
+
 namespace App;
 
 use Psr\Http\Message\ResponseFactoryInterface;

@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Service;
 
 class Database
@@ -94,7 +95,9 @@ class Database
     public static function getPdo(): \PDO
     {
         if (self::$pdo === null) {
-            if (empty(self::$config)) self::init();
+            if (empty(self::$config)) {
+                self::init();
+            }
 
             if (self::$driver === 'mysql') {
                 self::$pdo = self::connectMysql();
@@ -116,7 +119,9 @@ class Database
     {
         $path = self::$config['path'];
         $dir  = dirname($path);
-        if (!is_dir($dir)) @mkdir($dir, 0777, true);
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0777, true);
+        }
 
         $pdo = new \PDO('sqlite:' . $path);
         $pdo->exec('PRAGMA journal_mode=WAL');
@@ -311,7 +316,8 @@ class Database
                 }
                 $pdo->exec("DELETE FROM " . \App\Config\AppConfig::TABLE_CACHE . " WHERE cache_key = 'build_mode'");
             }
-        } catch (\Exception $e) {}
+        } catch (\Exception $e) {
+        }
 
         // ci_security_checks（安全扫描审计记录）
         $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_SECURITY_CHECKS . " (
@@ -476,11 +482,11 @@ class Database
         self::seedRbac();
 
         // ── 索引（跨驱动幂等：MySQL 无 IF NOT EXISTS，先查 information_schema）──
-        self::createIndex('idx_pipeline_tags_project',    \App\Config\AppConfig::TABLE_PIPELINE_TAGS, 'project');
-        self::createIndex('idx_pipeline_tags_created',    \App\Config\AppConfig::TABLE_PIPELINE_TAGS, 'created_at');
+        self::createIndex('idx_pipeline_tags_project', \App\Config\AppConfig::TABLE_PIPELINE_TAGS, 'project');
+        self::createIndex('idx_pipeline_tags_created', \App\Config\AppConfig::TABLE_PIPELINE_TAGS, 'created_at');
         self::createIndex('idx_job_git_map_current_path', \App\Config\AppConfig::TABLE_JOB_GIT_MAP, 'current_path');
-        self::createIndex('idx_security_checks_project',  \App\Config\AppConfig::TABLE_SECURITY_CHECKS, 'project, check_type');
-        self::createIndex('idx_security_checks_sha',      \App\Config\AppConfig::TABLE_SECURITY_CHECKS, 'sha');
+        self::createIndex('idx_security_checks_project', \App\Config\AppConfig::TABLE_SECURITY_CHECKS, 'project, check_type');
+        self::createIndex('idx_security_checks_sha', \App\Config\AppConfig::TABLE_SECURITY_CHECKS, 'sha');
 
         // 一次性 JSON 迁移（仅 SQLite）
         if (!$isMySQL) {
@@ -530,7 +536,10 @@ class Database
         foreach (\App\Config\AppConfig::DEFAULT_PERMISSIONS as $key => $def) {
             $desc = is_array($def) ? $def['name'] : $def;
             $parent = is_array($def) ? ($def['parent'] ?? null) : null;
-            try { $permStmt->execute([$key, $desc, $parent]); } catch (\Exception $e) {}
+            try {
+                $permStmt->execute([$key, $desc, $parent]);
+            } catch (\Exception $e) {
+            }
         }
 
         // 种子数据：隐含规则（与 DEFAULT_PERMISSIONS 一样作 bootstrap，运行时可被 API 覆盖/扩展）
@@ -538,7 +547,10 @@ class Database
         $ruleStmt = $pdo->prepare($ruleUpsert);
         foreach (\App\Config\AppConfig::IMPLIED_PERMISSIONS as $src => $targets) {
             foreach ($targets as $tgt) {
-                try { $ruleStmt->execute([$src, $tgt]); } catch (\Exception $e) {}
+                try {
+                    $ruleStmt->execute([$src, $tgt]);
+                } catch (\Exception $e) {
+                }
             }
         }
 
@@ -562,7 +574,8 @@ class Database
                 } else {
                     $updateRoleStmt->execute([$roleDesc, $isSystem, (int)$roleId]);
                 }
-            } catch (\Exception $e) {}
+            } catch (\Exception $e) {
+            }
         }
 
         // 种子数据：角色↔权限（只同步系统角色，不碰自定义角色）
@@ -570,10 +583,16 @@ class Database
         $delRpStmt = $pdo->prepare("DELETE FROM " . \App\Config\AppConfig::TABLE_ROLE_PERMISSIONS . " WHERE role_id = (SELECT id FROM " . \App\Config\AppConfig::TABLE_ROLES . " WHERE name = ?)");
         $rpStmt = $pdo->prepare("INSERT INTO " . \App\Config\AppConfig::TABLE_ROLE_PERMISSIONS . " (role_id, perm_key) VALUES ((SELECT id FROM " . \App\Config\AppConfig::TABLE_ROLES . " WHERE name = ?), ?)");
         foreach (\App\Config\AppConfig::DEFAULT_ROLES as $roleName => $perms) {
-            try { $delRpStmt->execute([$roleName]); } catch (\Exception $e) {}
+            try {
+                $delRpStmt->execute([$roleName]);
+            } catch (\Exception $e) {
+            }
             $permKeys = ($perms === '*') ? $allPermKeys : $perms;
             foreach ($permKeys as $permKey) {
-                try { $rpStmt->execute([$roleName, $permKey]); } catch (\Exception $e) {}
+                try {
+                    $rpStmt->execute([$roleName, $permKey]);
+                } catch (\Exception $e) {
+                }
             }
         }
 
@@ -645,11 +664,18 @@ class Database
 
     private static function migrateJobGitMap(string $path, \PDO $pdo): void
     {
-        if (!file_exists($path)) return;
+        if (!file_exists($path)) {
+            return;
+        }
         $json = file_get_contents($path);
-        if ($json === false) return;
+        if ($json === false) {
+            return;
+        }
         $data = json_decode($json, true);
-        if (!is_array($data) || !isset($data[0])) { @unlink($path); return; }
+        if (!is_array($data) || !isset($data[0])) {
+            @unlink($path);
+            return;
+        }
 
         $isMySQL = self::$driver === 'mysql';
         $table = \App\Config\AppConfig::TABLE_JOB_GIT_MAP;
@@ -659,7 +685,9 @@ class Database
 
         $stmt = $pdo->prepare($sql);
         foreach ($data as $row) {
-            if (empty($row['job_name'])) continue;
+            if (empty($row['job_name'])) {
+                continue;
+            }
             $stmt->execute([
                 $row['job_name'], $row['git_platform'] ?? null, $row['build_provider'] ?? \App\Config\AppConfig::PROVIDER_JENKINS,
                 $row['git_remote'] ?? null, $row['project_id'] ?? null, $row['web_url'] ?? null,
@@ -671,11 +699,18 @@ class Database
 
     private static function migratePlatformVersions(string $path, \PDO $pdo): void
     {
-        if (!file_exists($path)) return;
+        if (!file_exists($path)) {
+            return;
+        }
         $json = file_get_contents($path);
-        if ($json === false) return;
+        if ($json === false) {
+            return;
+        }
         $data = json_decode($json, true);
-        if (!is_array($data)) { @unlink($path); return; }
+        if (!is_array($data)) {
+            @unlink($path);
+            return;
+        }
 
         $isMySQL = self::$driver === 'mysql';
         $table = \App\Config\AppConfig::TABLE_PLATFORM_VERSIONS;
@@ -685,18 +720,27 @@ class Database
 
         $stmt = $pdo->prepare($sql);
         foreach ($data as $platform => $ver) {
-            if (is_string($ver)) $stmt->execute([$platform, $ver]);
+            if (is_string($ver)) {
+                $stmt->execute([$platform, $ver]);
+            }
         }
         @unlink($path);
     }
 
     private static function migratePipelineTags(string $path, \PDO $pdo): void
     {
-        if (!file_exists($path)) return;
+        if (!file_exists($path)) {
+            return;
+        }
         $json = file_get_contents($path);
-        if ($json === false) return;
+        if ($json === false) {
+            return;
+        }
         $data = json_decode($json, true);
-        if (!is_array($data)) { @unlink($path); return; }
+        if (!is_array($data)) {
+            @unlink($path);
+            return;
+        }
 
         $isMySQL = self::$driver === 'mysql';
         $table = \App\Config\AppConfig::TABLE_PIPELINE_TAGS;
@@ -706,7 +750,9 @@ class Database
 
         $stmt = $pdo->prepare($sql);
         foreach ($data as $project => $tags) {
-            if (!is_array($tags)) continue;
+            if (!is_array($tags)) {
+                continue;
+            }
             foreach ($tags as $iid => $tag) {
                 $stmt->execute([$project, (int) $iid, $tag]);
             }
@@ -714,5 +760,7 @@ class Database
         @unlink($path);
     }
 
-    private function __construct() {}
+    private function __construct()
+    {
+    }
 }

@@ -1,0 +1,20 @@
+parameters:
+    level: 3
+    paths:
+        - src
+        - config
+        - database
+        - templates
+        - lang
+        - public
+    ignoreErrors:
+        - identifier: identical.alwaysFalse
+        - identifier: notIdentical.alwaysTrue
+        - identifier: nullCoalesce.offset
+        - identifier: nullCoalesce.expr
+        - identifier: function.alreadyNarrowedType
+        - identifier: match.alwaysTrue
+        - identifier: nullsafe.neverNull
+        - identifier: booleanAnd.leftAlwaysTrue
+        - identifier: ternary.alwaysTrue
+        - identifier: property.onlyWritten

@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Service;
 
 use App\Config\AppConfig;
@@ -12,7 +13,9 @@ use App\Config\AppConfig;
  */
 class ApiTokenService
 {
-    public function __construct(private \PDO $pdo, private AppConfig $config) {}
+    public function __construct(private \PDO $pdo, private AppConfig $config)
+    {
+    }
 
     /**
      * 创建 API token，返回一次性明文。
@@ -115,7 +118,7 @@ class ApiTokenService
         return [
             'id'    => (int)$row['id'],
             'name'  => $row['name'],
-            'scopes'=> $this->scopesToArray($row['scopes']),
+            'scopes' => $this->scopesToArray($row['scopes']),
         ];
     }
 

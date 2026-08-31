@@ -1,11 +1,14 @@
 <?php
+
 namespace App\Service;
 
 use App\Config\AppConfig;
 
 class AdminUserRepository
 {
-    public function __construct(private \PDO $pdo) {}
+    public function __construct(private \PDO $pdo)
+    {
+    }
 
     public function findByUsername(string $username): ?array
     {

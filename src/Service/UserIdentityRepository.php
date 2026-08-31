@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Service;
 
 use App\Config\AppConfig;
@@ -14,7 +15,9 @@ use App\Config\AppConfig;
  */
 class UserIdentityRepository
 {
-    public function __construct(private \PDO $pdo) {}
+    public function __construct(private \PDO $pdo)
+    {
+    }
 
     /** 按身份源 + 外部 UID 查（登录主路径），返回行或 null */
     public function find(string $providerType, string $providerUid): ?array

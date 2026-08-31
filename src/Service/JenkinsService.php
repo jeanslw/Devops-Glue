@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Service;
 
 use GuzzleHttp\Exception\ClientException;
@@ -118,22 +119,30 @@ class JenkinsService
         $remotes = [];
         if (isset($data['scm']['sources'])) {
             foreach ($data['scm']['sources'] as $src) {
-                if (!empty($src['remote'])) $remotes[] = $src['remote'];
+                if (!empty($src['remote'])) {
+                    $remotes[] = $src['remote'];
+                }
             }
         }
         if (isset($data['scm']['userRemoteConfigs'])) {
             foreach ($data['scm']['userRemoteConfigs'] as $cfg) {
-                if (!empty($cfg['url'])) $remotes[] = $cfg['url'];
+                if (!empty($cfg['url'])) {
+                    $remotes[] = $cfg['url'];
+                }
             }
         }
         if (isset($data['definition']['scm']['sources'])) {
             foreach ($data['definition']['scm']['sources'] as $src) {
-                if (!empty($src['remote'])) $remotes[] = $src['remote'];
+                if (!empty($src['remote'])) {
+                    $remotes[] = $src['remote'];
+                }
             }
         }
         if (isset($data['definition']['scm']['userRemoteConfigs'])) {
             foreach ($data['definition']['scm']['userRemoteConfigs'] as $cfg) {
-                if (!empty($cfg['url'])) $remotes[] = $cfg['url'];
+                if (!empty($cfg['url'])) {
+                    $remotes[] = $cfg['url'];
+                }
             }
         }
         return $remotes;
@@ -195,7 +204,9 @@ class JenkinsService
     private function getLatestBuildParametersList(string $jobPath): array
     {
         $lastBuild = $this->getLastBuild($jobPath);
-        if (!$lastBuild) return [];
+        if (!$lastBuild) {
+            return [];
+        }
         $resp = $this->client->get("{$lastBuild['url']}/api/json?tree=actions[parameters[name]]");
         $data = json_decode($resp->getBody(), true);
         $names = [];
@@ -348,7 +359,9 @@ class JenkinsService
     {
         foreach ($actions as $action) {
             $branches = $action['lastBuiltRevision']['branch'] ?? null;
-            if (!$branches) continue;
+            if (!$branches) {
+                continue;
+            }
             foreach ($branches as $branch) {
                 $name = $branch['name'] ?? '';
                 $sha  = $branch['SHA1'] ?? '';

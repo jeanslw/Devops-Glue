@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Service\Git;
 
 use GuzzleHttp\Client;
@@ -65,7 +66,9 @@ class GiteeService implements GitProviderInterface
             'description' => $description,
             'context'     => $context,
         ];
-        if ($targetUrl) $body['target_url'] = $targetUrl;
+        if ($targetUrl) {
+            $body['target_url'] = $targetUrl;
+        }
 
         try {
             $url = "{$this->baseUrl}/repos/{$repository}/commits/{$sha}/statuses";
@@ -95,7 +98,9 @@ class GiteeService implements GitProviderInterface
             try {
                 $response = $this->request('GET', $url, ['query' => ['per_page' => self::PAGE_SIZE, 'page' => $page]]);
                 $data = json_decode($response->getBody(), true);
-                if (!is_array($data) || empty($data)) break;
+                if (!is_array($data) || empty($data)) {
+                    break;
+                }
                 $all = array_merge($all, array_column($data, $key));
                 $page++;
             } catch (GuzzleException $e) {
