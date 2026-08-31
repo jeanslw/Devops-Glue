@@ -79,7 +79,7 @@ jobs:
 
       - name: Upload Coverage to Codecov
         if: matrix.php == '8.2'
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v7
         with:
           file: ./coverage.xml
           token: ${{ secrets.CODECOV_TOKEN }}
