@@ -1,6 +1,6 @@
 # ========== Step 1: Install Composer dependencies ==========
 # FROM and AS vendor
-FROM php:8.3-fpm-bookworm AS vendor
+FROM php:8.5-fpm-bookworm AS vendor
 
 WORKDIR /app
 
@@ -18,7 +18,7 @@ RUN composer install --no-dev --optimize-autoloader --no-scripts \
     && rm /usr/local/bin/composer
 
 # ========== Step 2: Generate the image ==========
-FROM php:8.3-fpm-bookworm AS production
+FROM php:8.5-fpm-bookworm AS production
 
 # Install system dependencies. 
 # libldap2-dev 供 php-ldap 扩展编译（LDAP 登录用；不启用 LDAP 不影响其它扩展）
