@@ -202,6 +202,11 @@ class AppConfig
     public const TTL_TOKEN = 86400;  // 登录 token 有效期（24h）
     public const TTL_CACHE = 3600;   // 通用缓存有效期（1h）
 
+    // ── 登录失败限流（防暴力破解，IP + 用户名 维度）──
+    public const CACHE_KEY_LOGIN_FAIL_PREFIX = 'login_fail_';
+    public const LOGIN_FAIL_MAX_ATTEMPTS     = 5;
+    public const LOGIN_FAIL_LOCK_SECONDS     = 900;  // 连续失败锁定 15 分钟
+
     // ── API Token 作用域（scope）──
     // 独立于 RBAC 权限体系：token 直接携带 scopes，每个 scope 映射到一组接口的读写能力。
     // 值均为 i18n key（lang/zh_CN、lang/en），供「API 管理」UI 渲染与后端翻译复用。

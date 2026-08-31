@@ -180,10 +180,18 @@ class AdminController extends BaseController
             return $this->jsonError($response, 'auth.wrong_credentials', 401);
         }
 
+        // 登录失败限流：连续失败锁定（防暴力破解）
+        $clientIp = $this->clientIp($request);
+        if ($this->adminAuthService->isLoginLocked($clientIp, $user)) {
+            return $this->jsonError($response, 'auth.login_locked', 429);
+        }
+
         $result = $this->adminAuthService->authenticate($user, $pass, $this->config->getSystemType());
         if (!$result['success']) {
+            $this->adminAuthService->recordLoginFailure($clientIp, $user);
             return $this->jsonError($response, $result['errorKey'], 401);
         }
+        $this->adminAuthService->clearLoginFailure($clientIp, $user);
 
         $loginRole = $result['role'];
         $isRoot = $result['isRoot'];
@@ -216,6 +224,25 @@ class AdminController extends BaseController
             'is_root'     => $isRoot,
             'permissions' => $perms,
         ], $request);
+    }
+
+    /** 客户端 IP：优先 REMOTE_ADDR（nginx 直连即真实 IP），本地/反代时回退 X-Forwarded-For 首个 */
+    private function clientIp(Request $request): string
+    {
+        $server = $request->getServerParams();
+        $remote = $server['REMOTE_ADDR'] ?? '';
+        if ($remote !== '' && $remote !== '127.0.0.1' && $remote !== '::1') {
+            return $remote;
+        }
+        $xff = $server['HTTP_X_FORWARDED_FOR'] ?? '';
+        if ($xff !== '') {
+            $parts = array_map('trim', explode(',', $xff));
+            $ip = $parts[0] ?? '';
+            if ($ip !== '') {
+                return $ip;
+            }
+        }
+        return $remote !== '' ? $remote : 'unknown';
     }
 
     /**

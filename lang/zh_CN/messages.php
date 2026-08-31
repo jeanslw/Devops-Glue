@@ -52,6 +52,7 @@ return [
     'auth.token_expired'      => 'token 已过期，请重新登录',
     'auth.token_store_failed' => '登录状态保存失败，请检查数据库连接',
     'auth.wrong_credentials'  => '账号或密码错误',
+    'auth.login_locked'       => '登录失败次数过多，请 15 分钟后再试',
     'auth.password_updated'   => '密码已更新，请重新登录',
     'auth.old_password_wrong' => '旧密码错误',
     'auth.new_password_short' => '新密码至少 8 位',

@@ -51,6 +51,7 @@ return [
     'auth.token_expired'      => 'Token expired, please login again',
     'auth.token_store_failed' => 'Failed to persist login state, check database connection',
     'auth.wrong_credentials'  => 'Invalid username or password',
+    'auth.login_locked'       => 'Too many failed login attempts, please try again in 15 minutes',
     'auth.password_updated'   => 'Password updated, please login again',
     'auth.old_password_wrong' => 'Old password is incorrect',
     'auth.new_password_short' => 'New password must be at least 8 characters',

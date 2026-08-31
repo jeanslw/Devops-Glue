@@ -5,11 +5,13 @@ use Psr\Http\Message\ResponseFactoryInterface;
 
 require __DIR__ . '/../vendor/autoload.php';
 
-// ── 静态文件直出（PHP 内置服务器用）──
+// ── 静态文件直出（仅 PHP 内置服务器 cli-server 用）──
+// 生产环境（nginx/Apache）SAPI 非 cli-server，此逻辑不生效，静态文件由 web server 自行处理；
+// 否则 GET /index.php 会被当静态文件 readfile，直接泄露 index.php 源码。
 $requestUri = $_SERVER['REQUEST_URI'] ?? '';
 $requestPath = parse_url($requestUri, PHP_URL_PATH);
 $staticFile = realpath(__DIR__ . $requestPath);
-if ($requestPath !== '/' && $staticFile && str_starts_with($staticFile, realpath(__DIR__) . DIRECTORY_SEPARATOR) && is_file($staticFile)) {
+if (PHP_SAPI === 'cli-server' && $requestPath !== '/' && $staticFile && str_starts_with($staticFile, realpath(__DIR__) . DIRECTORY_SEPARATOR) && is_file($staticFile)) {
     $ext = strtolower(pathinfo($staticFile, PATHINFO_EXTENSION));
     $mimeTypes = ['css' => 'text/css', 'js' => 'application/javascript', 'png' => 'image/png', 'html' => 'text/html', 'json' => 'application/json', 'svg' => 'image/svg+xml', 'woff' => 'font/woff', 'woff2' => 'font/woff2', 'ico' => 'image/x-icon'];
     $mime = $mimeTypes[$ext] ?? mime_content_type($staticFile) ?: 'application/octet-stream';

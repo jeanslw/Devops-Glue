@@ -131,7 +131,7 @@ class AdminAuthService
             // DB 可访问：仅首次部署（无任何账号）才接受 .env 密码，与 authenticate 保持一致
             if ($this->hasNoAdminUsers()) {
                 $cred = $this->config->getAdminCredentials();
-                return strtolower($username) === strtolower($cred['user']) && $password === $cred['password'] && $password !== '';
+                return \hash_equals(strtolower($cred['user']), strtolower($username)) && \hash_equals($cred['password'], $password) && $password !== '';
             }
         } catch (\Throwable $e) {
             // DB 不可访问：接受 .env 密码作为灾难恢复
@@ -144,8 +144,9 @@ class AdminAuthService
     private function authenticateEnvRoot(string $username, string $password): bool
     {
         $cred = $this->config->getAdminCredentials();
-        return strtolower($username) === strtolower($cred['user'])
-            && $password === $cred['password']
+        // 恒定时间比较，消除用户名/密码 === 的时序侧信道（兜底路径，成本极低）
+        return \hash_equals(strtolower($cred['user']), strtolower($username))
+            && \hash_equals($cred['password'], $password)
             && $password !== '';
     }
 
@@ -176,6 +177,56 @@ class AdminAuthService
     private function parseSystems(string $systems): array
     {
         return array_filter(array_map('trim', explode(',', strtolower($systems))), fn($value) => $value !== '');
+    }
+
+    /** 登录失败限流：是否已被锁定（IP + 用户名 维度，连续失败达阈值即锁） */
+    public function isLoginLocked(string $ip, string $username): bool
+    {
+        try {
+            $stmt = $this->pdo->prepare(
+                "SELECT value FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key = ? AND expires_at > ?"
+            );
+            $stmt->execute([self::loginFailKey($ip, $username), time()]);
+            $val = $stmt->fetchColumn();
+            return $val !== false && (int)$val >= AppConfig::LOGIN_FAIL_MAX_ATTEMPTS;
+        } catch (\Throwable $e) {
+            return false; // DB 异常不阻断登录（fail-open 保可用）
+        }
+    }
+
+    /** 登录失败计数 +1；expires_at 即锁定窗口到期时间，达阈值后由 isLoginLocked 拦截 */
+    public function recordLoginFailure(string $ip, string $username): void
+    {
+        try {
+            $key = self::loginFailKey($ip, $username);
+            $stmt = $this->pdo->prepare(
+                "SELECT value FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key = ? AND expires_at > ?"
+            );
+            $stmt->execute([$key, time()]);
+            $val = $stmt->fetchColumn();
+            $count = ($val === false ? 0 : (int)$val) + 1;
+            $sql = Database::sqlUpsert(AppConfig::TABLE_CACHE, 'cache_key, value, expires_at', '?, ?, ?');
+            $this->pdo->prepare($sql)->execute([$key, (string)$count, time() + AppConfig::LOGIN_FAIL_LOCK_SECONDS]);
+        } catch (\Throwable $e) {
+            \App\Helper\Log::exception($e);
+        }
+    }
+
+    /** 登录成功清除失败计数 */
+    public function clearLoginFailure(string $ip, string $username): void
+    {
+        try {
+            $this->pdo->prepare("DELETE FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key = ?")
+                ->execute([self::loginFailKey($ip, $username)]);
+        } catch (\Throwable $e) {
+            \App\Helper\Log::exception($e);
+        }
+    }
+
+    /** 限流缓存键：IP + 用户名 哈希，避免用户名含特殊字符污染 cache_key */
+    private static function loginFailKey(string $ip, string $username): string
+    {
+        return AppConfig::CACHE_KEY_LOGIN_FAIL_PREFIX . md5($ip . ':' . strtolower($username));
     }
 
     /** 首次部署判断：admin_users 表为空（此时允许 .env 根密码兜底） */
