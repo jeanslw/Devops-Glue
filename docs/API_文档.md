@@ -1,4 +1,4 @@
-# Devops-Glue API 参考 v2.7
+# Devops-Glue API 参考 v2.7.0
 
 基础 URL: `http://your-domain.com/api`
 
@@ -89,7 +89,7 @@ GET /api/health
   "build_mode": "both",
   "build_mode_source": "database",
   "db_driver": "mysql",
-  "app_version": "2.6.0",
+  "app_version": "2.7.0",
   "app_env": "production",
   "time": "2026-08-10 12:00:00"
 }

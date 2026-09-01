@@ -1,4 +1,4 @@
-# Devops-Glue API Reference v2.7
+# Devops-Glue API Reference v2.7.0
 
 Base URL: `http://your-domain.com/api`
 
@@ -89,7 +89,7 @@ Returns connectivity status of Jenkins, Git platforms, and Harbor, plus system s
   "build_mode": "both",
   "build_mode_source": "database",
   "db_driver": "mysql",
-  "app_version": "2.6.0",
+  "app_version": "2.7.0",
   "app_env": "production",
   "time": "2026-08-10 12:00:00"
 }

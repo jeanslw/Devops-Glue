@@ -1,4 +1,4 @@
-# Devops-Glue API Admin Manual v2.7
+# Devops-Glue API Admin Manual v2.7.0
 
 > This manual is organized in a "from zero to usable" order, covering the installation, initialization, and full configuration of Devops-Glue API. Once you complete it in order, you will be able to: log in to the admin panel, connect CI / Git / Harbor platforms, configure build mode and mapping, manage permissions and roles, issue API tokens, and have the companion Devops-Glue CD call it correctly.
 

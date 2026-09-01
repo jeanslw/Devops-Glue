@@ -1,4 +1,4 @@
-# Devops-Glue API Technical Guide v2.7
+# Devops-Glue API Technical Guide v2.7.0
 
 > This document is intended for developers, operations engineers, and troubleshooting. It covers all business logic, data flows, database table structures, and common issues.
 
@@ -332,7 +332,7 @@ Controller → AppConfig::getXxxConfig()
   "checks": { "jenkins": true, "jenkins_version": "2.555.3", "git": [...], "harbor": true, "harbor_components": {...} },
   "stats": { "total_maps": 4, "active_maps": 4, "git_platforms": 2, "harbor_repos": 4 },
   "build_mode": "both", "build_mode_source": "database",
-  "db_driver": "mysql", "app_version": "2.6.0", "app_env": "production",
+  "db_driver": "mysql", "app_version": "2.7.0", "app_env": "production",
   "time": "2026-07-25 12:00:00"
 }
 ```
@@ -1081,4 +1081,4 @@ When adding/modifying table structures, update the following files and **bump `A
 
 ---
 
-*Document version: v2.7 | Last updated: 2026-08-31*
+*Document version: v2.7.0 | Last updated: 2026-08-31*
