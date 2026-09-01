@@ -3,7 +3,9 @@ name: Auto Release
 on:
   push:
     tags:
-      - '[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+
 permissions:
   contents: write
 
@@ -15,11 +17,20 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Detect prerelease
+        id: prerelease_check
+        run: |
+          if [[ "${{ github.ref_name }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-(alpha|beta|rc|dev|preview)$ ]]; then
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Generate Changelog
         id: changelog
         uses: mikepenz/release-changelog-builder-action@v5
         with:
-          tagRegex: "^v\\d+\\.\\d+\\.\\d+$"
+          tagRegex: "^v\\d+\\.\\d+\\.\\d+(-.*)?$"
           configurationJson: |
             {
               "categories": [
@@ -38,4 +49,4 @@ jobs:
         with:
           body: ${{ steps.changelog.outputs.changelog }}
           draft: false
-          prerelease: ${{ matches(github.ref_name, '^[0-9]+\.[0-9]+\.[0-9]+-(alpha|beta|rc|dev|preview)') }}
+          prerelease: ${{ steps.prerelease_check.outputs.is_prerelease }}

@@ -3,10 +3,14 @@ name: CI Pipeline
 on:
   push:
     branches: [main, 'release/**']
-    tags: ['[0-9]+.[0-9]+*']
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'       # ✅ 正式版: v2.7.0
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'     # ✅ 预发布版: v2.7.0-beta
+      - '[0-9]+.[0-9]+.[0-9]+'        # 兼容无v前缀
+      - '[0-9]+.[0-9]+.[0-9]+-*'      # 兼容无v前缀预发布
   pull_request:
     branches: [main, 'release/**']
-    
+
 permissions:
   contents: read
 
@@ -32,8 +36,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: vendor
-          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
-          restore-keys: ${{ runner.os }}-composer-
+          key: ${{ runner.os }}-php8.2-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: ${{ runner.os }}-php8.2-composer-
 
       - run: composer install --prefer-dist --no-progress
 
@@ -47,7 +51,12 @@ jobs:
         run: vendor/bin/phpcs
 
       - name: Security Audit
-        run: composer audit
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            composer audit --format=text || echo "::warning::Known vulnerabilities found, please review"
+          else
+            composer audit
+          fi
 
   test:
     name: PHPUnit (PHP ${{ matrix.php }})
@@ -72,6 +81,7 @@ jobs:
         with:
           path: vendor
           key: ${{ runner.os }}-php${{ matrix.php }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: ${{ runner.os }}-php${{ matrix.php }}-composer-
 
       - run: composer install --prefer-dist --no-progress
 

@@ -2,13 +2,15 @@ name: Docker Publish
 
 on:
   push:
-    tags: 
-      - '[0-9]+.[0-9]+.[0-9]+'   # new: 2.7.0
-      - 'v[0-9]+.[0-9]+.[0-9]+'  # old: v2.7.0
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+      - '[0-9]+.[0-9]+.[0-9]+'
+      - '[0-9]+.[0-9]+.[0-9]+-*'
   workflow_dispatch:
     inputs:
       tag:
-        description: 'build Tag'
+        description: 'Build tag (e.g. v2.7.0 or 2.7.0-beta)'
         required: true
         type: string
 
@@ -25,7 +27,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up QEMU (多架构支持)
+      - name: Validate tag format
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          if [[ ! "$TAG" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+            echo "::error::Invalid tag format: '$TAG'. Expected semver like v2.7.0 or 2.7.0-beta"
+            exit 1
+          fi
+
+      - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
@@ -46,11 +56,11 @@ jobs:
           tags: |
             type=semver,pattern={{version}},value=${{ inputs.tag || github.ref_name }}
             type=semver,pattern={{major}}.{{minor}},value=${{ inputs.tag || github.ref_name }}
-            type=raw,value=latest,enable=${{ github.ref_type == 'tag' || inputs.tag != '' }}
-            type=sha,prefix=
+            type=raw,value=latest,enable=${{ !contains(inputs.tag || github.ref_name, '-') && (github.ref_type == 'tag' || inputs.tag != '') }}
+            type=sha,prefix=,enable=${{ github.event_name == 'push' }}
 
       - name: Build and Push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
