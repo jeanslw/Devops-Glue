@@ -52,7 +52,6 @@ jobs:
   test:
     name: PHPUnit (PHP ${{ matrix.php }})
     needs: code-quality
-    restore-keys: ${{ runner.os }}-php${{ matrix.php }}-composer-
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

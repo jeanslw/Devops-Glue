@@ -3,8 +3,7 @@ name: Auto Release
 on:
   push:
     tags:
-      - '[0-9]+.[0-9]+.[0-9]+'   # new
-      - 'v[0-9]+.[0-9]+.[0-9]+'  # old
+      - '[0-9]+.[0-9]+.[0-9]+'
 permissions:
   contents: write
 
@@ -18,8 +17,9 @@ jobs:
 
       - name: Generate Changelog
         id: changelog
-        uses: mikepenz/release-changelog-builder-action@v4
+        uses: mikepenz/release-changelog-builder-action@v5
         with:
+          tagRegex: "^v\\d+\\.\\d+\\.\\d+$"
           configurationJson: |
             {
               "categories": [
