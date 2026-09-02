@@ -79,11 +79,11 @@
 
     现在 Custom_Push 接口会校验 project_name 和 tag 格式，并在不匹配时返回明确的错误提示。
 	
-## 版本管理
+## 5. 版本管理
 
 Devops-Glue 遵循语义化版本规范 (SemVer)。每个版本必须打上唯一的 Git Tag。
 
-### 版本格式
+#### 版本格式
 
 v<主版本>.<次版本>.<补丁>[-<预发布标识>]
 
@@ -92,7 +92,7 @@ v<主版本>.<次版本>.<补丁>[-<预发布标识>]
 - 补丁：Bug 修复（向后兼容）
 - 预发布：-alpha, -beta, -rc, -dev, -preview
 
-### 递增规则
+#### 递增规则
 
 | 变更类型 | 递增 | 示例 |
 |---------|------|------|
@@ -101,7 +101,7 @@ v<主版本>.<次版本>.<补丁>[-<预发布标识>]
 | 破坏性变更 | 主版本 | v2.7.0 -> v3.0.0 |
 | 预发布 | 追加后缀 | v2.8.0 -> v2.8.0-alpha |
 
-### 发布步骤
+#### 发布步骤
 
 1. 更新 config/app.php 中的 APP_VERSION
 2. 在 docs/CHANGELOG.md 中新增条目：
@@ -113,14 +113,14 @@ v<主版本>.<次版本>.<补丁>[-<预发布标识>]
    git push origin vX.X.X
 5. GitHub Actions 自动从 CHANGELOG.md 创建 Release
 
-### 规则
+#### 规则
 
 - 一个版本，一个 Tag（禁止复用 Tag）
 - Tag 必须与 APP_VERSION 完全一致
 - 打 Tag 前必须在 CHANGELOG.md 中有对应条目
 - 禁止强制推送已存在的 Tag
 
-### 示例
+#### 示例
 
 git add config/app.php docs/CHANGELOG.md
 git commit -m "chore(release): 版本号升至 v2.7.1"
@@ -128,7 +128,7 @@ git tag v2.7.1
 git push origin main
 git push origin v2.7.1
 
-## 发起 Pull Request (PR)
+## 6. 发起 Pull Request (PR)
 
 - 确保你的 PR 基于最新的 `main` 分支。
 - 在 PR 描述中，清晰说明解决了什么问题，并关联相关的 Issue（如 `Closes #123`）。

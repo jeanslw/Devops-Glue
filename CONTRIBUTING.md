@@ -79,11 +79,11 @@ Following the **Conventional Commits** specification is highly recommended:
     Now the Custom_Push API validates project_name and tag format,
     and returns clear error messages when they don't match.
 	
-##  Version Management
+### 5. Version Management
 
 Devops-Glue follows Semantic Versioning (SemVer). Every release MUST have a unique Git tag matching the code version.
 
-### Version Format
+#### Version Format
 
 v<major>.<minor>.<patch>[-<prerelease>]
 
@@ -92,7 +92,7 @@ v<major>.<minor>.<patch>[-<prerelease>]
 - patch: Bug fixes (backward compatible)
 - prerelease: -alpha, -beta, -rc, -dev, -preview
 
-###  Bumping Rules
+####  Bumping Rules
 
 | Change Type | Bump | Example |
 |-------------|------|---------|
@@ -101,7 +101,7 @@ v<major>.<minor>.<patch>[-<prerelease>]
 | Breaking change | Major | v2.7.0 -> v3.0.0 |
 | Pre-release | Add suffix | v2.8.0 -> v2.8.0-alpha |
 
-### Release Steps
+#### Release Steps
 
 1. Update APP_VERSION in config/app.php
 2. Add entry to docs/CHANGELOG.md:
@@ -113,14 +113,14 @@ v<major>.<minor>.<patch>[-<prerelease>]
    git push origin vX.X.X
 5. GitHub Actions auto-creates Release from CHANGELOG.md
 
-### Rules
+#### Rules
 
 - One version, one tag (do NOT reuse tags)
 - Tag must match APP_VERSION exactly
 - CHANGELOG entry required before tagging
 - Never force-push an existing tag
 
-### Example
+#### Example
 
 git add config/app.php docs/CHANGELOG.md
 git commit -m "chore(release): bump version to v2.7.1"
@@ -129,7 +129,7 @@ git push origin main
 git push origin v2.7.1
 
 
-##  Open a Pull Request (PR)
+### 6. Open a Pull Request (PR)
 
 - Ensure your PR is based on the latest `main` branch.
 - In the PR description, clearly explain what problem it solves and link the related Issue (e.g., `Closes #123`).
