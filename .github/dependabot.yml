@@ -1,20 +1,40 @@
 version: 2
 updates:
+  # ==================== Composer (PHP) ====================
   - package-ecosystem: "composer"
     directory: "/"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
     labels: ["dependencies", "php"]
+    groups:
+      # 将非主要依赖的 patch/minor 更新合并为一个 PR
+      php-dependencies:
+        patterns: ["*"]           # 匹配所有包
+        update-types: ["minor", "patch"]  # 仅合并小版本和补丁更新
+      # major 版本升级单独出 PR，避免合并不兼容变更
+      php-major:
+        patterns: ["*"]
+        update-types: ["major"]
 
+  # ==================== Docker ====================
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
       interval: "weekly"
     labels: ["dependencies", "docker"]
+    groups:
+      docker-images:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
 
+  # ==================== GitHub Actions ====================
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
     labels: ["dependencies", "ci"]
+    groups:
+      # Actions 通常兼容性较好，可以全部合并
+      github-actions:
+        patterns: ["*"]

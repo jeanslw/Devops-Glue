@@ -79,7 +79,7 @@
 
     现在 Custom_Push 接口会校验 project_name 和 tag 格式，并在不匹配时返回明确的错误提示。
 	
-## 5. 版本管理
+### 5. 版本管理
 
 Devops-Glue 遵循语义化版本规范 (SemVer)。每个版本必须打上唯一的 Git Tag。
 
