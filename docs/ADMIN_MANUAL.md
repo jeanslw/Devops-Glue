@@ -1,4 +1,4 @@
-# Devops-Glue API Admin Manual v2.7.0
+# Devops-Glue API Admin Manual v2.7.1
 
 > This manual is organized in a "from zero to usable" order, covering the installation, initialization, and full configuration of Devops-Glue API. Once you complete it in order, you will be able to: log in to the admin panel, connect CI / Git / Harbor platforms, configure build mode and mapping, manage permissions and roles, issue API tokens, and have the companion Devops-Glue CD call it correctly.
 
@@ -157,6 +157,32 @@ The admin panel sidebar contains the following modules:
 | User Management | User list, role management, change password |
 | Permission Management | Permission list, permission registration, implied rules |
 | API Management | Create / revoke / delete API tokens (only shown with the required permission) |
+
+### 8.1 External LDAP / AD Logins (Optional)
+
+Besides built-in accounts, the system can validate logins against a corporate LDAP / Active Directory server (since v2.6.3). When enabled, the login order is: **local `admin_users` → LDAP → `.env` fallback**.
+
+- **Prerequisite**: PHP must have the `ldap` extension enabled (`extension=ldap` in `php.ini`). If it is missing, the LDAP provider is skipped automatically and local account logins keep working unchanged.
+- **Two connection modes (pick one)**:
+  - *Search mode* (typical for AD): set `LDAP_BIND_DN` + `LDAP_BIND_PASSWORD` + `LDAP_BASE_DN` + `LDAP_USER_FILTER`. The service binds with the service account first, searches for the user's DN using the filter, then validates the user's own password against that DN.
+  - *Direct bind mode*: set `LDAP_USER_DN_PATTERN`, e.g. `uid=%s,ou=users,dc=example,dc=com`. No directory search is performed — the DN is built from the pattern and validated directly. Best for well-structured directory layouts.
+- **Transport security (pick one)**: `LDAP_USE_TLS=true` upgrades the plaintext connection to TLS (STARTTLS) after connecting on the default port 389; `LDAP_USES_LDAPS=true` connects over `ldaps://` instead (typically port 636).
+- **Accounts must be pre-bound**: LDAP only proves *who you are*. To sign in, the username you type must already be mapped to your LDAP DN in the `user_identities` table (`provider_type='ldap'`, `provider_uid` = the user DN). Otherwise login is rejected with `auth.ldap_not_bound` — accounts are **never auto-created**. Binding example:
+
+```sql
+-- MySQL
+INSERT INTO user_identities (username, provider_type, provider_uid, email, bound_at, updated_at)
+VALUES ('zhangsan', 'ldap', 'uid=zhangsan,ou=users,dc=example,dc=com', 'zhangsan@example.com', NOW(), NOW());
+-- SQLite
+INSERT INTO user_identities (username, provider_type, provider_uid, email, bound_at, updated_at)
+VALUES ('zhangsan', 'ldap', 'uid=zhangsan,ou=users,dc=example,dc=com', 'zhangsan@example.com', datetime('now'), datetime('now'));
+```
+
+  Authorization (role, allowed systems, email, etc.) always follows the matching `admin_users` row — LDAP is only the identity source. After a successful LDAP login the stored email and latest LDAP attributes are refreshed automatically; an account disabled in the admin panel (`status=0`) cannot sign in through LDAP either.
+- **Failure semantics**: a failed bind (wrong password / unknown user) is reported as a generic credentials error. If the LDAP server itself is unreachable (connection failure, missing extension, …), login falls through to the `.env` fallback, exactly like the disaster-recovery path — the system stays usable.
+- **Security**: usernames are escaped before being interpolated into `LDAP_USER_FILTER` / `LDAP_USER_DN_PATTERN`, so it is safe to embed user input in these templates.
+
+Environment variables: see [Appendix A](#appendix-a-environment-variables-reference).
 
 ---
 
@@ -717,6 +743,22 @@ ADMIN_PASSWORD=               # Created on first boot; DB takes precedence after
 #   - The system falls back to .env ADMIN_USER/ADMIN_PASSWORD only when the DB is totally inaccessible (disaster recovery) or the admin_users table is empty (first deployment).
 #   - This ADMIN_USER/ADMIN_PASSWORD pair is only used by the Devops-Glue API global admin fallback logic.
 #   - To create a CD-specific account, create the account in the admin backend, assign Devops-Glue CD permissions, and then write it into the Devops-Glue CD's own .env if that service supports it.
+
+# ============ LDAP external identity source (optional) ============
+# Requires the PHP ldap extension (php.ini: extension=ldap); local logins are unaffected when disabled.
+# Login order: local admin_users → LDAP (must be pre-bound in user_identities) → .env fallback
+LDAP_ENABLED=false
+LDAP_HOST=ldap.example.com
+LDAP_PORT=389
+# Pick one transport: LDAP_USE_TLS = STARTTLS after connect (port 389); LDAP_USES_LDAPS = ldaps:// directly (usually 636)
+LDAP_USE_TLS=false
+LDAP_USES_LDAPS=false
+LDAP_BASE_DN=ou=users,dc=example,dc=com
+LDAP_BIND_DN=cn=admin,dc=example,dc=com
+LDAP_BIND_PASSWORD=
+LDAP_USER_FILTER=(uid=%s)      # %s is replaced with the login username
+LDAP_USER_DN_PATTERN=          # when non-empty, direct-bind mode is used, e.g. uid=%s,ou=users,dc=example,dc=com
+LDAP_NETWORK_TIMEOUT=5
 
 # ============ Database ============
 DB_DRIVER=mysql               # sqlite or mysql

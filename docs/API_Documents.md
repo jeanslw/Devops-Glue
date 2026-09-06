@@ -59,10 +59,12 @@ To restrict origins, edit `config/settings.php`:
 |---|---|---|
 | `/api/health` | GET | Health check |
 | `/api/i18n/{locale}` | GET | Get language pack (`zh_CN` or `en`) |
-| `/api/docs` | GET | Swagger UI page (requires doc auth) |
-| `/api/openapi.json` | GET | OpenAPI spec (requires doc auth) |
+| `/api/docs` | GET | Swagger UI page (shows the embedded login form when unauthenticated) |
+| `/api/openapi.json` | GET | OpenAPI spec (requires credentials) |
 | `/api/admin/login` | POST | Login, returns Bearer token |
 | `/api/admin/logout` | POST | Logout, revoke token |
+| `/.well-known/openid-configuration` | GET | OIDC discovery document (public; see [Single-Sign-On](Single-Sign-On.md)) |
+| `/.well-known/jwks.json` | GET | OIDC signing keys (public) |
 
 ---
 
@@ -308,6 +310,7 @@ Token expires in 24 hours. `super_admin` role returns `"*"` for permissions.
 | `/api/admin/job_git_map` | PUT | Update mapping (requires `_original_job_name`) |
 | `/api/admin/job_git_map` | DELETE | Delete mapping (`?job_name=...`) |
 | `/api/admin/discover` | POST | Auto-discover Jenkins jobs |
+| `/api/admin/custom_builds` | GET | Custom_Push build records (supports `?page=&per_page=`; requires `ci.mode.edit`) |
 | `/api/admin/security_checks` | GET | Security scan audit records (supports `?project=&check_type=&state=&writeback=&exclude=&page=&per_page=`) |
 | `/api/admin/platform_versions` | GET/PUT | Platform API version config |
 | `/api/admin/build_mode` | GET/PUT | Build mode (jenkins/gitlab_ci/both) |
@@ -315,6 +318,8 @@ Token expires in 24 hours. `super_admin` role returns `"*"` for permissions.
 | `/api/admin/users` | POST | Create user (body: `username`, `password`, `role`, `systems`) |
 | `/api/admin/users/{username}` | PUT | Update user (body: `password` and/or `role`) |
 | `/api/admin/users/{username}` | DELETE | Delete user (cannot delete root account or self) |
+| `/api/admin/users/{username}/password` | PUT | Reset another user's password (body: `new_password`, min 8 chars; super_admin only) |
+| `/api/admin/users/{username}/status` | PUT | Enable / disable a user (body: `enabled: true|false`, `status: 1|0` also accepted; disabling signs the user out immediately; root cannot be disabled; requires `ci.users.manage_admin`) |
 | `/api/admin/roles` | GET | Role list |
 | `/api/admin/roles` | POST | Create custom role (requires `ci.users.manage_admin`) |
 | `/api/admin/roles/{id}` | PUT | Update role permissions (full replacement, requires `ci.users.manage_admin`) |
@@ -331,6 +336,35 @@ Token expires in 24 hours. `super_admin` role returns `"*"` for permissions.
 - Creating/updating/deleting **admin** users requires `ci.users.manage_admin` permission
 - Creating/updating custom roles requires `ci.users.manage_admin` permission
 - Permission management requires corresponding `ci.permissions.*` permissions
+
+---
+
+## RBAC Module (`/api/rbac`)
+
+> **For CD service accounts only**: lets trusted services such as Devops-Glue CD manage CD users and roles; not intended for the browser-based admin panel. Authentication accepts **API tokens only** (must carry the `rbac.user.write` scope — see "API Token Management" below); calls made with a logged-in session token always return 403. Unlike the interactive `/api/admin/users` backend, users created / updated here always get `systems: cd`, and creating or deleting `super_admin` is forbidden; passwords must be at least 8 characters.
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/rbac/users` | POST | Create a CD account (body: `username`, `password`, `role`) |
+| `/api/rbac/users` | GET | List CD accounts |
+| `/api/rbac/users/{username}` | GET | Get one account |
+| `/api/rbac/users/{username}` | PUT | Update an account (body: `password` and/or `role`) |
+| `/api/rbac/users/{username}` | DELETE | Delete an account (root / super_admin protected) |
+| `/api/rbac/users/{username}/verify-password` | POST | Verify an account password (body: `password`; for CD-side login checks) |
+| `/api/rbac/roles` | GET | List available roles |
+
+---
+
+## Dashboard Module (`/api/dashboard`)
+
+> **Read-only monitoring endpoints**: designed to be consumed by data sources such as Grafana Infinity. Any valid Bearer token works (session or API token), but the caller must hold the `ci.manage` permission (same level as viewing mappings). Responses are flat JSON rows; when the `cd_*` tables are missing the related fields degrade gracefully without affecting the rest.
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/dashboard/mapping` | GET | Mapping rows (for Table / Stat panels) |
+| `/api/dashboard/deployment` | GET | Deployment record rows (for Table / Stat panels) |
+| `/api/dashboard/build` | GET | Build record rows |
+| `/api/dashboard/trends` | GET | Trend data |
 
 ---
 

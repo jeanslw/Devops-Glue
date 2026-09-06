@@ -59,10 +59,12 @@
 |---|---|---|
 | `/api/health` | GET | 健康检查 |
 | `/api/i18n/{locale}` | GET | 获取语言包（`zh_CN` 或 `en`） |
-| `/api/docs` | GET | Swagger UI 文档页面（需文档鉴权） |
-| `/api/openapi.json` | GET | OpenAPI 规范（需文档鉴权） |
+| `/api/docs` | GET | Swagger UI 文档页面（未登录时同页显示登录框） |
+| `/api/openapi.json` | GET | OpenAPI 规范（需登录凭证） |
 | `/api/admin/login` | POST | 登录，返回 Bearer Token |
 | `/api/admin/logout` | POST | 登出，撤销 Token |
+| `/.well-known/openid-configuration` | GET | OIDC 发现文档（公开；详见[单点登录](单点登录.md)） |
+| `/.well-known/jwks.json` | GET | OIDC 签名公钥（公开） |
 
 ---
 
@@ -309,6 +311,7 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 | `/api/admin/job_git_map` | PUT | 更新映射（需 `_original_job_name`） |
 | `/api/admin/job_git_map` | DELETE | 删除映射（`?job_name=...`） |
 | `/api/admin/discover` | POST | 自动发现 Jenkins Job |
+| `/api/admin/custom_builds` | GET | Custom_Push 上报的构建记录（支持 `?page=&per_page=` 分页；需 `ci.mode.edit`） |
 | `/api/admin/security_checks` | GET | 安全扫描审计记录（支持 `?project=&check_type=&state=&writeback=&exclude=&page=&per_page=` 筛选） |
 | `/api/admin/platform_versions` | GET/PUT | 平台 API 版本配置 |
 | `/api/admin/build_mode` | GET/PUT | 构建模式（jenkins/gitlab_ci/both） |
@@ -316,6 +319,8 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 | `/api/admin/users` | POST | 创建用户（body: `username`、`password`、`role`、`systems`） |
 | `/api/admin/users/{username}` | PUT | 更新用户（body: `password` 和/或 `role`） |
 | `/api/admin/users/{username}` | DELETE | 删除用户（不可删除根账号和自己） |
+| `/api/admin/users/{username}/password` | PUT | 重置他人密码（body: `new_password`，最短 8 位；仅 super_admin） |
+| `/api/admin/users/{username}/status` | PUT | 启用 / 停用用户（body: `enabled: true|false`，兼容 `status: 1|0`；停用即时踢下线，root 不可停用；需 `ci.users.manage_admin`） |
 | `/api/admin/roles` | GET | 角色列表 |
 | `/api/admin/roles` | POST | 创建自定义角色（需 `ci.users.manage_admin`） |
 | `/api/admin/roles/{id}` | PUT | 更新角色权限（全量替换，需 `ci.users.manage_admin`） |
@@ -332,6 +337,35 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 - 创建/修改/删除 **管理员** 用户需要 `ci.users.manage_admin` 权限
 - 创建/修改自定义角色需要 `ci.users.manage_admin` 权限
 - 权限管理操作需要对应的 `ci.permissions.*` 权限
+
+---
+
+## RBAC 模块 (`/api/rbac`)
+
+> **CD 服务账号专用**：供 Devops-Glue CD 等可信服务管理 CD 用户与角色，不面向浏览器后台。鉴权仅接受 **API Token**（需包含 `rbac.user.write` scope，创建方式见下文「API Token 管理」）；使用登录态 Token 调用一律返回 403。与 `/api/admin/users` 交互式后台的差异：本模块创建 / 更新的用户 `systems` 恒为 `cd`，禁止创建或删除 `super_admin`，密码最短 8 位。
+
+| 接口 | 方法 | 说明 |
+|---|---|---|
+| `/api/rbac/users` | POST | 创建 CD 账号（body: `username`、`password`、`role`） |
+| `/api/rbac/users` | GET | CD 账号列表 |
+| `/api/rbac/users/{username}` | GET | 查询单个账号 |
+| `/api/rbac/users/{username}` | PUT | 更新账号（body: `password` 和/或 `role`） |
+| `/api/rbac/users/{username}` | DELETE | 删除账号（root 与 super_admin 受保护） |
+| `/api/rbac/users/{username}/verify-password` | POST | 校验账号密码（body: `password`；供 CD 侧登录校验） |
+| `/api/rbac/roles` | GET | 可用角色列表 |
+
+---
+
+## Dashboard 模块 (`/api/dashboard`)
+
+> **只读监控端点**：供 Grafana Infinity 等数据源消费。接受任意有效 Bearer Token（登录态或 API Token），但需持有 `ci.manage` 权限（与映射查看同级）。返回平铺 JSON 条目；`cd_*` 表缺失时相关字段优雅降级，不影响其它字段。
+
+| 接口 | 方法 | 说明 |
+|---|---|---|
+| `/api/dashboard/mapping` | GET | 映射条目列表（喂 Table / Stat 面板） |
+| `/api/dashboard/deployment` | GET | 部署记录条目（喂 Table / Stat 面板） |
+| `/api/dashboard/build` | GET | 构建记录条目 |
+| `/api/dashboard/trends` | GET | 趋势数据 |
 
 ---
 
