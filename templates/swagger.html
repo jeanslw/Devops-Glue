@@ -12,10 +12,154 @@
     body { margin: 0; background: #fafafa; }
     .topbar { display: none; }
     .swagger-ui .info .title { font-size: 28px; }
+
+    /* 未登录时同页显示的登录层（URL 保持 /api/docs，无独立登录页跳转） */
+    #login-layer { position: fixed; inset: 0; z-index: 999; display: flex; align-items: center; justify-content: center;
+      background: linear-gradient(135deg, #667eea, #764ba2); font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+    .lbox { background: #fff; border-radius: 16px; padding: 36px 32px; box-shadow: 0 8px 32px rgba(0,0,0,.18);
+      width: 380px; max-width: 90vw; text-align: center; }
+    .lbox h3 { font-size: 20px; margin: 0 0 4px; }
+    .lbox .sub { font-size: 13px; color: #9ca3af; margin-bottom: 24px; }
+    .lbox input { width: 100%; padding: 10px 14px; border: 1.5px solid #d1d5db; border-radius: 8px; font-size: 14px; margin-bottom: 12px; }
+    .lbox input:focus { outline: none; border-color: #667eea; box-shadow: 0 0 0 3px rgba(102,126,234,.15); }
+    .lbox .btn { width: 100%; padding: 10px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;
+      border: none; background: #4f46e5; color: #fff; transition: all .2s; }
+    .lbox .btn:hover { background: #4338ca; }
+    .lbox .err { color: #dc2626; font-size: 13px; margin-top: 8px; display: none; }
+    .lbox .back { margin-top: 16px; font-size: 13px; }
+    .lbox .back a { color: #4f46e5; text-decoration: none; }
   </style>
 </head>
 <body>
-    <div style="background:#f8f9fa;padding:8px 20px;text-align:right;border-bottom:1px solid #e5e7eb;font-size:13px;">
+  <div id="login-layer">
+    <div class="lbox">
+      <h3 data-t="title">📖 API 文档</h3>
+      <p class="sub" data-t="subtitle">请使用管理后台账号登录</p>
+      <input id="u" data-t-placeholder="account" placeholder="账号" autocomplete="username">
+      <input id="p" type="password" data-t-placeholder="password" placeholder="密码" autocomplete="current-password">
+      <button class="btn" onclick="login()" data-t="login_btn">登 录</button>
+      <div class="err" id="e"></div>
+      <div class="back"><a href="/" data-t="back_home">🏠 回首页</a></div>
+    </div>
+  </div>
+  <script>
+    // ── 会话凭证获取 ─────────────────────────────────────────────
+    // 会话 token 不入 URL（防 access log / 浏览器历史泄露）：已登录会话由同源
+    // sessionStorage 携带（与后台同一套 key）；URL/hash 中的 token 仅为兼容历史链接。
+    function getDocsToken() {
+      var s = location.search.match(/[?&]token=([^&]*)/);
+      if (s && s[1]) { return decodeURIComponent(s[1]); }
+      var h = location.hash.match(/[#?&]token=([^&]*)/);
+      if (h && h[1]) { return decodeURIComponent(h[1]); }
+      return sessionStorage.getItem('admin_token') || '';
+    }
+
+    // ── 登录框文案（跟随 URL ?lang / dg_lang / 浏览器语言）──────────
+    var L = {
+      zh: { title: '📖 API 文档', subtitle: '请使用管理后台账号登录', account: '账号', password: '密码',
+            login_btn: '登 录', back_home: '🏠 回首页', empty_user_pass: '请输入账号密码',
+            login_fail: '登录失败', net_error: '网络错误: ' },
+      en: { title: '📖 API Docs', subtitle: 'Login with your admin credentials', account: 'Username', password: 'Password',
+            login_btn: 'Sign In', back_home: '🏠 Home', empty_user_pass: 'Please enter username and password',
+            login_fail: 'Login failed', net_error: 'Network error: ' }
+    };
+    function detectLang() {
+      var q = new URLSearchParams(location.search).get('lang');
+      if (q) { return q.toLowerCase().indexOf('zh') === 0 ? 'zh' : 'en'; }
+      var saved = localStorage.getItem('dg_lang');
+      if (saved) { return saved.toLowerCase().indexOf('zh') === 0 ? 'zh' : 'en'; }
+      return (navigator.language || '').toLowerCase().indexOf('zh') === 0 ? 'zh' : 'en';
+    }
+    function applyLoginI18n() {
+      var lang = detectLang();
+      var t = L[lang];
+      document.documentElement.lang = lang === 'zh' ? 'zh' : 'en';
+      document.querySelectorAll('#login-layer [data-t]').forEach(function (el) {
+        var k = el.getAttribute('data-t');
+        if (t[k]) { el.textContent = t[k]; }
+      });
+      document.querySelectorAll('#login-layer [data-t-placeholder]').forEach(function (el) {
+        var k = el.getAttribute('data-t-placeholder');
+        if (t[k]) { el.placeholder = t[k]; }
+      });
+    }
+
+    // 立即按凭证状态切换（同步执行，避免先闪出渐变登录层再隐藏）：
+    // 已有凭证（如从后台导航进来）→ 隐藏登录层；未登录 → 保持登录框，URL 不变。
+    if (getDocsToken()) {
+      document.getElementById('login-layer').style.display = 'none';
+    } else {
+      applyLoginI18n();
+    }
+
+    function switchLang(lang) {
+      localStorage.setItem('dg_lang', lang);
+      location.reload();
+    }
+
+    // 页面本身（纯 UI）不含业务数据；openapi.json 与 Try-it-out 均由服务端鉴权。
+    function renderDocs(token) {
+      var lang = document.getElementById('swagger-lang').value || localStorage.getItem('dg_lang') || 'zh-CN';
+      var specUrl = '/api/openapi.json?lang=' + encodeURIComponent(lang);
+      SwaggerUIBundle({
+        url: specUrl,
+        dom_id: '#swagger-ui',
+        deepLinking: true,
+        presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+        layout: "StandaloneLayout",
+        defaultModelsExpandDepth: -1,
+        defaultModelExpandDepth: 1,
+        requestInterceptor: function (req) {
+          req.url = req.url.replace(/%2[Ff]/g, '/');
+          if (token) { req.headers.Authorization = 'Bearer ' + token; }
+          return req;
+        }
+      });
+    }
+
+    window.onload = function () {
+      document.getElementById('swagger-lang').value = localStorage.getItem('dg_lang') || 'zh-CN';
+      var token = getDocsToken();
+      if (!token) { return; } // 未登录：登录层已显示
+      renderDocs(token);
+    };
+
+    // 登录成功：凭证写入 sessionStorage（与后台同 key），同页直接初始化文档，不跳转
+    async function login() {
+      var u = document.getElementById('u').value.trim();
+      var p = document.getElementById('p').value;
+      var e = document.getElementById('e');
+      e.style.display = 'none';
+      if (!u || !p) { e.textContent = L[detectLang()].empty_user_pass; e.style.display = 'block'; return; }
+      try {
+        var r = await fetch('/api/admin/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: u, password: p })
+        });
+        var d = await r.json();
+        if (r.ok && d.token) {
+          sessionStorage.setItem('admin_token', d.token);
+          if (d.role) sessionStorage.setItem('admin_role', d.role);
+          if (d.user) sessionStorage.setItem('admin_user', d.user);
+          sessionStorage.setItem('admin_is_root', d.is_root ? 'true' : 'false');
+          document.getElementById('login-layer').style.display = 'none';
+          renderDocs(d.token);
+        } else {
+          e.textContent = d.message || L[detectLang()].login_fail;
+          e.style.display = 'block';
+        }
+      } catch (x) {
+        e.textContent = L[detectLang()].net_error + x.message;
+        e.style.display = 'block';
+      }
+    }
+    document.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter' && document.getElementById('login-layer').style.display !== 'none') login();
+    });
+  </script>
+
+  <div style="background:#f8f9fa;padding:8px 20px;text-align:right;border-bottom:1px solid #e5e7eb;font-size:13px;">
     <a href="/" style="color:#4f46e5;text-decoration:none;">🏠 Home</a>
     <span style="margin:0 8px;color:#d1d5db;">|</span>
     <select id="swagger-lang" onchange="switchLang(this.value)" style="border:1px solid #d1d5db;border-radius:4px;padding:2px 6px;font-size:12px;">
@@ -26,34 +170,5 @@
   <div id="swagger-ui"></div>
   <script src="/assets/swagger-ui-bundle.js"></script>
   <script src="/assets/swagger-ui-standalone-preset.js"></script>
-  <script>
-    function switchLang(lang) {
-      localStorage.setItem('dg_lang', lang);
-      location.reload();
-    }
-    window.onload = function () {
-      var lang = localStorage.getItem('dg_lang') || 'zh-CN';
-      document.getElementById('swagger-lang').value = lang;
-      var specUrl = '/api/openapi.json?lang=' + encodeURIComponent(lang);
-      var m = location.search.match(/[?&]token=([^&]+)/);
-      if (m) { specUrl += '&token=' + decodeURIComponent(m[1]); }
-      SwaggerUIBundle({
-        url: specUrl,
-        dom_id: '#swagger-ui',
-        deepLinking: true,
-        presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
-        layout: "StandaloneLayout",
-        defaultModelsExpandDepth: -1,
-        defaultModelExpandDepth: 1,
-        requestInterceptor: function(req) {
-          req.url = req.url.replace(/%2[Ff]/g, '/');
-          // 从 URL 参数读取 token，注入所有请求
-          var m = location.search.match(/[?&]token=([^&]+)/);
-          if (m) { req.headers.Authorization = 'Bearer ' + decodeURIComponent(m[1]); }
-          return req;
-        }
-      });
-    };
-  </script>
 </body>
 </html>

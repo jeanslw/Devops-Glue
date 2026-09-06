@@ -41,8 +41,9 @@ function handle401(res) {
 }
 
 function goToDocs() {
-    var t = sessionStorage.getItem('admin_token') || token;
-    location.href = '/api/docs' + (t ? '?token=' + t : '');
+    // 会话 token 不入 URL（避免写入服务器 access log / 浏览器历史）；
+    // /api/docs 页面 JS 会从同源 sessionStorage 读取同一份 token。
+    location.href = '/api/docs';
 }
 
 function doLogout() {
@@ -288,7 +289,7 @@ async function loadMonitor() {
             if (title) stat.title = title; else stat.removeAttribute('title');
         }
         if (dot)  { dot.className = 'dot ' + (ok===true?'dot-ok':ok===null?'dot-off':'dot-err'); }
-        if (name && ver) name.innerHTML = (name.dataset.base || name.textContent) + ' <span class="svc-ver">' + ver + '</span>';
+        if (name && ver) name.innerHTML = (name.dataset.base || name.textContent) + ' <span class="svc-ver">' + esc(ver) + '</span>';
     }
 
     try {
@@ -348,7 +349,7 @@ async function loadMonitor() {
                 const label = ok ? __.t('monitor.git_reachable') : __.t('monitor.git_unreachable');
                 return '<div class="svc-row child">' +
                     '<span class="svc-icon">' + (ok ? '✅' : '❌') + '</span>' +
-                    '<span class="svc-name">' + esc(g.name) + '<span class="svc-ver">' + (g.api_version||'') + '</span></span>' +
+                    '<span class="svc-name">' + esc(g.name) + '<span class="svc-ver">' + esc(g.api_version || '') + '</span></span>' +
                     '<span class="svc-stat ' + (ok?'ok':'err') + '">' + label + '</span>' +
                 '</div>';
             }).join('') || '<div class="svc-row child"><span class="svc-icon">⚪</span><span class="svc-name">' + __.t('js.no_configured_platform') + '</span></div>';
@@ -1726,7 +1727,7 @@ async function loadUsers() {
             }
             return `<tr>
                 <td><strong>${esc(u.username)}</strong></td>
-                <td>${roleLabel(u)}</td>
+                <td>${esc(roleLabel(u))}</td>
                 <td>${esc(u.systems || '-')}</td>
                 <td style="font-size:12px;color:#6b7280;">${esc(u.email || '-')}</td>
                 <td style="font-size:12px;color:#6b7280;">${esc(time)}</td>
@@ -2184,7 +2185,7 @@ async function showRoleForm(id, name, desc, perms) {
             var chk = selected.indexOf(key) >= 0;
             html += '<label class="perm-check' + (chk ? ' checked' : '') + '">'
                 + '<input type="checkbox" value="' + esc(key) + '"' + (chk ? ' checked' : '') + '>'
-                + permLabel(key) + '</label>';
+                + esc(permLabel(key)) + '</label>';
         });
         // 二级分组
         g.subGroups.forEach(function(sg) {
@@ -2195,7 +2196,7 @@ async function showRoleForm(id, name, desc, perms) {
                 var chk = selected.indexOf(key) >= 0;
                 html += '<label class="perm-check perm-check-sub' + (chk ? ' checked' : '') + '">'
                     + '<input type="checkbox" value="' + esc(key) + '"' + (chk ? ' checked' : '') + '>'
-                    + permLabel(key) + '</label>';
+                    + esc(permLabel(key)) + '</label>';
             });
             html += '</div></div>';
         });
@@ -2476,7 +2477,7 @@ function esc(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 function escJs(s) { return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'\\"'); }
-function js(obj) { return JSON.stringify(obj).replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+function js(obj) { return JSON.stringify(obj).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
 
 // ═══════════ Init ═══════════
 // 支持 URL 参数 ?lang=zh|en 覆盖 localStorage
