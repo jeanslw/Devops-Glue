@@ -35,7 +35,8 @@ $app->group('/api', function (RouteCollectorProxy $api) {
     // 国际化：获取指定语言的语言包（供前端使用）
     $api->get('/i18n/{locale}', [MainController::class, 'i18n']);
 
-    // API 文档 (Swagger UI) —— 需登录
+    // API 文档 (Swagger UI) —— 页面轻量放行，数据鉴权在 openapi.json/各 API；
+    // 登录框内嵌页面（swagger.html），无独立登录路由
     $api->get('/docs', [MainController::class, 'docs']);
 
     // OpenAPI 规范 —— 需登录

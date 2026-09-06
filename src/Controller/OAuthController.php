@@ -75,9 +75,25 @@ class OAuthController extends BaseController
             return $this->jsonError($response, 'oauth.invalid_request', 400);
         }
 
+        // 登录失败限流：与 /api/admin/login 同一策略（IP + 用户名 5 次/15 分钟），
+        // 避免 OAuth 登录页成为绕过管理后台限流的暴力破解入口。
+        $clientIp = $this->clientIp($request);
+        if ($this->auth->isLoginLocked($clientIp, $username)) {
+            $response->getBody()->write($this->renderLoginForm(
+                $clientId,
+                $redirectUri,
+                $state,
+                $scope,
+                $nonce,
+                $this->__('auth.login_locked')
+            ));
+            return $response->withStatus(429)->withHeader('Content-Type', 'text/html; charset=utf-8');
+        }
+
         // 复用现有认证逻辑（DB 用户 + .env 兜底），systemType 用 CI（OAuth 登录视为 CI 侧）
         $result = $this->auth->authenticate($username, $password, AppConfig::SYSTEM_CI);
         if (empty($result['success'])) {
+            $this->auth->recordLoginFailure($clientIp, $username);
             $response->getBody()->write($this->renderLoginForm(
                 $clientId,
                 $redirectUri,
@@ -88,6 +104,7 @@ class OAuthController extends BaseController
             ));
             return $response->withStatus(401)->withHeader('Content-Type', 'text/html; charset=utf-8');
         }
+        $this->auth->clearLoginFailure($clientIp, $username);
 
         $code = $this->oauth->issueCode(
             $clientId,
@@ -322,6 +339,28 @@ class OAuthController extends BaseController
             $host .= ':' . $port;
         }
         return $scheme . '://' . $host;
+    }
+
+    /**
+     * 客户端 IP：优先 REMOTE_ADDR（nginx 直连即真实 IP），本地/反代时回退 X-Forwarded-For 首个
+     * 与 AdminController::clientIp 同一逻辑，避免伪造 XFF 绕过登录限流。
+     */
+    private function clientIp(Request $request): string
+    {
+        $server = $request->getServerParams();
+        $remote = $server['REMOTE_ADDR'] ?? '';
+        if ($remote !== '' && $remote !== '127.0.0.1' && $remote !== '::1') {
+            return $remote;
+        }
+        $xff = $server['HTTP_X_FORWARDED_FOR'] ?? '';
+        if ($xff !== '') {
+            $parts = array_map('trim', explode(',', $xff));
+            $ip = $parts[0] ?? '';
+            if ($ip !== '') {
+                return $ip;
+            }
+        }
+        return $remote !== '' ? $remote : 'unknown';
     }
 
     /**

@@ -1,4 +1,4 @@
-# Devops-Glue API v2.7.0
+# Devops-Glue API v2.7.1
 Devops-Glue API 是基于 Slim4 为小团队打造的 DevOps 工具链增强集成平台。支持统一视图、RBAC、API，主流多Git平台，支持任何CI。
 
 <p align="center">
@@ -8,7 +8,7 @@ Devops-Glue API 是基于 Slim4 为小团队打造的 DevOps 工具链增强集�
 
 <p align="center">
   <a href="https://gitee.com/jeanslw/devops_cd"><img src="https://img.shields.io/badge/配套-Devops__CD-green?logo=python" alt="CD"></a>
-  <a href="https://gitee.com/jeanslw/devops_glue/releases/tag/v2.7.0"><img src="https://img.shields.io/github/v/release/jeanslw/Devops-Glue?style=flat-square&label=Release" alt="Release"></a>
+  <a href="https://gitee.com/jeanslw/devops_glue/releases/tag/v2.7.1"><img src="https://img.shields.io/github/v/release/jeanslw/Devops-Glue?style=flat-square&label=Release" alt="Release"></a>
   <a href="https://gitee.com/jeanslw/devops_glue"><img src="https://img.shields.io/github/last-commit/jeanslw/Devops-Glue?style=flat-square&label=Last%20Commit" alt="Last Commit"></a>
   <a href="https://github.com/jeanslw/Devops-Glue/blob/main/LICENSE"><img src="https://img.shields.io/github/license/jeanslw/Devops-Glue" alt="License">
   <a href="https://www.php.net"><img src="https://img.shields.io/badge/PHP-8.1+-777BB4?logo=php&logoColor=white" alt="PHP">
@@ -142,6 +142,7 @@ curl http://localhost:8080/api/health
 | [对接服务版本兼容性说明](docs/对接服务版本兼容性说明.md) | 中文 | Jenkins / GitLab / Gitea / Harbor 版本支持情况与边界 |
 | [常见问题](docs/常见问题.md) | 中文 | 常见问题与排查指南（中文） |
 | [更新日志](docs/更新日志.md) | 中文 | 版本发布记录 |
+| [文档贡献指南](docs/文档贡献指南.md) | 中文 | 中英文档编写 / 翻译 / 同步维护规范 |
 
 ## 相关项目
 

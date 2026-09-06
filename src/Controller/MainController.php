@@ -397,21 +397,19 @@ class MainController extends BaseController
     }
 
     /**
-     * GET /api/docs — Swagger UI 页面（需登录，未登录显示登录页）
+     * GET /api/docs — Swagger UI 页面（未登录时同页内嵌登录框）
+     *
+     * 页面本身（纯 UI）轻量放行，不含任何业务数据；OpenAPI 规范(/api/openapi.json)
+     * 与 Try-it-out 请求仍由服务端鉴权。为让会话 token 不再出现在 URL（防 access log /
+     * 浏览器历史泄露），登录态由同源 sessionStorage 承载、仅在页面 JS 侧可感知，因此
+     * 无法由服务端分流"未登录→登录页"；登录层直接内嵌本页，JS 检测无凭证时同页显示
+     * 登录框（URL 保持 /api/docs），登录成功写 sessionStorage 后就地初始化 SwaggerUI。
      */
     public function docs(Request $request, Response $response): Response
     {
         $htmlFile = __DIR__ . '/../../templates/swagger.html';
-        $swaggerHtml = file_exists($htmlFile) ? file_get_contents($htmlFile) : '<h1>Swagger file missing / 文档文件丢失</h1>';
-
-        if ($this->checkDocsAuth($request)) {
-            $response->getBody()->write($swaggerHtml);
-            return $response->withHeader('Content-Type', 'text/html; charset=utf-8');
-        }
-
-        // 未登录 → 登录页
-        $loginFile = __DIR__ . '/../../templates/swagger-auth.html';
-        $response->getBody()->write(file_exists($loginFile) ? file_get_contents($loginFile) : '<h1>Login page missing / 登录页丢失</h1>');
+        $html = file_exists($htmlFile) ? file_get_contents($htmlFile) : '<h1>Swagger file missing / 文档文件丢失</h1>';
+        $response->getBody()->write($html);
         return $response->withHeader('Content-Type', 'text/html; charset=utf-8');
     }
 
