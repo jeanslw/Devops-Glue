@@ -13,6 +13,7 @@ Devops-Glue API 是基于 Slim4 为小团队打造的 DevOps 工具链增强集�
   <a href="https://github.com/jeanslw/Devops-Glue/blob/main/LICENSE"><img src="https://img.shields.io/github/license/jeanslw/Devops-Glue" alt="License">
   <a href="https://www.php.net"><img src="https://img.shields.io/badge/PHP-8.1+-777BB4?logo=php&logoColor=white" alt="PHP">
   <a href="https://www.slimframework.com"><img src="https://img.shields.io/badge/Slim-4-00A650?logo=slim&logoColor=white" alt="Slim">
+  <a href="https://hub.docker.com/r/jeanslw/devops-glue/tags"><img src="https://img.shields.io/docker/v/jeanslw/devops-glue/latest?label=version&logo=docker" alt="docker"></a>
 </p>
 
 > 🔗 **本项目为CI增强组件** | 完整系统需配套 CD 部署服务 → [Devops_CD](https://gitee.com/jeanslw/devops_cd)
