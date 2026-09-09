@@ -6,7 +6,10 @@ services:
     image: devops-glue:latest
     container_name: devops-glue
     env_file:
-      - .env
+      - config/.env
+    environment:
+      # Docker 内部服务名，覆盖 config/.env 的裸机默认值 DB_HOST=127.0.0.1
+      DB_HOST: mysql
     volumes:
       - ./config/.env:/app/config/.env:ro
       - ./config/docker/nginx.conf:/etc/nginx/sites-available/default:ro
@@ -26,9 +29,13 @@ services:
   mysql:
     image: mysql:8.4
     container_name: devops-mysql
+    env_file:
+      - config/.env
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_PASS:-root123}
-      MYSQL_DATABASE: ${DB_NAME:-devops_glue}
+      # compose ${VAR} 插值读取 shell 环境或 --env-file（根 .env 已移除，不会自动读 config/.env）。
+      # 启动请用：docker compose --env-file config/.env up
+      MYSQL_ROOT_PASSWORD: ${DB_PASS}
+      MYSQL_DATABASE: ${DB_NAME}
     volumes:
       - mysql-data:/var/lib/mysql
     restart: unless-stopped
@@ -40,9 +47,9 @@ services:
       retries: 10
 
 # ──────────────────────────────────────
-# Devops CD Service — 与 CI/MySQL 共用根目录 .env
+# Devops CD Service — 与 CI/MySQL 共用 config/.env
 # ──────────────────────────────────────
-# 集中部署时取消下方注释即可。DB / Harbor / SECRET_KEY / CI_API_TOKEN 由 .env 注入；
+# 集中部署时取消下方注释即可。DB / Harbor / SECRET_KEY / CI_API_TOKEN 由 config/.env 注入；
 # 镜像 Dockerfile 已内置 CMD（uvicorn 0.0.0.0:8081）与 HEALTHCHECK，无需在此重复。
 # 单机单独部署 CD 时仍用 Devops_CD 仓库自带的 .env + docker compose up。
 #
@@ -53,7 +60,7 @@ services:
 #    container_name: devops-cd
 #    image: devops-cd:latest
 #    env_file:
-#      - .env
+#      - config/.env
 #    environment:
 #      CI_API_URL: http://devops-glue
 #    ports:

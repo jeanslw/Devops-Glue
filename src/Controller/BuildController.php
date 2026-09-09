@@ -618,6 +618,7 @@ class BuildController extends BaseController
         $gitPlatform = '';
         $gitProjectId  = null;
         $gitCurrentPath = '';
+        $ciProjectId    = $path;
         foreach ($maps as $m) {
             $job = $m['job_name'] ?? '';
             $cp  = $m['current_path'] ?? '';
@@ -627,6 +628,13 @@ class BuildController extends BaseController
                 $gitPlatform    = $m['git_platform'] ?? '';
                 $gitProjectId   = $m['project_id'] ?? null;
                 $gitCurrentPath = $cp;
+                // 规范 project_id（供 getPipelines 用）：gitlab_ci→数字 project_id，
+                // custom_push→job_name（current_path 兜底），jenkins→原始 path。
+                if ($provider === AppConfig::PROVIDER_GITLAB_CI && !empty($gitProjectId)) {
+                    $ciProjectId = (string) $gitProjectId;
+                } elseif ($provider !== AppConfig::PROVIDER_JENKINS) {
+                    $ciProjectId = (string) ($job !== '' ? $job : ($cp !== '' ? $cp : $path));
+                }
                 break;
             }
         }
@@ -665,21 +673,37 @@ class BuildController extends BaseController
         }
         // Harbor 不可达时降级放行：CI 刚 push 完 tag，大概率存在；读取侧 cleanupStaleTags 兜底清理
 
-        // 3. 尝试获取 pipeline info（仅用于 commit status）
-        $sha  = '';
-        $iid  = 0;
-        try {
-            $projectId = $path;
-            if ($this->registry->isRegistered($provider)) {
-                $p = $this->registry->create($provider);
-                $pipelines = $p->getPipelines($projectId, 1);
-                if (!empty($pipelines)) {
-                    $sha = $pipelines[0]['sha'] ?? '';
-                    $iid = (int) ($pipelines[0]['iid'] ?? 0);
-                }
+        // 3. 解析 pipeline 身份（用于 commit status 回写 + ci_pipeline_tags 落库）
+        //    pipeline_iid 与 sha 共同构成 pipeline identity，禁止「半个身份」：
+        //    - 两者都传：直接采用（可靠，避免「最新 pipeline」误判）
+        //    - 两者都不传：legacy 兜底到 getPipelines 最新一条（兼容旧客户端）
+        //    - 只传其一：直接 400（否则会把请求的 iid 与最新 pipeline 的 sha 拼接成错误配对）
+        //    getPipelines 用映射后的规范 project_id，而非原始 $path
+        //    （gitlab_ci 必须用数字 project_id，custom_push 用 job_name，jenkins 才用 path）
+        $bodySha = trim((string) ($body['sha'] ?? ''));
+        $bodyIid = isset($body['pipeline_iid']) ? (int) $body['pipeline_iid'] : 0;
+
+        if ($bodySha !== '' || $bodyIid > 0) {
+            if ($bodySha === '' || $bodyIid <= 0) {
+                return $this->jsonError($response, $this->__('build.scan_sync_identity'), 400);
             }
-        } catch (\Exception $e) {
-            \App\Helper\Log::exception($e);
+            $sha = $bodySha;
+            $iid = $bodyIid;
+        } else {
+            $sha = '';
+            $iid = 0;
+            try {
+                if ($this->registry->isRegistered($provider)) {
+                    $p = $this->registry->create($provider);
+                    $pipelines = $p->getPipelines($ciProjectId, 1);
+                    if (!empty($pipelines)) {
+                        $sha = $pipelines[0]['sha'] ?? '';
+                        $iid = (int) ($pipelines[0]['iid'] ?? 0);
+                    }
+                }
+            } catch (\Exception $e) {
+                \App\Helper\Log::exception($e);
+            }
         }
 
         // 4. Harbor 扫描 + commit status 回写（通过 Git Provider，跨所有平台）
@@ -758,8 +782,22 @@ class BuildController extends BaseController
         $path     = $args['path'] ?? '';
         $pipeline = $request->getQueryParams()['pipeline'] ?? '';
 
-        $tags = $this->loadPipelineTags();
-        $entry  = $tags[$path] ?? [];
+        $tags  = $this->loadPipelineTags();
+        $entry = $tags[$path] ?? [];
+        // 别名归并：同一项目可能同时以 job_name / current_path 落 tag（与 tagsList 一致），
+        // 按其中一键查询时把另一键下的 pipeline→tag 也合并进来，避免按 current_path 查空。
+        foreach ($this->config->getJobGitMap() as $m) {
+            $job = $m['job_name'] ?? '';
+            $cp  = $m['current_path'] ?? '';
+            if ($job === $path || $cp === $path) {
+                foreach (['job_name', 'current_path'] as $f) {
+                    $alias = $m[$f] ?? '';
+                    if ($alias !== '' && $alias !== $path) {
+                        $entry = ($tags[$alias] ?? []) + $entry;
+                    }
+                }
+            }
+        }
         $tagInfo = $pipeline ? ($entry[$pipeline] ?? null) : null;
         $tag     = is_array($tagInfo) ? ($tagInfo['tag'] ?? '') : $tagInfo;
         $harbor  = is_array($tagInfo) ? ($tagInfo['harbor'] ?? '') : '';
@@ -885,9 +923,14 @@ class BuildController extends BaseController
 
         $result = $p->report($projectId, $body);
 
-        // status=success 且带 tag：同步写入 ci_pipeline_tags（部署系统以 ci_pipeline_tags 为交付依据）
+        // status=success 且带 tag：同步写入 ci_pipeline_tags（部署系统以 ci_pipeline_tags 为交付依据）。
+        // 若 tag 落库失败，必须返回失败让 CI 重试，否则 ci_custom_builds 已 success、
+        // ci_pipeline_tags 却缺 tag，部署侧按成功却拿不到镜像 tag，形成静默不一致。
+        // 重试安全：success→success 覆盖是幂等的，终态单调性只拦 success→failed/aborted 降级。
         if (!empty($result['success']) && $status === 'success') {
-            $this->recordPipelineTag($projectId, $pipelineIid, $tag, $harborRepo, 'success', $finishedAt);
+            if (!$this->recordPipelineTag($projectId, $pipelineIid, $tag, $harborRepo, 'success', $finishedAt)) {
+                return $this->jsonError($response, '构建记录已写入，但 tag 落库失败（ci_pipeline_tags），请重试上报', 500);
+            }
         }
 
         return $this->output($response, [
@@ -1011,14 +1054,14 @@ class BuildController extends BaseController
         return 'Harbor 返回 HTTP ' . $httpCode . '（' . $msg . '）';
     }
 
-    private function recordPipelineTag(string $path, int $pipelineIid, string $tag, string $harborRepo = '', string $status = '', ?string $createdAt = null): void
+    private function recordPipelineTag(string $path, int $pipelineIid, string $tag, string $harborRepo = '', string $status = '', ?string $createdAt = null): bool
     {
         // 基础输入校验：ci_pipeline_tags 是最终部署依据，关键字段必须真实非空
         if (empty($path) || $pipelineIid <= 0 || empty($tag) || empty($harborRepo)) {
-            return;
+            return false;
         }
         if (mb_strlen($tag) > 255 || mb_strlen($path) > 255) {
-            return;
+            return false;
         }
         try {
             $pdo = $this->pdo;
@@ -1037,8 +1080,12 @@ class BuildController extends BaseController
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute([$path, $pipelineIid, $tag, $harborRepo, $status]);
             }
+            return true;
         } catch (\Exception $e) {
-            // 静默失败
+            // 写入失败必须让调用方感知（见 report() 的失败处理），不能静默吞掉导致
+            // ci_custom_builds 与 ci_pipeline_tags 状态不一致。
+            \App\Helper\Log::exception($e);
+            return false;
         }
     }
 }
