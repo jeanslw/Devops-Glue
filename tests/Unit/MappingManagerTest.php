@@ -12,7 +12,7 @@ use PHPUnit\Framework\TestCase;
  *
  * 专项锁定 custom_push 的推送名称归一化：无论用户 CI 推 `job_name` 还是
  * `current_path`，都归一化到 `job_name`（映射主键，跨 build_provider 切换的稳定身份）。
- * 这样 jenkins ↔ custom_push 互相切换时 ci_pipeline_tags.project 始终一致，
+ * 这样 jenkins ↔ custom_push 互相切换时 ci_pipeline_artifacts.project_key 始终一致，
  * 不会因 current_path 与 job_name 不同名而把同一项目当成两条。
  *
  * 依赖 SQLite 内存库（ci_job_git_map / ci_app_settings 两表），不触网。

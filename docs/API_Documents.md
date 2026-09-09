@@ -233,7 +233,7 @@ Custom variables: any other field (e.g. `env`) is stored in `variables_json`.
 }
 ```
 
-> On `success`, `tag` and a resolvable `harbor_repository` are mandatory and `ci_pipeline_tags` is written (project, pipeline_iid, tag, harbor_repository, finished_at, status), read by the CD layer via `GET /api/build/{path}/tag` (list views use `GET /api/build/projects` / `GET /api/build/{path}/tags`).
+> On `success`, `tag` and a resolvable `harbor_repository` are mandatory and `ci_pipeline_artifacts` is written (provider, project_id, pipeline_iid, project_key, repository, tag, status), read by the CD layer via `GET /api/build/{path}/tag` (list views use `GET /api/build/projects` / `GET /api/build/{path}/tags`).
 > Fields outside control fields (`pipeline_iid`/`status`/`finished_at`/`started_at`/`ref`/`sha`/`exit_code`/`log_url`/`web_url`/`tag`/`harbor_repository`) are stored in `variables_json`.
 > `(job_name, pipeline_iid)` is a unique key; duplicate reports overwrite (UPDATE) the existing record.
 

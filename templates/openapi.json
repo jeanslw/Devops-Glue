@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Devops-Glue API",
-    "version": "2.7.2",
+    "version": "2.8.0",
     "description": "DevOps 工具链集成接口 —— Jenkins/GitLab CI、GitLab/Gitee/GitHub/Gitea、Harbor 统一 API。",
     "contact": {
       "email": "jeanslw@qq.com"
@@ -905,7 +905,7 @@
       "post": {
         "tags": ["Build"],
         "summary": "自定义推送式 CI 构建结果单次上报",
-        "description": "custom_push 构建源专用：用户 CI 在构建完成后一次性上报终态结果（success/failed/aborted），无 pending/running 中间态。Devops-Glue 只存元数据与日志 URL 指针，不参与构建也不存日志内容。\n\nstatus=success 时必须带 tag，同步写入 ci_pipeline_tags（project、pipeline_iid、tag、finished_at、status）；CD 层通过现有 GET /api/build/{path}/tag 读取。\n\n请求体除控制字段（pipeline_iid / status / finished_at / started_at / ref / sha / exit_code / log_url / web_url / tag / harbor_repository）外，其余字段作为自定义构建参数一并存入 variables_json。",
+        "description": "custom_push 构建源专用：用户 CI 在构建完成后一次性上报终态结果（success/failed/aborted），无 pending/running 中间态。Devops-Glue 只存元数据与日志 URL 指针，不参与构建也不存日志内容。\n\nstatus=success 时必须带 tag，同步写入 ci_pipeline_artifacts（provider、project_id、pipeline_iid、project_key、repository、tag、status）；CD 层通过现有 GET /api/build/{path}/tag 读取。\n\n请求体除控制字段（pipeline_iid / status / finished_at / started_at / ref / sha / exit_code / log_url / web_url / tag / harbor_repository）外，其余字段作为自定义构建参数一并存入 variables_json。",
         "operationId": "buildReport",
         "security": [{ "bearerAuth": [] }],
         "parameters": [
@@ -928,7 +928,7 @@
                   "exit_code":         { "type": "integer", "example": 0, "description": "构建退出码（可选）" },
                   "log_url":           { "type": "string", "format": "uri", "example": "https://ci.example.com/build/123/log", "description": "日志 URL（仅存指针，Devops-Glue 不存日志内容）" },
                   "web_url":           { "type": "string", "format": "uri", "example": "https://ci.example.com/build/123", "description": "用户 CI 构建页链接（可选）" },
-                  "tag":               { "type": "string", "example": "v1.0.0", "description": "镜像 tag（status=success 时必填，写入 ci_pipeline_tags；上报时校验该 tag 真实存在于 Harbor，不存在返回 400；failed/aborted 不需要）" },
+                  "tag":               { "type": "string", "example": "v1.0.0", "description": "镜像 tag（status=success 时必填，写入 ci_pipeline_artifacts；上报时校验该 tag 真实存在于 Harbor，不存在返回 400；failed/aborted 不需要）" },
                   "harbor_repository": { "type": "string", "example": "team/myapp", "description": "Harbor 仓库路径（由 job_git_map 配置决定，body 传入会被忽略；project/repo 两段式，不接受 registry 地址/URL；上报时校验仓库与 tag 均真实存在于 Harbor，任一不存在返回 400）" },
                   "env":               { "type": "string", "enum": ["dev", "staging", "prod"], "example": "prod", "description": "镜像目标环境（自定义变量，可选）" }
                 }

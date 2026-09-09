@@ -1,17 +1,17 @@
 <?php
 /**
- * 离线清理 ci_pipeline_tags 过期 tag CLI（运维工具，不随 Web 运行）
+ * 离线清理 ci_pipeline_artifacts 过期 tag CLI（运维工具，不随 Web 运行）
  *
  * 用法：
  *   php cli/cleanup-pipeline-tags.php
  *
  * 说明：
- *   - 以 Harbor 为唯一真值源：逐条核对 ci_pipeline_tags，Harbor 里已不存在的 tag
+ *   - 以 Harbor 为唯一真值源：逐条核对 ci_pipeline_artifacts，Harbor 里已不存在的 tag
  *     对应的记录会被删除。正确性归 Glue（CI 层）维护——按解耦约定 CD 只读 ci_* 表
  *     绝不删（用户可能不启用 CD 系统），故本脚本不依赖 CD 存活。
  *   - 安全不变量：Harbor 未配置 / 不可达 / harbor_repository 或 tag 为空 → 跳过，
  *     绝不误删；只删「Harbor 明确返回了 tag 列表且其中没有这条」的行。
- *   - 幂等：可重复跑、并发跑无害。只碰 ci_pipeline_tags，绝不碰任何 cd_* 表。
+ *   - 幂等：可重复跑、并发跑无害。只碰 ci_pipeline_artifacts，绝不碰任何 cd_* 表。
  *   - 受后台开关 stale_tag_cleanup_enabled 控制：未开启时直接跳过（退出码 0）。
  *
  * 调度：用宿主 cron / 容器 crontab / Windows 计划任务定时调用即可，与 CD 完全解耦。
@@ -85,9 +85,9 @@ try {
 
 // ── 3. 校验表存在（避免连错库误操作）──
 try {
-    $pdo->query('SELECT 1 FROM ' . AppConfig::TABLE_PIPELINE_TAGS . ' LIMIT 1');
+    $pdo->query('SELECT 1 FROM ' . AppConfig::TABLE_PIPELINE_ARTIFACTS . ' LIMIT 1');
 } catch (\Throwable $e) {
-    fwrite(STDERR, "错误：{$driver} 库缺少 " . AppConfig::TABLE_PIPELINE_TAGS . " 表（未初始化？）。\n");
+    fwrite(STDERR, "错误：{$driver} 库缺少 " . AppConfig::TABLE_PIPELINE_ARTIFACTS . " 表（未初始化？）。\n");
     exit(1);
 }
 
@@ -122,7 +122,7 @@ if ($harborUrl !== '') {
 
 // ── 5. 执行清理 ──
 if ($harbor === null) {
-    echo "跳过：Harbor 未配置（HARBOR_BASE_URL 为空），ci_pipeline_tags 未做清理。\n";
+    echo "跳过：Harbor 未配置（HARBOR_BASE_URL 为空），ci_pipeline_artifacts 未做清理。\n";
     exit(0);
 }
 

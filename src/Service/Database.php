@@ -197,6 +197,27 @@ class Database
         return false;
     }
 
+    /** 判断表是否已存在（MySQL/SQLite 双驱动），用于幂等迁移/删除遗留表 */
+    private static function tableExists(\PDO $pdo, string $table): bool
+    {
+        try {
+            $pdo->query('SELECT 1 FROM ' . $table . ' LIMIT 1');
+            return true;
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    /** 删除遗留表（不存在则跳过）；失败不致命，仅记录，下次启动会重试 */
+    private static function dropTableIfExists(\PDO $pdo, string $table): void
+    {
+        try {
+            $pdo->exec('DROP TABLE IF EXISTS ' . $table);
+        } catch (\Throwable $e) {
+            \App\Helper\Log::exception($e);
+        }
+    }
+
     // ── 建表 ──
 
     private static function ensureTables(): void
@@ -233,15 +254,21 @@ class Database
             version TEXT NOT NULL
         ){$ENGINE}");
 
-        // ci_pipeline_tags
-        $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_PIPELINE_TAGS . " (
-            project {$VCHAR255},
+        // ci_pipeline_artifacts：Pipeline → Primary Artifact（当前保持 1:1）。
+        // canonical identity = (provider, project_id, pipeline_iid)。
+        $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_PIPELINE_ARTIFACTS . " (
+            id {$PK},
+            provider {$VARCHAR} NOT NULL,
+            project_id {$VARCHAR} NOT NULL,
             pipeline_iid INTEGER NOT NULL,
+            project_key {$VCHAR255},
+            repository TEXT NOT NULL,
             tag {$VARCHAR} NOT NULL,
-            harbor_repository TEXT,
             status {$VARCHAR} DEFAULT '',
+            source_updated_at {$TS_TYPE} DEFAULT NULL,
             created_at {$TS_TYPE} DEFAULT ({$NOW}),
-            PRIMARY KEY (project, pipeline_iid)
+            updated_at {$TS_TYPE} DEFAULT ({$NOW}),
+            UNIQUE (provider, project_id, pipeline_iid)
         ){$ENGINE}");
         // ci_custom_builds（自定义推送式 CI 的构建记录，只存元数据，不存日志内容）
         $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_CUSTOM_BUILDS . " (
@@ -441,10 +468,6 @@ class Database
             \App\Config\AppConfig::TABLE_JOB_GIT_MAP => [
                 'status' => "{$VARCHAR} DEFAULT '" . \App\Config\AppConfig::STATUS_ACTIVE . "'",
             ],
-            \App\Config\AppConfig::TABLE_PIPELINE_TAGS => [
-                'harbor_repository' => 'TEXT',
-                'status'            => "{$VARCHAR} DEFAULT ''",
-            ],
             \App\Config\AppConfig::TABLE_SECURITY_CHECKS => [
                 'tag'               => "{$VARCHAR} DEFAULT ''", // 关联 tag
                 'writeback_status'  => "{$VARCHAR} DEFAULT ''", // commit status 回写结果（success/failed/skipped，空=历史）
@@ -482,8 +505,8 @@ class Database
         self::seedRbac();
 
         // ── 索引（跨驱动幂等：MySQL 无 IF NOT EXISTS，先查 information_schema）──
-        self::createIndex('idx_pipeline_tags_project', \App\Config\AppConfig::TABLE_PIPELINE_TAGS, 'project');
-        self::createIndex('idx_pipeline_tags_created', \App\Config\AppConfig::TABLE_PIPELINE_TAGS, 'created_at');
+        self::createIndex('idx_pipeline_artifacts_project_key', \App\Config\AppConfig::TABLE_PIPELINE_ARTIFACTS, 'project_key');
+        self::createIndex('idx_pipeline_artifacts_created', \App\Config\AppConfig::TABLE_PIPELINE_ARTIFACTS, 'created_at');
         self::createIndex('idx_job_git_map_current_path', \App\Config\AppConfig::TABLE_JOB_GIT_MAP, 'current_path');
         self::createIndex('idx_security_checks_project', \App\Config\AppConfig::TABLE_SECURITY_CHECKS, 'project, check_type');
         self::createIndex('idx_security_checks_sha', \App\Config\AppConfig::TABLE_SECURITY_CHECKS, 'sha');
@@ -493,8 +516,10 @@ class Database
             $baseDir = __DIR__ . '/../../config';
             self::migrateJobGitMap("{$baseDir}/job_git_map.json", $pdo);
             self::migratePlatformVersions("{$baseDir}/platform_versions.json", $pdo);
-            self::migratePipelineTags("{$baseDir}/pipeline_tags.json", $pdo);
         }
+
+        // 新 canonical artifact 表的存量迁移：MySQL / SQLite 均需要执行一次。
+        self::migratePipelineArtifacts($pdo);
     }
 
     /**
@@ -727,37 +752,95 @@ class Database
         @unlink($path);
     }
 
-    private static function migratePipelineTags(string $path, \PDO $pdo): void
+    /**
+     * 将旧 ci_pipeline_tags 投影迁移到 canonical ci_pipeline_artifacts。
+     * 冲突时按 created_at DESC 先写最新记录，避免旧 alias 覆盖较新事实。
+     * 幂等：artifact 表的 canonical UNIQUE 防止重复迁移。
+     */
+    private static function migratePipelineArtifacts(\PDO $pdo): void
     {
-        if (!file_exists($path)) {
-            return;
-        }
-        $json = file_get_contents($path);
-        if ($json === false) {
-            return;
-        }
-        $data = json_decode($json, true);
-        if (!is_array($data)) {
-            @unlink($path);
+        $artifactTable = \App\Config\AppConfig::TABLE_PIPELINE_ARTIFACTS;
+        $tagTable      = 'ci_pipeline_tags'; // 遗留表名（迁移源），迁移完成后 DROP
+        $mapTable      = \App\Config\AppConfig::TABLE_JOB_GIT_MAP;
+        // getPdo() 在某些调用链中会直接执行 ensureTables()，因此这里必须低成本幂等。
+        // artifact 已有任意数据 = 迁移已完成；无遗留表 = 全新安装。两种情况都只需清理遗留表。
+        $existing = $pdo->query('SELECT 1 FROM ' . $artifactTable . ' LIMIT 1')->fetchColumn();
+        if ($existing !== false || !self::tableExists($pdo, $tagTable)) {
+            self::dropTableIfExists($pdo, $tagTable);
             return;
         }
 
-        $isMySQL = self::$driver === 'mysql';
-        $table = \App\Config\AppConfig::TABLE_PIPELINE_TAGS;
-        $sql = $isMySQL
-            ? "REPLACE INTO {$table} (project,pipeline_iid,tag) VALUES (?,?,?)"
-            : "INSERT OR REPLACE INTO {$table} (project,pipeline_iid,tag) VALUES (?,?,?)";
-
-        $stmt = $pdo->prepare($sql);
-        foreach ($data as $project => $tags) {
-            if (!is_array($tags)) {
-                continue;
+        try {
+            $rows = $pdo->query(
+                'SELECT project, pipeline_iid, tag, harbor_repository, status, created_at
+                 FROM ' . $tagTable . ' ORDER BY created_at DESC'
+            )->fetchAll();
+            if (!$rows) {
+                self::dropTableIfExists($pdo, $tagTable);
+                return;
             }
-            foreach ($tags as $iid => $tag) {
-                $stmt->execute([$project, (int) $iid, $tag]);
+            $maps = $pdo->query(
+                'SELECT job_name, current_path, build_provider, project_id FROM ' . $mapTable
+            )->fetchAll();
+            $insert = self::sqlInsertIgnore(
+                $artifactTable,
+                'provider, project_id, pipeline_iid, project_key, repository, tag, status, source_updated_at, created_at, updated_at',
+                '?, ?, ?, ?, ?, ?, ?, ?, ?, ' . self::sqlNow()
+            );
+            $stmt = $pdo->prepare($insert);
+            $started = false;
+            if (!$pdo->inTransaction()) {
+                $pdo->beginTransaction();
+                $started = true;
             }
+            foreach ($rows as $row) {
+                $project = (string) ($row['project'] ?? '');
+                $provider = \App\Config\AppConfig::PROVIDER_JENKINS;
+                $projectId = $project;
+                foreach ($maps as $m) {
+                    $job = (string) ($m['job_name'] ?? '');
+                    $cp  = (string) ($m['current_path'] ?? '');
+                    if ($job !== $project && $cp !== $project) {
+                        continue;
+                    }
+                    $provider = (string) ($m['build_provider'] ?? $provider);
+                    if ($provider === \App\Config\AppConfig::PROVIDER_GITLAB_CI && !empty($m['project_id'])) {
+                        $projectId = (string) $m['project_id'];
+                    } elseif ($provider !== \App\Config\AppConfig::PROVIDER_JENKINS) {
+                        $projectId = $job !== '' ? $job : ($cp !== '' ? $cp : $project);
+                    }
+                    break;
+                }
+                if ($project === '' || (int) ($row['pipeline_iid'] ?? 0) <= 0 || ($row['tag'] ?? '') === '') {
+                    continue;
+                }
+                $createdAt = (string) ($row['created_at'] ?? '');
+                $createdAt = $createdAt !== '' ? $createdAt : null;
+                $stmt->execute([
+                    $provider,
+                    $projectId,
+                    (int) $row['pipeline_iid'],
+                    $project,
+                    (string) ($row['harbor_repository'] ?? ''),
+                    (string) $row['tag'],
+                    (string) ($row['status'] ?? ''),
+                    $createdAt,
+                    $createdAt,
+                ]);
+            }
+            if ($started && $pdo->inTransaction()) {
+                $pdo->commit();
+            }
+        } catch (\Throwable $e) {
+            if (isset($started) && $started && $pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            // 存量迁移失败必须阻止 schema 被标记为完成，让下次启动继续尝试。
+            throw $e;
         }
-        @unlink($path);
+
+        // 迁移完成（或遗留表本就为空）后删除遗留表，规范事实只剩 ci_pipeline_artifacts。
+        self::dropTableIfExists($pdo, $tagTable);
     }
 
     private function __construct()

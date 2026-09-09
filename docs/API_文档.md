@@ -233,7 +233,7 @@ custom_push 构建源专用：用户 CI 在构建完成后一次性上报终态�
 }
 ```
 
-> `success` 时必须带 `tag` 且能解析出 `harbor_repository`，同步写入 `ci_pipeline_tags`（project、pipeline_iid、tag、harbor_repository、finished_at、status），CD 层通过 `GET /api/build/{path}/tag` 读取（列表视图可用 `GET /api/build/projects` / `GET /api/build/{path}/tags`）。
+> `success` 时必须带 `tag` 且能解析出 `harbor_repository`，同步写入 `ci_pipeline_artifacts`（provider、project_id、pipeline_iid、project_key、repository、tag、status），CD 层通过 `GET /api/build/{path}/tag` 读取（列表视图可用 `GET /api/build/projects` / `GET /api/build/{path}/tags`）。
 > 控制字段（`pipeline_iid`/`status`/`finished_at`/`started_at`/`ref`/`sha`/`exit_code`/`log_url`/`web_url`/`tag`/`harbor_repository`）以外的字段存入 `variables_json`。
 > `(job_name, pipeline_iid)` 为唯一键，重复上报按覆盖（UPDATE）处理。
 ```

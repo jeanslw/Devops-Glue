@@ -19,7 +19,7 @@
 │                           ↓                                 │
 │              Build → Docker Image → Harbor Registry         │
 │                           ↓                                 │
-│              scan-sync → ci_pipeline_tags                   │
+│              scan-sync → ci_pipeline_artifacts              │
 └──────────────────────────┬──────────────────────────────────┘
                            ↓
 ┌─────────────────────────────────────────────────────────────┐
@@ -45,7 +45,7 @@
 │Shared Database (SQLite/MySQL/MariaDB)│
 │                                      │
 │  ci_job_git_map   ← CI read-only     │
-│  ci_pipeline_tags ← CI write/CD read │
+│  ci_pipeline_artifacts ← canonical CI artifact facts       │
 │  ci_custom_builds ← Custom_Push write│
 │  cd_servers       ← CD maintains     │
 │  cd_deploy_logs   ← CD writes        │
@@ -74,14 +74,14 @@ Devops-Glue supports two orthogonal CI modes that can be enabled simultaneously:
 - **Switch**: `build_mode` (`jenkins` / `gitlab_ci` / `both`)
 - **Direction**: Devops-Glue actively calls CI APIs to trigger builds, poll status, and fetch image tags
 - **Providers**: `JenkinsBuildProvider`, `GitLabCIBuildProvider`
-- **Flow**: Devops-Glue → CI API → Build → Harbor → scan-sync → `ci_pipeline_tags`
+- **Flow**: Devops-Glue → CI API → Build → Harbor → scan-sync → `ci_pipeline_artifacts`.
 
 ### Push-based CI (Custom_Push)
 
 - **Switch**: `custom_push_enabled` (independent boolean, orthogonal to `build_mode`)
 - **Direction**: User's own CI scripts push build status, log URL, and image tags to Devops-Glue
 - **Provider**: `CustomPushBuildProvider` (implements `BuildProviderInterface`)
-- **Flow**: User CI → Devops-Glue API → `ci_custom_builds` (metadata) + `ci_pipeline_tags` (image tags)
+- **Flow**: User CI → Devops-Glue API → `ci_custom_builds` (metadata) + `ci_pipeline_artifacts` (image tags)
 
 ### Orthogonal Design
 
@@ -98,13 +98,13 @@ Devops-Glue supports two orthogonal CI modes that can be enabled simultaneously:
 
 ### Custom_Push Key Design
 
-- **Metadata only**: Devops-Glue stores `status`, `log_url`, `tag` in the `ci_custom_builds` table and reuses `ci_pipeline_tags` for image tags
+- **Metadata only**: Devops-Glue stores build metadata in `ci_custom_builds`; image facts are canonicalized in `ci_pipeline_artifacts`.
 - **Log proxy**: `log_url` is a pointer only; Devops-Glue proxies log content and **does not store logs**. Since Devops-Glue cannot verify build authenticity, logs as evidence must be held by the executor (user CI)
 - **API endpoints**:
   - `POST /api/build/{path}/report` — report terminal build result and image tag in one call
 - **Config-driven**: `CustomPushBuildProvider` is registered via the `build.custom_providers` array in `settings.php`, ready out of the box
 - **Auto-discovery**: When `custom_push` is enabled, auto-discovery scans Git platforms for projects configured with custom_push
-- **pipeline_iid constraint**: To align with `ci_pipeline_tags` constraints, `pipeline_iid` must be an integer; duplicate reports overwrite (UPDATE) the existing record
+- **pipeline_iid constraint**: To align with `ci_pipeline_artifacts` constraints, `pipeline_iid` must be an integer; duplicate reports overwrite (UPDATE) the existing record
 
 ## Deployment Mode Matrix
 

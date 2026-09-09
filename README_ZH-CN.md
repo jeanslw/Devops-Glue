@@ -1,4 +1,4 @@
-# Devops-Glue API v2.7.1
+# Devops-Glue API v2.8.0
 Devops-Glue API 是基于 Slim4 为小团队打造的 DevOps 工具链增强集成平台。支持统一视图、RBAC、API，主流多Git平台，支持任何CI。
 
 <p align="center">
@@ -66,7 +66,7 @@ Devops-Glue API 是基于 Slim4 为小团队打造的 DevOps 工具链增强集�
 │                           ↓                                 │
 │              Build → Docker Image → Harbor Registry         │
 │                           ↓                                 │
-│              scan-sync → ci_pipeline_tags                   │
+│              scan-sync → ci_pipeline_artifacts              │
 └──────────────────────────┬──────────────────────────────────┘
                            ↓
 ┌─────────────────────────────────────────────────────────────┐

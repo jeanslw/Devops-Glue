@@ -64,7 +64,7 @@ class AppConfigTest extends TestCase
         $this->assertNotEmpty(AppConfig::TABLE_CACHE);
         $this->assertNotEmpty(AppConfig::TABLE_ADMIN_USERS);
         $this->assertNotEmpty(AppConfig::TABLE_APP_SETTINGS);
-        $this->assertNotEmpty(AppConfig::TABLE_PIPELINE_TAGS);
+        $this->assertNotEmpty(AppConfig::TABLE_PIPELINE_ARTIFACTS);
         $this->assertNotEmpty(AppConfig::TABLE_SECURITY_CHECKS);
         $this->assertNotEmpty(AppConfig::TABLE_PLATFORM_VERSIONS);
         $this->assertNotEmpty(AppConfig::TABLE_CUSTOM_BUILDS);

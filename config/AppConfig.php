@@ -3,12 +3,12 @@ namespace App\Config;
 
 class AppConfig
 {
-    public const APP_VERSION = '2.7.2';
+    public const APP_VERSION = '2.8.0';
 
 
     // ── 表名常量 ──
     public const TABLE_JOB_GIT_MAP       = 'ci_job_git_map';
-    public const TABLE_PIPELINE_TAGS     = 'ci_pipeline_tags';
+    public const TABLE_PIPELINE_ARTIFACTS = 'ci_pipeline_artifacts';
     public const TABLE_CUSTOM_BUILDS     = 'ci_custom_builds';
     public const TABLE_SECURITY_CHECKS   = 'ci_security_checks';
     public const TABLE_ADMIN_USERS       = 'admin_users';
@@ -804,7 +804,7 @@ class AppConfig
 
     /**
      * 过期 tag 清理开关（stale_tag_cleanup_enabled）。
-     * 默认关闭：刚装好时 ci_pipeline_tags 为空，且删除不可逆，需后台显式开启。
+     * 默认关闭：刚装好时 ci_pipeline_artifacts 为空，且删除不可逆，需后台显式开启。
      * 存储于 ci_app_settings 表，key = 'stale_tag_cleanup_enabled'，value = '1'/'0'。
      */
     public function getStaleTagCleanupEnabled(): bool

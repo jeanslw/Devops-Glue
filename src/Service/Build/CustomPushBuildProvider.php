@@ -281,7 +281,7 @@ class CustomPushBuildProvider implements BuildProviderInterface
      *
      * (job_name, pipeline_iid) 冲突时按覆盖（UPDATE）处理，保住原自增 id。
      * success 为不可逆终态：已 success 的记录拒绝被 failed/aborted 降级（防止与
-     * ci_pipeline_tags 中已写入的 tag 产生矛盾）；failed/aborted → success 正常升级。
+     * ci_pipeline_artifacts 中已写入的 tag 产生矛盾）；failed/aborted → success 正常升级。
      */
     public function report(string $jobName, array $body): array
     {
@@ -301,10 +301,18 @@ class CustomPushBuildProvider implements BuildProviderInterface
 
         $existing = $this->findByIid($jobName, $pipelineIid);
 
-        // 终态单调性：success 不可逆。迟到/乱序的 failed/aborted 不得覆盖 success，
-        // 否则 ci_custom_builds（status=failed）与 ci_pipeline_tags（tag 已写、status=success）自相矛盾。
+        // 终态单调性 + 来源时间单调：success 不可逆；更早的旧事件也不得覆盖新事实。
+        // 这样可避免 CI 重试/乱序回调让 Glue 的聚合结果回退。
         if (($existing['status'] ?? '') === 'success' && $status !== 'success') {
             return ['success' => false, 'message' => '该 pipeline 已是 success 终态，拒绝用 ' . $status . ' 覆盖'];
+        }
+        if ($existing && !empty($existing['finished_at']) && $this->isEarlier($finishedAt, (string) $existing['finished_at'])) {
+            return [
+                'success'      => true,
+                'pipeline_id'  => (int) ($existing['id'] ?? 0),
+                'pipeline_iid' => $pipelineIid,
+                'action'       => 'ignored_stale',
+            ];
         }
 
         // 可选字段：本次未提供则保留已有值。覆盖只作用于本次上报携带的字段，
@@ -360,6 +368,16 @@ class CustomPushBuildProvider implements BuildProviderInterface
             $this->logger?->error('custom_push report 失败', ['project' => $jobName, 'error' => $e->getMessage()]);
             return ['success' => false, 'message' => '写入构建记录失败: ' . $e->getMessage()];
         }
+    }
+
+    private function isEarlier(string $incoming, string $existing): bool
+    {
+        $a = strtotime($incoming);
+        $b = strtotime($existing);
+        if ($a !== false && $b !== false) {
+            return $a < $b;
+        }
+        return strcmp($incoming, $existing) < 0;
     }
 
     /**
