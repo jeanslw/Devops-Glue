@@ -1,4 +1,4 @@
-# Devops-Glue API v2.7.1
+# Devops-Glue API v2.8.0
 DevOps-Glue API is a Slim 4–based integration platform designed to enhance DevOps toolchains for small teams. It provides a unified view, RBAC, and RESTful APIs, with support for multiple mainstream Git platforms and CI-agnostic integration.
 
 <p align="center">
@@ -68,7 +68,7 @@ DevOps-Glue API is a Slim 4–based integration platform designed to enhance Dev
 │                           ↓                                 │
 │              Build → Docker Image → Harbor Registry         │
 │                           ↓                                 │
-│              scan-sync → ci_pipeline_tags                   │
+│              scan-sync → ci_pipeline_artifacts              │
 └──────────────────────────┬──────────────────────────────────┘
                            ↓
 ┌─────────────────────────────────────────────────────────────┐

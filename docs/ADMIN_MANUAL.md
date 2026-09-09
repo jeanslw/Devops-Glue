@@ -345,11 +345,11 @@ Called after the build completes (or is aborted); writes the terminal state dire
 | `exit_code` | | int | Exit code |
 | `log_url` | | URL | Log URL pointer — Devops-Glue only stores the link; it does not fetch or store log content |
 | `web_url` | | URL | Pipeline web entry |
-| `tag` | ✅ (success) | string | Image tag — required when `status=success`; written to `ci_pipeline_tags` |
+| `tag` | ✅ (success) | string | Image tag — required when `status=success`; written to `ci_pipeline_artifacts` |
 | `harbor_repository` | — | string | Harbor repo — resolved from `job_git_map` (body value ignored); must be `project/repo`; both repo and `tag` verified to actually exist in Harbor on report (400 if either missing) |
 | (custom variables) | | — | Any other JSON keys are stored in `variables_json` (e.g. `env`) |
 
-> **Tag write semantics:** when `status=success`, `tag` and a resolvable `harbor_repository` are mandatory, and `ci_pipeline_tags` is written (`project`, `pipeline_iid`, `tag`, `harbor_repository`, `finished_at` as `created_at`, `status`), read by the deployment (CD) layer. Non-successful builds never write a tag, so the deployment system never picks up a failed build's tag.
+> **Tag write semantics:** when `status=success`, `tag` and a resolvable `harbor_repository` are mandatory, and `ci_pipeline_artifacts` is written (`provider`, `project_id`, `pipeline_iid`, `project_key`, `repository`, `tag`, `status`), read by the deployment (CD) layer. Non-successful builds never write a tag, so the deployment system never picks up a failed build's tag.
 
 ### Push-name normalization
 
@@ -361,7 +361,7 @@ Called after the build completes (or is aborted); writes the terminal state dire
 | `current_path` | `job_name` (normalized) |
 
 - Pushing `job_name` and pushing `current_path` land on the **same record**, so Jenkins naming differences don't produce two split records.
-- `ci_pipeline_tags.project` (the deployment layer's delivery source) is also written to the normalized `job_name`, matching the CD side's `t.project IN (job_name, current_path)` join semantics.
+- `ci_pipeline_artifacts.project_key` (the deployment layer's delivery source) is also written to the normalized `job_name`, keeping it consistent with `ci_custom_builds.job_name`.
 - **Why not use `current_path` as the key**: when converting Jenkins to custom_push, `job_name != current_path`; keying on `current_path` would split the same project into `java/registry` and `tools/registry` when it is later switched back to Jenkins.
 - If the mapping's `job_name` is empty (normally impossible — it's the primary key), it falls back to `current_path`.
 

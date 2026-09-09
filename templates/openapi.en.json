@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Devops-Glue API",
-    "version": "2.7.2",
+    "version": "2.8.0",
     "description": "DevOps toolchain integration API — unified interface for Jenkins / GitLab CI, GitLab / Gitee / GitHub / Gitea, and Harbor.",
     "contact": {
       "email": "jeanslw@qq.com"
@@ -899,7 +899,7 @@
       "post": {
         "tags": ["Build"],
         "summary": "Custom Push CI build result single report",
-        "description": "For custom_push build provider only: after user CI completes, report the terminal result (success/failed/aborted) in one call — no pending/running intermediate states. Devops-Glue only stores metadata and log URL pointers; it does not participate in builds nor store log content.\n\nWhen status=success, tag is required and ci_pipeline_tags is also written (project, pipeline_iid, tag, finished_at, status); the CD layer reads it via the existing GET /api/build/{path}/tag endpoint.\n\nBesides control fields (pipeline_iid / status / finished_at / started_at / ref / sha / exit_code / log_url / web_url / tag / harbor_repository), all other request body fields are stored as custom build variables in variables_json.",
+        "description": "For custom_push build provider only: after user CI completes, report the terminal result (success/failed/aborted) in one call — no pending/running intermediate states. Devops-Glue only stores metadata and log URL pointers; it does not participate in builds nor store log content.\n\nWhen status=success, tag is required and ci_pipeline_artifacts is also written (provider, project_id, pipeline_iid, project_key, repository, tag, status); the CD layer reads it via the existing GET /api/build/{path}/tag endpoint.\n\nBesides control fields (pipeline_iid / status / finished_at / started_at / ref / sha / exit_code / log_url / web_url / tag / harbor_repository), all other request body fields are stored as custom build variables in variables_json.",
         "operationId": "buildReport",
         "security": [{ "bearerAuth": [] }],
         "parameters": [
@@ -922,7 +922,7 @@
                   "exit_code":         { "type": "integer", "example": 0, "description": "Build exit code (optional)" },
                   "log_url":           { "type": "string", "format": "uri", "example": "https://ci.example.com/build/123/log", "description": "Log URL (pointer only, Devops-Glue does not store log content)" },
                   "web_url":           { "type": "string", "format": "uri", "example": "https://ci.example.com/build/123", "description": "User CI build page link (optional)" },
-                  "tag":               { "type": "string", "example": "v1.0.0", "description": "Image tag (required when status=success; written to ci_pipeline_tags; verified to actually exist in Harbor on report, 400 if missing; not needed for failed/aborted)" },
+                  "tag":               { "type": "string", "example": "v1.0.0", "description": "Image tag (required when status=success; written to ci_pipeline_artifacts; verified to actually exist in Harbor on report, 400 if missing; not needed for failed/aborted)" },
                   "harbor_repository": { "type": "string", "example": "team/myapp", "description": "Harbor repository path (resolved from job_git_map, body value ignored; two-segment project/repo, no registry URL; both the repository and tag are verified to exist in Harbor on report, 400 if either is missing)" },
                   "env":               { "type": "string", "enum": ["dev", "staging", "prod"], "example": "prod", "description": "Image target environment (custom variable, optional)" }
                 }

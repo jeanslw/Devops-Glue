@@ -189,18 +189,24 @@ Controller → AppConfig::getXxxConfig()
 
 **Note:** Stores only user-customized non-default versions. Query uses three-tier fallback: DB → default → hardcoded.
 
-#### ci_pipeline_tags (Pipeline ↔ Tag Mapping)
+#### ci_pipeline_artifacts (Canonical Pipeline → Primary Artifact)
 
 | Field | Type | Description |
 |---|---|---|
-| `project` | TEXT NOT NULL (PK) | Project path |
-| `pipeline_iid` | INTEGER NOT NULL (PK) | Pipeline internal ID |
+| `id` | INTEGER AUTO PK | Auto-increment ID |
+| `provider` | TEXT NOT NULL | Build provider (jenkins/gitlab_ci/custom_push) |
+| `project_id` | TEXT NOT NULL | Canonical project id (per provider normalization) |
+| `pipeline_iid` | INTEGER NOT NULL | Pipeline internal ID |
+| `project_key` | TEXT NOT NULL | Project path / job_name (delivery key) |
+| `repository` | TEXT NOT NULL | Harbor repository name (e.g., mycode/app) |
 | `tag` | TEXT NOT NULL | Image tag |
-| `harbor_repository` | TEXT | Harbor repository name (e.g., mycode/app) |
 | `status` | TEXT DEFAULT '' | Scan status (success/failed/pending/unknown) |
+| `source_updated_at` | DATETIME/TEXT | Source event timestamp (for stale-event protection) |
 | `created_at` | DATETIME/TEXT | Creation time |
+| `updated_at` | DATETIME/TEXT | Update time |
 
-**Indexes:** `(project)`, `(created_at)`
+**Unique key:** `(provider, project_id, pipeline_iid)`
+**Indexes:** `(project_key)`, `(created_at)`
 
 #### cache (Generic KV Cache)
 
@@ -259,7 +265,7 @@ Controller → AppConfig::getXxxConfig()
 | Field | Type | Description |
 |---|---|---|
 | `job_name` | TEXT NOT NULL (PK) | Job name or project path |
-| `pipeline_iid` | INTEGER NOT NULL (PK) | Pipeline internal ID (integer, aligns with `ci_pipeline_tags` constraint) |
+| `pipeline_iid` | INTEGER NOT NULL (PK) | Pipeline internal ID (integer, aligns with `ci_pipeline_artifacts` constraint) |
 | `status` | TEXT | Build status |
 | `sha` | TEXT | Commit SHA |
 | `exit_code` | INTEGER | Build exit code |
@@ -275,7 +281,7 @@ Controller → AppConfig::getXxxConfig()
 **Notes:**
 - Control fields (`pipeline_iid`/`status`/`finished_at`/`started_at`/`ref`/`sha`/`exit_code`/`log_url`/`web_url`/`tag`/`harbor_repository`) are stored separately from custom variables in `variables_json`
 - `pipeline_iid` cannot be modified after creation; duplicate reports with the same `(job_name, pipeline_iid)` overwrite (UPDATE) the existing record, preserving the auto-increment id
-- Image tags are not stored in this table; the existing `ci_pipeline_tags` table is reused (shared by CD layer)
+- Image tags are not stored in this table; they are canonicalized in `ci_pipeline_artifacts` (shared with the CD layer)
 
 ### 4.2 Database Sync Rules
 
@@ -458,7 +464,7 @@ If only `ref` is present without other parameters, auto-convert to `{branches: r
    └─ No vulnerabilities → state=success
 6. Commit Status writeback (via Git Provider, independent of CI system)
    └─ context='harbor-scan', description='#10 → v1.0 · 3 vulns'
-7. Record to ci_pipeline_tags (project + pipeline_iid + tag + status)
+7. Record to ci_pipeline_artifacts (provider + project_id + pipeline_iid + project_key + repository + tag + status)
 ```
 
 **⚠️ Key Constraints:**
@@ -505,7 +511,7 @@ If only `ref` is present without other parameters, auto-convert to `{branches: r
    ├─ GitHub:  POST /repos/{owner}/{repo}/statuses/{sha}
    ├─ Gitee:   POST /api/v5/repos/{owner}/{repo}/statuses/{sha}
    └─ Gitea:   POST /api/v1/repos/{owner}/{repo}/statuses/{sha}
-5. Record to ci_pipeline_tags (when tag is provided)
+5. Record to ci_pipeline_artifacts (when tag is provided)
 6. Write to ci_security_checks audit table (UPSERT, unique by project+sha+check_type)
 7. Return result (with git_platform, commit_status sub-object)
 ```
@@ -762,7 +768,7 @@ For example: `build_mode=jenkins` + `custom_push_enabled=true` means both Jenkin
 
 - **`CustomPushBuildProvider`** (`src/Service/Build/CustomPushBuildProvider.php`): Implements `BuildProviderInterface`, handles `trigger`, `getPipelines`, `updateStatus`, and other methods.
 - **`ci_custom_builds` table**: Stores build metadata with `(job_name, pipeline_iid)` as the unique key; `pipeline_iid` is an integer type.
-- **`ci_pipeline_tags` table**: Reuses the existing table to store image tags; the CD layer reads via `GET /api/build/{path}/tag`.
+- **`ci_pipeline_artifacts` table**: Canonical pipeline-artifact facts; the CD layer reads via `GET /api/build/{path}/tag`.
 
 #### 5.10.3 Configuration & Registration
 
@@ -801,12 +807,12 @@ The DI container (`container.php`) automatically registers all custom providers 
 | `exit_code` | INTEGER | ❌ | Build exit code |
 | `log_url` | string(URI) | ❌ | Log URL (pointer only, Devops-Glue does not store log content) |
 | `web_url` | string(URI) | ❌ | User CI build page link |
-| `tag` | string | ✅ (success) | Image tag — required when `status=success`; written to `ci_pipeline_tags` |
+| `tag` | string | ✅ (success) | Image tag — required when `status=success`; written to `ci_pipeline_artifacts` |
 | `harbor_repository` | string | — | Harbor repository path — resolved from `job_git_map` (body value ignored); must be `project/repo`; both repo and `tag` verified to actually exist in Harbor on report (400 if either missing) |
 | `env` | string | ❌ | Image target environment (custom variable, optional) |
 
 > Fields outside the **control fields** (`pipeline_iid`/`status`/`finished_at`/`started_at`/`ref`/`sha`/`exit_code`/`log_url`/`web_url`/`tag`/`harbor_repository`) are automatically stored in `variables_json`.
-> When `status=success`, `tag` and a resolvable `harbor_repository` are mandatory, and `ci_pipeline_tags` is written (project, pipeline_iid, tag, harbor_repository, finished_at, status); duplicate reports overwrite (UPDATE) the existing record.
+> When `status=success`, `tag` and a resolvable `harbor_repository` are mandatory, and `ci_pipeline_artifacts` is written (provider, project_id, pipeline_iid, project_key, repository, tag, status); duplicate reports overwrite (UPDATE) the existing record.
 > All JSON keys use lowercase snake_case.
 
 #### 5.10.5 Log Proxy
@@ -848,7 +854,7 @@ CI Pipeline Triggered
         └── POST /api/build/{project}/scan-sync
             ├─ Query Harbor scan report (vulnerability count)
             ├─ → Git Provider setCommitStatus(context=harbor-scan)
-            └─ → ci_pipeline_tags record tag→pipeline mapping
+            └─ → ci_pipeline_artifacts record tag→pipeline mapping
 ```
 
 ### 6.2 Mapping Config → API Call Chain

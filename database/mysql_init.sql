@@ -28,15 +28,20 @@ CREATE TABLE IF NOT EXISTS `ci_platform_versions` (
     `version`   TEXT NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- ── 3. ci_pipeline_tags（Pipeline ↔ Tag 映射）──
-CREATE TABLE IF NOT EXISTS `ci_pipeline_tags` (
-    `project`           VARCHAR(255) NOT NULL,
+-- ── 3. ci_pipeline_artifacts（Canonical Pipeline → Primary Artifact，当前 1:1）──
+CREATE TABLE IF NOT EXISTS `ci_pipeline_artifacts` (
+    `id`                INT AUTO_INCREMENT PRIMARY KEY,
+    `provider`          VARCHAR(255) NOT NULL,
+    `project_id`        VARCHAR(255) NOT NULL,
     `pipeline_iid`      INT NOT NULL,
+    `project_key`       VARCHAR(255) NOT NULL,
+    `repository`        TEXT NOT NULL,
     `tag`               VARCHAR(255) NOT NULL,
-    `harbor_repository` TEXT,
     `status`            VARCHAR(255) DEFAULT '',
+    `source_updated_at` DATETIME DEFAULT NULL,
     `created_at`        DATETIME DEFAULT (NOW()),
-    PRIMARY KEY (`project`, `pipeline_iid`)
+    `updated_at`        DATETIME DEFAULT (NOW()),
+    UNIQUE KEY `uniq_pipeline_artifact` (`provider`, `project_id`, `pipeline_iid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ── 4. ci_custom_builds（自定义推送式 CI 的构建记录）──
@@ -167,8 +172,6 @@ CREATE TABLE IF NOT EXISTS `api_tokens` (
 
 -- ── 索引 ──
 -- 新库一次性建全（无存量数据，不保留迁移逻辑），直接建索引
-CREATE INDEX `idx_pipeline_tags_project`    ON `ci_pipeline_tags` (`project`);
-CREATE INDEX `idx_pipeline_tags_created`    ON `ci_pipeline_tags` (`created_at`);
 CREATE INDEX `idx_job_git_map_current_path` ON `ci_job_git_map` (`current_path`(255));
 CREATE INDEX `idx_security_checks_project`  ON `ci_security_checks` (`project`(64), `check_type`(64));
 CREATE INDEX `idx_security_checks_sha`      ON `ci_security_checks` (`sha`);

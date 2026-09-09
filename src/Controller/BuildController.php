@@ -10,6 +10,8 @@ use App\Service\HarborService;
 use App\Service\I18nService;
 use App\Service\MappingManager;
 use App\Service\PipelineTagService;
+use App\Service\PipelineArtifactService;
+use App\Service\PipelineIdentity;
 use App\Service\Git\ProviderRegistry as GitProviderRegistry;
 
 class BuildController extends BaseController
@@ -18,11 +20,12 @@ class BuildController extends BaseController
     private AppConfig $config;
     private MappingManager $mapping;
     private PipelineTagService $pipelineTags;
+    private PipelineArtifactService $artifacts;
     private ?HarborService $harbor;
     private ?GitProviderRegistry $gitRegistry;
     private \PDO $pdo;
 
-    public function __construct(I18nService $i18n, BuildProviderRegistry $registry, AppConfig $config, MappingManager $mapping, \PDO $pdo, PipelineTagService $pipelineTags, ?HarborService $harbor = null, ?GitProviderRegistry $gitRegistry = null)
+    public function __construct(I18nService $i18n, BuildProviderRegistry $registry, AppConfig $config, MappingManager $mapping, \PDO $pdo, PipelineTagService $pipelineTags, PipelineArtifactService $artifacts, ?HarborService $harbor = null, ?GitProviderRegistry $gitRegistry = null)
     {
         parent::__construct($i18n);
         $this->registry     = $registry;
@@ -30,6 +33,7 @@ class BuildController extends BaseController
         $this->mapping      = $mapping;
         $this->pdo          = $pdo;
         $this->pipelineTags = $pipelineTags;
+        $this->artifacts    = $artifacts;
         $this->harbor       = $harbor;
         $this->gitRegistry  = $gitRegistry;
     }
@@ -77,12 +81,12 @@ class BuildController extends BaseController
         $latest = [];
         try {
             $rows = $this->pdo->query(
-                'SELECT t.project, t.pipeline_iid, t.tag, t.created_at'
-                . ' FROM ' . AppConfig::TABLE_PIPELINE_TAGS . ' t'
-                . ' INNER JOIN (SELECT project, MAX(created_at) AS max_created_at'
-                . ' FROM ' . AppConfig::TABLE_PIPELINE_TAGS . ' GROUP BY project) m'
-                . ' ON t.project = m.project AND t.created_at = m.max_created_at'
-                . ' ORDER BY t.created_at DESC'
+                'SELECT t.project_key AS project, t.pipeline_iid, t.tag, t.created_at'
+                . ' FROM ' . AppConfig::TABLE_PIPELINE_ARTIFACTS . ' t'
+                . ' INNER JOIN (SELECT project_key, MAX(created_at) AS max_created_at'
+                . ' FROM ' . AppConfig::TABLE_PIPELINE_ARTIFACTS . ' GROUP BY project_key) m'
+                . ' ON t.project_key = m.project_key AND t.created_at = m.max_created_at'
+                . ' ORDER BY t.created_at DESC, t.pipeline_iid DESC'
             )->fetchAll();
             foreach ($rows as $r) {
                 if (!isset($latest[$r['project']])) {
@@ -157,7 +161,7 @@ class BuildController extends BaseController
             $pdo = $this->pdo;
             $ph  = implode(',', array_fill(0, count($keys), '?'));
 
-            $stmt = $pdo->prepare('SELECT COUNT(*) AS c FROM ' . AppConfig::TABLE_PIPELINE_TAGS . ' WHERE project IN (' . $ph . ')');
+            $stmt = $pdo->prepare('SELECT COUNT(*) AS c FROM ' . AppConfig::TABLE_PIPELINE_ARTIFACTS . ' WHERE project_key IN (' . $ph . ')');
             $stmt->execute($keys);
             $total = (int) $stmt->fetch()['c'];
 
@@ -168,8 +172,8 @@ class BuildController extends BaseController
             $offset = ($page - 1) * $pageSize;
 
             $stmt = $pdo->prepare(
-                'SELECT tag, pipeline_iid, created_at FROM ' . AppConfig::TABLE_PIPELINE_TAGS .
-                ' WHERE project IN (' . $ph . ') ORDER BY created_at DESC LIMIT ? OFFSET ?'
+                'SELECT tag, pipeline_iid, created_at FROM ' . AppConfig::TABLE_PIPELINE_ARTIFACTS .
+                ' WHERE project_key IN (' . $ph . ') ORDER BY created_at DESC LIMIT ? OFFSET ?'
             );
             foreach ($keys as $i => $k) {
                 $stmt->bindValue($i + 1, $k, \PDO::PARAM_STR);
@@ -610,6 +614,7 @@ class BuildController extends BaseController
         $path = $args['path'] ?? '';
         $body   = $request->getParsedBody() ?? [];
         $tag    = $body['tag'] ?? null;
+        $sourceUpdatedAt = trim((string) ($body['source_updated_at'] ?? ''));
 
         // 1. 获取 job_git_map 中的映射信息（不依赖 CI 系统）
         $maps = $this->config->getJobGitMap();
@@ -673,7 +678,7 @@ class BuildController extends BaseController
         }
         // Harbor 不可达时降级放行：CI 刚 push 完 tag，大概率存在；读取侧 cleanupStaleTags 兜底清理
 
-        // 3. 解析 pipeline 身份（用于 commit status 回写 + ci_pipeline_tags 落库）
+        // 3. 解析 pipeline 身份（用于 commit status 回写 + artifact 落库）
         //    pipeline_iid 与 sha 共同构成 pipeline identity，禁止「半个身份」：
         //    - 两者都传：直接采用（可靠，避免「最新 pipeline」误判）
         //    - 两者都不传：legacy 兜底到 getPipelines 最新一条（兼容旧客户端）
@@ -699,6 +704,7 @@ class BuildController extends BaseController
                     if (!empty($pipelines)) {
                         $sha = $pipelines[0]['sha'] ?? '';
                         $iid = (int) ($pipelines[0]['iid'] ?? 0);
+                        $sourceUpdatedAt = trim((string) ($pipelines[0]['updated_at'] ?? $pipelines[0]['created_at'] ?? ''));
                     }
                 }
             } catch (\Exception $e) {
@@ -758,7 +764,11 @@ class BuildController extends BaseController
 
         // 5. 记录 pipeline → tag 映射（含扫描状态）
         if (!empty($iid)) {
-            $this->recordPipelineTag($path, (int)$iid, $tag, $harborRepo, $scanState);
+            $this->recordPipelineTag(
+                $path,
+                $this->mapping->pipelineIdentity($path, (int) $iid),
+                $tag, $harborRepo, $scanState, $sourceUpdatedAt ?: null
+            );
         }
 
         // 6. 记录回写结果到 ci_security_checks（审计追踪）
@@ -851,7 +861,7 @@ class BuildController extends BaseController
      *   exit_code          - 退出码（可选）
      *   log_url            - 日志 URL（可选，仅指针）
      *   web_url            - 用户 CI 构建页面（可选）
-     *   tag                - 镜像 tag（可选；status=success 时写入 ci_pipeline_tags）
+     *   tag                - 镜像 tag（可选；status=success 时写入 ci_pipeline_artifacts）
      *   harbor_repository  - Harbor 仓库（由 job_git_map 决定，body 不覆盖）
      *   其余字段           - 作为自定义构建参数写入 variables_json
      */
@@ -897,7 +907,7 @@ class BuildController extends BaseController
         }
 
         // success 时从 job_git_map 解析 harbor_repository（映射表是唯一来源，body 不覆盖）。
-        // ci_pipeline_tags 是最终部署依据，harbor_repository 与 tag 都必须真实存在于 Harbor，否则拒绝。
+        // artifact 是最终部署依据，harbor_repository 与 tag 都必须真实存在于 Harbor，否则拒绝。
         $harborRepo = '';
         if ($status === 'success') {
             foreach ($this->config->getJobGitMap() as $m) {
@@ -909,7 +919,7 @@ class BuildController extends BaseController
                 }
             }
             if ($harborRepo === '') {
-                return $this->jsonError($response, 'status=success 时 job_git_map 未配置 harbor_repository，无法落 ci_pipeline_tags', 400);
+                return $this->jsonError($response, 'status=success 时 job_git_map 未配置 harbor_repository，无法写入 pipeline artifact', 400);
             }
             // 格式校验：harbor_repository 必须是 project/repo 两段式，拒绝带 registry 主机/URL 的写法
             if (!$this->isValidHarborRepo($harborRepo)) {
@@ -921,16 +931,35 @@ class BuildController extends BaseController
             }
         }
 
-        $result = $p->report($projectId, $body);
+        // success 上报必须与 artifact 原子提交，避免“构建成功但 artifact 没写进去”的半成品事实。
+        $txStarted = false;
+        if ($status === 'success' && !$this->pdo->inTransaction()) {
+            $this->pdo->beginTransaction();
+            $txStarted = true;
+        }
+        try {
+            $result = $p->report($projectId, $body);
 
-        // status=success 且带 tag：同步写入 ci_pipeline_tags（部署系统以 ci_pipeline_tags 为交付依据）。
-        // 若 tag 落库失败，必须返回失败让 CI 重试，否则 ci_custom_builds 已 success、
-        // ci_pipeline_tags 却缺 tag，部署侧按成功却拿不到镜像 tag，形成静默不一致。
-        // 重试安全：success→success 覆盖是幂等的，终态单调性只拦 success→failed/aborted 降级。
-        if (!empty($result['success']) && $status === 'success') {
-            if (!$this->recordPipelineTag($projectId, $pipelineIid, $tag, $harborRepo, 'success', $finishedAt)) {
-                return $this->jsonError($response, '构建记录已写入，但 tag 落库失败（ci_pipeline_tags），请重试上报', 500);
+            // status=success 且带 tag：写 canonical artifact。
+            // stale event 被 provider 忽略时不得再次写 artifact。
+            if (!empty($result['success']) && $status === 'success' && ($result['action'] ?? '') !== 'ignored_stale') {
+                if (!$this->recordPipelineTag(
+                    $projectId,
+                    $this->mapping->pipelineIdentity($path, $pipelineIid),
+                    $tag, $harborRepo, 'success', $finishedAt
+                )) {
+                    if ($txStarted) { $this->pdo->rollBack(); }
+                    return $this->jsonError($response, '构建记录已写入，但 artifact/tag 落库失败，请重试上报', 500);
+                }
             }
+
+            if ($txStarted) {
+                $this->pdo->commit();
+            }
+        } catch (\Throwable $e) {
+            if ($txStarted && $this->pdo->inTransaction()) { $this->pdo->rollBack(); }
+            \App\Helper\Log::exception($e);
+            return $this->jsonError($response, '构建结果写入失败，请重试上报', 500);
         }
 
         return $this->output($response, [
@@ -948,7 +977,7 @@ class BuildController extends BaseController
             }
 
             $pdo = $this->pdo;
-            $rows = $pdo->query("SELECT project, pipeline_iid, tag, harbor_repository, status, created_at FROM " . AppConfig::TABLE_PIPELINE_TAGS . " ORDER BY created_at DESC")->fetchAll();
+            $rows = $pdo->query("SELECT project_key AS project, pipeline_iid, tag, repository AS harbor_repository, status, created_at FROM " . AppConfig::TABLE_PIPELINE_ARTIFACTS . " ORDER BY created_at DESC")->fetchAll();
             $result = [];
             foreach ($rows as $r) {
                 $result[$r['project']][(string) $r['pipeline_iid']] = [
@@ -977,7 +1006,7 @@ class BuildController extends BaseController
      * repo 返回空数组而非 404，故用 project 下仓库列表判断），再 getTags 判 tag。
      *
      * 仅用于 custom_push 手动上报（report）：手动传值不可信，可能写错/乱传，必须校验
-     * 仓库与 tag 的真实性，保证 ci_pipeline_tags 落的是真实仓库 + 真实 tag。
+     * 仓库与 tag 的真实性，保证 artifact 落的是真实仓库 + 真实 tag。
      * Jenkins/GitLabCI 走 scan-sync，镜像 push 不进 Harbor 构建即失败，仓库与 tag 天然真实。
      */
     private function verifyHarborTag(string $repo, string $tag): ?string
@@ -1054,38 +1083,42 @@ class BuildController extends BaseController
         return 'Harbor 返回 HTTP ' . $httpCode . '（' . $msg . '）';
     }
 
-    private function recordPipelineTag(string $path, int $pipelineIid, string $tag, string $harborRepo = '', string $status = '', ?string $createdAt = null): bool
+    private function recordPipelineTag(
+        string $projectKey,
+        PipelineIdentity $identity,
+        string $tag,
+        string $harborRepo = '',
+        string $status = '',
+        ?string $sourceUpdatedAt = null,
+        ?string $createdAt = null
+    ): bool
     {
-        // 基础输入校验：ci_pipeline_tags 是最终部署依据，关键字段必须真实非空
-        if (empty($path) || $pipelineIid <= 0 || empty($tag) || empty($harborRepo)) {
+        // canonical artifact 是唯一事实源。
+        if (empty($projectKey) || $identity->pipelineIid <= 0 || empty($tag) || empty($harborRepo)) {
             return false;
         }
-        if (mb_strlen($tag) > 255 || mb_strlen($path) > 255) {
+        if (mb_strlen($tag) > 255 || mb_strlen($projectKey) > 255 || mb_strlen($identity->projectId) > 255) {
             return false;
         }
+
         try {
-            $pdo = $this->pdo;
-            if ($createdAt !== null && $createdAt !== '') {
-                // custom_push 回写：created_at = 构建完成时间（部署系统依赖此时间判断构建时机）
-                $sql = \App\Service\Database::sqlUpsert(
-                    AppConfig::TABLE_PIPELINE_TAGS,
-                    'project, pipeline_iid, tag, harbor_repository, status, created_at',
-                    '?, ?, ?, ?, ?, ?'
-                );
-                $stmt = $pdo->prepare($sql);
-                $stmt->execute([$path, $pipelineIid, $tag, $harborRepo, $status, $createdAt]);
-            } else {
-                // 其他调用方（scan-sync / commit-status）：不传时间，走 DB 默认 NOW()
-                $sql = \App\Service\Database::sqlUpsert(AppConfig::TABLE_PIPELINE_TAGS, 'project, pipeline_iid, tag, harbor_repository, status', '?, ?, ?, ?, ?');
-                $stmt = $pdo->prepare($sql);
-                $stmt->execute([$path, $pipelineIid, $tag, $harborRepo, $status]);
+            $artifact = $this->artifacts->record(
+                $identity,
+                $projectKey,
+                $tag,
+                $harborRepo,
+                $status,
+                $sourceUpdatedAt,
+                $createdAt
+            );
+            if (!$artifact['written'] && !$artifact['ignored']) {
+                return false;
             }
             return true;
-        } catch (\Exception $e) {
-            // 写入失败必须让调用方感知（见 report() 的失败处理），不能静默吞掉导致
-            // ci_custom_builds 与 ci_pipeline_tags 状态不一致。
+        } catch (\Throwable $e) {
             \App\Helper\Log::exception($e);
             return false;
         }
     }
+
 }

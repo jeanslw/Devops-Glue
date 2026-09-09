@@ -680,12 +680,12 @@ class AdminController extends BaseController
                 'SELECT b.job_name, b.pipeline_iid, b.status, b.sha, b.variables_json, b.log_url, b.web_url, b.finished_at,
                         t.tag
                  FROM ' . AppConfig::TABLE_CUSTOM_BUILDS . ' b
-                 LEFT JOIN ' . AppConfig::TABLE_PIPELINE_TAGS . ' t
-                   ON t.project = b.job_name AND t.pipeline_iid = b.pipeline_iid
+                 LEFT JOIN ' . AppConfig::TABLE_PIPELINE_ARTIFACTS . ' t
+                   ON t.project_key = b.job_name AND t.pipeline_iid = b.pipeline_iid AND t.provider = ?
                  ORDER BY b.finished_at DESC, b.pipeline_iid DESC
                  LIMIT ' . $perPage . ' OFFSET ' . $offset
             );
-            $stmt->execute();
+            $stmt->execute([AppConfig::PROVIDER_CUSTOM_PUSH]);
             $records = array_map(function (array $r): array {
                 return [
                     'job_name'       => $r['job_name'] ?? '',

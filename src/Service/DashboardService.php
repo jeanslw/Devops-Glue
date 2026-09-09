@@ -128,7 +128,7 @@ class DashboardService
         $to   = $this->sanitizeDate($to)   ?: date('Y-m-d');
         $from = $this->sanitizeDate($from) ?: date('Y-m-d', strtotime($to . ' -30 days'));
 
-        $t  = AppConfig::TABLE_PIPELINE_TAGS;
+        $t  = AppConfig::TABLE_PIPELINE_ARTIFACTS;
         $dl = 'cd_deploy_logs';
 
         $dayT = $this->dayExpr('created_at');

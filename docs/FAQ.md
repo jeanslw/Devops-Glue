@@ -218,7 +218,7 @@ Because Devops-Glue cannot verify the authenticity of build results, logs as evi
 
 ### Q: Why must pipeline_iid be an integer?
 
-To align with existing `ci_pipeline_tags` table constraints, `pipeline_iid` must be an integer type. User CI must provide a unique integer build ID. Duplicate reports with the same `(job_name, pipeline_iid)` overwrite (UPDATE) the existing record.
+To align with existing `ci_pipeline_artifacts` table constraints, `pipeline_iid` must be an integer type. User CI must provide a unique integer build ID. Duplicate reports with the same `(job_name, pipeline_iid)` overwrite (UPDATE) the existing record.
 
 ### Q: How to configure Custom_Push?
 
@@ -435,7 +435,7 @@ The docs page requires authentication. Visiting `/api/docs` auto-redirects to th
 
 1. Retrieve the vulnerability scan report for a specified tag (or the latest tag) from Harbor
 2. Write the scan result back to the Git platform's Commit Status (context: `harbor-scan`)
-3. Record in the `ci_pipeline_tags` table (tag → pipeline mapping)
+3. Record in the `ci_pipeline_artifacts` table (tag → pipeline mapping)
 
 ### Q: scan-sync reports "tag not found in Harbor"?
 

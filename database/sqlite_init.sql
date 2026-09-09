@@ -27,15 +27,20 @@ CREATE TABLE IF NOT EXISTS ci_platform_versions (
     version   TEXT NOT NULL
 );
 
--- ── 3. ci_pipeline_tags（Pipeline ↔ Tag 映射）──
-CREATE TABLE IF NOT EXISTS ci_pipeline_tags (
-    project           TEXT NOT NULL,
+-- ── 3. ci_pipeline_artifacts（Canonical Pipeline → Primary Artifact，当前 1:1）──
+CREATE TABLE IF NOT EXISTS ci_pipeline_artifacts (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider          TEXT NOT NULL,
+    project_id        TEXT NOT NULL,
     pipeline_iid      INTEGER NOT NULL,
+    project_key       TEXT NOT NULL,
+    repository        TEXT NOT NULL,
     tag               TEXT NOT NULL,
-    harbor_repository TEXT,
     status            TEXT DEFAULT '',
+    source_updated_at TEXT,
     created_at        TEXT DEFAULT (datetime('now','localtime')),
-    PRIMARY KEY (project, pipeline_iid)
+    updated_at        TEXT DEFAULT (datetime('now','localtime')),
+    UNIQUE (provider, project_id, pipeline_iid)
 );
 
 -- ── 4. ci_custom_builds（自定义推送式 CI 的构建记录）──
@@ -162,8 +167,8 @@ CREATE TABLE IF NOT EXISTS api_tokens (
 );
 
 -- ── 索引 ──
-CREATE INDEX IF NOT EXISTS idx_pipeline_tags_project     ON ci_pipeline_tags(project);
-CREATE INDEX IF NOT EXISTS idx_pipeline_tags_created      ON ci_pipeline_tags(created_at);
+CREATE INDEX IF NOT EXISTS idx_pipeline_artifacts_project_key ON ci_pipeline_artifacts(project_key);
+CREATE INDEX IF NOT EXISTS idx_pipeline_artifacts_created    ON ci_pipeline_artifacts(created_at);
 CREATE INDEX IF NOT EXISTS idx_job_git_map_current_path   ON ci_job_git_map(current_path);
 CREATE INDEX IF NOT EXISTS idx_security_checks_project    ON ci_security_checks(project, check_type);
 CREATE INDEX IF NOT EXISTS idx_security_checks_sha        ON ci_security_checks(sha);

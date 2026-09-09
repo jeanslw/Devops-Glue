@@ -131,4 +131,14 @@ class MappingManager
         }
         return ['provider' => $provider, 'projectId' => $projectId];
     }
+
+    /**
+     * 将项目路径 + pipeline IID 归一成 Glue 内部唯一 Pipeline Identity。
+     * 所有持久化层应优先使用此 identity，而不是自行拼接 provider/project key。
+     */
+    public function pipelineIdentity(string $projectPath, int $pipelineIid): PipelineIdentity
+    {
+        $resolved = $this->resolveProject($projectPath);
+        return new PipelineIdentity($resolved['provider'], $resolved['projectId'], $pipelineIid);
+    }
 }

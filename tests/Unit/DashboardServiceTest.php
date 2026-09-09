@@ -53,10 +53,11 @@ class DashboardServiceTest extends TestCase
             job_name TEXT PRIMARY KEY, git_platform TEXT, build_provider TEXT DEFAULT "jenkins",
             git_remote TEXT, project_id INTEGER, web_url TEXT, current_path TEXT,
             harbor_repository TEXT, api_version TEXT, status TEXT DEFAULT "active")');
-        $this->pdo->exec('CREATE TABLE ' . AppConfig::TABLE_PIPELINE_TAGS . ' (
-            project TEXT NOT NULL, pipeline_iid INTEGER NOT NULL, tag TEXT NOT NULL,
-            harbor_repository TEXT, status TEXT DEFAULT "", created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (project, pipeline_iid))');
+        $this->pdo->exec('CREATE TABLE ' . AppConfig::TABLE_PIPELINE_ARTIFACTS . ' (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, provider TEXT NOT NULL, project_id TEXT NOT NULL,
+            pipeline_iid INTEGER NOT NULL, project_key TEXT NOT NULL, repository TEXT NOT NULL, tag TEXT NOT NULL,
+            status TEXT DEFAULT "", source_updated_at TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP, UNIQUE (provider, project_id, pipeline_iid))');
         $this->pdo->exec('CREATE TABLE ci_app_settings (setting_key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT)');
         $this->pdo->exec("INSERT INTO ci_app_settings (setting_key, value) VALUES ('build_mode','both'), ('custom_push_enabled','0')");
 
@@ -139,9 +140,9 @@ class DashboardServiceTest extends TestCase
     public function testGetTrendsAggregatesTagsAndDeploysByDay(): void
     {
         $svc = $this->makeService();
-        $this->pdo->exec("INSERT INTO " . AppConfig::TABLE_PIPELINE_TAGS . "
-            (project, pipeline_iid, tag, harbor_repository, status, created_at) VALUES
-            ('myapp-backend', 100, 'v1.0', 'mycode/backend', 'success', '2026-08-22 10:00:00')");
+        $this->pdo->exec("INSERT INTO " . AppConfig::TABLE_PIPELINE_ARTIFACTS . "
+            (provider, project_id, pipeline_iid, project_key, repository, tag, status, created_at) VALUES
+            ('jenkins', 'myapp-backend', 100, 'myapp-backend', 'mycode/backend', 'v1.0', 'success', '2026-08-22 10:00:00')");
         $this->pdo->exec("INSERT INTO cd_deploy_logs (deploy_id, project, tag, image, deploy_type, target, status, triggered_by, created_at) VALUES
             (1, 'myapp-backend', 'v1.0', 'harbor/mycode/backend:v1.0', 'k8s', 'prod', 'success', 'admin', '2026-08-22 11:00:00'),
             (2, 'myapp-backend', 'v1.0', 'harbor/mycode/backend:v1.0', 'k8s', 'prod', 'failed', 'admin', '2026-08-22 12:00:00')");

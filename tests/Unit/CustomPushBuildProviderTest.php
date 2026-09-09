@@ -21,7 +21,7 @@ use PHPUnit\Framework\TestCase;
  *   - getVariables()（string / array 两种参数定义）
  *   - retry / cancel / setCommitStatus / getBranches（不支持或委托降级）
  *
- * 依赖 SQLite 内存库（自定义建 ci_custom_builds / ci_pipeline_tags 表），不触网。
+ * 依赖 SQLite 内存库（自定义建 ci_custom_builds 表），不触网。
  *
  * 运行：vendor/bin/phpunit tests/Unit/CustomPushBuildProviderTest.php
  */
@@ -54,15 +54,6 @@ class CustomPushBuildProviderTest extends TestCase
             started_at TEXT,
             finished_at TEXT,
             UNIQUE (job_name, pipeline_iid)
-        )');
-        $this->pdo->exec('CREATE TABLE ' . AppConfig::TABLE_PIPELINE_TAGS . ' (
-            project TEXT NOT NULL,
-            pipeline_iid INTEGER NOT NULL,
-            tag TEXT NOT NULL,
-            harbor_repository TEXT,
-            status TEXT DEFAULT "",
-            created_at TEXT,
-            PRIMARY KEY (project, pipeline_iid)
         )');
     }
 
@@ -247,6 +238,30 @@ class CustomPushBuildProviderTest extends TestCase
         // variables_json 同样保留
         $vars = json_decode($row['variables_json'], true);
         $this->assertSame(['zone' => 'az1'], $vars);
+    }
+
+    public function testReportIgnoresOlderEvent(): void
+    {
+        $provider = $this->makeProvider();
+        $provider->report('jobA', [
+            'pipeline_iid' => 51,
+            'status'       => 'success',
+            'finished_at'  => '2026-08-18 10:10:00',
+            'sha'          => 'newsha',
+        ]);
+
+        $stale = $provider->report('jobA', [
+            'pipeline_iid' => 51,
+            'status'       => 'success',
+            'finished_at'  => '2026-08-18 10:09:00',
+            'sha'          => 'oldsha',
+        ]);
+
+        $this->assertTrue($stale['success']);
+        $this->assertSame('ignored_stale', $stale['action']);
+        $row = $provider->findByIid('jobA', 51);
+        $this->assertSame('newsha', $row['sha']);
+        $this->assertSame('success', $row['status']);
     }
 
     public function testReportRejectsDowngradeFromSuccess(): void

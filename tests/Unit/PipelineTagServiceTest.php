@@ -11,12 +11,12 @@ use PHPUnit\Framework\TestCase;
 /**
  * PipelineTagService::cleanupStaleTags 单元测试
  *
- * 专项锁定「以 Harbor 为准」清理 ci_pipeline_tags 的安全不变量：
+ * 专项锁定「以 Harbor 为准」清理 ci_pipeline_artifacts 的安全不变量：
  *   - 只删「Harbor 明确返回了 tag 列表且其中没有这条」的行；
  *   - Harbor 不可达 → 该仓库跳过，绝不误删；
- *   - harbor_repository / tag 为空 → 跳过（不可校验 = 保留）；
+ *   - repository / tag 为空 → 跳过（不可校验 = 保留）；
  *   - Harbor 未配置（null）→ 整体跳过；
- *   - 只碰 ci_pipeline_tags，绝不碰 cd_* 表。
+ *   - 只碰 ci_pipeline_artifacts，绝不碰 cd_* 表。
  *
  * 依赖 SQLite 内存库 + mock HarborService（override getTags），不触网。
  *
@@ -33,14 +33,19 @@ class PipelineTagServiceTest extends TestCase
         $this->pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
         $this->pdo->setAttribute(\PDO::ATTR_DEFAULT_FETCH_MODE, \PDO::FETCH_ASSOC);
 
-        $this->pdo->exec('CREATE TABLE ' . AppConfig::TABLE_PIPELINE_TAGS . ' (
-            project TEXT NOT NULL,
+        $this->pdo->exec('CREATE TABLE ' . AppConfig::TABLE_PIPELINE_ARTIFACTS . ' (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            provider TEXT NOT NULL,
+            project_id TEXT NOT NULL,
             pipeline_iid INTEGER NOT NULL,
+            project_key TEXT NOT NULL,
+            repository TEXT NOT NULL,
             tag TEXT NOT NULL,
-            harbor_repository TEXT,
             status TEXT DEFAULT "",
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (project, pipeline_iid)
+            source_updated_at TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (provider, project_id, pipeline_iid)
         )');
         // 顺带造一张 cd_* 表，用于锁定「绝不碰 cd_*」
         $this->pdo->exec('CREATE TABLE cd_registry_artifacts (
@@ -52,13 +57,13 @@ class PipelineTagServiceTest extends TestCase
     private function insertTag(string $project, int $pipelineIid, string $tag, ?string $harborRepo): void
     {
         $this->pdo->prepare(
-            'INSERT INTO ' . AppConfig::TABLE_PIPELINE_TAGS . ' (project, pipeline_iid, tag, harbor_repository) VALUES (?, ?, ?, ?)'
-        )->execute([$project, $pipelineIid, $tag, $harborRepo]);
+            'INSERT INTO ' . AppConfig::TABLE_PIPELINE_ARTIFACTS . ' (provider, project_id, pipeline_iid, project_key, repository, tag) VALUES (?, ?, ?, ?, ?, ?)'
+        )->execute(['jenkins', $project, $pipelineIid, $project, $harborRepo ?? '', $tag]);
     }
 
     private function countTags(): int
     {
-        return (int) $this->pdo->query('SELECT COUNT(*) FROM ' . AppConfig::TABLE_PIPELINE_TAGS)->fetchColumn();
+        return (int) $this->pdo->query('SELECT COUNT(*) FROM ' . AppConfig::TABLE_PIPELINE_ARTIFACTS)->fetchColumn();
     }
 
     /**
@@ -97,7 +102,7 @@ class PipelineTagServiceTest extends TestCase
         $this->assertSame(0, $stat['unverifiable']);
         $this->assertSame(1, $this->countTags());
         // 剩下的那行是 v1.0.0
-        $row = $this->pdo->query('SELECT tag FROM ' . AppConfig::TABLE_PIPELINE_TAGS)->fetch();
+        $row = $this->pdo->query('SELECT tag FROM ' . AppConfig::TABLE_PIPELINE_ARTIFACTS)->fetch();
         $this->assertSame('v1.0.0', $row['tag']);
     }
 
