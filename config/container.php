@@ -8,6 +8,7 @@ use App\Service\AutoDiscover;
 use App\Service\HarborService;
 use App\Service\MappingManager;
 use App\Service\PipelineTagService;
+use App\Service\PipelineArtifactService;
 use App\Service\I18nService;
 use App\Service\TokenService;
 use App\Service\ApiTokenService;
@@ -441,6 +442,7 @@ return [
             $c->get(MappingManager::class),
             $c->get(\PDO::class),
             $c->get(PipelineTagService::class),
+            $c->get(PipelineArtifactService::class),
             $c->get(HarborService::class),
             $c->get(ProviderRegistry::class)
         );
@@ -501,6 +503,10 @@ return [
 
     PipelineTagService::class => function (\Psr\Container\ContainerInterface $c) {
         return new PipelineTagService($c->get(\PDO::class), $c->get(HarborService::class));
+    },
+
+    PipelineArtifactService::class => function (\Psr\Container\ContainerInterface $c) {
+        return new PipelineArtifactService($c->get(\PDO::class));
     },
 
     HarborController::class => function (\Psr\Container\ContainerInterface $c) {

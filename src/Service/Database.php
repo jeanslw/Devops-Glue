@@ -760,7 +760,7 @@ class Database
     private static function migratePipelineArtifacts(\PDO $pdo): void
     {
         $artifactTable = \App\Config\AppConfig::TABLE_PIPELINE_ARTIFACTS;
-        $tagTable      = \App\Config\AppConfig::TABLE_PIPELINE_TAGS;
+        $tagTable      = 'ci_pipeline_tags'; // 遗留表名（迁移源），迁移完成后 DROP
         $mapTable      = \App\Config\AppConfig::TABLE_JOB_GIT_MAP;
         // getPdo() 在某些调用链中会直接执行 ensureTables()，因此这里必须低成本幂等。
         // artifact 已有任意数据 = 迁移已完成；无遗留表 = 全新安装。两种情况都只需清理遗留表。

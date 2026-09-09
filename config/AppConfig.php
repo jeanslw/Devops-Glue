@@ -8,7 +8,6 @@ class AppConfig
 
     // ── 表名常量 ──
     public const TABLE_JOB_GIT_MAP       = 'ci_job_git_map';
-    public const TABLE_PIPELINE_TAGS     = 'ci_pipeline_tags';
     public const TABLE_PIPELINE_ARTIFACTS = 'ci_pipeline_artifacts';
     public const TABLE_CUSTOM_BUILDS     = 'ci_custom_builds';
     public const TABLE_SECURITY_CHECKS   = 'ci_security_checks';

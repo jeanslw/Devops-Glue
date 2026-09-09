@@ -1,45 +1,45 @@
-# v2.8.0 数据模型迁移说明
+# v2.8.0 Data Model Migration Notes
 
-## 这次改了什么
+## What changed
 
-v2.8.0 引入 `ci_pipeline_artifacts` 作为 Pipeline → Primary Artifact 的**唯一**规范事实表，并**删除**旧的 `ci_pipeline_tags` 表。当前阶段仍保持 **1 Pipeline : 1 Primary Artifact**，不会因为这次升级强行引入 1:N。
+v2.8.0 introduces `ci_pipeline_artifacts` as the **single** canonical source of truth for Pipeline → Primary Artifact, and **removes** the legacy `ci_pipeline_tags` table. The current stage still keeps **1 Pipeline : 1 Primary Artifact**; this upgrade does not force a 1:N relationship.
 
-Pipeline 的规范身份统一为：
+The canonical Pipeline identity is unified as:
 
 ```text
 (provider, project_id, pipeline_iid)
 ```
 
-其中 `project_id` 继续遵循现有 provider 归一化规则：
+`project_id` continues to follow the existing provider normalization rules:
 
-- Jenkins：Job/path
-- GitLab CI：数字 `project_id`
-- custom_push / 其他 push provider：`job_name`
+- Jenkins: Job/path
+- GitLab CI: numeric `project_id`
+- custom_push / other push providers: `job_name`
 
-`ci_pipeline_tags` 表**已删除**。所有读取与写入统一走 `ci_pipeline_artifacts`，不再维护兼容投影。
+The `ci_pipeline_tags` table has been **removed**. All reads and writes go through `ci_pipeline_artifacts`; the compatibility projection is no longer maintained.
 
-## 升级方式
+## Upgrade path
 
-默认 `DB_AUTO_MIGRATE=true` 时，应用启动会执行「先迁移、后删除」（migrate-then-drop）：
+With the default `DB_AUTO_MIGRATE=true`, app startup runs migrate-then-drop:
 
-1. 创建 `ci_pipeline_artifacts`（不存在才创建）；
-2. 若存在遗留 `ci_pipeline_tags` 表，将存量数据迁移到 artifact 表；
-3. 迁移按 `created_at DESC` 处理同一 canonical identity 的冲突，优先保留较新的旧记录；
-4. 迁移过程使用事务，失败不会标记 schema 已完成，下一次启动会继续尝试；
-5. 迁移完成后（或遗留表本就为空 / 全新安装无遗留表）删除 `ci_pipeline_tags`。
+1. Create `ci_pipeline_artifacts` (only if missing);
+2. If a legacy `ci_pipeline_tags` table exists, migrate its rows to the artifact table;
+3. Migration processes conflicts on the same canonical identity by `created_at DESC`, keeping the newer legacy record;
+4. Migration runs in a transaction — failure does not mark the schema complete, and the next startup retries;
+5. Once migration completes (or the legacy table is empty / a fresh install has no legacy table), `ci_pipeline_tags` is dropped.
 
-迁移是幂等的。已经存在 canonical artifact 数据时不会重复扫描整个旧表。
+Migration is idempotent. When canonical artifact data already exists, the entire legacy table is not re-scanned.
 
-## 部署侧兼容
+## Deploy-side compatibility
 
-部署系统（Devops_CD）**不直读** `ci_pipeline_tags`，CI 数据（映射 / tag / pipeline / 构建）全部经 CI HTTP API 获取。请将 Devops_CD 升级到 v1.5.1+（其启动共享库校验已改为 `ci_pipeline_artifacts`）。
+The deployment system (Devops_CD) does **not** read `ci_pipeline_tags` directly — all CI data (mappings / tags / pipelines / builds) comes through the CI HTTP API. Upgrade Devops_CD to v1.5.1+ (its shared-library startup check now targets `ci_pipeline_artifacts`).
 
-`/api/build/{path}/tag`、`/api/build/{path}/tags`、`/api/build/projects` 等读取接口统一走 canonical artifact 数据。
+Read endpoints such as `/api/build/{path}/tag`, `/api/build/{path}/tags`, and `/api/build/projects` all read canonical artifact data.
 
-## 事件顺序
+## Event ordering
 
-Artifact 记录带有 `source_updated_at`。当新事件比已保存事实更旧时，canonical artifact 不会被旧事件覆盖；custom_push 同样不会用更早的 `finished_at` 覆盖较新的构建事实。
+Artifact records carry `source_updated_at`. When a new event is older than the already-stored fact, the canonical artifact is not overwritten by the stale event; custom_push likewise does not overwrite a newer build fact with an earlier `finished_at`.
 
-## 回滚原则
+## Rollback principle
 
-代码回滚前不要删除 `ci_pipeline_artifacts`。若需回滚到 v2.7.x，须依据升级前的备份恢复 `ci_pipeline_tags` 表——本版本已删除该表，没有自动回滚路径。
+Do not delete `ci_pipeline_artifacts` before rolling back code. To roll back to v2.7.x, restore the `ci_pipeline_tags` table from the pre-upgrade backup — this version has dropped that table and offers no automatic rollback path.

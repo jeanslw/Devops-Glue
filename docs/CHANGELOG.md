@@ -5,6 +5,7 @@
 - **`ci_pipeline_tags` removed** — The legacy `ci_pipeline_tags` table is dropped on schema upgrade (migrate-then-drop): existing rows are migrated idempotently into `ci_pipeline_artifacts`, then the legacy table is dropped. All reads and writes now use `ci_pipeline_artifacts` exclusively.
 - **Event ordering** — Older custom-push reports and older artifact source timestamps can no longer overwrite newer canonical facts.
 - **Atomic successful report** — Custom-push success + artifact are committed together when Glue owns the transaction.
+- **Version correspondence** — Devops-Glue API v2.8.0 maps to Devops-Glue CD v1.5.1.
 
 ## v2.7.2 (2026-09-09)
 - **Custom Push SSRF hardening** — The server-side `log_url` proxy fetch now validates the URL before retrieving it: scheme restricted to http/https, an optional `CUSTOM_PUSH_LOG_ALLOWED_HOSTS` host allowlist, and a mandatory IP-range blocklist (loopback, link-local including cloud metadata, multicast, broadcast/reserved, unspecified). Hostnames resolve to both A and AAAA records and every resolved IP is checked, closing DNS-rebinding and IPv6-only bypasses; redirects are disabled so a 302 can't reroute the fetch to a blocked address.
