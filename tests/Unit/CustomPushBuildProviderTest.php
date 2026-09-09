@@ -213,9 +213,10 @@ class CustomPushBuildProviderTest extends TestCase
     public function testReportOverwritePreservesUnprovidedFields(): void
     {
         $provider = $this->makeProvider();
+        // 用 failed → aborted 演示覆盖（success 不可降级，故不用 success → failed 做覆盖样例）
         $provider->report('jobA', [
             'pipeline_iid' => 35,
-            'status'       => 'success',
+            'status'       => 'failed',
             'finished_at'  => '2026-08-18 10:05:30',
             'ref'          => 'main',
             'sha'          => 'abc1234567',
@@ -228,14 +229,14 @@ class CustomPushBuildProviderTest extends TestCase
         // 重复上报只带必填字段（未带 log_url/ref/sha 等）→ 应保留首次写入的值，而非清空
         $second = $provider->report('jobA', [
             'pipeline_iid' => 35,
-            'status'       => 'failed',
+            'status'       => 'aborted',
             'finished_at'  => '2026-08-18 10:20:00',
         ]);
         $this->assertTrue($second['success']);
         $this->assertEquals('updated', $second['action']);
 
         $row = $this->pdo->query('SELECT * FROM ' . AppConfig::TABLE_CUSTOM_BUILDS . ' WHERE job_name = "jobA" AND pipeline_iid = 35')->fetch();
-        $this->assertEquals('failed', $row['status']);
+        $this->assertEquals('aborted', $row['status']);
         $this->assertEquals('2026-08-18 10:20:00', $row['finished_at']);
         // 未提供的字段保留原值
         $this->assertEquals('main', $row['ref']);
@@ -246,6 +247,34 @@ class CustomPushBuildProviderTest extends TestCase
         // variables_json 同样保留
         $vars = json_decode($row['variables_json'], true);
         $this->assertSame(['zone' => 'az1'], $vars);
+    }
+
+    public function testReportRejectsDowngradeFromSuccess(): void
+    {
+        $provider = $this->makeProvider();
+        $provider->report('jobA', [
+            'pipeline_iid' => 50,
+            'status'       => 'success',
+            'finished_at'  => '2026-08-18 10:05:30',
+        ]);
+
+        // 迟到/乱序的 failed 回调不得把 success 降级
+        $late = $provider->report('jobA', [
+            'pipeline_iid' => 50,
+            'status'       => 'failed',
+            'finished_at'  => '2026-08-18 10:06:00',
+        ]);
+        $this->assertFalse($late['success']);
+        $this->assertSame('success', $provider->findByIid('jobA', 50)['status']);
+
+        // aborted 同理
+        $lateAbort = $provider->report('jobA', [
+            'pipeline_iid' => 50,
+            'status'       => 'aborted',
+            'finished_at'  => '2026-08-18 10:07:00',
+        ]);
+        $this->assertFalse($lateAbort['success']);
+        $this->assertSame('success', $provider->findByIid('jobA', 50)['status']);
     }
 
     // ── findByIid ──
@@ -314,6 +343,54 @@ class CustomPushBuildProviderTest extends TestCase
 
         $trace = $provider->getJobTrace('jobA', $id);
         $this->assertStringContainsString('无构建日志', $trace);
+    }
+
+    public function testGetJobTraceRejectsLoopbackUrl(): void
+    {
+        $provider = $this->makeProvider();
+        $provider->report('jobA', [
+            'pipeline_iid' => 91, 'status' => 'success', 'finished_at' => '2026-08-18 10:05:30',
+            'log_url' => 'http://127.0.0.1/admin',
+        ]);
+        $id = (int) $provider->findByIid('jobA', 91)['id'];
+
+        $this->assertStringContainsString('日志 URL 不合法', $provider->getJobTrace('jobA', $id));
+    }
+
+    public function testGetJobTraceRejectsCloudMetadataUrl(): void
+    {
+        $provider = $this->makeProvider();
+        $provider->report('jobA', [
+            'pipeline_iid' => 92, 'status' => 'success', 'finished_at' => '2026-08-18 10:05:30',
+            'log_url' => 'http://169.254.169.254/latest/meta-data/iam/security-credentials/',
+        ]);
+        $id = (int) $provider->findByIid('jobA', 92)['id'];
+
+        $this->assertStringContainsString('日志 URL 不合法', $provider->getJobTrace('jobA', $id));
+    }
+
+    public function testGetJobTraceRejectsNonHttpScheme(): void
+    {
+        $provider = $this->makeProvider();
+        $provider->report('jobA', [
+            'pipeline_iid' => 93, 'status' => 'success', 'finished_at' => '2026-08-18 10:05:30',
+            'log_url' => 'file:///etc/passwd',
+        ]);
+        $id = (int) $provider->findByIid('jobA', 93)['id'];
+
+        $this->assertStringContainsString('日志 URL 不合法', $provider->getJobTrace('jobA', $id));
+    }
+
+    public function testGetJobTraceRejectsHostOutsideAllowlist(): void
+    {
+        $provider = $this->makeProvider(['log_url_allowed_hosts' => ['logs.example.com']]);
+        $provider->report('jobA', [
+            'pipeline_iid' => 94, 'status' => 'success', 'finished_at' => '2026-08-18 10:05:30',
+            'log_url' => 'http://evil.example.com/build.log',
+        ]);
+        $id = (int) $provider->findByIid('jobA', 94)['id'];
+
+        $this->assertStringContainsString('日志 URL 不合法', $provider->getJobTrace('jobA', $id));
     }
 
     // ── getVariables ──

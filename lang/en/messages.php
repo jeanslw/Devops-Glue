@@ -157,6 +157,7 @@ return [
     'build.harbor_repo_format_error' => 'harbor_repository format error: {repo}',
     'build.no_tag_available'     => 'Tag parameter is missing and Harbor has no available tags',
     'build.tag_not_found'        => "Tag '{tag}' not found in Harbor repo '{repo}' or has been deleted",
+    'build.scan_sync_identity'   => 'pipeline_iid and sha must be provided together',
 
     // ── Harbor ──
     'harbor.trigger_failed' => 'Failed to trigger scan',

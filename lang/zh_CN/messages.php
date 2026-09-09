@@ -157,6 +157,7 @@ return [
     'build.harbor_repo_format_error' => "harbor_repository 格式错误: {repo}",
     'build.no_tag_available'     => '缺少 tag 参数且 Harbor 无可用 tag',
     'build.tag_not_found'        => "Tag '{tag}' 在 Harbor 仓库 '{repo}' 中不存在或已被删除",
+    'build.scan_sync_identity'   => 'pipeline_iid 与 sha 必须成对提供，不能只传其一',
 
     // ── Harbor ──
     'harbor.trigger_failed' => '触发扫描失败',

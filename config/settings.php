@@ -105,6 +105,10 @@ return [
                     'variables' => [
                         'env'         => ['type' => 'choice', 'choices' => ['dev', 'staging', 'prod'], 'description' => '构建镜像目标环境（可选）', 'required' => false],
                     ],
+                    // 服务端代理拉取 log_url 的 SSRF 白名单（可选，逗号分隔主机名）。
+                    // 留空 = 不启用白名单，仅按「回环/链路本地/组播/广播/云元数据」IP 段拦截。
+                    // 建议内网部署显式配置：CUSTOM_PUSH_LOG_ALLOWED_HOSTS=gitlab.example.com,ci.example.com
+                    'log_url_allowed_hosts' => array_values(array_filter(array_map('trim', explode(',', env('CUSTOM_PUSH_LOG_ALLOWED_HOSTS', ''))))),
                 ],
             ],
         ],
