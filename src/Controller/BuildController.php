@@ -957,7 +957,7 @@ class BuildController extends BaseController
                 $this->pdo->commit();
             }
         } catch (\Throwable $e) {
-            if ($txStarted && $this->pdo->inTransaction()) { $this->pdo->rollBack(); }
+            if ($txStarted) { $this->pdo->rollBack(); }
             \App\Helper\Log::exception($e);
             return $this->jsonError($response, '构建结果写入失败，请重试上报', 500);
         }
