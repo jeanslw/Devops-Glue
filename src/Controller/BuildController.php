@@ -767,7 +767,10 @@ class BuildController extends BaseController
             $this->recordPipelineTag(
                 $path,
                 $this->mapping->pipelineIdentity($path, (int) $iid),
-                $tag, $harborRepo, $scanState, $sourceUpdatedAt ?: null
+                $tag,
+                $harborRepo,
+                $scanState,
+                $sourceUpdatedAt ?: null
             );
         }
 
@@ -943,12 +946,19 @@ class BuildController extends BaseController
             // status=success 且带 tag：写 canonical artifact。
             // stale event 被 provider 忽略时不得再次写 artifact。
             if (!empty($result['success']) && $status === 'success' && ($result['action'] ?? '') !== 'ignored_stale') {
-                if (!$this->recordPipelineTag(
-                    $projectId,
-                    $this->mapping->pipelineIdentity($path, $pipelineIid),
-                    $tag, $harborRepo, 'success', $finishedAt
-                )) {
-                    if ($txStarted) { $this->pdo->rollBack(); }
+                if (
+                    !$this->recordPipelineTag(
+                        $projectId,
+                        $this->mapping->pipelineIdentity($path, $pipelineIid),
+                        $tag,
+                        $harborRepo,
+                        'success',
+                        $finishedAt
+                    )
+                ) {
+                    if ($txStarted) {
+                        $this->pdo->rollBack();
+                    }
                     return $this->jsonError($response, '构建记录已写入，但 artifact/tag 落库失败，请重试上报', 500);
                 }
             }
@@ -957,7 +967,9 @@ class BuildController extends BaseController
                 $this->pdo->commit();
             }
         } catch (\Throwable $e) {
-            if ($txStarted) { $this->pdo->rollBack(); }
+            if ($txStarted) {
+                $this->pdo->rollBack();
+            }
             \App\Helper\Log::exception($e);
             return $this->jsonError($response, '构建结果写入失败，请重试上报', 500);
         }
@@ -1091,8 +1103,7 @@ class BuildController extends BaseController
         string $status = '',
         ?string $sourceUpdatedAt = null,
         ?string $createdAt = null
-    ): bool
-    {
+    ): bool {
         // canonical artifact 是唯一事实源。
         if (empty($projectKey) || $identity->pipelineIid <= 0 || empty($tag) || empty($harborRepo)) {
             return false;
@@ -1120,5 +1131,4 @@ class BuildController extends BaseController
             return false;
         }
     }
-
 }
