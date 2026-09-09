@@ -828,11 +828,11 @@ class Database
                     $createdAt,
                 ]);
             }
-            if ($started && $pdo->inTransaction()) {
+            if ($started) {
                 $pdo->commit();
             }
         } catch (\Throwable $e) {
-            if (isset($started) && $started && $pdo->inTransaction()) {
+            if (isset($started) && $started) {
                 $pdo->rollBack();
             }
             // 存量迁移失败必须阻止 schema 被标记为完成，让下次启动继续尝试。
