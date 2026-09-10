@@ -1,6 +1,8 @@
 # Changelog
 
 ## v2.8.0 (2026-09-09)
+- **Admin identity normalization** — Usernames are normalized consistently before creation, lookup, and update, so mixed-case names no longer create separate logical identities across the admin APIs.
+- **Deployment-specific admin email seed** — The root admin fallback email is now generated from the deployment hostname instead of a single shared `admin@example.com`, avoiding cross-deployment collisions while still filling the SSO email field for first-time bootstrap.
 - **Release Data Plane groundwork** — Added canonical `PipelineIdentity` (`provider`, `project_id`, `pipeline_iid`) and a 1:1 `ci_pipeline_artifacts` table.
 - **`ci_pipeline_tags` removed** — The legacy `ci_pipeline_tags` table is dropped on schema upgrade (migrate-then-drop): existing rows are migrated idempotently into `ci_pipeline_artifacts`, then the legacy table is dropped. All reads and writes now use `ci_pipeline_artifacts` exclusively.
 - **Event ordering** — Older custom-push reports and older artifact source timestamps can no longer overwrite newer canonical facts.
