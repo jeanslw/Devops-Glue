@@ -41,13 +41,16 @@ class AdminUserRepositoryTest extends TestCase
         $this->assertSame('ops@example.com', $this->emailOf($pdo, 'admin'));
     }
 
-    public function testSeedAdminDefaultsToPlaceholderEmail(): void
+    public function testSeedAdminDefaultsToDeploymentSpecificPlaceholderEmail(): void
     {
-        // 未配置 ADMIN_EMAIL 时，落占位地址，保证 SSO 的 userinfo/id_token 有 email 可用
+        // 未配置 ADMIN_EMAIL 时，必须落一个按部署唯一化的占位地址，避免不同环境互相碰撞。
         $pdo = $this->createMemoryDatabase();
         AdminUserRepository::seedAdminFromEnv($pdo);
 
-        $this->assertSame('admin@example.com', $this->emailOf($pdo, 'admin'));
+        $email = $this->emailOf($pdo, 'admin');
+        $this->assertNotNull($email);
+        $this->assertMatchesRegularExpression('/^admin@.+\.local$/', $email);
+        $this->assertNotSame('admin@example.com', $email);
     }
 
     public function testSeedAdminIgnoresMalformedAdminEmail(): void
@@ -56,18 +59,21 @@ class AdminUserRepositoryTest extends TestCase
         $pdo = $this->createMemoryDatabase();
         AdminUserRepository::seedAdminFromEnv($pdo);
 
-        // 脏值不得落库：回落到占位地址
-        $this->assertSame('admin@example.com', $this->emailOf($pdo, 'admin'));
+        // 脏值不得落库：回落到部署唯一化占位地址
+        $email = $this->emailOf($pdo, 'admin');
+        $this->assertNotNull($email);
+        $this->assertMatchesRegularExpression('/^admin@.+\.local$/', $email);
+        $this->assertNotSame('admin@example.com', $email);
     }
 
     public function testSeedAdminBackfillsEmptyEmailOnExistingDatabase(): void
     {
-        // 先建号（无 ADMIN_EMAIL），模拟存量库
+        // 模拟存量库中 root 账号的 email 为空：启动时必须补齐
         $pdo = $this->createMemoryDatabase();
-        AdminUserRepository::seedAdminFromEnv($pdo);
-        $this->assertSame('admin@example.com', $this->emailOf($pdo, 'admin'));
+        $hash = password_hash('secret', PASSWORD_BCRYPT);
+        $pdo->prepare('INSERT INTO ' . AppConfig::TABLE_ADMIN_USERS . ' (username, password_hash, role, systems, email) VALUES (?, ?, ?, ?, ?)')
+            ->execute(['admin', $hash, AppConfig::ROLE_SUPER_ADMIN, 'ci,cd', '']);
 
-        // 事后配置 ADMIN_EMAIL，再次启动应回填（仅 email 为空时）
         $_ENV['ADMIN_EMAIL'] = 'ops@example.com';
         AdminUserRepository::seedAdminFromEnv($pdo);
 
@@ -76,14 +82,15 @@ class AdminUserRepositoryTest extends TestCase
 
     public function testSeedAdminDoesNotOverwriteExistingEmail(): void
     {
-        $_ENV['ADMIN_EMAIL'] = 'seed@example.com';
         $pdo = $this->createMemoryDatabase();
+        $hash = password_hash('secret', PASSWORD_BCRYPT);
+        $pdo->prepare('INSERT INTO ' . AppConfig::TABLE_ADMIN_USERS . ' (username, password_hash, role, systems, email) VALUES (?, ?, ?, ?, ?)')
+            ->execute(['admin', $hash, AppConfig::ROLE_SUPER_ADMIN, 'ci,cd', 'changed@example.com']);
+
+        $_ENV['ADMIN_EMAIL'] = 'seed@example.com';
         AdminUserRepository::seedAdminFromEnv($pdo);
 
         // 用户在后台把邮箱改成了别的，之后重启不得被 ADMIN_EMAIL 覆盖回去
-        (new AdminUserRepository($pdo))->updateUser('admin', null, null, 'changed@example.com');
-        AdminUserRepository::seedAdminFromEnv($pdo);
-
         $this->assertSame('changed@example.com', $this->emailOf($pdo, 'admin'));
     }
 
@@ -114,21 +121,20 @@ class AdminUserRepositoryTest extends TestCase
         $this->assertEquals(AppConfig::ROLE_SUPER_ADMIN, $row['role']);
     }
 
-    public function testCreateUserAndFindUser(): void
+    public function testCreateUserNormalizesUsernameToLowercase(): void
     {
         $pdo = $this->createMemoryDatabase();
         $repo = new AdminUserRepository($pdo);
 
-        $this->assertFalse($repo->userExists('alice'));
-
-        $repo->createUser('alice', password_hash('password123', PASSWORD_BCRYPT), AppConfig::ROLE_DEPLOYER, 'cd');
+        $repo->createUser('Alice', password_hash('password123', PASSWORD_BCRYPT), AppConfig::ROLE_DEPLOYER, 'cd');
 
         $this->assertTrue($repo->userExists('alice'));
+        $this->assertTrue($repo->userExists('Alice'));
 
         $user = $repo->findUser('alice');
         $this->assertNotNull($user);
-        $this->assertEquals('alice', $user['username']);
-        $this->assertEquals(AppConfig::ROLE_DEPLOYER, $user['role']);
+        $this->assertSame('alice', $user['username']);
+        $this->assertSame(AppConfig::ROLE_DEPLOYER, $user['role']);
     }
 
     public function testListUsersExcludesAdminAndSuperAdmin(): void
