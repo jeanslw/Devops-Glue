@@ -12,6 +12,7 @@ class AdminUserRepository
 
     public function findByUsername(string $username): ?array
     {
+        $username = $this->normalizeUsername($username);
         $stmt = $this->pdo->prepare(
             "SELECT username, password_hash, systems, role, email, status, avatar_url FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE username = ?"
         );
@@ -22,6 +23,7 @@ class AdminUserRepository
 
     public function createUser(string $username, string $passwordHash, string $role, string $systems = 'ci,cd', string $email = ''): void
     {
+        $username = $this->normalizeUsername($username);
         $stmt = $this->pdo->prepare(
             "INSERT INTO " . AppConfig::TABLE_ADMIN_USERS . " (username, password_hash, role, systems, email, created_at) VALUES (?, ?, ?, ?, ?, " . Database::sqlNow() . ")"
         );
@@ -30,6 +32,7 @@ class AdminUserRepository
 
     public function updatePassword(string $username, string $passwordHash): void
     {
+        $username = $this->normalizeUsername($username);
         // 只更新密码，绝不能用 REPLACE INTO / INSERT OR REPLACE ——
         // 那会整行删除重建，把 role/systems 回退到列默认值（super_admin 被降级成 admin）。
         $stmt = $this->pdo->prepare(
@@ -48,6 +51,7 @@ class AdminUserRepository
 
     public function userExists(string $username): bool
     {
+        $username = $this->normalizeUsername($username);
         $stmt = $this->pdo->prepare("SELECT 1 FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE username = ?");
         $stmt->execute([$username]);
         return (bool)$stmt->fetchColumn();
@@ -63,6 +67,7 @@ class AdminUserRepository
 
     public function findUser(string $username): ?array
     {
+        $username = $this->normalizeUsername($username);
         $stmt = $this->pdo->prepare("SELECT username, role FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE username = ?");
         $stmt->execute([$username]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -83,6 +88,7 @@ class AdminUserRepository
     /** API 单用户读（CD 读接口用）：同样不含 password_hash。 */
     public function findUserForApi(string $username): ?array
     {
+        $username = $this->normalizeUsername($username);
         $stmt = $this->pdo->prepare(
             "SELECT username, role, systems, status FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE username = ?"
         );
@@ -109,6 +115,7 @@ class AdminUserRepository
 
     public function updateUser(string $username, ?string $passwordHash, ?string $role, ?string $email = null): void
     {
+        $username = $this->normalizeUsername($username);
         $fields = [];
         $params = [];
 
@@ -147,6 +154,7 @@ class AdminUserRepository
      */
     public function setStatus(string $username, int $status): void
     {
+        $username = $this->normalizeUsername($username);
         // 先查存在性、再 UPDATE：不能依赖 rowCount —— MySQL 下 rowCount 是「变更行数」而非「命中行数」，
         // 同一秒内重复 toggle（status 值未变）时 rowCount 会误报 0，导致误抛「未命中用户」。
         if (!$this->userExists($username)) {
@@ -162,6 +170,7 @@ class AdminUserRepository
 
     public function deleteUser(string $username): void
     {
+        $username = $this->normalizeUsername($username);
         $this->pdo->prepare("DELETE FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE username = ?")->execute([$username]);
     }
 
@@ -177,6 +186,11 @@ class AdminUserRepository
         $this->pdo->prepare("UPDATE " . AppConfig::TABLE_ADMIN_USERS . " SET role = ? WHERE role = ?")->execute([$newRole, $oldRole]);
     }
 
+    private function normalizeUsername(string $username): string
+    {
+        return strtolower(trim($username));
+    }
+
     public function seedAdmin(): void
     {
         self::seedAdminFromEnv($this->pdo);
@@ -184,16 +198,23 @@ class AdminUserRepository
 
     public static function seedAdminFromEnv(\PDO $pdo): void
     {
-        // 种子账号邮箱：ADMIN_EMAIL 未配置时落一个占位地址，保证 OIDC/OAuth 的 userinfo
-        // 与 id_token 始终有 email 可用（部分下游按 email 匹配/建号，不能为空）。
-        // 配置 ADMIN_EMAIL 后即改用真实邮箱；占位值可在后台自由改回真实邮箱。
+        // 种子账号邮箱：ADMIN_EMAIL 未配置时落一个按部署唯一化的占位地址。
+        // 这样既保证 OIDC/OAuth 的 userinfo / id_token 有 email 可用，
+        // 又避免不同部署环境共享同一个固定邮箱造成误识别。
         $adminEmail = trim((string)($_ENV['ADMIN_EMAIL'] ?? ''));
         if ($adminEmail !== '' && !filter_var($adminEmail, FILTER_VALIDATE_EMAIL)) {
-            $adminEmail = ''; // 格式非法则忽略，回落到占位地址，不把脏值写进库
+            $adminEmail = ''; // 格式非法则忽略，回落到部署唯一化占位值，不把脏值写进库
         }
         if ($adminEmail === '') {
-            $adminEmail = 'admin@example.com'; // 占位，等待部署方在后台改成真实邮箱
+            $hostname = strtolower(trim((string)($_ENV['APP_HOST'] ?? $_ENV['HOSTNAME'] ?? gethostname())));
+            $instance = $hostname !== '' ? preg_replace('/[^a-z0-9.-]+/', '-', $hostname) : 'local';
+            $instance = trim((string)$instance, ".-");
+            $instance = $instance !== '' ? $instance : 'local';
+            $adminEmail = 'admin@' . $instance . '.local';
         }
+
+        $defaultAdminEmail = 'admin@example.com';
+        $deploymentPlaceholderEmail = $adminEmail;
 
         $cnt = (int)$pdo->query("SELECT count(*) c FROM " . AppConfig::TABLE_ADMIN_USERS)->fetch()['c'];
         if ($cnt === 0) {
@@ -221,8 +242,8 @@ class AdminUserRepository
         try {
             $pdo->prepare(
                 "UPDATE " . AppConfig::TABLE_ADMIN_USERS
-                . " SET email = ? WHERE username = ? AND (email IS NULL OR email = '' OR email = ?)"
-            )->execute([$adminEmail, $rootUser, 'admin@example.com']);
+                . " SET email = ? WHERE username = ? AND (email IS NULL OR email = '' OR email = ? OR email = ?)"
+            )->execute([$adminEmail, $rootUser, $defaultAdminEmail, $deploymentPlaceholderEmail]);
         } catch (\Throwable $e) {
             \App\Helper\Log::exception($e);
         }
