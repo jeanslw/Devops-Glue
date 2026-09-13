@@ -12,6 +12,7 @@ use App\Service\AutoDiscover;
 use App\Service\HarborService;
 use App\Service\I18nService;
 use App\Service\TokenService;
+use App\Helper\ClientIp;
 
 class AdminController extends BaseController
 {
@@ -232,23 +233,14 @@ class AdminController extends BaseController
         ], $request);
     }
 
-    /** 客户端 IP：优先 REMOTE_ADDR（nginx 直连即真实 IP），本地/反代时回退 X-Forwarded-For 首个 */
+    /**
+     * 客户端 IP。
+     * 默认只信 REMOTE_ADDR；仅在配置 TRUSTED_PROXY_HOPS>0 且对端为内网反代时，
+     * 才从 X-Forwarded-For 右端取真实 IP，防止伪造 XFF 绕过登录失败锁定。
+     */
     private function clientIp(Request $request): string
     {
-        $server = $request->getServerParams();
-        $remote = $server['REMOTE_ADDR'] ?? '';
-        if ($remote !== '' && $remote !== '127.0.0.1' && $remote !== '::1') {
-            return $remote;
-        }
-        $xff = $server['HTTP_X_FORWARDED_FOR'] ?? '';
-        if ($xff !== '') {
-            $parts = array_map('trim', explode(',', $xff));
-            $ip = $parts[0] ?? '';
-            if ($ip !== '') {
-                return $ip;
-            }
-        }
-        return $remote !== '' ? $remote : 'unknown';
+        return ClientIp::resolve($request->getServerParams(), $this->config->getTrustedProxyHops());
     }
 
     /**

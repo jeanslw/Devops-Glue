@@ -1,4 +1,4 @@
-# Devops-Glue API FAQ v2.7.0
+# Devops-Glue API FAQ v2.8.0
 
 ## Table of Contents
 

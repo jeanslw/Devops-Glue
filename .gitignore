@@ -8,6 +8,7 @@ config/.env
 #test
 .claude/
 .codebuddy
+.trae/
 public/test_*
 .phpunit.cache
 vendor/

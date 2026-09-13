@@ -3,7 +3,7 @@ namespace App\Config;
 
 class AppConfig
 {
-    public const APP_VERSION = '2.8.0';
+    public const APP_VERSION = '2.8.1';
 
 
     // ── 表名常量 ──
@@ -418,6 +418,12 @@ class AppConfig
     {
         $type = $this->config['app']['system_type'] ?? self::SYSTEM_CI;
         return in_array($type, [self::SYSTEM_CI, self::SYSTEM_CD, self::SYSTEM_BOTH]) ? $type : self::SYSTEM_CI;
+    }
+
+    // 可信反向代理跳数（0=直连不信任 XFF；反代后置 1）
+    public function getTrustedProxyHops(): int
+    {
+        return max(0, (int) ($this->config['app']['trusted_proxy_hops'] ?? 0));
     }
 
     // CORS 配置

@@ -429,7 +429,8 @@ return [
         return new RbacController(
             $c->get(I18nService::class),
             $c->get(AppConfig::class),
-            $c->get(AdminUserRepository::class)
+            $c->get(AdminUserRepository::class),
+            $c->get(\PDO::class)
         );
     },
 
@@ -552,7 +553,8 @@ return [
             $c->get(OAuthService::class),
             $c->get(AdminAuthService::class),
             $c->get(AdminUserRepository::class),
-            $c->get(OidcService::class)
+            $c->get(OidcService::class),
+            $c->get(AppConfig::class)
         );
     },
 ];

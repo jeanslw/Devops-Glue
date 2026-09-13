@@ -1,4 +1,4 @@
-# Devops-Glue API Admin Manual v2.7.1
+# Devops-Glue API Admin Manual v2.8.0
 
 > This manual is organized in a "from zero to usable" order, covering the installation, initialization, and full configuration of Devops-Glue API. Once you complete it in order, you will be able to: log in to the admin panel, connect CI / Git / Harbor platforms, configure build mode and mapping, manage permissions and roles, issue API tokens, and have the companion Devops-Glue CD call it correctly.
 
@@ -38,13 +38,14 @@ Devops-Glue API is a Slim4-based unified API layer that provides a single manage
 
 | Devops-Glue API | Devops-Glue CD |
 |:---:|:---:|
+| v2.8.1 | v1.5.2 |
 | v2.8.0 | v1.5.1 |
 | v2.7 | v1.5 |
 | v2.6 | v1.4 |
 | v2.5 | v1.3 |
 | v2.4 | v1.2 |
 
-> Version correspondence: Devops-Glue API v2.8.0 maps to CD v1.5.1, v2.7 maps to CD v1.5, v2.6 maps to CD v1.4, v2.5 maps to CD v1.3, and v2.4 maps to CD v1.2. You can view each platform's API version on the admin panel's "Platform Versions" page.
+> Version correspondence: Devops-Glue API v2.8.x maps to CD v1.5.1 (v2.8.1 is a security-fix release), v2.7 maps to CD v1.5, v2.6 maps to CD v1.4, v2.5 maps to CD v1.3, and v2.4 maps to CD v1.2. You can view each platform's API version on the admin panel's "Platform Versions" page.
 
 ---
 
@@ -87,7 +88,8 @@ Edit `config/.env` and fill in at least the following key items:
 - **Git platform**: `GITLAB_BASE_URL` / `GITLAB_TOKEN` (plus `GITHUB_*` / `GITEE_*` / `GITEA_*` as needed)
 - **Harbor**: `HARBOR_BASE_URL` / `HARBOR_USER` / `HARBOR_PASSWORD`
 - **Admin panel**: `ADMIN_USER` / `ADMIN_PASSWORD` (creates the root admin account on first boot)
-- **Database**: `DB_DRIVER` / `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASS` (for MySQL)
+- **Database**: `DB_DRIVER` / `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASS` (for MySQL); Docker Compose additionally requires `DB_ROOT_PASS` (MySQL root password, used only on first-time volume init)
+- **Reverse proxy**: `TRUSTED_PROXY_HOPS` (set 1 behind a reverse proxy such as nginx, 0 for direct access — see Appendix A)
 
 See [Appendix A](#appendix-a-environment-variables-reference) for the full list and descriptions.
 
@@ -97,7 +99,7 @@ See [Appendix A](#appendix-a-environment-variables-reference) for the full list 
 
 Two databases are supported, selected by `DB_DRIVER`:
 
-- `DB_DRIVER=mysql`: Docker Compose auto-starts MySQL 8.4 and creates the database. MariaDB 10.4+ is also fully supported. Fill in `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASS` in `.env`.
+- `DB_DRIVER=mysql`: Docker Compose auto-starts MySQL 8.4 and creates the database. MariaDB 10.4+ is also fully supported. Fill in `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASS` / `DB_ROOT_PASS` in the root `.env`. `DB_PASS` and `DB_ROOT_PASS` **have no defaults — when either is empty the `env-check` preflight container prints bilingual (Chinese/English) guidance and aborts startup (the mysql container never runs)**: the root account is separated from the application account (`MYSQL_USER`, `devops` by default), and the application connects as the application account. These passwords take effect only on first initialization of the mysql volume; upgrading with an existing volume requires creating the account manually (see the SQL in `docker-compose.yml` comments) or rebuilding the volume after backup.
 - `DB_DRIVER=sqlite`: Data file at `config/data/data.db`, no extra database service required. MySQL/MariaDB is recommended for production.
 
 `DB_AUTO_MIGRATE` controls table creation:
@@ -698,7 +700,7 @@ After completing the above steps in order, verify the system is usable:
 - [ ] Roles / users / permissions match your team's needs.
 - [ ] An API token has been issued for the CD service.
 - [ ] The interactive API docs are reachable: `http://localhost:8080/api/docs` (requires login).
-- [ ] (Optional) Run the API smoke test: `php tests/smoke_test.php http://localhost:8080`.
+- [ ] (Optional) Run the API smoke test after providing the password via an environment variable — PowerShell: `$env:TEST_LOGIN_PASS='admin-password'; php tests/smoke_test.php http://localhost:8080` (override the username with `TEST_LOGIN_USER`, default `root`; the script exits if the password is unset).
 
 ---
 
@@ -776,6 +778,10 @@ APP_ENV=production            # production / staging / development
 APP_DEBUG=false
 API_BASE_URL=http://127.0.0.1:8080
 LOG_PATH=/applogs/
+TRUSTED_PROXY_HOPS=0          # Number of reverse proxies in front (nginx etc.):
+                              # 0 = direct (default, X-Forwarded-For ignored);
+                              # 1 = one proxy (real IP taken from the rightmost XFF entry,
+                              #     login-failure lockout is bucketed by that IP); increase for more layers
 ```
 
 ---

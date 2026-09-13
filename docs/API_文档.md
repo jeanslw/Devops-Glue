@@ -1,4 +1,4 @@
-# Devops-Glue API 参考 v2.7.0
+# Devops-Glue API 参考 v2.8.0
 
 基础 URL: `http://your-domain.com/api`
 
@@ -343,6 +343,8 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 ## RBAC 模块 (`/api/rbac`)
 
 > **CD 服务账号专用**：供 Devops-Glue CD 等可信服务管理 CD 用户与角色，不面向浏览器后台。鉴权仅接受 **API Token**（需包含 `rbac.user.write` scope，创建方式见下文「API Token 管理」）；使用登录态 Token 调用一律返回 403。与 `/api/admin/users` 交互式后台的差异：本模块创建 / 更新的用户 `systems` 恒为 `cd`，禁止创建或删除 `super_admin`，密码最短 8 位。
+>
+> **v2.8.1 起的安全边界**：更新 / 删除接口只允许操作 `systems` 含 `cd` 的账号（非 CD 账号返回 403）；`verify-password` 同样拒绝 `root` / `super_admin` 及非 CD 账号，并按 **IP + 用户名 5 次失败 / 15 分钟**限流，超限返回 429。
 
 | 接口 | 方法 | 说明 |
 |---|---|---|

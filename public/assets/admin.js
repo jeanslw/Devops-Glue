@@ -1143,11 +1143,13 @@ async function loadPushRecords() {
         };
         tbody.innerHTML = records.map(r => {
             const vars = r.variables_json || '';
-            const logCell = r.log_url
-                ? '<a href="' + esc(r.log_url) + '" target="_blank" rel="noopener noreferrer">' + esc(__.t('push.view_log')) + '</a>'
+            const safeLogUrl = safeUrl(r.log_url);
+            const logCell = safeLogUrl
+                ? '<a href="' + esc(safeLogUrl) + '" target="_blank" rel="noopener noreferrer">' + esc(__.t('push.view_log')) + '</a>'
                 : '—';
-            const webCell = r.web_url
-                ? '<a href="' + esc(r.web_url) + '" target="_blank" rel="noopener noreferrer" style="display:inline-block;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;" title="' + esc(r.web_url) + '">' + esc(r.web_url) + '</a>'
+            const safeWebUrl = safeUrl(r.web_url);
+            const webCell = safeWebUrl
+                ? '<a href="' + esc(safeWebUrl) + '" target="_blank" rel="noopener noreferrer" style="display:inline-block;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;" title="' + esc(safeWebUrl) + '">' + esc(safeWebUrl) + '</a>'
                 : '—';
             const shaCell = r.sha ? '<code style="font-size:11px;word-break:break-all;">' + esc(r.sha) + '</code>' : '—';
             return '<tr>'
@@ -2475,6 +2477,21 @@ async function loadApiTokens() {
 function esc(s) {
     if (!s) return '';
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+// href 白名单：只允许 http(s) 绝对地址与站内相对地址，
+// 拦掉 javascript:/data:/vbscript: 等可执行协议，以及 //host 协议相对地址
+// （后者会继承当前页协议跳任意外站；esc() 只转引号，拦不住协议本身）。
+function safeUrl(s) {
+    s = String(s == null ? '' : s).trim();
+    if (!s) return '';
+    if (/^https?:\/\//i.test(s)) return s;
+    // 必须先于 / 开头判断：//evil.com 也是 / 开头，不能放行
+    if (/^\/\//.test(s)) return '';
+    // 站内相对地址：/path（单斜杠）、#锚点、?查询
+    if (/^[/#?]/.test(s)) return s;
+    // 无 scheme 的裸相对路径（如 build/123）放行；其余带 scheme 的一律拒绝
+    if (!/^[a-z][a-z0-9+.-]*:/i.test(s)) return s;
+    return '';
 }
 function escJs(s) { return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'\\"'); }
 function js(obj) { return JSON.stringify(obj).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
