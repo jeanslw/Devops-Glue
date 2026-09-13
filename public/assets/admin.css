@@ -102,7 +102,8 @@
             text-align:center;
         }
         .stat-num { font-size:28px; font-weight:700; color:#1f2937; line-height:1.2; }
-        .stat-label { font-size:12px; color:#9ca3af; margin-top:4px; white-space:nowrap; }
+        .stat-label { display:flex; align-items:center; justify-content:center; gap:6px; font-size:12px; color:#9ca3af; margin-top:4px; white-space:nowrap; }
+        .stat-icon { font-size:13px; line-height:1; }
 
         /* ── 通栏标题 ── */
         .section-banner {
@@ -366,13 +367,16 @@
             animation:modal-fade .18s ease;
         }
         .modal-content {
-            background:#fff; border-radius:16px; width:400px; max-width:100%;
-            box-shadow:0 20px 50px rgba(0,0,0,.25);
+            background:linear-gradient(180deg,#ffffff 0%,#f8fafc 100%);
+            border-radius:18px; width:440px; max-width:100%;
+            border:1px solid rgba(148,163,184,.3);
+            box-shadow:0 20px 55px rgba(15,23,42,.22);
             overflow:hidden; animation:modal-pop .2s ease;
         }
         .modal-header {
             display:flex; align-items:center; justify-content:space-between;
-            padding:16px 22px; border-bottom:1px solid #f3f4f6;
+            padding:18px 22px 16px; border-bottom:1px solid #edf2f7;
+            background:linear-gradient(135deg,#f8fafc,#eef2ff);
         }
         .modal-header h3 { font-size:16px; color:#1f2937; }
         .modal-close {
@@ -381,7 +385,15 @@
         }
         .modal-close:hover { color:#374151; }
         .modal-body { padding:20px 22px 6px; }
-        .modal-hint { font-size:13px; color:#6b7280; margin-bottom:16px; line-height:1.5; }
+        .modal-hint {
+            font-size:15px; color:#1f2937; margin-bottom:10px; line-height:1.7;
+            font-weight:600; white-space:pre-line;
+        }
+        .modal-note {
+            display:none; margin-top:6px; padding:8px 10px; border-radius:10px;
+            background:#f8fafc; border:1px solid #e2e8f0; color:#64748b;
+            font-size:11px; line-height:1.6;
+        }
         .modal-hint b { color:#1f2937; font-weight:700; }
         .modal-body label { margin-top:12px; }
         .modal-body label:first-of-type { margin-top:0; }
@@ -389,6 +401,80 @@
         .modal-footer { display:flex; justify-content:flex-end; gap:10px; padding:12px 22px 20px; }
         @keyframes modal-fade { from { opacity:0; } to { opacity:1; } }
         @keyframes modal-pop { from { opacity:0; transform:translateY(-8px) scale(.98); } to { opacity:1; transform:none; } }
+
+        /* ── 通用确认弹窗 ── */
+        .confirm-content { width:480px; }
+        #confirm-message { white-space:pre-line; }
+
+        /* ── 配置模式：构建模式展示区（加高） ── */
+        #mode-display {
+            text-align:center;
+            font-size:15px; line-height:2.2;
+            padding:16px 18px 22px;
+            min-height:410px;
+            display:flex; flex-direction:column; justify-content:flex-start;
+            border:2px solid #e5e7eb; border-radius:18px;
+            background:linear-gradient(180deg,#f8fafc 0%,#f3f4f6 100%);
+            box-shadow:inset 0 1px 0 rgba(255,255,255,.8);
+        }
+        #mode-config {
+            border-top:1px solid #e5e7eb;
+            margin-top:16px; padding:18px 0 4px;
+        }
+
+        /* ── 配置模式：下方三功能卡片 ── */
+        .mode-cards {
+            display:grid;
+            grid-template-columns:repeat(3, 1fr);
+            gap:16px;
+            margin-top:8px;
+        }
+        .mode-card {
+            display:flex; flex-direction:column; gap:12px;
+            border:1px solid #e5e7eb; border-radius:14px;
+            background:linear-gradient(180deg,#ffffff,#f8fafc);
+            padding:18px 18px 16px;
+            transition:border-color .15s, box-shadow .15s;
+            min-height:180px;
+        }
+        .mode-card:hover {
+            border-color:#c7d2fe;
+            box-shadow:0 4px 14px rgba(79,70,229,.08);
+        }
+        .mode-card-hd {
+            display:flex; align-items:center; gap:10px; flex-wrap:nowrap;
+            font-size:14px; font-weight:700; color:#1f2937;
+        }
+        .mode-card-title { white-space:nowrap; }
+        .mode-card-hd.switch-row { cursor:pointer; flex-wrap:nowrap; }
+        .mode-card-hd select { width:auto; min-width:150px; flex-shrink:0; }
+        .mode-card-toggle {
+            display:inline-flex; align-items:center; gap:8px; flex:1 1 auto; min-width:0;
+            cursor:pointer;
+        }
+        .build-mode-row { flex-wrap:nowrap; }
+        #build-mode-value {
+            font-size:12px; color:#374151; background:#f3f4f6;
+            padding:2px 8px; border-radius:4px; font-family:monospace;
+            flex-shrink:0;
+        }
+        .mode-save-status {
+            font-size:12px; color:#16a34a; display:none; margin-left:auto;
+            white-space:nowrap; flex-shrink:0;
+        }
+        #custom-push-toggle, #stale-tag-cleanup-toggle {
+            width:16px; height:16px; margin:0; cursor:pointer;
+            accent-color:#4f46e5;
+        }
+        .mode-card-notes {
+            margin:0; padding-left:16px;
+            color:#9ca3af; font-size:11px; line-height:1.7;
+        }
+        .mode-card-notes li { margin:2px 0; }
+        @media (max-width:900px) {
+            .mode-cards { grid-template-columns:1fr; }
+            #mode-display { min-height:220px; }
+        }
 
         @media (max-width:768px) {
             .layout { flex-direction:column; }

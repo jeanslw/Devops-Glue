@@ -141,20 +141,38 @@
                 </div>
             </div>
 
+            <!-- 通用确认弹窗（替代浏览器原生 confirm） -->
+            <div id="confirm-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this) resolveConfirm(false)">
+                <div class="modal-content confirm-content" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+                    <div class="modal-header">
+                        <h3 id="confirm-title">确认</h3>
+                        <button type="button" class="modal-close" onclick="resolveConfirm(false)" aria-label="Close">×</button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="modal-hint" id="confirm-message"></p>
+                        <p class="modal-note" id="confirm-note"></p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-cancel" onclick="resolveConfirm(false)" data-i18n="common.cancel">取消</button>
+                        <button type="button" class="btn btn-save" id="confirm-ok-btn" onclick="resolveConfirm(true)" data-i18n="common.confirm">确认</button>
+                    </div>
+                </div>
+            </div>
+
             <!-- ═══ 服务监测 Tab ═══ -->
             <div id="tab-monitor">
                 <!-- 数据概览通栏 -->
                 <div class="section-banner"><span>📊 <span data-i18n="monitor.data_overview">数据概览</span></span></div>
                 <!-- 统计卡片 -->
                 <div class="stats-row" style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
-                    <div class="stat-card"><div class="stat-num" id="stat-total">—</div><div class="stat-label" data-i18n="map.total">总映射数</div></div>
-                    <div class="stat-card"><div class="stat-num" id="stat-active">—</div><div class="stat-label" data-i18n="map.active">活跃项目</div></div>
-                    <div class="stat-card"><div class="stat-num" id="stat-platforms">—</div><div class="stat-label" data-i18n="map.git_platforms">Git 平台</div></div>
-                    <div class="stat-card"><div class="stat-num" id="stat-repos">—</div><div class="stat-label" data-i18n="map.image_repos">镜像仓库</div></div>
+                    <div class="stat-card"><div class="stat-num" id="stat-total">—</div><div class="stat-label"><span class="stat-icon">🗂️</span> <span data-i18n="map.total">总映射数</span></div></div>
+                    <div class="stat-card"><div class="stat-num" id="stat-active">—</div><div class="stat-label"><span class="stat-icon">✅</span> <span data-i18n="map.active">活跃项目</span></div></div>
+                    <div class="stat-card"><div class="stat-num" id="stat-platforms">—</div><div class="stat-label"><span class="stat-icon">🌐</span> <span data-i18n="map.git_platforms">Git 平台</span></div></div>
+                    <div class="stat-card"><div class="stat-num" id="stat-repos">—</div><div class="stat-label"><span class="stat-icon">🐳</span> <span data-i18n="map.image_repos">镜像仓库</span></div></div>
                 </div>
 
                 <!-- 服务监测通栏 -->
-                <div class="section-banner"><span>📡 <span data-i18n="monitor.service_check">服务监测</span></span></div>
+                <div class="section-banner"><span class="sys-pulse-dot"></span><span data-i18n="monitor.service_check">系统监测</span></div>
 
                 <div class="monitor-grid" id="monitor-grid">
                     <div class="monitor-card" id="card-jenkins">
@@ -414,33 +432,54 @@
             <div id="tab-mode" style="display:none;">
                 <div class="toolbar"><h3 data-i18n="admin.sidebar_mode">🔧 配置模式</h3></div>
                 <div class="monitor-card">
-                    <div id="mode-display" style="text-align:center;padding:24px 0 8px;font-size:15px;line-height:2.2;" data-i18n="common.loading">
+                    <div id="mode-display" data-i18n="common.loading">
                         加载中…
                     </div>
-                    <div id="mode-config" style="display:none;border-top:1px solid #e5e7eb;padding:16px 24px 4px;margin-top:12px;">
-                        <div style="display:flex;align-items:center;gap:32px;justify-content:space-between;flex-wrap:wrap;">
-                            <div style="display:flex;align-items:center;gap:12px;flex-wrap:nowrap;">
-                                <label style="font-size:13px;font-weight:600;color:#374151;white-space:nowrap;" data-i18n="build.mode_label">构建系统模式：</label>
-                                <select id="build-mode-select" style="width:auto;min-width:170px;" onchange="onBuildModeChange()">
-                                    <option value="jenkins" data-i18n="build.mode_jenkins">⚡ Jenkins</option>
-                                    <option value="gitlab_ci" data-i18n="build.mode_gitlab_ci">🐺 GitLab CI</option>
-                                    <option value="both" data-i18n="build.mode_both">⚡ Jenkins + 🐺 GitLab CI</option>
-                                </select>
-                                <code id="build-mode-value" style="font-size:12px;color:#374151;background:#f3f4f6;padding:2px 8px;border-radius:4px;font-family:monospace;">—</code>
-                                <span id="build-mode-status" style="font-size:12px;color:#16a34a;display:none;" data-i18n="build.mode_saved">✅ 已保存</span>
+                    <div id="mode-config" style="display:none;">
+                        <div class="mode-cards">
+                            <div class="mode-card">
+                                <div class="mode-card-hd">
+                                    <span class="mode-card-title" data-i18n="build.mode_label">构建模式</span>
+                                    <select id="build-mode-select" onchange="onBuildModeChange()">
+                                        <option value="jenkins" data-i18n="build.mode_jenkins">⚡ Jenkins</option>
+                                        <option value="gitlab_ci" data-i18n="build.mode_gitlab_ci">🐺 GitLab CI</option>
+                                        <option value="both" data-i18n="build.mode_both">⚡ Jenkins + 🐺 GitLab CI</option>
+                                    </select>
+                                    <code id="build-mode-value">—</code>
+                                    <span id="build-mode-status" class="mode-save-status" data-i18n="build.mode_saved">✅ 已保存</span>
+                                </div>
+                                <ul class="mode-card-notes">
+                                    <li data-i18n="build.mode_note_1">切换立即生效，将影响后续构建任务。</li>
+                                    <li data-i18n="build.mode_note_2">更改构建模式会将不再匹配的映射记录停用（降为「待启动」），不可用的选项会在下拉中禁用。</li>
+                                </ul>
                             </div>
-                            <label style="font-size:13px;font-weight:600;color:#374151;cursor:pointer;display:inline-flex;align-items:center;gap:4px;">
-                                <input type="checkbox" id="custom-push-toggle" onchange="onCustomPushToggle()" style="width:16px;height:16px;cursor:pointer;">
-                                <span data-i18n="build.custom_push_toggle">📤 启用 Custom_Push</span>
-                            </label>
-                            <label style="font-size:13px;font-weight:600;color:#374151;cursor:pointer;display:inline-flex;align-items:center;gap:4px;">
-                                <input type="checkbox" id="stale-tag-cleanup-toggle" onchange="onStaleTagCleanupToggle()" style="width:16px;height:16px;cursor:pointer;">
-                                <span data-i18n="build.stale_tag_cleanup_toggle">🧹 启用过期 tag 清理</span>
-                            </label>
+                            <div class="mode-card">
+                                <div class="mode-card-hd switch-row">
+                                    <label class="mode-card-toggle" for="custom-push-toggle">
+                                        <input type="checkbox" id="custom-push-toggle" onchange="onCustomPushToggle()">
+                                        <span data-i18n="build.custom_push_toggle">📤 启用 Custom_Push</span>
+                                    </label>
+                                    <span id="custom-push-status" class="mode-save-status" data-i18n="build.mode_saved">✅ 已保存</span>
+                                </div>
+                                <ul class="mode-card-notes">
+                                    <li data-i18n="build.custom_push_note_1">用户 CI 推送构建结果，Devops-Glue 只接收回写。</li>
+                                    <li data-i18n="build.custom_push_note_2">关闭后，已激活的 Custom_Push 映射将降为待定状态。</li>
+                                </ul>
+                            </div>
+                            <div class="mode-card">
+                                <div class="mode-card-hd switch-row">
+                                    <label class="mode-card-toggle" for="stale-tag-cleanup-toggle">
+                                        <input type="checkbox" id="stale-tag-cleanup-toggle" onchange="onStaleTagCleanupToggle()">
+                                        <span data-i18n="build.stale_tag_cleanup_toggle">🧹 启用清理过期 tag 记录</span>
+                                    </label>
+                                    <span id="stale-tag-status" class="mode-save-status" data-i18n="build.mode_saved">✅ 已保存</span>
+                                </div>
+                                <ul class="mode-card-notes">
+                                    <li data-i18n="build.stale_cleanup_note_on">启用：将以 Harbor 为准，删除系统中已不存在的 tag 记录，Harbor 库的 tag 不会删除。</li>
+                                    <li data-i18n="build.stale_cleanup_note_off">关闭：停止清理，系统中可能有 tag 实际不存在的情况。</li>
+                                </ul>
+                            </div>
                         </div>
-                        <p style="text-align:center;font-size:11px;color:#9ca3af;margin-top:8px;" data-i18n="build.mode_hint">
-                            修改后即时生效。更改构建模式会将不再匹配的映射记录停用（降为「待定」），不可用的选项会在下拉中禁用。
-                        </p>
                     </div>
                 </div>
             </div>
