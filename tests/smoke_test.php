@@ -5,6 +5,11 @@
  * 用法：php tests/smoke_test.php [baseUrl]
  * 示例：php tests/smoke_test.php http://localhost:80
  *
+ * 登录凭据必须通过环境变量提供，不内置任何默认口令：
+ *   PowerShell: $env:TEST_LOGIN_USER='root'; $env:TEST_LOGIN_PASS='你的口令'
+ *   bash:       TEST_LOGIN_USER=root TEST_LOGIN_PASS='你的口令' php tests/smoke_test.php
+ *   （TEST_LOGIN_USER 可省略，默认 root；TEST_LOGIN_PASS 必填，缺失时直接退出）
+ *
  * 输出：
  *   - CLI 彩色报告（实时）
  *   - HTML 报告：public/test_report_YYYYMMDD_HHMMSS.html
@@ -25,9 +30,15 @@ $testJobs       = ['static', 'php/devops-glue', 'java/registry'];
 $harborProject  = 'mycode';
 $harborRepo     = 'diagnosis-runtime';
 
-// 登录凭据：可通过环境变量覆盖
+// 登录凭据：通过环境变量提供，不内置默认口令，避免公开仓库里的示例口令被误当成真实部署口令
 $loginUser     = getenv('TEST_LOGIN_USER') ?: 'root';
-$loginPassword = getenv('TEST_LOGIN_PASS') ?: 'root123456';
+$loginPassword = (string) getenv('TEST_LOGIN_PASS');
+if ($loginPassword === '') {
+    fwrite(STDERR, "[中止] 未设置冒烟测试登录口令环境变量 TEST_LOGIN_PASS。\n");
+    fwrite(STDERR, "       PowerShell: \$env:TEST_LOGIN_PASS='你的口令'; php tests/smoke_test.php [baseUrl]\n");
+    fwrite(STDERR, "       bash:       TEST_LOGIN_PASS='你的口令' php tests/smoke_test.php [baseUrl]\n");
+    exit(1);
+}
 
 $triggerParams = [
     'java/registry'   => ['branches' => 'master'],

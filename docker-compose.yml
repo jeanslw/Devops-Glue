@@ -23,14 +23,66 @@ services:
       mysql:
         condition: service_healthy
 
+  # 启动前环境变量预检（一次性容器，复用 mysql 镜像不增加额外下载）：
+  # 必填口令缺失时输出中英双语指引并以非零码退出，mysql / devops-glue 因依赖关系不会启动。
+  # 不用 ${VAR:?} 插值守卫——那种报错带 compose 固定英文前缀（required variable ... is missing），无法定制。
+  env-check:
+    image: mysql:8.4
+    entrypoint: ["sh", "-c"]
+    restart: "no"
+    environment:
+      DB_PASS: ${DB_PASS:-}
+      DB_ROOT_PASS: ${DB_ROOT_PASS:-}
+    command:
+      - |
+        fail=0
+        if [ -z "$$DB_PASS" ]; then
+          echo "[启动中止] 缺少数据库业务账号口令：请在根目录 .env 设置 DB_PASS（业务账号 devops 连库口令，建议 openssl rand -base64 24）"
+          echo "[ABORT] Missing database application password: set DB_PASS in the root .env (password for the application account 'devops'; suggested: openssl rand -base64 24)"
+          fail=1
+        fi
+        if [ -z "$$DB_ROOT_PASS" ]; then
+          echo "[启动中止] 缺少 MySQL 管理员口令：请在根目录 .env 设置 DB_ROOT_PASS（MySQL root 超级管理员口令，仅数据卷首次初始化时使用）"
+          echo "[ABORT] Missing MySQL administrator password: set DB_ROOT_PASS in the root .env (MySQL root superuser password; used only on first-time volume initialization)"
+          fail=1
+        fi
+        if [ "$$fail" = "1" ]; then
+          echo "------------------------------------------------------------------------"
+          echo "请补全根目录 .env 后重新执行 / Fill in the root .env, then run again: docker compose up -d --build"
+          echo "提示 / Note: 升级存量 mysql-data 数据卷无需重建卷，手工建号 SQL 见本文件 mysql 服务注释。"
+          echo "       Existing mysql-data volumes do not need rebuilding; see the manual SQL in the mysql service comments below."
+          exit 1
+        fi
+        echo "[预检通过 / PASS] 数据库必填环境变量已配置 / Required database environment variables are set"
+
   mysql:
     image: mysql:8.4
     container_name: devops-mysql
+    depends_on:
+      env-check:
+        condition: service_completed_successfully
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_PASS:-root123}
+      # root 与业务账号分离：CI/CD 应用以 MYSQL_USER 业务账号连库，不要用 root。
+      # 口令非空由 env-check 预检保证（留空时中英双语报错并中止，mysql 不会启动）。
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASS:-}
       MYSQL_DATABASE: ${DB_NAME:-devops_glue}
+      MYSQL_USER: ${DB_USER:-devops}
+      MYSQL_PASSWORD: ${DB_PASS:-}
     volumes:
       - mysql-data:/var/lib/mysql
+    # 首启自动执行手工建表脚本（仅数据卷为空时执行一次；脚本均为幂等 IF NOT EXISTS）。
+      # 遵循“建表只走 SQL 脚本、应用内不建表”的约定。
+      - ./database/mysql_init.sql:/docker-entrypoint-initdb.d/01-ci.sql:ro
+      # 联合部署 CD 时取消下一行注释（要求 Devops_CD 与本仓库为同级目录）：
+      # - ../Devops_CD/database/init_mysql.sql:/docker-entrypoint-initdb.d/02-cd.sql:ro
+      #
+      # ⚠️ 存量 mysql-data 卷升级注意：MYSQL_ROOT_PASSWORD / MYSQL_USER / MYSQL_PASSWORD
+      #    仅在数据卷首次初始化时生效，旧卷不会自动创建业务账号、root 密码也不变。
+      #    升级时请用旧 root 口令手工执行（将下方口令替换为你在根 .env DB_PASS 中设置的值）：
+      #      CREATE USER IF NOT EXISTS 'devops'@'%' IDENTIFIED BY '<你设置的 DB_PASS 强口令>';
+      #      GRANT ALL PRIVILEGES ON devops_glue.* TO 'devops'@'%';
+      #      FLUSH PRIVILEGES;
+      #    或备份后删除 mysql-data 卷重新初始化（脚本会自动建全部表）。
     restart: unless-stopped
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     healthcheck:
@@ -45,6 +97,9 @@ services:
 # 集中部署时取消下方注释即可。DB / Harbor / SECRET_KEY / CI_API_TOKEN 由 .env 注入；
 # 镜像 Dockerfile 已内置 CMD（uvicorn 0.0.0.0:8081）与 HEALTHCHECK，无需在此重复。
 # 单机单独部署 CD 时仍用 Devops_CD 仓库自带的 .env + docker compose up。
+# ⚠️ 启用前必须先在根 .env 填写 SECRET_KEY（openssl rand -base64 32）：
+#    下方 environment 的 ${SECRET_KEY:?} 会在留空时直接拒绝启动，
+#    防止 CD 用公开占位密钥加密 SSH 口令/私钥。
 #
 #  devops-cd:
 #    build:
@@ -56,6 +111,7 @@ services:
 #      - .env
 #    environment:
 #      CI_API_URL: http://devops-glue
+#      SECRET_KEY: "${SECRET_KEY:?请先在根 .env 设置 SECRET_KEY（openssl rand -base64 32）再启用 devops-cd}"
 #    ports:
 #      - "8081:8081"
 #    restart: unless-stopped

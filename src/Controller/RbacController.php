@@ -3,7 +3,10 @@
 namespace App\Controller;
 
 use App\Config\AppConfig;
+use App\Helper\ClientIp;
+use App\Helper\Log;
 use App\Service\AdminUserRepository;
+use App\Service\Database;
 use App\Service\I18nService;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -22,17 +25,36 @@ use Psr\Http\Message\ServerRequestInterface as Request;
  */
 class RbacController extends BaseController
 {
+    /** verify-password 失败计数键前缀（独立于登录锁，避免改密码时输错旧密码连带锁死登录） */
+    private const VERIFY_FAIL_PREFIX = 'rbac_verify_fail_';
+
     private AppConfig $config;
     private AdminUserRepository $adminUserRepository;
+    private \PDO $pdo;
 
     public function __construct(
         I18nService $i18n,
         AppConfig $config,
-        AdminUserRepository $adminUserRepository
+        AdminUserRepository $adminUserRepository,
+        \PDO $pdo
     ) {
         parent::__construct($i18n);
         $this->config             = $config;
         $this->adminUserRepository = $adminUserRepository;
+        $this->pdo                = $pdo;
+    }
+
+    /**
+     * 账号是否归属 CD 系统（systems 逗号列表含 'cd'）。
+     * RBAC 服务账号是 CD 的账号管理通道，只允许动 cd 账号，禁止越界改 CI-only 用户。
+     */
+    private function belongsToCd(array $target): bool
+    {
+        $systems = array_filter(
+            array_map('trim', explode(',', strtolower((string) ($target['systems'] ?? '')))),
+            static fn($v) => $v !== ''
+        );
+        return in_array(AppConfig::SYSTEM_CD, $systems, true);
     }
 
     /**
@@ -138,6 +160,10 @@ class RbacController extends BaseController
             ) {
                 return $this->jsonError($response, 'user.cannot_edit_root', 403);
             }
+            // 跨系统边界：只允许改归属 CD 的账号，CI-only 用户不由这个服务账号管理
+            if (!$this->belongsToCd($target)) {
+                return $this->jsonError($response, 'user.cannot_manage_non_cd', 403);
+            }
 
             $this->adminUserRepository->updateUser($targetUser, $passwordHash, $role);
             return $this->output($response, ['success' => true], $request);
@@ -169,6 +195,10 @@ class RbacController extends BaseController
                 || $target['role'] === AppConfig::ROLE_SUPER_ADMIN
             ) {
                 return $this->jsonError($response, 'user.cannot_delete_root', 403);
+            }
+            // 跨系统边界：只允许删归属 CD 的账号，CI-only 用户不由这个服务账号管理
+            if (!$this->belongsToCd($target)) {
+                return $this->jsonError($response, 'user.cannot_manage_non_cd', 403);
             }
 
             $this->adminUserRepository->deleteUser($targetUser);
@@ -215,7 +245,13 @@ class RbacController extends BaseController
         }
     }
 
-    /** POST /api/rbac/users/{username}/verify-password — 校验密码，仅返回布尔（哈希不出 Glue） */
+    /**
+     * POST /api/rbac/users/{username}/verify-password — 校验密码，仅返回布尔（哈希不出 Glue）。
+     * 该接口本质是密码校验预言机，必须：
+     *   1. 失败限流（IP+用户名，5 次/15 分钟），防止持服务 token 在线爆破；
+     *   2. 拒绝内置 root 与 super_admin（高权账号改密只能走 CI 交互后台）；
+     *   3. 只允许校验归属 CD 的账号（跨系统边界收口）。
+     */
     public function userVerifyPassword(Request $request, Response $response, array $args): Response
     {
         $this->initAuthFromRequest($request);
@@ -231,16 +267,84 @@ class RbacController extends BaseController
         if ($password === '') {
             return $this->jsonError($response, 'user.password_required', 400);
         }
+        $ip = ClientIp::resolve($request->getServerParams(), $this->config->getTrustedProxyHops());
+        if ($this->isVerifyLocked($ip, $username)) {
+            return $this->jsonError($response, 'user.verify_locked', 429);
+        }
         try {
             $user = $this->adminUserRepository->findByUsername($username);
             if (!$user) {
                 return $this->jsonError($response, 'user.not_found', 404);
             }
+            if (
+                $username === strtolower((string) $this->config->getRootAdminUser())
+                || ($user['role'] ?? '') === AppConfig::ROLE_SUPER_ADMIN
+            ) {
+                return $this->jsonError($response, 'user.cannot_verify_root', 403);
+            }
+            if (!$this->belongsToCd($user)) {
+                return $this->jsonError($response, 'user.cannot_manage_non_cd', 403);
+            }
             $valid = password_verify($password, (string) ($user['password_hash'] ?? ''));
+            if ($valid) {
+                $this->clearVerifyFailure($ip, $username);
+            } else {
+                $this->recordVerifyFailure($ip, $username);
+            }
             return $this->output($response, ['valid' => $valid], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.modify_failed') . ': ' . $e->getMessage(), 500);
         }
+    }
+
+    /** verify-password 失败限流：是否已达阈值（与登录锁同 5 次/15 分钟参数） */
+    private function isVerifyLocked(string $ip, string $username): bool
+    {
+        try {
+            $stmt = $this->pdo->prepare(
+                'SELECT value FROM ' . AppConfig::TABLE_CACHE . ' WHERE cache_key = ? AND expires_at > ?'
+            );
+            $stmt->execute([$this->verifyFailKey($ip, $username), time()]);
+            $val = $stmt->fetchColumn();
+            return $val !== false && (int) $val >= AppConfig::LOGIN_FAIL_MAX_ATTEMPTS;
+        } catch (\Throwable $e) {
+            return false; // DB 异常 fail-open，与登录锁保持一致
+        }
+    }
+
+    /** verify-password 失败计数 +1，并刷新窗口 */
+    private function recordVerifyFailure(string $ip, string $username): void
+    {
+        try {
+            $key  = $this->verifyFailKey($ip, $username);
+            $stmt = $this->pdo->prepare(
+                'SELECT value FROM ' . AppConfig::TABLE_CACHE . ' WHERE cache_key = ? AND expires_at > ?'
+            );
+            $stmt->execute([$key, time()]);
+            $val   = $stmt->fetchColumn();
+            $count = ($val === false ? 0 : (int) $val) + 1;
+            $sql = Database::sqlUpsert(AppConfig::TABLE_CACHE, 'cache_key, value, expires_at', '?, ?, ?');
+            $this->pdo->prepare($sql)
+                ->execute([$key, (string) $count, time() + AppConfig::LOGIN_FAIL_LOCK_SECONDS]);
+        } catch (\Throwable $e) {
+            Log::exception($e);
+        }
+    }
+
+    /** 校验成功清除失败计数 */
+    private function clearVerifyFailure(string $ip, string $username): void
+    {
+        try {
+            $this->pdo->prepare('DELETE FROM ' . AppConfig::TABLE_CACHE . ' WHERE cache_key = ?')
+                ->execute([$this->verifyFailKey($ip, $username)]);
+        } catch (\Throwable $e) {
+            Log::exception($e);
+        }
+    }
+
+    private function verifyFailKey(string $ip, string $username): string
+    {
+        return self::VERIFY_FAIL_PREFIX . md5($ip . ':' . strtolower($username));
     }
 
     /** GET /api/rbac/roles — 角色目录（name + description，供审批规则选角色） */

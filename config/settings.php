@@ -160,6 +160,9 @@ return [
         'api_base_url'  => env('API_BASE_URL', ''),
         // 当前实例类型：ci / cd / both（影响登录权限校验）
         'system_type'   => env('SYSTEM_TYPE', 'ci'),
+        // 可信反向代理跳数：0=直连（默认，忽略 X-Forwarded-For）；
+        // 置于 nginx 等反代之后设 1，多层代理按层数增加（登录锁定按此解析真实 IP）。
+        'trusted_proxy_hops' => max(0, (int) env('TRUSTED_PROXY_HOPS', '0')),
     ],
 
     /*

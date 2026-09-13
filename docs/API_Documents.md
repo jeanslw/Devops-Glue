@@ -1,4 +1,4 @@
-# Devops-Glue API Reference v2.7.0
+# Devops-Glue API Reference v2.8.0
 
 Base URL: `http://your-domain.com/api`
 
@@ -342,6 +342,8 @@ Token expires in 24 hours. `super_admin` role returns `"*"` for permissions.
 ## RBAC Module (`/api/rbac`)
 
 > **For CD service accounts only**: lets trusted services such as Devops-Glue CD manage CD users and roles; not intended for the browser-based admin panel. Authentication accepts **API tokens only** (must carry the `rbac.user.write` scope — see "API Token Management" below); calls made with a logged-in session token always return 403. Unlike the interactive `/api/admin/users` backend, users created / updated here always get `systems: cd`, and creating or deleting `super_admin` is forbidden; passwords must be at least 8 characters.
+>
+> **Security boundaries since v2.8.1**: update / delete endpoints only operate on accounts whose `systems` contains `cd` (non-CD accounts return 403); `verify-password` likewise rejects `root` / `super_admin` and non-CD accounts, and is rate-limited to **5 failures / 15 minutes per IP + username**, returning 429 when exceeded.
 
 | Endpoint | Method | Description |
 |---|---|---|

@@ -68,7 +68,9 @@ class AdminUserRepository
     public function findUser(string $username): ?array
     {
         $username = $this->normalizeUsername($username);
-        $stmt = $this->pdo->prepare("SELECT username, role FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE username = ?");
+        // systems 一并无脑带出：跨系统服务账号（如 RbacController）要据此做归属校验，
+        // 多返回一列对既有调用方无副作用。
+        $stmt = $this->pdo->prepare("SELECT username, role, systems FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE username = ?");
         $stmt->execute([$username]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
         return $row ?: null;

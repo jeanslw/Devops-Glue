@@ -10,6 +10,7 @@ use App\Service\OidcService;
 use App\Service\AdminAuthService;
 use App\Service\AdminUserRepository;
 use App\Config\AppConfig;
+use App\Helper\ClientIp;
 
 /**
  * OAuth2 / OIDC Provider 控制器（授权码流程）
@@ -31,7 +32,8 @@ class OAuthController extends BaseController
         private OAuthService $oauth,
         private AdminAuthService $auth,
         private AdminUserRepository $users,
-        private OidcService $oidc
+        private OidcService $oidc,
+        private AppConfig $config
     ) {
         parent::__construct($i18n);
     }
@@ -342,25 +344,13 @@ class OAuthController extends BaseController
     }
 
     /**
-     * 客户端 IP：优先 REMOTE_ADDR（nginx 直连即真实 IP），本地/反代时回退 X-Forwarded-For 首个
-     * 与 AdminController::clientIp 同一逻辑，避免伪造 XFF 绕过登录限流。
+     * 客户端 IP（与 AdminController::clientIp 共用 App\Helper\ClientIp）。
+     * 默认只信 REMOTE_ADDR；TRUSTED_PROXY_HOPS>0 且对端为内网反代时才从 XFF 右端取数，
+     * 避免伪造 XFF 绕过登录限流。
      */
     private function clientIp(Request $request): string
     {
-        $server = $request->getServerParams();
-        $remote = $server['REMOTE_ADDR'] ?? '';
-        if ($remote !== '' && $remote !== '127.0.0.1' && $remote !== '::1') {
-            return $remote;
-        }
-        $xff = $server['HTTP_X_FORWARDED_FOR'] ?? '';
-        if ($xff !== '') {
-            $parts = array_map('trim', explode(',', $xff));
-            $ip = $parts[0] ?? '';
-            if ($ip !== '') {
-                return $ip;
-            }
-        }
-        return $remote !== '' ? $remote : 'unknown';
+        return ClientIp::resolve($request->getServerParams(), $this->config->getTrustedProxyHops());
     }
 
     /**

@@ -1,5 +1,6 @@
 <?php
 use App\Bootstrap;
+use App\Config\AppConfig;
 use App\ErrorHandlerFactory;
 use Psr\Http\Message\ResponseFactoryInterface;
 
@@ -30,11 +31,12 @@ $responseFactory = $container->get(ResponseFactoryInterface::class);
 // 加载路由（直接 require，不调用）
 require __DIR__ . '/../config/routes.php';
 
-// 首页
+// 首页（宣传页）：输出模板并替换动态占位符，如页脚版本号 {{APP_VERSION}} → AppConfig::APP_VERSION
 $app->get('/', function ($request, $response, $args) {
     $htmlFile = __DIR__ . '/../templates/index.html';
     if (file_exists($htmlFile)) {
-        $response->getBody()->write(file_get_contents($htmlFile));
+        $html = str_replace('{{APP_VERSION}}', AppConfig::APP_VERSION, file_get_contents($htmlFile));
+        $response->getBody()->write($html);
     } else {
         $response->getBody()->write('<h1>首页文件丢失</h1>');
     }

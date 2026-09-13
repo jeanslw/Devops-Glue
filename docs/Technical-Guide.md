@@ -1,4 +1,4 @@
-# Devops-Glue API Technical Guide v2.7.0
+# Devops-Glue API Technical Guide v2.8.0
 
 > This document is intended for developers, operations engineers, and troubleshooting. It covers all business logic, data flows, database table structures, and common issues.
 

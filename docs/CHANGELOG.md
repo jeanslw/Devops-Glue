@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.8.1 (2026-09-13)
+- **X-Forwarded-For spoofing closed** — Client IP resolution no longer trusts `X-Forwarded-For` just because the peer is loopback. The new `TRUSTED_PROXY_HOPS` setting (default `0`): at `0` only `REMOTE_ADDR` is used and XFF is ignored; when the peer is loopback/private/link-local and hops is positive, the real IP is taken from the **rightmost** XFF entry by hop count. Applies to both `/api/admin/login` and `/oauth/authorize`; without this, a forged XFF could bypass the login lockout bucket.
+- **Login lockout shared with CD** — Login-failure accounting (5 failures / 15 minutes, keyed `login_fail_` + md5(ip:lower(username)) in the `cache` table) is now semantically identical to Devops-Glue CD, so both front doors lock by the same identity.
+- **RBAC service-account boundaries tightened** — `/api/rbac` user update/delete now only operates on accounts whose `systems` contains `cd` (403 otherwise); `verify-password` rejects `root` / `super_admin` and non-CD accounts and enforces its own rate limit (5 failures / 15 minutes per IP + username, HTTP 429).
+- **Stored-link XSS hardening** — Build `log_url` / `web_url` rendered in the admin panel now pass a scheme allowlist: only http(s) and same-site relative URLs are accepted; `javascript:` / `data:` / vbscript and protocol-relative `//host` links are dropped.
+- **Docker Compose credential hardening** — The mysql service separates `MYSQL_ROOT_PASSWORD` from the application account (`MYSQL_USER` / `MYSQL_PASSWORD`); `DB_PASS` and `DB_ROOT_PASS` have no defaults; when either is empty an `env-check` preflight container prints bilingual (Chinese/English) guidance and aborts startup instead of compose's native English `${VAR:?}` error. `database/mysql_init.sql` is mounted into `/docker-entrypoint-initdb.d` for first-boot table creation. Existing volumes keep their old credentials — see the SQL note in `docker-compose.yml`.
+- **Hardcoded smoke-test password removed** — `tests/smoke_test.php` no longer falls back to the built-in `root123456`; the login password must be supplied via the `TEST_LOGIN_PASS` environment variable and the script exits with usage guidance when it is missing.
+- **English locale typo** — Restored `user.cannot_promote_admin` to "Cannot promote user to admin".
+- **Versioning** — `APP_VERSION` bumped to 2.8.1; OpenAPI `version` synced (CN/EN); the landing-page footer now shows a dynamic `version:v2.8.1` rendered server-side from the constant (auto-tracks the release, matching the Devops-CD footer).
+
 ## v2.8.0 (2026-09-09)
 - **Admin identity normalization** — Usernames are normalized consistently before creation, lookup, and update, so mixed-case names no longer create separate logical identities across the admin APIs.
 - **Deployment-specific admin email seed** — The root admin fallback email is now generated from the deployment hostname instead of a single shared `admin@example.com`, avoiding cross-deployment collisions while still filling the SSO email field for first-time bootstrap.
