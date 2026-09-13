@@ -132,7 +132,11 @@ function applyApiTokenMenuVisibility() {
 let _discovering = false;
 async function doDiscover() {
     if (_discovering) { toast('⏳ ' + __.t('js.scan_in_progress'), true, true); return; }
-    if (!confirm(__.t('js.discover_confirm'))) return;
+    if (!await confirmDialog({
+        title: __.t('common.confirm'),
+        message: __.t('js.discover_confirm'),
+        note: __.t('js.discover_note')
+    })) return;
     _discovering = true;
     toast('⏳ ' + __.t('js.scanning'), true, true);
     try {
@@ -254,6 +258,40 @@ function toast(msg, ok, center) {
     el.className = 'toast ' + (ok ? 'toast-ok' : 'toast-err') + ' show' + (center ? ' toast-center' : '');
     setTimeout(() => el.classList.remove('show'), 2500);
 }
+
+// 通用美化确认弹窗（替代浏览器原生 confirm），返回 Promise<boolean>
+let _confirmResolver = null;
+function confirmDialog(opts) {
+    opts = opts || {};
+    return new Promise(function(resolve) {
+        _confirmResolver = resolve;
+        document.getElementById('confirm-title').textContent = opts.title || __.t('common.confirm');
+        document.getElementById('confirm-message').textContent = opts.message || '';
+        const noteEl = document.getElementById('confirm-note');
+        const noteText = opts.note || '';
+        if (noteEl) {
+            noteEl.textContent = noteText;
+            noteEl.style.display = noteText ? 'block' : 'none';
+        }
+        const okBtn = document.getElementById('confirm-ok-btn');
+        okBtn.textContent = opts.confirmText || __.t('common.confirm');
+        document.getElementById('confirm-modal').style.display = 'flex';
+        setTimeout(() => okBtn.focus(), 30);
+    });
+}
+function resolveConfirm(ok) {
+    if (!_confirmResolver) return;
+    const r = _confirmResolver;
+    _confirmResolver = null;
+    document.getElementById('confirm-modal').style.display = 'none';
+    r(!!ok);
+}
+document.addEventListener('keydown', function(e) {
+    if (!_confirmResolver) return;
+    if (document.getElementById('confirm-modal').style.display === 'none') return;
+    if (e.key === 'Escape') { e.preventDefault(); resolveConfirm(false); }
+    else if (e.key === 'Enter') { e.preventDefault(); resolveConfirm(true); }
+});
 
 // 复制 Pipeline ID 列表到剪贴板（build 接口已加认证，需带 token）
 async function copyPipelineIds(jobName) {
@@ -877,9 +915,9 @@ async function loadSettings() {
         const buildBorder = (mode === 'gitlab_ci') ? '#e91e63' : '#f59e0b';
 
         const node = (icon, label, bg, border, color, fontSize) =>
-            '<div style="background:' + bg + ';border:2px solid ' + border + ';border-radius:10px;padding:14px 20px;text-align:center;min-width:110px;">'
+            '<div style="background:' + bg + ';border:2px solid ' + border + ';border-radius:10px;padding:10px 14px;text-align:center;min-width:78px;flex-shrink:0;">'
             + '<div style="font-size:' + (fontSize || 24) + 'px;line-height:1;">' + icon + '</div>'
-            + '<div style="margin-top:6px;font-size:13px;font-weight:600;color:' + color + ';">' + label + '</div>'
+            + '<div style="margin-top:6px;font-size:13px;font-weight:600;color:' + color + ';white-space:nowrap;">' + label + '</div>'
             + '</div>';
         const arrow = '<div style="color:#9ca3af;font-size:22px;line-height:1;">→</div>';
         const split = '<div style="color:#9ca3af;font-size:22px;line-height:1;">/</div>';
@@ -941,14 +979,14 @@ async function loadSettings() {
 
         // ── 左右并排 + 中间分界线 ──
         const side = (title, desc, inner) =>
-            '<div style="flex:1;min-width:280px;padding:16px 14px;display:flex;flex-direction:column;align-items:center;gap:10px;">'
+            '<div style="flex:1;min-width:220px;padding:12px 10px;display:flex;flex-direction:column;align-items:center;gap:8px;">'
             + '<div style="font-size:12px;font-weight:700;letter-spacing:2px;color:#6b7280;">' + title + '</div>'
-            + '<div style="font-size:11px;color:#9ca3af;text-align:center;max-width:340px;">' + desc + '</div>'
-            + '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:center;">' + inner + '</div>'
+            + '<div style="font-size:11px;color:#9ca3af;text-align:center;max-width:250px;line-height:1.5;">' + desc + '</div>'
+            + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:nowrap;justify-content:center;">' + inner + '</div>'
             + '</div>';
 
         if (hasPull && hasPush) {
-            flow = '<div style="margin-top:14px;display:flex;align-items:stretch;justify-content:center;flex-wrap:wrap;">'
+            flow = '<div style="margin-top:14px;display:flex;align-items:stretch;justify-content:center;gap:12px;flex-wrap:nowrap;">'
                 + side(__.t('js.mode_pull_title'), __.t('js.mode_pull_desc'), pullInner)
                 + '<div style="width:1px;align-self:stretch;background:#e5e7eb;margin:8px 0;"></div>'
                 + side(__.t('js.mode_push_title'), __.t('js.mode_push_desc'), pushInner)
@@ -963,7 +1001,7 @@ async function loadSettings() {
                 + '</div>';
         }
 
-        display.innerHTML = '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
+        display.innerHTML = '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:20px;">'
             + modeBadge + srcLabel + customBadge
             + '</div>'
             + flow;
@@ -988,12 +1026,16 @@ async function onBuildModeChange() {
     updateBuildModeValue(); // 回退后显示旧值
 
     const modeLabels = {
-        'jenkins': '⚡ ' + __.t('js.mode_label_jenkins'),
-        'gitlab_ci': '🐺 ' + __.t('js.mode_label_gitlab_ci'),
-        'both': '⚡ ' + __.t('js.mode_label_both')
+        'jenkins': __.t('build.mode_jenkins'),
+        'gitlab_ci': __.t('build.mode_gitlab_ci'),
+        'both': __.t('build.mode_both')
     };
 
-    if (!confirm(__.t('js.mode_switch_confirm', {mode: modeLabels[newMode] || newMode}))) {
+    if (!await confirmDialog({
+        title: __.t('build.mode_label'),
+        message: __.t('js.mode_switch_confirm', {mode: modeLabels[newMode] || newMode}),
+        note: __.t('js.mode_switch_note')
+    })) {
         return;
     }
 
@@ -1035,14 +1077,18 @@ async function onCustomPushToggle() {
     const newEnabled = cpToggle.checked;
     const oldEnabled = currentCpEnabled;
 
-    if (!confirm(newEnabled
-        ? __.t('js.mode_label_custom_push')
-        : __.t('js.custom_push_disable_confirm'))) {
+    if (!await confirmDialog({
+        title: __.t('common.confirm'),
+        message: newEnabled
+            ? __.t('js.custom_push_enable_confirm')
+            : __.t('js.custom_push_disable_confirm'),
+        note: __.t('js.custom_push_toggle_note')
+    })) {
         cpToggle.checked = oldEnabled;
         return;
     }
 
-    const statusEl = document.getElementById('build-mode-status');
+    const statusEl = document.getElementById('custom-push-status');
     statusEl.style.display = 'none';
     try {
         const res = await fetch('/api/admin/build_mode', {
@@ -1072,14 +1118,18 @@ async function onStaleTagCleanupToggle() {
     const newEnabled = staleToggle.checked;
     const oldEnabled = currentStaleCleanupEnabled;
 
-    if (!confirm(newEnabled
-        ? __.t('js.stale_tag_cleanup_enable_confirm')
-        : __.t('js.stale_tag_cleanup_disable_confirm'))) {
+    if (!await confirmDialog({
+        title: __.t('common.confirm'),
+        message: newEnabled
+            ? __.t('js.stale_tag_cleanup_enable_confirm')
+            : __.t('js.stale_tag_cleanup_disable_confirm'),
+        note: __.t('js.stale_tag_cleanup_note')
+    })) {
         staleToggle.checked = oldEnabled;
         return;
     }
 
-    const statusEl = document.getElementById('build-mode-status');
+    const statusEl = document.getElementById('stale-tag-status');
     statusEl.style.display = 'none';
     try {
         const res = await fetch('/api/admin/build_mode', {
@@ -1527,7 +1577,12 @@ async function activateMap(jobName, item) {
         toast(__.t('js.cp_disabled_hint'), false);
         return;
     }
-    if (!confirm(__.t('js.activate_confirm') + ' "' + jobName + '"?\n\n' + __.t('js.activate_warn_hide'))) return;
+    if (!await confirmDialog({
+        title: __.t('common.confirm'),
+        message: __.t('js.activate') + ' "' + jobName + '"',
+        note: __.t('js.activate_warn_hide'),
+        confirmText: __.t('common.confirm')
+    })) return;
     try {
         item._original_job_name = jobName;
         item.status = 'active';
@@ -1550,7 +1605,12 @@ async function activateMap(jobName, item) {
 }
 
 async function deleteMap(jobName) {
-    if (!confirm(__.t('js.delete_confirm') + ' "' + jobName + '"?')) return;
+    if (!await confirmDialog({
+        title: '🗑️ ' + __.t('js.delete_confirm'),
+        message: '"' + jobName + '"',
+        note: __.t('js.delete_note'),
+        confirmText: __.t('common.confirm')
+    })) return;
     try {
         const res = await fetch(MAP_API + '?job_name=' + encodeURI(jobName), { method:'DELETE', headers:authHeaders() });
         if (handle401(res)) return;

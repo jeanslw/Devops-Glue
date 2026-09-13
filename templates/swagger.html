@@ -28,9 +28,27 @@
     .lbox .err { color: #dc2626; font-size: 13px; margin-top: 8px; display: none; }
     .lbox .back { margin-top: 16px; font-size: 13px; }
     .lbox .back a { color: #4f46e5; text-decoration: none; }
+    .docs-lang-switch {
+      position: fixed; top: 18px; right: 20px; z-index: 1000;
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 10px; border-radius: 999px; border: 1px solid rgba(255,255,255,.4);
+      background: rgba(255,255,255,.12); backdrop-filter: blur(6px); color: #fff; font-size: 12px;
+    }
+    .docs-lang-switch select {
+      border: 1px solid rgba(255,255,255,.5); border-radius: 6px; background: rgba(255,255,255,.15);
+      color: #fff; padding: 4px 8px; font-size: 12px; cursor: pointer;
+    }
+    .docs-lang-switch select option { color: #111827; background: #fff; }
   </style>
 </head>
 <body>
+  <div class="docs-lang-switch" aria-label="language switch">
+    <span>🌐</span>
+    <select id="docs-lang-select" onchange="switchLang(this.value)">
+      <option value="zh-CN">中文</option>
+      <option value="en">English</option>
+    </select>
+  </div>
   <div id="login-layer">
     <div class="lbox">
       <h3 data-t="title">📖 API 文档</h3>
@@ -88,6 +106,7 @@
     // 已有凭证（如从后台导航进来）→ 隐藏登录层；未登录 → 保持登录框，URL 不变。
     if (getDocsToken()) {
       document.getElementById('login-layer').style.display = 'none';
+      document.querySelector('.docs-lang-switch').style.display = 'none';
     } else {
       applyLoginI18n();
     }
@@ -118,7 +137,9 @@
     }
 
     window.onload = function () {
-      document.getElementById('swagger-lang').value = localStorage.getItem('dg_lang') || 'zh-CN';
+      var lang = localStorage.getItem('dg_lang') || 'zh-CN';
+      document.getElementById('swagger-lang').value = lang;
+      document.getElementById('docs-lang-select').value = lang;
       var token = getDocsToken();
       if (!token) { return; } // 未登录：登录层已显示
       renderDocs(token);
@@ -144,6 +165,7 @@
           if (d.user) sessionStorage.setItem('admin_user', d.user);
           sessionStorage.setItem('admin_is_root', d.is_root ? 'true' : 'false');
           document.getElementById('login-layer').style.display = 'none';
+          document.querySelector('.docs-lang-switch').style.display = 'none';
           renderDocs(d.token);
         } else {
           e.textContent = d.message || L[detectLang()].login_fail;
