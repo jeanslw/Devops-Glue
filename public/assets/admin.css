@@ -471,40 +471,97 @@
             color:#9ca3af; font-size:11px; line-height:1.7;
         }
         .mode-card-notes li { margin:2px 0; }
+
+        /* ── 配置模式：CI 流程图（拉取式 / 推送式，含响应式）── */
+        #mode-display .mf-badges { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:20px; }
+        .mf-row { margin-top:14px; display:flex; align-items:stretch; justify-content:center; gap:12px; flex-wrap:wrap; }
+        .mf-row--single { align-items:center; }
+        .mf-divider { width:1px; align-self:stretch; background:#e5e7eb; margin:8px 0; }
+        .mf-side {
+            flex:1 1 260px; min-width:220px; max-width:460px; padding:12px 10px;
+            display:flex; flex-direction:column; align-items:center; gap:8px;
+        }
+        .mf-side-title { font-size:12px; font-weight:700; letter-spacing:2px; color:#6b7280; }
+        .mf-side-desc { font-size:11px; color:#9ca3af; text-align:center; max-width:250px; line-height:1.5; }
+        .mf-flow { display:flex; align-items:center; gap:8px; flex-wrap:nowrap; justify-content:center; }
+        .mf-node {
+            background:#f3f4f6; border:2px solid #d1d5db; border-radius:10px;
+            padding:10px 14px; text-align:center; min-width:78px;
+        }
+        .mf-node-icon { font-size:24px; line-height:1; }
+        .mf-node-name { margin-top:6px; font-size:13px; font-weight:600; white-space:nowrap; }
+        .mf-node.git { background:#f3f4f6; border-color:#d1d5db; }
+        .mf-node.git .mf-node-name { color:#374151; }
+        .mf-node.jenkins { background:#fff8e1; border-color:#f59e0b; }
+        .mf-node.jenkins .mf-node-name { color:#d97706; }
+        .mf-node.user-ci { background:#fef3c7; border-color:#f59e0b; }
+        .mf-node.user-ci .mf-node-name { color:#d97706; }
+        .mf-node.gitlab { background:#fce4ec; border-color:#e91e63; }
+        .mf-node.gitlab .mf-node-name { color:#c81e1e; }
+        .mf-node.harbor { background:#ecfeff; border-color:#0891b2; }
+        .mf-node.harbor .mf-node-name { color:#0e7490; }
+        .mf-node.glue { background:#f0fdf4; border-color:#16a34a; }
+        .mf-node.glue .mf-node-name { color:#15803d; }
+        .mf-arrow { color:#9ca3af; font-size:22px; line-height:1; }
+
         @media (max-width:900px) {
             .mode-cards { grid-template-columns:1fr; }
             #mode-display { min-height:220px; }
+            /* 拉取式/推送式两卡片改为上下堆叠，分界线转为水平 */
+            .mf-row { flex-direction:column; align-items:center; }
+            .mf-divider { width:auto; min-width:140px; height:1px; align-self:auto; margin:4px 0; }
+            .mf-side { max-width:100%; width:100%; }
         }
 
+        /* 汉堡按钮与抽屉遮罩（桌面端隐藏） */
+        .sidebar-toggle { display:none; }
+        .sidebar-overlay { display:none; }
+
         @media (max-width:768px) {
-            .layout { flex-direction:column; }
-            .sidebar { width:100%; display:flex; overflow-x:visible; padding:0; border-right:none; border-bottom:1px solid #e5e7eb; }
-            .sidebar .menu-item { white-space:nowrap; border-left:none; border-bottom:3px solid transparent; padding:12px 16px; }
-            .sidebar .menu-item.active { border-left:none; border-bottom-color:#4f46e5; }
-            .sidebar .menu-div { display:none; }
-            .sidebar .menu-group { position:relative; }
-            .sidebar .submenu {
-                position:absolute; left:0; top:100%; background:#fff; min-width:180px;
-                box-shadow:0 4px 12px rgba(0,0,0,.12); z-index:10; border-radius:0 0 8px 8px;
+            /* 抽屉菜单：侧栏改为左侧滑出，点击汉堡按钮开合；菜单恢复纵向堆叠（弹层不再被裁剪） */
+            .sidebar-toggle {
+                display:inline-flex; align-items:center; justify-content:center;
+                width:34px; height:34px; flex-shrink:0; margin-left:8px;
+                border:1px solid #d1d5db; border-radius:8px; background:#fff;
+                font-size:17px; line-height:1; cursor:pointer; color:#374151;
             }
-            .sidebar .menu-group.expanded .submenu { max-height:300px; }
-            .sidebar .submenu-item { padding-left:16px; border-bottom:3px solid transparent; }
+            .sidebar {
+                position:fixed; left:0; top:52px; bottom:0; width:230px; z-index:60;
+                display:flex; flex-direction:column; flex-wrap:nowrap;
+                background:#fff; border-right:1px solid #e5e7eb; padding:12px 0;
+                overflow-y:auto; overflow-x:hidden;
+                transform:translateX(-100%); transition:transform .2s ease;
+                box-shadow:0 0 24px rgba(0,0,0,.10);
+            }
+            .sidebar.open { transform:translateX(0); }
+            .sidebar-overlay { position:fixed; inset:0; z-index:55; background:rgba(15,23,42,.45); }
+            .sidebar-overlay.show { display:block; }
             .content { padding:16px; }
             .monitor-grid { grid-template-columns:1fr; }
             .form-grid { grid-template-columns:1fr; }
             .topo-flow { grid-template-columns:1fr; gap:8px; }
             .topo-arrow { transform:rotate(90deg); justify-self:center; padding:4px 0; }
+            /* 窄屏表格改为横向滚动（按内容自然宽度），避免多列被挤压变形 */
+            table { display:block; overflow-x:auto; }
+            table td { white-space:nowrap; }
+            /* 例外：Token 管理的「接口权限 scope」列允许换行——全选时 scope 很多，
+               nowrap 会让内容溢出 td 画到后面列上混在一起 */
+            table td.scope-cell { white-space:normal; }
+            /* 窄屏顶栏：单行不换行；隐藏 logo 旁「管理后台」文字，只留 logo；左对齐避免 space-between 把 ☰ 甩到中间 */
+            .topbar { height:52px; padding:8px 12px; flex-wrap:nowrap; gap:8px; justify-content:flex-start; }
+            .topbar .logo { flex-shrink:0; }
+            .topbar .logo span[data-i18n] { display:none; }
+            .topbar .top-right { margin-left:auto; flex-wrap:nowrap; justify-content:flex-end; gap:10px; }
         }
         @media (max-width:480px) {
             .stats-row { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
             .stat-card { min-width:unset; padding:12px 10px; }
             .stat-num { font-size:20px; }
             .stat-label { font-size:11px; }
-            .sidebar { overflow-x:auto; scrollbar-width:none; -ms-overflow-style:none; }
-            .sidebar::-webkit-scrollbar { display:none; }
-            .sidebar .menu-item { padding:8px 10px; font-size:12px; flex-shrink:0; }
-            .sidebar .submenu { min-width:140px; }
-            .sidebar .submenu-item { font-size:12px; padding:8px 12px; }
+            /* 小屏抽屉：宽度略收窄，菜单项保持纵向堆叠 */
+            .sidebar { width:210px; }
+            .sidebar .menu-item { padding:10px 14px; font-size:13px; }
+            .sidebar .submenu-item { font-size:12px; }
             .content { padding:10px; }
             .form-grid.three-col { grid-template-columns:1fr; }
             .modal-content { max-width:95vw; margin:20px auto; padding:16px; }
@@ -514,4 +571,16 @@
             .btn { font-size:12px; padding:6px 14px; }
             table th, table td { font-size:12px; padding:8px 6px; }
             .setting-item { flex-direction:column; gap:4px; }
+            /* 小屏顶栏：单行不换行；隐藏用户名，仅保留 图标链接/语言切换/退出 */
+            .topbar .top-right { gap:8px; }
+            .topbar .top-right > * { margin-right:0 !important; }
+            .topbar #top-user { display:none; }
+            .topbar .top-right a, .topbar .top-right .lang-switch { font-size:12px; }
+            .topbar .top-right select { padding:2px 6px; font-size:12px; }
+            /* 流程图节点允许换行/收缩；配置卡片头部允许换行 */
+            .mf-flow { flex-wrap:wrap; }
+            .mf-node { min-width:0; padding:8px 10px; }
+            .mf-node-name { white-space:normal; }
+            .mode-card-hd, .build-mode-row { flex-wrap:wrap; }
+            .mode-card-hd select { min-width:0; flex:1 1 120px; }
         }

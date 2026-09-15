@@ -77,9 +77,12 @@
         }
         @media (max-width:480px) {
             .features { grid-template-columns:1fr; }
-            .navbar { padding:10px 12px; flex-direction:column; gap:8px; }
-            .nav-links { gap:10px; flex-wrap:wrap; justify-content:center; }
-            .nav-links a { font-size:13px; }
+            /* 小屏导航：单行不换行；隐藏 logo 旁「Devops-Glue」文字只留 logo，链接靠右 */
+            .navbar { padding:10px 12px; flex-wrap:nowrap; gap:8px; }
+            .logo-text { display:none; }
+            .nav-links { gap:10px; flex-wrap:nowrap; margin-left:auto; justify-content:flex-end; }
+            .nav-links a { font-size:12px; }
+            .lang-switch select { padding:3px 8px; font-size:12px; }
             .main { padding:20px 12px; }
             .hero { padding-bottom:18px; }
             .hero h1 { font-size:20px; }
@@ -94,7 +97,7 @@
 <body>
 
 <nav class="navbar">
-    <a href="/" class="logo"><img src="/logo.png" alt="Logo">Devops-Glue</a>
+    <a href="/" class="logo"><img src="/logo.png" alt="Logo"><span class="logo-text">Devops-Glue</span></a>
     <div class="nav-links">
         <span class="lang-switch" style="margin-right:8px;">
             🌐 <select id="lang-select" onchange="__.switchTo(this.value)">
