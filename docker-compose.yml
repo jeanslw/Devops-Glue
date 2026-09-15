@@ -108,15 +108,23 @@ services:
       #    或备份后删除 mysql-data 卷重新初始化（脚本会自动建全部表）。
     restart: unless-stopped
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
-    # 官方健康检查：--connect 要求 TCP 真正可连（避开 mysqladmin ping 对 Access denied 仍返回 0），
-    # --innodb_initialized 要求 InnoDB 就绪。官方入口在对外侦听前跑完建号/initdb.d。
-    # 用 start_period 消化首启慢初始化，而不是加大 retries——retries 在稳态故障时同样拉长发现窗口。
+    # ⚠️ mysql:8.4（8.4.11-1.el9）镜像内并无官方 healthcheck.sh（实测
+    #   "exec: healthcheck.sh: executable file not found in $PATH"），官方脚本方案不可用。
+    # 改用镜像内置 mysql 客户端做真实认证连接检查：
+    #   - MYSQL_PWD 走环境变量，避免密码出现在命令行（规避 insecure warning）；
+    #   - -h127.0.0.1 强制 TCP 真连接；
+    #   - SELECT 1 需真实认证通过（避开 mysqladmin ping 对 Access denied 仍返回 0 的缺陷）。
+    #   ⚠️ 若旧 mysql-data 卷的 root 口令与当前 MYSQL_ROOT_PASSWORD 不符，此检查会永久失败
+    #      （表现为容器 unhealthy + "dependency failed to start"）——那是卷的问题，不是检查的问题。
+    # start_period 仅首启生效（首次失败不计数）：覆盖「临时 server → initdb.d → 正式 server」
+    # 的首启初始化。实测本机初始化在数秒内完成，60s 已留足余量；
+    # 稳态故障发现速度由 interval×retries=50s 决定，与 start_period 无关。
     healthcheck:
-      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$$MYSQL_ROOT_PASSWORD\" mysql -h127.0.0.1 -uroot --silent -e 'SELECT 1'"]
       interval: 5s
       timeout: 5s
       retries: 10
-      start_period: 90s
+      start_period: 60s
 
 # ──────────────────────────────────────
 # Devops CD Service — 与 CI/MySQL 共用根目录 .env
