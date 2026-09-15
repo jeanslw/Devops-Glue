@@ -205,8 +205,22 @@ async function doLogin() {
 }
 
 document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        var sb = document.querySelector('.sidebar');
+        if (sb && sb.classList.contains('open')) toggleSidebar();
+    }
     if (e.key === 'Enter' && document.getElementById('login-page').style.display !== 'none') doLogin();
 });
+
+/** 小屏抽屉菜单开合（汉堡按钮/遮罩/Esc） */
+function toggleSidebar() {
+    var sb = document.querySelector('.sidebar');
+    var ov = document.getElementById('sidebar-overlay');
+    if (!sb) return;
+    var open = !sb.classList.contains('open');
+    sb.classList.toggle('open', open);
+    if (ov) ov.classList.toggle('show', open);
+}
 
 function switchTab(name) {
     document.querySelectorAll('.sidebar .menu-item').forEach(el => el.classList.remove('active'));
@@ -239,6 +253,9 @@ function switchTab(name) {
     if (name === 'perm-register') { }
     if (name === 'implied-rules') loadImpliedRules();
     if (name === 'api-tokens') loadApiTokens();
+    // 小屏抽屉：选中菜单项后自动收起
+    var sb = document.querySelector('.sidebar');
+    if (sb && sb.classList.contains('open')) toggleSidebar();
 }
 
 function toggleUserMenu() {
@@ -910,17 +927,16 @@ async function loadSettings() {
         // 状态图（流程卡片式）：拉取式（左）与推送式（右）并排，中间分界线
         let modeBadge = '', flow = '';
         const buildCi = (mode === 'gitlab_ci') ? '🐺 ' + __.t('js.mode_gitlab_ci_name') : '⚡ ' + __.t('js.mode_jenkins_name');
-        const buildColor = (mode === 'gitlab_ci') ? '#c81e1e' : '#d97706';
-        const buildBg = (mode === 'gitlab_ci') ? '#fce4ec' : '#fff8e1';
-        const buildBorder = (mode === 'gitlab_ci') ? '#e91e63' : '#f59e0b';
+        const buildCls = (mode === 'gitlab_ci') ? 'gitlab' : 'jenkins';
 
-        const node = (icon, label, bg, border, color, fontSize) =>
-            '<div style="background:' + bg + ';border:2px solid ' + border + ';border-radius:10px;padding:10px 14px;text-align:center;min-width:78px;flex-shrink:0;">'
-            + '<div style="font-size:' + (fontSize || 24) + 'px;line-height:1;">' + icon + '</div>'
-            + '<div style="margin-top:6px;font-size:13px;font-weight:600;color:' + color + ';white-space:nowrap;">' + label + '</div>'
+        // 节点/箭头样式统一走 admin.css 的 .mf-*（响应式：窄屏自动换行/收缩）
+        const node = (cls, icon, label, fontSize) =>
+            '<div class="mf-node ' + cls + '">'
+            + '<div class="mf-node-icon" style="font-size:' + (fontSize || 24) + 'px;">' + icon + '</div>'
+            + '<div class="mf-node-name">' + label + '</div>'
             + '</div>';
-        const arrow = '<div style="color:#9ca3af;font-size:22px;line-height:1;">→</div>';
-        const split = '<div style="color:#9ca3af;font-size:22px;line-height:1;">/</div>';
+        const arrow = '<div class="mf-arrow">→</div>';
+        const split = '<div class="mf-arrow">/</div>';
 
         // custom_push 启用状态徽标
         const customBadge = (cpEnabled && hasCustom)
@@ -932,37 +948,37 @@ async function loadSettings() {
         if (hasJenkins && hasGitlab) {
             if (mode === 'both') {
                 modeBadge = '<span class="badge" style="background:#dbeafe;color:#1d4ed8;font-size:13px;">⚡ ' + __.t('js.mode_jenkins_name') + ' + 🐺 ' + __.t('js.mode_gitlab_ci_name') + ' ' + __.t('js.mode_coexist') + '</span>';
-                pullInner = node('🌿', __.t('js.mode_git_repo'), '#f3f4f6', '#d1d5db', '#374151', 22)
+                pullInner = node('git', '🌿', __.t('js.mode_git_repo'), 22)
                     + arrow
-                    + node('⚡', __.t('js.mode_jenkins_name'), '#fff8e1', '#f59e0b', '#d97706', 24)
+                    + node('jenkins', '⚡', __.t('js.mode_jenkins_name'))
                     + split
-                    + node('🐺', __.t('js.mode_gitlab_ci_name'), '#fce4ec', '#e91e63', '#c81e1e', 24)
+                    + node('gitlab', '🐺', __.t('js.mode_gitlab_ci_name'))
                     + arrow
-                    + node('🐳', __.t('js.mode_harbor_name'), '#ecfeff', '#0891b2', '#0e7490', 24);
+                    + node('harbor', '🐳', __.t('js.mode_harbor_name'));
             } else {
-                modeBadge = '<span class="badge" style="background:' + buildBg + ';color:' + buildColor + ';font-size:13px;">' + buildCi + ' ' + __.t('js.mode_mode') + '</span>';
-                const icon = (mode === 'gitlab_ci') ? '🐺' : '⚡';
-                const name = (mode === 'gitlab_ci') ? __.t('js.mode_gitlab_ci_name') : __.t('js.mode_jenkins_name');
-                pullInner = node('🌿', __.t('js.mode_git_repo'), '#f3f4f6', '#d1d5db', '#374151', 22)
+                modeBadge = (mode === 'gitlab_ci')
+                    ? '<span class="badge" style="background:#fce4ec;color:#c81e1e;font-size:13px;">' + buildCi + ' ' + __.t('js.mode_mode') + '</span>'
+                    : '<span class="badge" style="background:#fff8e1;color:#d97706;font-size:13px;">' + buildCi + ' ' + __.t('js.mode_mode') + '</span>';
+                pullInner = node('git', '🌿', __.t('js.mode_git_repo'), 22)
                     + arrow
-                    + node(icon, name, buildBg, buildBorder, buildColor, 24)
+                    + node(buildCls, (mode === 'gitlab_ci') ? '🐺' : '⚡', (mode === 'gitlab_ci') ? __.t('js.mode_gitlab_ci_name') : __.t('js.mode_jenkins_name'))
                     + arrow
-                    + node('🐳', __.t('js.mode_harbor_name'), '#ecfeff', '#0891b2', '#0e7490', 24);
+                    + node('harbor', '🐳', __.t('js.mode_harbor_name'));
             }
         } else if (hasGitlab) {
             modeBadge = '<span class="badge" style="background:#fce4ec;color:#c81e1e;font-size:13px;">🐺 ' + __.t('js.mode_gitlab_ci_name') + ' ' + __.t('js.mode_mode') + '</span>';
-            pullInner = node('🌿', __.t('js.mode_git_repo'), '#f3f4f6', '#d1d5db', '#374151', 22)
+            pullInner = node('git', '🌿', __.t('js.mode_git_repo'), 22)
                 + arrow
-                + node('🐺', __.t('js.mode_gitlab_ci_name'), '#fce4ec', '#e91e63', '#c81e1e', 24)
+                + node('gitlab', '🐺', __.t('js.mode_gitlab_ci_name'))
                 + arrow
-                + node('🐳', __.t('js.mode_harbor_name'), '#ecfeff', '#0891b2', '#0e7490', 24);
+                + node('harbor', '🐳', __.t('js.mode_harbor_name'));
         } else {
             modeBadge = '<span class="badge" style="background:#fff8e1;color:#d97706;font-size:13px;">⚡ ' + __.t('js.mode_jenkins_name') + ' ' + __.t('js.mode_mode') + '</span>';
-            pullInner = node('🌿', __.t('js.mode_git_repo'), '#f3f4f6', '#d1d5db', '#374151', 22)
+            pullInner = node('git', '🌿', __.t('js.mode_git_repo'), 22)
                 + arrow
-                + node('⚡', __.t('js.mode_jenkins_name'), '#fff8e1', '#f59e0b', '#d97706', 24)
+                + node('jenkins', '⚡', __.t('js.mode_jenkins_name'))
                 + arrow
-                + node('🐳', __.t('js.mode_harbor_name'), '#ecfeff', '#0891b2', '#0e7490', 24);
+                + node('harbor', '🐳', __.t('js.mode_harbor_name'));
         }
         const hasPull = hasJenkins || hasGitlab;
 
@@ -970,38 +986,38 @@ async function loadSettings() {
         const hasPush = cpEnabled && hasCustom;
         let pushInner = '';
         if (hasPush) {
-            pushInner = node('📤', __.t('js.mode_user_ci'), '#fef3c7', '#f59e0b', '#d97706', 24)
+            pushInner = node('user-ci', '📤', __.t('js.mode_user_ci'))
                 + arrow
-                + node('🐳', __.t('js.mode_harbor_name'), '#ecfeff', '#0891b2', '#0e7490', 24)
+                + node('harbor', '🐳', __.t('js.mode_harbor_name'))
                 + arrow
-                + node('📋', 'Devops-Glue', '#f0fdf4', '#16a34a', '#15803d', 24);
+                + node('glue', '📋', 'Devops-Glue');
         }
 
         // ── 左右并排 + 中间分界线 ──
         const side = (title, desc, inner) =>
-            '<div style="flex:1;min-width:220px;padding:12px 10px;display:flex;flex-direction:column;align-items:center;gap:8px;">'
-            + '<div style="font-size:12px;font-weight:700;letter-spacing:2px;color:#6b7280;">' + title + '</div>'
-            + '<div style="font-size:11px;color:#9ca3af;text-align:center;max-width:250px;line-height:1.5;">' + desc + '</div>'
-            + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:nowrap;justify-content:center;">' + inner + '</div>'
+            '<div class="mf-side">'
+            + '<div class="mf-side-title">' + title + '</div>'
+            + '<div class="mf-side-desc">' + desc + '</div>'
+            + '<div class="mf-flow">' + inner + '</div>'
             + '</div>';
 
         if (hasPull && hasPush) {
-            flow = '<div style="margin-top:14px;display:flex;align-items:stretch;justify-content:center;gap:12px;flex-wrap:nowrap;">'
+            flow = '<div class="mf-row">'
                 + side(__.t('js.mode_pull_title'), __.t('js.mode_pull_desc'), pullInner)
-                + '<div style="width:1px;align-self:stretch;background:#e5e7eb;margin:8px 0;"></div>'
+                + '<div class="mf-divider"></div>'
                 + side(__.t('js.mode_push_title'), __.t('js.mode_push_desc'), pushInner)
                 + '</div>';
         } else if (hasPull) {
-            flow = '<div style="margin-top:14px;display:flex;align-items:center;justify-content:center;">'
+            flow = '<div class="mf-row mf-row--single">'
                 + side(__.t('js.mode_pull_title'), __.t('js.mode_pull_desc'), pullInner)
                 + '</div>';
         } else if (hasPush) {
-            flow = '<div style="margin-top:14px;display:flex;align-items:center;justify-content:center;">'
+            flow = '<div class="mf-row mf-row--single">'
                 + side(__.t('js.mode_push_title'), __.t('js.mode_push_desc'), pushInner)
                 + '</div>';
         }
 
-        display.innerHTML = '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:20px;">'
+        display.innerHTML = '<div class="mf-badges">'
             + modeBadge + srcLabel + customBadge
             + '</div>'
             + flow;
@@ -2518,7 +2534,7 @@ async function loadApiTokens() {
                     + '<button class="btn btn-sm btn-del" onclick="deleteApiToken(' + t.id + ')">🗑 ' + esc(__.t('api_token.delete')) + '</button>';
                 return '<tr>' +
                     '<td>' + esc(t.name) + '</td>' +
-                    '<td style="font-size:12px;max-width:260px;">' + scopes + '</td>' +
+                    '<td class="scope-cell" style="font-size:12px;max-width:260px;">' + scopes + '</td>' +
                     '<td>' + exp + '</td>' +
                     '<td>' + status + '</td>' +
                     '<td style="font-size:12px;">' + esc(t.created_at || '') + '</td>' +

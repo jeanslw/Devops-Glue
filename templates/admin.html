@@ -33,6 +33,7 @@
 
     <div class="topbar">
         <a href="/" class="logo"><img src="/logo.png" alt="Logo" style="height:32px;width:auto;vertical-align:middle;"> <span data-i18n="admin.login_subtitle">管理后台</span></a>
+        <button type="button" class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()" aria-label="Menu">☰</button>
         <div class="top-right">
             <span id="top-user" style="margin-right:12px;font-size:13px;color:#374151;font-weight:500;"></span>
             <span class="lang-switch" style="margin-right:12px;font-size:13px;color:#6b7280;display:inline-flex;align-items:center;gap:4px;">
@@ -46,6 +47,9 @@
             <a href="#" onclick="doLogout()" data-i18n="auth.logout">🚪 退出</a>
         </div>
     </div>
+
+    <!-- 小屏抽屉菜单遮罩 -->
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
 
     <div class="layout">
         <!-- 侧栏 -->
