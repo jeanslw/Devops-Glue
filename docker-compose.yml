@@ -7,6 +7,9 @@ services:
     container_name: devops-glue
     env_file:
       - .env
+    environment:
+      # 容器 OS + PHP date.timezone 共用；未设时默认上海。改根目录 .env 的 TZ 即可。
+      TZ: ${TZ:-Asia/Shanghai}
     volumes:
       - ./config/.env:/app/config/.env:ro
       - ./config/docker/nginx.conf:/etc/nginx/sites-available/default:ro
@@ -14,11 +17,21 @@ services:
       - ./config/docker/supervisord.conf:/etc/supervisor/conf.d/supervisord.conf:ro
       #- ./config/data:/app/config/data
       - ./applog:/data/logs/ci-platform
+      # 运行时数据持久化到宿主机（分类挂载，互不覆盖）：
+      #   /data/db    — SQLite（DB_PATH=/data/db/data.db）。MySQL 模式几乎不用此目录。
+      #   /data/cache — OIDC 私钥 + GitLab ID 缓存。不挂载则重建容器会换 kid/JWKS，下游 SSO 全挂。
+      # 存量 sqlite：若旧容器层里已有 /data/db/data.db，先 docker cp 到宿主机 ./data/db/ 再 up，
+      # 否则空目录挂载会挡住旧文件（看起来像「库丢了」）。
+      - ./data/db:/data/db
+      - ./data/cache:/data/cache
     ports:
       - "8080:80"
     restart: unless-stopped
+    # 健康检查（容器无 curl，/bin/sh 是 dash 不支持 /dev/tcp，用 PHP fsockopen）：
+    #   1) nginx 在容器内 80 端口可接受 TCP 连接（整条 HTTP 链路入口存活）；
+    #   2) php-fpm unix socket 存在（fpm 进程存活且监听就绪）。
     healthcheck:
-      test: ["CMD-SHELL", "grep -q 'php-fpm' /proc/*/comm 2>/dev/null && (test -S /run/php/php-fpm.sock || exec 3<>/dev/tcp/127.0.0.1/9000) || exit 1"]
+      test: ["CMD-SHELL", "php -r 'exit(@fsockopen(\"127.0.0.1\", 80) ? 0 : 1);' && test -S /run/php/php-fpm.sock"]
     depends_on:
       mysql:
         condition: service_healthy
@@ -30,12 +43,21 @@ services:
     image: mysql:8.4
     entrypoint: ["sh", "-c"]
     restart: "no"
+    volumes:
+      # 挂载 config/ 用于预检 config/.env 是否已创建（防止忘记 cp .env.example .env 时
+      # bind mount 把 config/.env 变成空目录导致启动 fatal）
+      - ./config:/check:ro
     environment:
       DB_PASS: ${DB_PASS:-}
       DB_ROOT_PASS: ${DB_ROOT_PASS:-}
     command:
       - |
         fail=0
+        if [ ! -f /check/.env ]; then
+          echo "[启动中止] 缺少 config/.env：请先执行 cp config/.env.example config/.env 并填写配置（至少填一个 Git 平台的 URL 和 Token）"
+          echo "[ABORT] Missing config/.env: run 'cp config/.env.example config/.env' and fill it in first (at least one Git platform URL + token)"
+          fail=1
+        fi
         if [ -z "$$DB_PASS" ]; then
           echo "[启动中止] 缺少数据库业务账号口令：请在根目录 .env 设置 DB_PASS（业务账号 devops 连库口令，建议 openssl rand -base64 24）"
           echo "[ABORT] Missing database application password: set DB_PASS in the root .env (password for the application account 'devops'; suggested: openssl rand -base64 24)"
@@ -62,6 +84,7 @@ services:
       env-check:
         condition: service_completed_successfully
     environment:
+      TZ: ${TZ:-Asia/Shanghai}
       # root 与业务账号分离：CI/CD 应用以 MYSQL_USER 业务账号连库，不要用 root。
       # 口令非空由 env-check 预检保证（留空时中英双语报错并中止，mysql 不会启动）。
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASS:-}
@@ -85,11 +108,15 @@ services:
       #    或备份后删除 mysql-data 卷重新初始化（脚本会自动建全部表）。
     restart: unless-stopped
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    # 官方健康检查：--connect 要求 TCP 真正可连（避开 mysqladmin ping 对 Access denied 仍返回 0），
+    # --innodb_initialized 要求 InnoDB 就绪。官方入口在对外侦听前跑完建号/initdb.d。
+    # 用 start_period 消化首启慢初始化，而不是加大 retries——retries 在稳态故障时同样拉长发现窗口。
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 5s
-      timeout: 3s
+      timeout: 5s
       retries: 10
+      start_period: 90s
 
 # ──────────────────────────────────────
 # Devops CD Service — 与 CI/MySQL 共用根目录 .env
@@ -110,6 +137,7 @@ services:
 #    env_file:
 #      - .env
 #    environment:
+#      TZ: ${TZ:-Asia/Shanghai}
 #      CI_API_URL: http://devops-glue
 #      SECRET_KEY: "${SECRET_KEY:?请先在根 .env 设置 SECRET_KEY（openssl rand -base64 32）再启用 devops-cd}"
 #    ports:

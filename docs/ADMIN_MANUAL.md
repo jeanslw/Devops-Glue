@@ -38,8 +38,8 @@ Devops-Glue API is a Slim4-based unified API layer that provides a single manage
 
 | Devops-Glue API | Devops-Glue CD |
 |:---:|:---:|
-| v2.8.1 | v1.5.2 |
-| v2.8.0 | v1.5.1 |
+| v2.8.1 | v1.5.x |
+| v2.8.0 | v1.5.x |
 | v2.7 | v1.5 |
 | v2.6 | v1.4 |
 | v2.5 | v1.3 |
@@ -170,6 +170,10 @@ Besides built-in accounts, the system can validate logins against a corporate LD
   - *Search mode* (typical for AD): set `LDAP_BIND_DN` + `LDAP_BIND_PASSWORD` + `LDAP_BASE_DN` + `LDAP_USER_FILTER`. The service binds with the service account first, searches for the user's DN using the filter, then validates the user's own password against that DN.
   - *Direct bind mode*: set `LDAP_USER_DN_PATTERN`, e.g. `uid=%s,ou=users,dc=example,dc=com`. No directory search is performed — the DN is built from the pattern and validated directly. Best for well-structured directory layouts.
 - **Transport security (pick one)**: `LDAP_USE_TLS=true` upgrades the plaintext connection to TLS (STARTTLS) after connecting on the default port 389; `LDAP_USES_LDAPS=true` connects over `ldaps://` instead (typically port 636).
+  - ⚠️ **LDAPS with a self-signed certificate**: the PHP OpenLDAP client defaults to `TLS_REQCERT=demand`, requiring the server certificate to verify against a trusted CA. Containers / bare-metal setups ship **without any CA trust configuration**, so LDAPS against a self-signed certificate fails the TLS handshake (reported as `ldap_connect_failed`, easily misdiagnosed as a network problem). Pick one fix:
+    1. Inject the CA cert path into the runtime environment: `LDAPTLS_CACERT=/path/to/ca.pem` (for Docker, mount the ca.pem into the container and set `LDAPTLS_CACERT` in `config/.env` — php-fpm runs with `clear_env=no` so it is passed through);
+    2. Or add `TLS_CACERT /path/to/ca.pem` to `/etc/ldap/ldap.conf` inside the container (persist it by bind-mounting the file).
+    Setting `LDAPTLS_REQCERT=never` skips verification for ad-hoc internal testing but removes man-in-the-middle protection — forbidden in production.
 - **Accounts must be pre-bound**: LDAP only proves *who you are*. To sign in, the username you type must already be mapped to your LDAP DN in the `user_identities` table (`provider_type='ldap'`, `provider_uid` = the user DN). Otherwise login is rejected with `auth.ldap_not_bound` — accounts are **never auto-created**. Binding example:
 
 ```sql

@@ -25,12 +25,15 @@ class OAuthService
     public function __construct(\PDO $pdo, array $clients = [])
     {
         $this->pdo = $pdo;
-        // fail-closed：secret 为空/纯空白的客户端视为未配置，直接剔除。
+        // fail-closed：secret 或 redirect_uri 为空/纯空白的客户端视为未配置，直接剔除。
         // 否则「忘了设 GRAFANA_OAUTH_SECRET、用空默认」时，空 secret 与空输入 hash_equals 相等，
         // token 端点可被空 secret 绕过——等价于公开默认密钥的带病运行。
+        // 空 redirect_uri 同理：攻击者传 redirect_uri= 会与空配置 hash_equals 成功。
         $this->clients = array_filter(
             $clients,
-            fn($c) => is_array($c) && trim((string)($c['secret'] ?? '')) !== ''
+            fn($c) => is_array($c)
+                && trim((string)($c['secret'] ?? '')) !== ''
+                && trim((string)($c['redirect_uri'] ?? '')) !== ''
         );
     }
 

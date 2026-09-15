@@ -48,7 +48,8 @@ Key features:
 
 ### 2.1 Generate / configure the signing key
 
-If Glue has no private key when first issuing an `id_token`, it **auto-generates RSA-2048** and persists it to `OIDC_KEY_FILE` (default `config/data/oidc_rsa.pem`, `chmod 0600` after writing).
+If Glue has no private key when first issuing an `id_token`, it **auto-generates RSA-2048** and persists it to `OIDC_KEY_FILE` (`chmod 0600` after writing).
+Bare metal defaults to `config/data/oidc_rsa.pem`; **the Docker image ENV is `/data/cache/oidc_rsa.pem`** (compose mounts `./data/cache`, so the key survives rebuilds). If an existing key still lives at `/app/config/data/oidc_rsa.pem` inside the container, copy it to `./data/cache/oidc_rsa.pem` on the host before recreating, or `kid`/JWKS will change and every downstream SSO client will break.
 
 In production, strongly prefer **pinning the key explicitly** so that `kid` and JWKS stay stable across restarts / multiple instances. Configure in `config/.env`:
 
@@ -61,8 +62,8 @@ OIDC_ISSUER=https://glue.example.com
 # Multi-line PEM uses \n escapes, or inject it via a k8s secret.
 # OIDC_RSA_PRIVATE_KEY=
 
-# Persistence path when auto-generating the key (default config/data/oidc_rsa.pem)
-# OIDC_KEY_FILE=
+# Persistence path when auto-generating (bare metal: config/data/oidc_rsa.pem; Docker: /data/cache/oidc_rsa.pem)
+# OIDC_KEY_FILE=/data/cache/oidc_rsa.pem
 
 # id_token lifetime in seconds (default 3600)
 # OIDC_ID_TOKEN_TTL=3600
@@ -73,33 +74,28 @@ OIDC_ISSUER=https://glue.example.com
 
 ### 2.2 Register clients
 
-Register one client per system in `oauth_clients` in `config/settings.php` (`client_id` + `secret` + an exactly-matching `redirect_uri`):
+Register one client per system in `oauth_clients` in `config/settings.php` (`client_id` + `secret` + an exactly-matching `redirect_uri`).
+`redirect_uri` is injected via env as well (see `GRAFANA_OAUTH_REDIRECT_URI` / `JENKINS_OIDC_REDIRECT_URI` in `config/.env.example`), so environment-specific callback URLs never get hardcoded into git:
 
 ```php
 'oauth_clients' => [
     'grafana' => [
         'secret'       => env('GRAFANA_OAUTH_SECRET', ''),
-        'redirect_uri' => 'http://localhost:3000/login/generic_oauth',
-    ],
-    'harbor'  => [
-        'secret'       => env('HARBOR_OIDC_SECRET', ''),
-        'redirect_uri' => 'https://harbor.example.com/c/oidc/callback',
+        'redirect_uri' => env('GRAFANA_OAUTH_REDIRECT_URI', 'http://localhost:3000/login/generic_oauth'),
     ],
     'jenkins' => [
         'secret'       => env('JENKINS_OIDC_SECRET', ''),
-        'redirect_uri' => 'https://jenkins.example.com/securityRealm/finishLogin',
+        'redirect_uri' => env('JENKINS_OIDC_REDIRECT_URI', 'http://localhost/securityRealm/finishLogin'),
     ],
-    'gitlab'  => [
-        'secret'       => env('GITLAB_OIDC_SECRET', ''),
-        'redirect_uri' => 'https://gitlab.example.com/users/auth/openid_connect/callback',
-    ],
+    // harbor / gitlab clients must be registered as needed (secret and redirect_uri
+    // both injected via env); unregistered client_ids are rejected fail-closed at authorize.
 ],
 ```
 
-> ⚠️ Security convention (fail-closed): a client whose `secret` is empty or whitespace-only is **dropped** (treated as unconfigured).
+> ⚠️ Security convention (fail-closed): a client whose `secret` or `redirect_uri` is empty or whitespace-only is **dropped** (treated as unconfigured).
 > Do not use an empty secret as a default — that would let the token endpoint be bypassed with an empty secret. Every client must have a strong random secret.
 >
-> ⚠️ `redirect_uri` uses **exact matching** (`hash_equals`). The callback URL configured on each system must match character-for-character (scheme, host, port, path), or `authorize` rejects the request.
+> ⚠️ `redirect_uri` uses **exact matching** (`hash_equals`). The callback URL configured on each system must match character-for-character (scheme, host, port, path), or `authorize` rejects the request. In production set `JENKINS_OIDC_REDIRECT_URI` / `GRAFANA_OAUTH_REDIRECT_URI` to the real callbacks; do not commit LAN IPs to git.
 
 ### 2.3 Confirm the key is ready
 
