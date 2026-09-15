@@ -190,13 +190,17 @@ return [
      * └──────────────┴──────┴──────────────────────────────────────────────────┘
      */
     'oauth_clients' => [
+        // redirect_uri 与各家系统回调地址逐字符精确匹配（hash_equals）。
+        // 通过 env 注入，禁止把具体环境的内网 IP 写进 git。
+        // 本地默认走 localhost（Grafana 带 :3000；Jenkins 不写端口，按实际监听在 env 里补全）。
+        // 生产必须改成实际回调。secret 或 redirect_uri 留空/纯空白时客户端会被剔除（fail-closed）。
         'grafana' => [
             'secret'       => env('GRAFANA_OAUTH_SECRET', ''),
-            'redirect_uri' => 'http://localhost:3000/login/generic_oauth',
+            'redirect_uri' => env('GRAFANA_OAUTH_REDIRECT_URI', 'http://localhost:3000/login/generic_oauth'),
         ],
         'jenkins' => [
             'secret'       => env('JENKINS_OIDC_SECRET', ''),
-            'redirect_uri' => 'http://192.168.137.5:8083/securityRealm/finishLogin',
+            'redirect_uri' => env('JENKINS_OIDC_REDIRECT_URI', 'http://localhost/securityRealm/finishLogin'),
         ],
     ],
 

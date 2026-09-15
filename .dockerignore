@@ -18,3 +18,15 @@ system_info.png
 system_running.png
 system_info_zh.png
 system_running_zh.png
+
+# 运行时数据 / 密钥绝不进镜像（config/data 下有本地 OIDC 私钥、SQLite 库、GitLab ID 缓存）
+config/data/
+data/
+# 补丁式运维工具（bin/backup.php 等），不随代码发布
+bin/
+# AI 助手工作目录（含会话记忆，可能含敏感部署信息）
+.claude/
+.codebuddy/
+.trae/
+# 环境覆盖文件统一由宿主机挂载/提交仓库提供，不进镜像
+config/.env.staging

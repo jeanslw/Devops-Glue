@@ -128,15 +128,12 @@ Loading order (later overrides earlier):
 
 ### Q: SQLite error: "unable to open database"?
 
-The `config/data/` directory lacks write permissions:
+The directory that holds the database file is not writable by the runtime user. The path depends on how you deploy:
 
-```bash
-# Linux / macOS
-chmod 777 config/data/
+- **Bare metal**: default is `config/data/data.db` (when `DB_PATH` is unset). Make `config/data/` writable by the PHP user: `chmod 755 config/data/` (do not use 777).
+- **Docker**: the image sets `DB_PATH=/data/db/data.db`, and compose bind-mounts `./data/db:/data/db`. The entrypoint chowns that directory to `www-data`; you usually do not need a manual chmod. If it still fails: ensure `./data/db` exists on the host and `/data/db` inside the container is owned by `www-data`.
 
-# Docker
-docker exec -it <container> chmod 777 /var/www/html/config/data/
-```
+If an old container stored the DB in the writable layer and you are adding the `./data/db` mount now, the empty host directory hides the old file. Copy it out first: `docker cp <old-container>:/data/db/data.db ./data/db/data.db`, then recreate.
 
 ### Q: How to switch from SQLite to MySQL?
 

@@ -23,7 +23,7 @@ FROM php:8.3-fpm-bookworm AS production
 # Install system dependencies. 
 # libldap2-dev 供 php-ldap 扩展编译（LDAP 登录用；不启用 LDAP 不影响其它扩展）
 RUN apt-get update && apt-get install -y \
-        nginx supervisor \
+        nginx supervisor tzdata \
         libzip-dev libicu-dev libpng-dev libjpeg-dev libfreetype6-dev  libsqlite3-dev pkg-config libldap2-dev \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
@@ -44,24 +44,23 @@ COPY . .
 COPY config/docker/nginx.conf /etc/nginx/sites-available/default
 COPY config/docker/php-fpm.conf /usr/local/etc/php-fpm.d/zz-custom.conf
 COPY config/docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY config/docker/entrypoint.sh /entrypoint.sh
 
 RUN rm -f /etc/nginx/sites-enabled/default \
     && ln -sf /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default \
     && mkdir -p /data/logs/ci-platform /data/db /data/backups /data/cache \
-    && chown -R www-data:www-data /data \
-    && chmod -R 755 /data \
-    && echo '#!/bin/bash' > /entrypoint.sh \
-    && echo 'chown -R www-data:www-data /data 2>/dev/null || true' >> /entrypoint.sh \
-    && echo 'chmod -R 755 /data 2>/dev/null || true' >> /entrypoint.sh \
-    && echo 'exec /usr/bin/supervisord -n -c /etc/supervisor/conf.d/supervisord.conf' >> /entrypoint.sh \
+    && chown www-data:www-data /data /data/logs /data/logs/ci-platform /data/db /data/backups /data/cache \
+    && chmod 0755 /data /data/logs /data/logs/ci-platform /data/db /data/backups /data/cache \
     && chmod +x /entrypoint.sh
 
-# 运行时数据统一到 /data（logs / db / backups / cache），www-data 拥有、755（弃用 777）。
+# 运行时数据统一到 /data（logs / db / backups / cache）
 # ENV 是默认值；.env 里同名项（如 LOG_PATH）会覆盖，保持一致即可。
+
 ENV LOG_PATH=/data/logs/ci-platform/ \
     DB_PATH=/data/db/data.db \
     BACKUP_DIR=/data/backups \
-    GITLAB_ID_CACHE=/data/cache/gitlab_id_cache.php
+    GITLAB_ID_CACHE=/data/cache/gitlab_id_cache.php \
+    OIDC_KEY_FILE=/data/cache/oidc_rsa.pem
 
 EXPOSE 80
 

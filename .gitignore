@@ -42,6 +42,8 @@ config/gitlab_id_cache.php
 
 #backup && database
 config/data/
+# Docker 挂载的宿主机运行时数据（OIDC 私钥 /data/cache、SQLite /data/db 等），绝不提交
+/data/
 backups/
 
 .github/copilot-instructions.md

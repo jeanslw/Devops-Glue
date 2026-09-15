@@ -55,6 +55,17 @@ class OAuthServiceTest extends TestCase
         $this->assertFalse($svc->validateClientSecret('grafana', 'wrong'));
     }
 
+    public function testEmptyRedirectUriClientIsDropped(): void
+    {
+        $svc = $this->makeService([
+            'jenkins' => ['secret' => 's3cret', 'redirect_uri' => ''],
+        ]);
+
+        $this->assertFalse($svc->validateClient('jenkins', ''));
+        $this->assertFalse($svc->validateClient('jenkins', 'http://localhost/securityRealm/finishLogin'));
+        $this->assertFalse($svc->validateClientSecret('jenkins', 's3cret'));
+    }
+
     public function testUnknownClientRejected(): void
     {
         $svc = $this->makeService([]);
