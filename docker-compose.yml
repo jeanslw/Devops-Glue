@@ -15,6 +15,9 @@ services:
       - ./config/docker/nginx.conf:/etc/nginx/sites-available/default:ro
       - ./config/docker/php-fpm.conf:/usr/local/etc/php-fpm.d/zz-custom.conf:ro
       - ./config/docker/supervisord.conf:/etc/supervisor/conf.d/supervisord.conf:ro
+      # HTTPS 证书（想启用去掉注释；私钥只走挂载，不进镜像）
+      # HTTPS certs (uncomment to enable; private key is mounted, never baked into the image)
+      #- ./config/certs:/etc/nginx/certs:ro
       #- ./config/data:/app/config/data
       - ./applog:/data/logs/ci-platform
       # 运行时数据持久化到宿主机（分类挂载，互不覆盖）：
@@ -26,6 +29,9 @@ services:
       - ./data/cache:/data/cache
     ports:
       - "8080:80"
+      # HTTPS：想启用去掉注释，并在 nginx.conf 放开 443 listen 段、证书放 config/certs/
+      # HTTPS: to enable, uncomment, un-comment the 443 listen block in nginx.conf, and put certs in config/certs/
+      #- "8443:443"
     restart: unless-stopped
     # 健康检查（容器无 curl，/bin/sh 是 dash 不支持 /dev/tcp，用 PHP fsockopen）：
     #   1) nginx 在容器内 80 端口可接受 TCP 连接（整条 HTTP 链路入口存活）；

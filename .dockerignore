@@ -30,3 +30,5 @@ bin/
 .trae/
 # 环境覆盖文件统一由宿主机挂载/提交仓库提供，不进镜像
 config/.env.staging
+# HTTPS 证书/私钥（含 privkey.pem）只走宿主机挂载，绝不进镜像
+config/certs/
