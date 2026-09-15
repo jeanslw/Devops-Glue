@@ -33,7 +33,9 @@ RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
 # Configure PHP-FPM
 RUN sed -i 's|^listen = .*|listen = /run/php/php-fpm.sock|' /usr/local/etc/php-fpm.d/www.conf \
     && echo "clear_env = no" >> /usr/local/etc/php-fpm.d/www.conf \
-    && mkdir -p /run/php
+    && mkdir -p /run/php \
+	&& chown www-data:www-data /run/php \
+	&& rm -f /usr/local/etc/php-fpm.d/zz-docker.conf
 
 # Copy application code
 WORKDIR /app
