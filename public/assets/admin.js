@@ -852,6 +852,10 @@ async function saveVersions() {
         const val = inp.value.trim();
         if (val) versions[inp.dataset.platform] = val;
     });
+    if (Object.keys(versions).length === 0) {
+        toast(__.t('js.no_version_changes'), true);
+        return;
+    }
     try {
         const res = await fetch(VERSIONS_API, {
             method: 'PUT',
