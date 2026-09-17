@@ -215,9 +215,6 @@ class AdminController extends BaseController
             return $this->jsonError($response, 'auth.token_generate_failed', 500);
         }
 
-        if ($randomBytes === false) {
-            return $this->jsonError($response, 'auth.token_generate_failed', 500);
-        }
         $token = bin2hex($randomBytes);
         // 持久化 token，24h 过期
         try {

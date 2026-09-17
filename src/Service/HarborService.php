@@ -212,7 +212,7 @@ class HarborService
             $this->apiVersion = 'v2';
             $this->logger?->info('Harbor 版本探测: v2.0');
         } catch (ClientException $e) {
-            $code = $e->getResponse()?->getStatusCode();
+            $code = $e->getResponse()->getStatusCode();
             // 404 说明不是 v2，否则（401/403 等）v2 存在只是认证问题
             $this->apiVersion = ($code === 404) ? 'v1' : 'v2';
             $this->logger?->debug('Harbor v2 探测响应', [
@@ -274,7 +274,7 @@ class HarborService
                 }
                 return $data;
             } catch (ClientException $e) {
-                $code = $e->getResponse()?->getStatusCode();
+                $code = $e->getResponse()->getStatusCode();
                 // 4xx 不重试（权限/不存在等问题重试无意义）
                 if ($code && $code < 500) {
                     $msg = $code === 404 ? "资源不存在(404)" : "Harbor服务响应异常(HTTP {$code})";
@@ -315,9 +315,9 @@ class HarborService
         $this->logger?->error('Harbor 请求重试耗尽', [
             'method' => $method,
             'uri'    => $uri,
-            'error'  => $lastException?->getMessage() ?? 'unknown',
+            'error'  => $lastException->getMessage(),
         ]);
-        return ['error' => "Harbor请求失败(已重试{$maxRetries}次): " . ($lastException?->getMessage() ?? 'unknown')];
+        return ['error' => "Harbor请求失败(已重试{$maxRetries}次): " . $lastException->getMessage()];
     }
 
     /**
@@ -343,7 +343,7 @@ class HarborService
                 return $page === 1 ? $data : $all; // 首页失败返回错误，后续页失败返回已收集数据
             }
 
-            if (!is_array($data) || empty($data)) {
+            if (empty($data)) {
                 break;
             }
 
@@ -358,7 +358,7 @@ class HarborService
         if ($page > $maxPages && count($data) === $pageSize) {
             $checkQuery = array_merge(['page_size' => $pageSize, 'page' => $maxPages + 1], $extraQuery);
             $checkData = $this->request('GET', $path, ['query' => $checkQuery]);
-            if (is_array($checkData) && !empty($checkData) && !isset($checkData['error'])) {
+            if (!empty($checkData) && !isset($checkData['error'])) {
                 $this->logger?->warning('Harbor 分页达到上限，存在未获取的数据', [
                     'path'      => $path,
                     'max_pages' => $maxPages,

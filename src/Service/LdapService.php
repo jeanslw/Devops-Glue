@@ -118,7 +118,7 @@ class LdapService
         $uri      = $useLdaps ? "ldaps://{$host}:{$port}" : "ldap://{$host}:{$port}";
 
         $resource = @ldap_connect($uri);
-        if ($resource === false || $resource === null) {
+        if ($resource === false) {
             return null;
         }
         ldap_set_option($resource, LDAP_OPT_PROTOCOL_VERSION, 3);

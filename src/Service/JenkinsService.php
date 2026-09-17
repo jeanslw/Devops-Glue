@@ -240,7 +240,7 @@ class JenkinsService
         try {
             $response = $this->client->post($buildUrl, ['query' => $parameters]);
         } catch (ClientException $e) {
-            if ($e->getResponse() && $e->getResponse()->getStatusCode() === 403) {
+            if ($e->getResponse()->getStatusCode() === 403) {
                 $crumb = $this->getCrumb();
                 if ($crumb) {
                     try {
@@ -249,7 +249,7 @@ class JenkinsService
                             'headers' => [$crumb['field'] => $crumb['value']]
                         ]);
                     } catch (ClientException $e2) {
-                        $body = $e2->getResponse() ? $e2->getResponse()->getBody()->getContents() : '无响应';
+                        $body = $e2->getResponse()->getBody()->getContents();
                         $this->logger?->error('触发构建失败(CSRF 重试后仍 403)', [
                             'job'    => $jobPath,
                             'params' => array_keys($parameters),

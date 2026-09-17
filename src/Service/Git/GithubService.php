@@ -10,7 +10,6 @@ class GithubService implements GitProviderInterface
 {
     private Client $client;
     private string $baseUrl;
-    private string $token;
     private ?Logger $logger;
 
     private const MAX_PAGES = 20; // 最多 2000 条分支，防止极端仓库触发 rate limit
@@ -19,7 +18,6 @@ class GithubService implements GitProviderInterface
     public function __construct(string $baseUrl, string $token, ?Logger $logger = null)
     {
         $this->baseUrl = rtrim($baseUrl, '/');
-        $this->token   = $token;
         $this->logger  = $logger;
         $this->client  = new Client([
             'headers' => [
@@ -49,7 +47,7 @@ class GithubService implements GitProviderInterface
     public function getBranches(string $repository): array
     {
         $parts = explode('/', $repository, 2);
-        $owner = $parts[0] ?? '';
+        $owner = $parts[0];
         $repo  = $parts[1] ?? '';
         if (empty($owner) || empty($repo)) {
             $this->logger?->warning('GitHub 仓库路径解析失败', ['repository' => $repository]);
@@ -61,7 +59,7 @@ class GithubService implements GitProviderInterface
     public function getTags(string $repository): array
     {
         $parts = explode('/', $repository, 2);
-        $owner = $parts[0] ?? '';
+        $owner = $parts[0];
         $repo  = $parts[1] ?? '';
         if (empty($owner) || empty($repo)) {
             $this->logger?->warning('GitHub 仓库路径解析失败', ['repository' => $repository]);
@@ -73,7 +71,7 @@ class GithubService implements GitProviderInterface
     public function setCommitStatus(string $repository, string $sha, string $state, string $context, string $description, string $targetUrl = ''): array
     {
         $parts = explode('/', $repository, 2);
-        $owner = $parts[0] ?? '';
+        $owner = $parts[0];
         $repo  = $parts[1] ?? '';
         if (empty($owner) || empty($repo)) {
             return ['success' => false, 'message' => '仓库路径格式错误'];
@@ -100,7 +98,7 @@ class GithubService implements GitProviderInterface
         do {
             $fullPath = "{$path}?per_page=" . self::PER_PAGE . "&page={$page}";
             $data = $this->request('GET', $fullPath);
-            if (isset($data['error']) || !is_array($data) || empty($data)) {
+            if (isset($data['error']) || empty($data)) {
                 break;
             }
             $all = array_merge($all, array_column($data, $key));

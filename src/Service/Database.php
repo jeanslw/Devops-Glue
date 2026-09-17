@@ -559,8 +559,8 @@ class Database
         $permUpsert = self::sqlUpsert(\App\Config\AppConfig::TABLE_PERMISSIONS, 'perm_key, description, parent_key', '?, ?, ?');
         $permStmt = $pdo->prepare($permUpsert);
         foreach (\App\Config\AppConfig::DEFAULT_PERMISSIONS as $key => $def) {
-            $desc = is_array($def) ? $def['name'] : $def;
-            $parent = is_array($def) ? ($def['parent'] ?? null) : null;
+            $desc = $def['name'];
+            $parent = $def['parent'] ?? null;
             try {
                 $permStmt->execute([$key, $desc, $parent]);
             } catch (\Exception $e) {
@@ -589,7 +589,7 @@ class Database
         $updateRoleStmt = $pdo->prepare("UPDATE " . \App\Config\AppConfig::TABLE_ROLES . " SET description = ?, is_system = ? WHERE id = ?");
         foreach (\App\Config\AppConfig::DEFAULT_ROLES as $roleName => $perms) {
             // 系统角色描述从 DEFAULT_ROLE_DESCRIPTIONS 取（供 CD 角色目录 / 后台列表展示），自定义角色不在此处种子
-            $roleDesc = \App\Config\AppConfig::DEFAULT_ROLE_DESCRIPTIONS[$roleName] ?? '';
+            $roleDesc = \App\Config\AppConfig::DEFAULT_ROLE_DESCRIPTIONS[$roleName];
             $isSystem = in_array($roleName, \App\Config\AppConfig::DEFAULT_SYSTEM_ROLES) ? 1 : 0;
             try {
                 $findRoleStmt->execute([$roleName]);

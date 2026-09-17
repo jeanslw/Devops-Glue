@@ -64,7 +64,7 @@ class PipelineTagService
                 if (count($parts) === 2) {
                     try {
                         $tags = $this->harbor->getTags($parts[0], $parts[1]);
-                        $repoCache[$harborRepo] = (is_array($tags) && !isset($tags['error'])) ? $tags : null;
+                        $repoCache[$harborRepo] = !isset($tags['error']) ? $tags : null;
                     } catch (\Throwable $e) {
                         Log::exception($e);
                         $repoCache[$harborRepo] = null;

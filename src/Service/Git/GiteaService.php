@@ -49,7 +49,7 @@ class GiteaService implements GitProviderInterface
     public function getBranches(string $repository): array
     {
         $parts = explode('/', $repository, 2);
-        $owner = $parts[0] ?? '';
+        $owner = $parts[0];
         $repo  = $parts[1] ?? '';
         if (empty($owner) || empty($repo)) {
             $this->logger?->warning('Gitea 仓库路径解析失败', ['repository' => $repository]);
@@ -61,7 +61,7 @@ class GiteaService implements GitProviderInterface
     public function getTags(string $repository): array
     {
         $parts = explode('/', $repository, 2);
-        $owner = $parts[0] ?? '';
+        $owner = $parts[0];
         $repo  = $parts[1] ?? '';
         if (empty($owner) || empty($repo)) {
             $this->logger?->warning('Gitea 仓库路径解析失败', ['repository' => $repository]);
@@ -73,7 +73,7 @@ class GiteaService implements GitProviderInterface
     public function setCommitStatus(string $repository, string $sha, string $state, string $context, string $description, string $targetUrl = ''): array
     {
         $parts = explode('/', $repository, 2);
-        $owner = $parts[0] ?? '';
+        $owner = $parts[0];
         $repo  = $parts[1] ?? '';
         if (empty($owner) || empty($repo)) {
             return ['success' => false, 'message' => '仓库路径格式错误'];

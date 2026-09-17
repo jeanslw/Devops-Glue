@@ -202,7 +202,7 @@ class OAuthController extends BaseController
      */
     public function userinfo(Request $request, Response $response): Response
     {
-        $authHeader = (string)($request->getHeaderLine('Authorization') ?? '');
+        $authHeader = (string)$request->getHeaderLine('Authorization');
         if (!preg_match('/^Bearer\s+(.+)$/i', $authHeader, $m)) {
             return $this->oauthError($response, 'invalid_token', 401);
         }
@@ -237,7 +237,7 @@ class OAuthController extends BaseController
      */
     public function userinfoEmails(Request $request, Response $response): Response
     {
-        $authHeader = (string)($request->getHeaderLine('Authorization') ?? '');
+        $authHeader = (string)$request->getHeaderLine('Authorization');
         if (!preg_match('/^Bearer\s+(.+)$/i', $authHeader, $m)) {
             return $this->oauthError($response, 'invalid_token', 401);
         }

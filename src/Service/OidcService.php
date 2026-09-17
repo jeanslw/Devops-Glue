@@ -139,7 +139,7 @@ class OidcService
             $candidates[] = $binDir . '/extras/ssl/openssl.cnf'; // Laragon/XAMPP
             $candidates[] = $binDir . '/openssl.cnf';
         }
-        if (defined('PHP_BINDIR') && PHP_BINDIR !== '') {
+        if (defined('PHP_BINDIR')) {
             $candidates[] = PHP_BINDIR . '/extras/ssl/openssl.cnf';
             $candidates[] = PHP_BINDIR . '/openssl.cnf';
         }
@@ -149,7 +149,7 @@ class OidcService
         $candidates[] = '/usr/lib/ssl/openssl.cnf';
 
         foreach ($candidates as $c) {
-            if (is_string($c) && $c !== '' && is_file($c)) {
+            if (is_file($c)) {
                 return $c;
             }
         }

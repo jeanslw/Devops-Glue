@@ -41,7 +41,7 @@ class GiteaCiBuildProvider implements BuildProviderInterface
     private function splitRepo(string $projectId): ?array
     {
         $parts = explode('/', $projectId, 2);
-        $owner = trim($parts[0] ?? '');
+        $owner = trim($parts[0]);
         $repo  = trim($parts[1] ?? '');
         if ($owner === '' || $repo === '') {
             return null;

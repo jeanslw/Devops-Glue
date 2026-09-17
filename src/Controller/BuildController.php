@@ -111,7 +111,7 @@ class BuildController extends BaseController
                 if ($k === '' || !isset($latest[$k])) {
                     continue;
                 }
-                if ($lt === null || ($latest[$k]['created_at'] ?? '') > ($lt['created_at'] ?? '')) {
+                if ($lt === null || $latest[$k]['created_at'] > $lt['created_at']) {
                     $lt = $latest[$k];
                 }
             }
@@ -267,7 +267,6 @@ class BuildController extends BaseController
                 'success' => array_map($idx, $filtered),
                 'build'   => array_map(fn($p) => '#' . $idx($p), $filtered),
                 'time'    => array_map(fn($p) => '#' . $idx($p) . ' [' . ($p['created_at'] ?? '') . ']', $filtered),
-                default   => $filtered,
             };
             return $this->output($response, $result, $request);
         }
@@ -673,7 +672,7 @@ class BuildController extends BaseController
         }
 
         // 校验 tag 在 Harbor 中确实存在（防止写入已删除的 tag）
-        if ($this->harbor && is_array($harborTags) && !isset($harborTags['error'])) {
+        if ($this->harbor && !isset($harborTags['error'])) {
             // Harbor 可达：严格校验 tag 是否存在
             if (!in_array($tag, $harborTags)) {
                 return $this->jsonError($response, $this->__('build.tag_not_found', ['tag' => $tag, 'repo' => $harborRepo]), 400);
@@ -1041,10 +1040,7 @@ class BuildController extends BaseController
         } catch (\Throwable $e) {
             return 'Harbor 不可达（' . $e->getMessage() . '），无法校验仓库与 tag';
         }
-        if (!is_array($repos) || isset($repos['error'])) {
-            if (!is_array($repos)) {
-                return 'Harbor 返回数据异常（非预期的仓库列表格式），无法校验仓库与 tag';
-            }
+        if (isset($repos['error'])) {
             return '查询 Harbor 项目仓库失败：' . $this->harborErrorMessage($repos) . '（项目 ' . $project . '）';
         }
         // v2 返回去前缀短名（runner-ci），v1 可能返回完整名（mycode/runner-ci），两者都兼容
@@ -1058,10 +1054,7 @@ class BuildController extends BaseController
         } catch (\Throwable $e) {
             return 'Harbor 不可达（' . $e->getMessage() . '），无法校验仓库与 tag';
         }
-        if (!is_array($tags) || isset($tags['error'])) {
-            if (!is_array($tags)) {
-                return 'Harbor 返回数据异常（非预期的 tag 列表格式），无法校验仓库与 tag';
-            }
+        if (isset($tags['error'])) {
             return '查询 Harbor 仓库 tag 失败：' . $this->harborErrorMessage($tags) . '（仓库 ' . $repo . '）';
         }
         if (!in_array($tag, $tags, true)) {
