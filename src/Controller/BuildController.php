@@ -209,7 +209,8 @@ class BuildController extends BaseController
     {
         $hasJenkins = $this->registry->isRegistered(AppConfig::PROVIDER_JENKINS);
         $hasGitlab  = $this->registry->isRegistered(AppConfig::PROVIDER_GITLAB_CI);
-        $mode   = $this->config->getBuildMode();
+        $hasGitea   = $this->registry->isRegistered(AppConfig::PROVIDER_GITEA_CI);
+        $modes  = $this->config->getBuildModes();
         $source = $this->config->getBuildModeSource();
 
         // 自定义 Build Provider 状态（custom_push 等）
@@ -222,10 +223,12 @@ class BuildController extends BaseController
         }
 
         return $this->output($response, [
-            'mode'                  => $mode,
+            'mode'                  => $this->config->getBuildMode(),
+            'modes'                 => $modes,
             'source'                => $source,
             'has_jenkins'           => $hasJenkins,
             'has_gitlab_ci'         => $hasGitlab,
+            'has_gitea_ci'          => $hasGitea,
             'has_custom_push'       => !empty($customProviders),
             'custom_push_enabled'   => $this->config->getCustomPushEnabled(),
             'custom_providers'      => $customProviders,

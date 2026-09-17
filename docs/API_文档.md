@@ -88,7 +88,8 @@ GET /api/health
     "harbor_components": {"core": true, "jobservice": true, "registry": true}
   },
   "stats": {"total_maps": 15, "active_maps": 12, "git_platforms": 2, "harbor_repos": 8},
-  "build_mode": "both",
+  "build_mode": "jenkins,gitlab_ci,gitea_ci",
+  "build_modes": ["jenkins", "gitlab_ci", "gitea_ci"],
   "build_mode_source": "database",
   "db_driver": "mysql",
   "app_version": "2.7.0",
@@ -314,7 +315,7 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 | `/api/admin/custom_builds` | GET | Custom_Push 上报的构建记录（支持 `?page=&per_page=` 分页；需 `ci.mode.edit`） |
 | `/api/admin/security_checks` | GET | 安全扫描审计记录（支持 `?project=&check_type=&state=&writeback=&exclude=&page=&per_page=` 筛选） |
 | `/api/admin/platform_versions` | GET/PUT | 平台 API 版本配置 |
-| `/api/admin/build_mode` | GET/PUT | 构建模式（jenkins/gitlab_ci/both） |
+| `/api/admin/build_mode` | GET/PUT | 构建模式（启用的 CI 源集合，如 jenkins,gitlab_ci,gitea_ci） |
 | `/api/admin/users` | GET | 用户列表（admin 可见全部；非 admin 看不到 admin 用户） |
 | `/api/admin/users` | POST | 创建用户（body: `username`、`password`、`role`、`systems`） |
 | `/api/admin/users/{username}` | PUT | 更新用户（body: `password` 和/或 `role`） |

@@ -229,7 +229,7 @@ Controller → AppConfig::getXxxConfig()
 | `value` | TEXT/MEDIUMTEXT | Config value |
 | `updated_at` | DATETIME/TEXT | Update time |
 
-**Existing settings:** `build_mode` (jenkins/gitlab_ci/both), `custom_push_enabled` (0/1)
+**Existing settings:** `build_mode` (comma-separated set, e.g. jenkins,gitlab_ci,gitea_ci), `custom_push_enabled` (0/1)
 
 #### admin_users (Admin Accounts)
 
@@ -337,7 +337,7 @@ Controller → AppConfig::getXxxConfig()
   "status": "ok",
   "checks": { "jenkins": true, "jenkins_version": "2.555.3", "git": [...], "harbor": true, "harbor_components": {...} },
   "stats": { "total_maps": 4, "active_maps": 4, "git_platforms": 2, "harbor_repos": 4 },
-  "build_mode": "both", "build_mode_source": "database",
+  "build_mode": "jenkins,gitlab_ci,gitea_ci", "build_modes": ["jenkins","gitlab_ci","gitea_ci"], "build_mode_source": "database",
   "db_driver": "mysql", "app_version": "2.7.0", "app_env": "production",
   "time": "2026-07-25 12:00:00"
 }
@@ -386,7 +386,7 @@ When `git_platform` is not explicitly specified, the system auto-detects:
 
 ### 5.3 Dual-Channel Build System
 
-**Modes:** jenkins / gitlab_ci / both  
+**Modes:** jenkins / gitlab_ci / gitea_ci (multi-select set)  
 **Unified route entry:** `/api/build/{path}/...`
 
 #### 5.3.1 Project Resolution
@@ -575,28 +575,29 @@ If only `ref` is present without other parameters, auto-convert to `{branches: r
 **Method:** `AdminController::getBuildMode()` / `updateBuildMode()`
 
 **Storage:** `ci_app_settings` table
-- key=`build_mode`, value ∈ {jenkins, gitlab_ci, both} (controls pull-based CI)
+- key=`build_mode`, value = comma-separated set of {jenkins, gitlab_ci, gitea_ci} (controls pull-based CI)
 - key=`custom_push_enabled`, value ∈ {0,1} (independent boolean switch, controls push-based CI)
 
-> **Orthogonal Design:** `build_mode` (jenkins/gitlab_ci/both) only controls the pull-based CI channel; `custom_push_enabled` is an independent boolean switch. The two are not mutually exclusive and can be enabled simultaneously. The `build_mode` dropdown always shows three selectable options; `custom_push_enabled` is a separate checkbox. See also [§5.10](#510-custom_push-ci-mode).
+> **Orthogonal Design:** `build_mode` (the enabled pull-CI set, e.g. jenkins/gitlab_ci/gitea_ci) only controls the pull-based CI channel; `custom_push_enabled` is an independent boolean switch. The two are not mutually exclusive and can be enabled simultaneously. The `build_mode` UI renders checkboxes for configured CIs (plus a Select All); `custom_push_enabled` is a separate checkbox. See also [§5.10](#510-custom_push-ci-mode).
 
-**Read Logic (AppConfig::getBuildMode()):**
+**Read Logic (AppConfig::getBuildModes()):**
 ```
 1. Read ci_app_settings WHERE setting_key='build_mode'
-2. Has value → return, source='database'
+2. Has value → parse comma-separated set (legacy `both` → jenkins,gitlab_ci), return, source='database'
 3. No value → read .env BUILD_MODE, seed to DB → return, source='env'
 4. DB exception → fall back to .env, source='env'
 ```
 
 **Write Validation (frontend & backend consistent):**
-- `mode` must be jenkins / gitlab_ci / both
-- Setting `jenkins` or `both` → requires JENKINS_BASE_URL configured (otherwise 400)
-- Setting `gitlab_ci` or `both` → requires GITLAB_BASE_URL + GITLAB_TOKEN configured (otherwise 400)
+- `modes` must be a subset of {jenkins, gitlab_ci, gitea_ci}
+- Enabling `jenkins` → requires JENKINS_BASE_URL configured (otherwise 400)
+- Enabling `gitlab_ci` → requires GITLAB_BASE_URL + GITLAB_TOKEN configured (otherwise 400)
+- Enabling `gitea_ci` → requires GITEA_BASE_URL + GITEA_TOKEN configured (otherwise 400)
 
 **DI Container Behavior (container.php):**
 - No longer decides Provider registration based on `BUILD_MODE`
-- Jenkins / GitLab CI each check their own config non-empty to register
-- Actual routing dispatch uses `MappingManager::activeMaps()` filtered by DB `build_mode`
+- Jenkins / GitLab CI / Gitea Actions each check their own config non-empty to register
+- Actual routing dispatch uses `MappingManager::activeMaps()` filtered by the DB `build_mode` set
 
 **Impact scope:** Mode switching only affects mapping list filtering and Jenkins check in health check.
 
@@ -759,10 +760,10 @@ Custom_Push is a **push-based CI** mode that complements the **pull-based CI** (
 |---|---|---|
 | Type | Pull-based CI | Push-based CI |
 | Direction | Devops-Glue → CI system | User CI → Devops-Glue |
-| Control | jenkins / gitlab_ci / both | Independent boolean switch |
+| Control | jenkins / gitlab_ci / gitea_ci (multi-select) | Independent boolean switch |
 | Relationship | Independent, can be enabled simultaneously | Independent, can be enabled simultaneously |
 
-For example: `build_mode=jenkins` + `custom_push_enabled=true` means both Jenkins pull-based CI and Custom_Push push-based CI are active simultaneously.
+For example: `build_mode=jenkins,gitea_ci` + `custom_push_enabled=true` means Jenkins + Gitea Actions pull-based CI and Custom_Push push-based CI are active simultaneously.
 
 #### 5.10.2 Core Components
 
@@ -823,7 +824,7 @@ Devops-Glue does not store log content, only `log_url` pointers. When accessing 
 
 - **Status card**: System monitoring page shows Custom_Push status ✅ (configured) or ⚪ (not configured)
 - **Auto-discovery**: `AutoDiscover` scans Git platforms and automatically identifies projects with `build_provider=custom_push` when `custom_push_enabled=true`
-- **Dropdown menu**: `build_mode` three options (jenkins/gitlab_ci/both) are always selectable
+- **Multi-select checkboxes**: `build_mode` checkboxes (jenkins/gitlab_ci/gitea_ci + Select All) show only configured CIs
 - **Refresh requirements**: Frontend changes require browser hard refresh (Ctrl+F5); config/controller changes require backend restart
 
 #### 5.10.7 Permissions & Scope
@@ -960,7 +961,7 @@ Next API call:
 JENKINS_BASE_URL=http://your-jenkins:8080
 JENKINS_USER=admin
 JENKINS_TOKEN=your_token
-BUILD_MODE=both                    # jenkins / gitlab_ci / both (initial seed value)
+BUILD_MODE=jenkins,gitlab_ci,gitea_ci   # enabled CI sources, comma-separated (initial seed value)
 BUILD_TIMEOUT=300                  # Build timeout (seconds)
 
 # ============ Git Platforms ============

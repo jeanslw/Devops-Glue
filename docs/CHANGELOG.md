@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.8.2 (2026-09-18)
+- **Gitea Actions as a third CI source** — Added the `gitea_ci` build provider backed by Gitea Actions (`GET /api/v1/repos/{owner}/{repo}/actions/runs`), with graceful degradation when the Actions API is unavailable on older Gitea. Auto-discovery now scans Gitea repos (`/api/v1/user/repos`) and emits `build_provider=gitea_ci` mappings.
+- **Gitea Actions API completeness** — `trigger` (workflow_dispatch with `return_run_details`), `retry` (rerun), `cancel`, and job logs now use the Gitea 1.27 Actions endpoints; the platform-versions page additionally shows the detected Jenkins server version (hidden when Jenkins is unconfigured).
+- **Build mode is now multi-select** — The single `build_mode` enum (`jenkins`/`gitlab_ci`/`both`) is replaced by an enabled-provider set (comma-joined, e.g. `jenkins,gitlab_ci,gitea_ci`); legacy `both`/single values are lazily mapped on read. The admin "Configure Mode" page renders checkboxes (Jenkins / GitLab CI / Gitea Actions + Select All) and only shows configured CIs; unchecking a CI demotes its active mappings to Pending.
+- **Cross-source auto-discovery dedup generalized** — The `normalizeRemote`-based dedup now spans the whole enabled set, so one repository stays active under a single CI (Jenkins↔GitLab / Jenkins↔Gitea share an address; GitLab↔Gitea are distinct platforms).
+- **Versioning** — `APP_VERSION` bumped to 2.8.2; OpenAPI `version` synced (CN/EN).
+
 ## v2.8.1 (2026-09-13)
 - **X-Forwarded-For spoofing closed** — Client IP resolution no longer trusts `X-Forwarded-For` just because the peer is loopback. The new `TRUSTED_PROXY_HOPS` setting (default `0`): at `0` only `REMOTE_ADDR` is used and XFF is ignored; when the peer is loopback/private/link-local and hops is positive, the real IP is taken from the **rightmost** XFF entry by hop count. Applies to both `/api/admin/login` and `/oauth/authorize`; without this, a forged XFF could bypass the login lockout bucket.
 - **Login lockout shared with CD** — Login-failure accounting (5 failures / 15 minutes, keyed `login_fail_` + md5(ip:lower(username)) in the `cache` table) is now semantically identical to Devops-Glue CD, so both front doors lock by the same identity.

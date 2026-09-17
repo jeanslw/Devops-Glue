@@ -194,6 +194,7 @@ async function doLogin() {
             document.getElementById('app-page').style.display = 'block';
             document.getElementById('top-user').textContent = '👤 ' + currentUserName;
             switchTab('monitor');
+            loadSettings();  // 初始化构建模式状态（currentBuildModes 等）
         } else {
             errEl.textContent = data.message || __.t('js.login_failed');
             errEl.style.display = 'block';
@@ -361,23 +362,27 @@ async function loadMonitor() {
         document.getElementById('stat-repos').textContent = st.harbor_repos ?? '—';
 
         // 系统监测
-        const buildModeMap = {
-            'jenkins':    'build.mode_jenkins',
-            'gitlab_ci':  'build.mode_gitlab_ci',
-            'both':       'build.mode_both'
-        };
         const dbMap = {
             'mysql':  'system.db_mysql',
             'sqlite': 'system.db_sqlite'
         };
-        const bmKey = buildModeMap[data.build_mode] || 'common.unknown';
         const dbKey = dbMap[(data.db_driver || '').toLowerCase()] || 'common.unknown';
+        const bmLabel = (Array.isArray(data.build_modes) && data.build_modes.length > 0)
+            ? data.build_modes.map(m => {
+                switch (m) {
+                    case 'jenkins':   return __.t('build.mode_jenkins');
+                    case 'gitlab_ci': return __.t('build.mode_gitlab_ci');
+                    case 'gitea_ci':  return __.t('build.mode_gitea_ci');
+                    default:          return m;
+                }
+            }).join(' + ')
+            : (data.build_mode || __.t('js.mode_none'));
         const sysBuildMode = document.getElementById('sys-build-mode');
         const sysDbType    = document.getElementById('sys-db-type');
         const sysAppVer    = document.getElementById('sys-app-version');
         const sysEnvType   = document.getElementById('sys-env-type');
         const sysTime      = document.getElementById('sys-system-time');
-        if (sysBuildMode) sysBuildMode.textContent = __.t(bmKey, null, data.build_mode || '—');
+        if (sysBuildMode) sysBuildMode.textContent = bmLabel;
         if (sysDbType)    sysDbType.textContent    = __.t(dbKey, null, data.db_driver || '—');
         if (sysAppVer)    sysAppVer.textContent    = data.app_version ? 'v' + data.app_version : '—';
         if (sysEnvType)   sysEnvType.textContent   = data.app_env || '—';
@@ -468,19 +473,25 @@ function onFilterChange() {
 function normalizeRemote(r) {
     r = (r || '').trim();
     if (!r) return '';
-    // 去掉协议前缀
-    r = r.replace(/^(https?|ssh|git):\/\//i, '');
-    // git@host:path → host/path
-    const m = r.match(/^git@([^:]+):(.+)/);
-    if (m) r = m[1] + '/' + m[2];
-    // 去尾部 .git 和末尾斜杠
-    r = r.replace(/\.git$/i, '');
-    r = r.replace(/\/$/, '');
-    // 提取路径部分（去掉 host），统一小写
-    const slashPos = r.indexOf('/');
-    if (slashPos !== -1) r = r.substring(slashPos + 1).toLowerCase();
-    else r = r.toLowerCase();
-    return r;
+    let host = '', path = '';
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(r)) {
+        // 带协议：ssh:// / https?:// / git:// → 拆 host（端口自然排除）与 path
+        let u = null;
+        try { u = new URL(r); } catch (e) { u = null; }
+        if (u) {
+            host = (u.hostname || '').toLowerCase();
+            path = (u.pathname || '').replace(/^\/+/, '');
+        } else {
+            const m = r.match(/^[a-z][a-z0-9+.-]*:\/\/([^/]+)\/(.*)$/i);
+            if (m) { host = m[1].split('@').pop().split(':')[0].toLowerCase(); path = m[2]; }
+        }
+    } else {
+        const m = r.match(/^git@([^:]+):(.+)/);
+        if (m) { host = m[1].toLowerCase(); path = m[2].replace(/^\/+/, ''); }
+        else { path = r.replace(/^\/+/, ''); }
+    }
+    path = path.replace(/\.git$/i, '').replace(/\/+$/, '').toLowerCase();
+    return (host && path) ? host + '/' + path : path;
 }
 
 async function loadMaps() {
@@ -510,15 +521,13 @@ async function loadMaps() {
         });
         maps = maps.filter(m => (m.status || 'active') === 'active' || !activeRemotes.has(normalizeRemote(m.git_remote)));
 
-        // 隐藏非 active 且 provider 不匹配当前模式的记录（无法操作，占地方无意义）
-        // 自定义推送式 CI（custom_push 及其他自定义注册名）不参与 jenkins/gitlab_ci 的全局模式筛选，始终显示
-        if (currentBuildMode !== 'both') {
-            maps = maps.filter(m => {
-                const bp = (m.build_provider || 'jenkins');
-                if (bp !== 'jenkins' && bp !== 'gitlab_ci') return true;
-                return (m.status || 'active') === 'active' || bp === currentBuildMode;
-            });
-        }
+        // 隐藏非 active 且 provider 不属于当前启用集合的记录（无法操作，占地方无意义）
+        // 自定义推送式 CI（custom_push 及其他自定义注册名）不参与拉取式 provider 的集合筛选，始终显示
+        maps = maps.filter(m => {
+            const bp = (m.build_provider || 'jenkins');
+            if (!isPullProvider(bp)) return true;
+            return (m.status || 'active') === 'active' || currentBuildModes.includes(bp);
+        });
 
         // 分页以过滤后的实际可见数量为准（API 返回的是原始数据库总数，前端 dedup/provider 过滤后不可见）
         const displayTotal = maps.length;
@@ -554,9 +563,10 @@ async function loadMaps() {
                 const bp = m.build_provider || 'jenkins';
                 const bpLabel = bp === 'jenkins' ? __.t('build.mode_jenkins')
                     : bp === 'gitlab_ci' ? __.t('build.mode_gitlab_ci')
+                    : bp === 'gitea_ci' ? __.t('build.mode_gitea_ci')
                     : bp === 'custom_push' ? 'Custom_Push'
                     : bp;
-                const bpBadge = bp === 'gitlab_ci' ? 'badge-gitlab' : bp === 'custom_push' ? 'badge-cus' : 'badge-default';
+                const bpBadge = bp === 'gitlab_ci' ? 'badge-gitlab' : bp === 'gitea_ci' ? 'badge-gitea' : bp === 'custom_push' ? 'badge-cus' : 'badge-default';
                 const badgeCls = plat !== '—' && platforms.includes(plat) ? 'badge-' + plat : 'badge-default';
                 return `<tr>
                     <td><strong>${esc(m.job_name)}</strong></td>
@@ -686,9 +696,10 @@ function renderTopology() {
             const build = p.build_provider || 'jenkins';
             const buildLabel = build === 'jenkins' ? __.t('build.mode_jenkins')
                 : build === 'gitlab_ci' ? __.t('build.mode_gitlab_ci')
+                : build === 'gitea_ci' ? __.t('build.mode_gitea_ci')
                 : build === 'custom_push' ? 'Custom_Push'
                 : build;
-            const buildIcon = build === 'gitlab_ci' ? '🐺' : build === 'custom_push' ? '📤' : '⚡';
+            const buildIcon = build === 'gitlab_ci' ? '🐺' : build === 'gitea_ci' ? '🦎' : build === 'custom_push' ? '📤' : '⚡';
             const buildUrl = topoPlatformUrls.jenkins_url || '';
             const projectPath = (p.project || p.current_path || '').replace(/\/+$/, '');
             const jenkinsPath = projectPath
@@ -698,7 +709,7 @@ function renderTopology() {
                 ? `<a href="${esc(buildUrl + jenkinsPath)}" target="_blank" title="${esc(__.t('js.topo_open_jenkins'))}">${esc(p.project || p.current_path || __.t('js.topo_unnamed'))}</a>`
                 : `<span class="node-main">${esc(p.project || p.current_path || __.t('js.topo_unnamed'))}</span>`;
             const platformCls = platform !== '—' && platforms.includes(platform) ? 'badge-' + platform : 'badge-default';
-            const buildBadgeCls = build === 'gitlab_ci' ? 'badge-gitlab' : build === 'custom_push' ? 'badge-cus' : 'badge-default';
+            const buildBadgeCls = build === 'gitlab_ci' ? 'badge-gitlab' : build === 'gitea_ci' ? 'badge-gitea' : build === 'custom_push' ? 'badge-cus' : 'badge-default';
 
             return `<div class="topo-card">
                 <div class="topo-header">
@@ -808,6 +819,7 @@ async function loadVersions() {
             </tr>`;
         }).join('');
         renderHarborCompat();
+        renderJenkinsCompat();
     } catch(e) {
         document.getElementById('ver-loading').innerHTML = '<p style="color:#dc2626;">' + __.t('js.load_failed') + ': ' + esc(e.message) + '</p>';
     }
@@ -839,6 +851,22 @@ function renderHarborCompat() {
     el.style.display = 'block';
     el.innerHTML = '<strong>🐳 Harbor</strong> · ' + __.t('js.harbor_detected_version')
         + ': <code>' + esc(verText) + '</code> · ' + badge + ' ' + text + extra;
+}
+
+function renderJenkinsCompat() {
+    const el = document.getElementById('jenkins-compat');
+    if (!el) return;
+    const j = currentVersions.jenkins || {};
+    // 未配置/未启用 Jenkins 时不显示
+    if (!j.configured) {
+        el.style.display = 'none';
+        return;
+    }
+    const ver = j.detected_version || null;
+    const verText = ver ? ver : __.t('js.jenkins_version_unknown');
+    el.style.display = 'block';
+    el.innerHTML = '<strong>⚡ Jenkins</strong> · ' + __.t('js.jenkins_detected_version')
+        + ': <code>' + esc(verText) + '</code>';
 }
 
 function getDefaultVer(key) {
@@ -877,34 +905,84 @@ async function saveVersions() {
 }
 
 // ── 构建模式配置 ──
-let currentBuildMode = 'both';
+const PULL_PROVIDERS = ['jenkins', 'gitlab_ci', 'gitea_ci'];
+// 默认全选：loadSettings()（进「配置模式」才触发）拉取前，映射表不能把待启用记录误隐藏
+let currentBuildModes = PULL_PROVIDERS.slice();
+let currentBuildAvailability = {}; // { jenkins: bool, gitlab_ci: bool, gitea_ci: bool }
 
-/** 把下拉框当前值即时显示到右侧的 code 标签 */
-function updateBuildModeValue() {
-    const sel = document.getElementById('build-mode-select');
-    const valEl = document.getElementById('build-mode-value');
-    if (sel && valEl) valEl.textContent = sel.value || '—';
+function isPullProvider(bp) { return PULL_PROVIDERS.includes(bp); }
+
+function pullProviderMeta(bp) {
+    switch (bp) {
+        case 'jenkins':   return { icon: '⚡', label: __.t('js.mode_jenkins_name'),   cls: 'jenkins' };
+        case 'gitlab_ci': return { icon: '🐺', label: __.t('js.mode_gitlab_ci_name'), cls: 'gitlab' };
+        case 'gitea_ci':  return { icon: '🦎', label: __.t('js.mode_gitea_ci_name'),  cls: 'gitea' };
+        default:          return { icon: '🔧', label: bp, cls: '' };
+    }
+}
+
+function arraysEqual(a, b) {
+    if (a.length !== b.length) return false;
+    const sa = a.slice().sort(), sb = b.slice().sort();
+    return sa.every((v, i) => v === sb[i]);
+}
+
+/** 动态渲染构建源多选框（只显示已配置的 CI） */
+function renderBuildModeCheckboxes(availability, selected) {
+    const box = document.getElementById('build-mode-checkboxes');
+    if (!box) return;
+    const availablePull = PULL_PROVIDERS.filter(bp => availability[bp]);
+    if (availablePull.length === 0) {
+        box.innerHTML = '<span style="color:#9ca3af;font-size:13px;">' + __.t('js.no_pull_ci') + '</span>';
+        return;
+    }
+    let html = '';
+    availablePull.forEach(bp => {
+        const meta = pullProviderMeta(bp);
+        const checked = selected.includes(bp) ? ' checked' : '';
+        html += '<label class="bm-check"><input type="checkbox" class="bm-item" value="' + bp + '"' + checked + ' onchange="onBuildModesChange()"><span>' + meta.icon + ' ' + esc(meta.label) + '</span></label>';
+    });
+    // 全选放在最下面
+    html += '<label class="bm-check"><input type="checkbox" id="bm-all" onchange="onBuildModeSelectAll()"><span>' + __.t('js.mode_select_all') + '</span></label>';
+    box.innerHTML = html;
+    updateSelectAllState();
+}
+
+function getCheckedBuildModes() {
+    return Array.from(document.querySelectorAll('#build-mode-checkboxes .bm-item:checked')).map(cb => cb.value);
+}
+
+function updateSelectAllState() {
+    const all = document.getElementById('bm-all');
+    const items = Array.from(document.querySelectorAll('#build-mode-checkboxes .bm-item'));
+    if (!all) return;
+    const checked = items.filter(cb => cb.checked).length;
+    all.checked = items.length > 0 && checked === items.length;
+    all.indeterminate = checked > 0 && checked < items.length;
 }
 
 async function loadSettings() {
     const display = document.getElementById('mode-display');
     const configPanel = document.getElementById('mode-config');
-    const sel = document.getElementById('build-mode-select');
     const cpToggle = document.getElementById('custom-push-toggle');
     const statusEl = document.getElementById('build-mode-status');
     try {
         const res = await fetch('/api/admin/build_mode', { headers: authHeaders() });
         if (res.status === 401) { display.innerHTML = '<span style="color:#9ca3af;">' + __.t('auth.please_login_first') + '</span>'; return; }
         const data = await res.json();
-        const mode = data.mode || 'both';
-        const hasJenkins = data.has_jenkins;
-        const hasGitlab = data.has_gitlab_ci;
+        const modes = Array.isArray(data.modes) ? data.modes : [];
+        const availability = {
+            jenkins:   !!data.has_jenkins,
+            gitlab_ci: !!data.has_gitlab_ci,
+            gitea_ci:  !!data.has_gitea_ci,
+        };
         const hasCustom = (data.custom_providers || []).length > 0;
         const cpEnabled = data.custom_push_enabled || false;
         const staleCleanup = data.stale_tag_cleanup_enabled || false;
         const customNames = data.custom_providers || [];
         const source = data.source || 'env';
-        currentBuildMode = mode;
+        currentBuildModes = modes.slice();
+        currentBuildAvailability = availability;
         currentCpEnabled = cpEnabled;
         currentStaleCleanupEnabled = staleCleanup;
 
@@ -913,9 +991,8 @@ async function loadSettings() {
             ? '<span class="badge" style="background:#f0fdf4;color:#16a34a;font-size:11px;margin-left:6px;" title="' + __.t('js.mode_persisted') + '">✓ ' + __.t('js.mode_persisted') + '</span>'
             : '<span class="badge" style="background:#fefce8;color:#ca8a04;font-size:11px;margin-left:6px;" title="' + __.t('js.mode_temp') + '">⚠️ ' + __.t('js.mode_temp') + '</span>';
 
-        // 下拉选项状态：全部可选，后端校验不可用时返回错误
-        sel.value = mode;
-        updateBuildModeValue();
+        // 动态渲染多选框（只显示已配置的 CI）
+        renderBuildModeCheckboxes(availability, modes);
         // custom_push 开关
         if (cpToggle) {
             cpToggle.checked = cpEnabled;
@@ -930,8 +1007,6 @@ async function loadSettings() {
 
         // 状态图（流程卡片式）：拉取式（左）与推送式（右）并排，中间分界线
         let modeBadge = '', flow = '';
-        const buildCi = (mode === 'gitlab_ci') ? '🐺 ' + __.t('js.mode_gitlab_ci_name') : '⚡ ' + __.t('js.mode_jenkins_name');
-        const buildCls = (mode === 'gitlab_ci') ? 'gitlab' : 'jenkins';
 
         // 节点/箭头样式统一走 admin.css 的 .mf-*（响应式：窄屏自动换行/收缩）
         const node = (cls, icon, label, fontSize) =>
@@ -948,43 +1023,24 @@ async function loadSettings() {
             : '';
 
         // ── 拉取式（左）：Glue 触发 CI 构建，CI 拉取代码并推送镜像到 Harbor ──
+        // 只显示「已配置 + 已启用」的 CI，多选可并列展示
+        const enabledPull = PULL_PROVIDERS.filter(bp => availability[bp] && modes.includes(bp));
+        const hasPull = enabledPull.length > 0;
         let pullInner = '';
-        if (hasJenkins && hasGitlab) {
-            if (mode === 'both') {
-                modeBadge = '<span class="badge" style="background:#dbeafe;color:#1d4ed8;font-size:13px;">⚡ ' + __.t('js.mode_jenkins_name') + ' + 🐺 ' + __.t('js.mode_gitlab_ci_name') + ' ' + __.t('js.mode_coexist') + '</span>';
-                pullInner = node('git', '🌿', __.t('js.mode_git_repo'), 22)
-                    + arrow
-                    + node('jenkins', '⚡', __.t('js.mode_jenkins_name'))
-                    + split
-                    + node('gitlab', '🐺', __.t('js.mode_gitlab_ci_name'))
-                    + arrow
-                    + node('harbor', '🐳', __.t('js.mode_harbor_name'));
-            } else {
-                modeBadge = (mode === 'gitlab_ci')
-                    ? '<span class="badge" style="background:#fce4ec;color:#c81e1e;font-size:13px;">' + buildCi + ' ' + __.t('js.mode_mode') + '</span>'
-                    : '<span class="badge" style="background:#fff8e1;color:#d97706;font-size:13px;">' + buildCi + ' ' + __.t('js.mode_mode') + '</span>';
-                pullInner = node('git', '🌿', __.t('js.mode_git_repo'), 22)
-                    + arrow
-                    + node(buildCls, (mode === 'gitlab_ci') ? '🐺' : '⚡', (mode === 'gitlab_ci') ? __.t('js.mode_gitlab_ci_name') : __.t('js.mode_jenkins_name'))
-                    + arrow
-                    + node('harbor', '🐳', __.t('js.mode_harbor_name'));
-            }
-        } else if (hasGitlab) {
-            modeBadge = '<span class="badge" style="background:#fce4ec;color:#c81e1e;font-size:13px;">🐺 ' + __.t('js.mode_gitlab_ci_name') + ' ' + __.t('js.mode_mode') + '</span>';
+        if (hasPull) {
+            modeBadge = '<span class="badge" style="background:#dbeafe;color:#1d4ed8;font-size:13px;">'
+                + enabledPull.map(bp => pullProviderMeta(bp).icon + ' ' + pullProviderMeta(bp).label).join(' + ')
+                + ' ' + __.t('js.mode_mode') + '</span>';
+            const ciNodes = enabledPull.map(bp => {
+                const m = pullProviderMeta(bp);
+                return node(m.cls, m.icon, m.label);
+            }).join(split);
             pullInner = node('git', '🌿', __.t('js.mode_git_repo'), 22)
                 + arrow
-                + node('gitlab', '🐺', __.t('js.mode_gitlab_ci_name'))
-                + arrow
-                + node('harbor', '🐳', __.t('js.mode_harbor_name'));
-        } else {
-            modeBadge = '<span class="badge" style="background:#fff8e1;color:#d97706;font-size:13px;">⚡ ' + __.t('js.mode_jenkins_name') + ' ' + __.t('js.mode_mode') + '</span>';
-            pullInner = node('git', '🌿', __.t('js.mode_git_repo'), 22)
-                + arrow
-                + node('jenkins', '⚡', __.t('js.mode_jenkins_name'))
+                + ciNodes
                 + arrow
                 + node('harbor', '🐳', __.t('js.mode_harbor_name'));
         }
-        const hasPull = hasJenkins || hasGitlab;
 
         // ── 推送式（右）：用户 CI 自行构建并推送镜像到 Harbor，Glue 只接收回写 ──
         const hasPush = cpEnabled && hasCustom;
@@ -998,18 +1054,19 @@ async function loadSettings() {
         }
 
         // ── 左右并排 + 中间分界线 ──
-        const side = (title, desc, inner) =>
-            '<div class="mf-side">'
+        const side = (title, desc, inner, cls) =>
+            '<div class="mf-side' + (cls ? ' ' + cls : '') + '">'
             + '<div class="mf-side-title">' + title + '</div>'
             + '<div class="mf-side-desc">' + desc + '</div>'
             + '<div class="mf-flow">' + inner + '</div>'
             + '</div>';
 
         if (hasPull && hasPush) {
+            // 拉取式节点多（git + 多个 CI + harbor），给更大宽度，分界线靠右
             flow = '<div class="mf-row">'
-                + side(__.t('js.mode_pull_title'), __.t('js.mode_pull_desc'), pullInner)
+                + side(__.t('js.mode_pull_title'), __.t('js.mode_pull_desc'), pullInner, 'mf-side--pull')
                 + '<div class="mf-divider"></div>'
-                + side(__.t('js.mode_push_title'), __.t('js.mode_push_desc'), pushInner)
+                + side(__.t('js.mode_push_title'), __.t('js.mode_push_desc'), pushInner, 'mf-side--push')
                 + '</div>';
         } else if (hasPull) {
             flow = '<div class="mf-row mf-row--single">'
@@ -1035,33 +1092,33 @@ async function loadSettings() {
 let currentCpEnabled = false;
 let currentStaleCleanupEnabled = false;
 
-async function onBuildModeChange() {
-    const sel = document.getElementById('build-mode-select');
-    const newMode = sel.value;
-    const oldMode = currentBuildMode;
-    updateBuildModeValue(); // 即时显示新选中的值
+async function onBuildModeSelectAll() {
+    const all = document.getElementById('bm-all');
+    document.querySelectorAll('#build-mode-checkboxes .bm-item').forEach(cb => { cb.checked = all.checked; });
+    updateSelectAllState();
+    await onBuildModesChange();
+}
 
-    // 先回退选择，待确认后再正式切换
-    sel.value = oldMode;
-    updateBuildModeValue(); // 回退后显示旧值
+async function onBuildModesChange() {
+    const newModes = getCheckedBuildModes();
+    const oldModes = currentBuildModes.slice();
+    updateSelectAllState();
 
-    const modeLabels = {
-        'jenkins': __.t('build.mode_jenkins'),
-        'gitlab_ci': __.t('build.mode_gitlab_ci'),
-        'both': __.t('build.mode_both')
-    };
+    if (arraysEqual(newModes, oldModes)) return;
+
+    const modeLabel = newModes.length > 0
+        ? newModes.map(bp => pullProviderMeta(bp).label).join(' + ')
+        : __.t('js.mode_none');
 
     if (!await confirmDialog({
         title: __.t('build.mode_label'),
-        message: __.t('js.mode_switch_confirm', {mode: modeLabels[newMode] || newMode}),
+        message: __.t('js.mode_switch_confirm', {mode: modeLabel}),
         note: __.t('js.mode_switch_note')
     })) {
+        // 回退勾选状态
+        renderBuildModeCheckboxes(currentBuildAvailability, oldModes);
         return;
     }
-
-    // 用户确认，正式切换
-    sel.value = newMode;
-    updateBuildModeValue();
 
     const statusEl = document.getElementById('build-mode-status');
     statusEl.style.display = 'none';
@@ -1069,26 +1126,22 @@ async function onBuildModeChange() {
         const res = await fetch('/api/admin/build_mode', {
             method: 'PUT',
             headers: Object.assign({'Content-Type':'application/json'}, authHeaders()),
-            body: JSON.stringify({mode: newMode, custom_push_enabled: currentCpEnabled, stale_tag_cleanup_enabled: currentStaleCleanupEnabled})
+            body: JSON.stringify({modes: newModes, custom_push_enabled: currentCpEnabled, stale_tag_cleanup_enabled: currentStaleCleanupEnabled})
         });
-        if (handle401(res)) { sel.value = oldMode; currentBuildMode = oldMode; updateBuildModeValue(); return; }
+        if (handle401(res)) { renderBuildModeCheckboxes(currentBuildAvailability, oldModes); return; }
         if (res.ok) {
-            currentBuildMode = newMode;
+            currentBuildModes = newModes.slice();
             statusEl.style.display = 'inline';
             setTimeout(() => statusEl.style.display = 'none', 2000);
             loadSettings();
         } else {
             const data = await res.json();
             toast(data.message || __.t('js.save_failed'), false);
-            sel.value = oldMode;
-            currentBuildMode = oldMode;
-            updateBuildModeValue();
+            renderBuildModeCheckboxes(currentBuildAvailability, oldModes);
         }
     } catch(e) {
         toast(__.t('js.network_error') + ': ' + e.message, false);
-        sel.value = oldMode;
-        currentBuildMode = oldMode;
-        updateBuildModeValue();
+        renderBuildModeCheckboxes(currentBuildAvailability, oldModes);
     }
 }
 
@@ -1114,7 +1167,7 @@ async function onCustomPushToggle() {
         const res = await fetch('/api/admin/build_mode', {
             method: 'PUT',
             headers: Object.assign({'Content-Type':'application/json'}, authHeaders()),
-            body: JSON.stringify({mode: currentBuildMode, custom_push_enabled: newEnabled, stale_tag_cleanup_enabled: currentStaleCleanupEnabled})
+            body: JSON.stringify({modes: currentBuildModes, custom_push_enabled: newEnabled, stale_tag_cleanup_enabled: currentStaleCleanupEnabled})
         });
         if (handle401(res)) { cpToggle.checked = oldEnabled; return; }
         if (res.ok) {
@@ -1155,7 +1208,7 @@ async function onStaleTagCleanupToggle() {
         const res = await fetch('/api/admin/build_mode', {
             method: 'PUT',
             headers: Object.assign({'Content-Type':'application/json'}, authHeaders()),
-            body: JSON.stringify({mode: currentBuildMode, custom_push_enabled: currentCpEnabled, stale_tag_cleanup_enabled: newEnabled})
+            body: JSON.stringify({modes: currentBuildModes, custom_push_enabled: currentCpEnabled, stale_tag_cleanup_enabled: newEnabled})
         });
         if (handle401(res)) { staleToggle.checked = oldEnabled; return; }
         if (res.ok) {
@@ -1585,10 +1638,10 @@ function statusBadge(s) {
 async function activateMap(jobName, item) {
     // 防御：provider 与当前配置模式不匹配时直接拒绝
     const bp = item.build_provider || 'jenkins';
-    const isBuiltinBp = bp === 'jenkins' || bp === 'gitlab_ci';
-    if (isBuiltinBp && currentBuildMode !== 'both' && bp !== currentBuildMode) {
-        const curLabel = currentBuildMode === 'jenkins' ? __.t('js.mode_jenkins_name') : __.t('js.mode_gitlab_ci_name');
-        const itemLabel = bp === 'gitlab_ci' ? __.t('js.mode_gitlab_ci_name') : __.t('js.mode_jenkins_name');
+    const isBuiltinBp = isPullProvider(bp);
+    if (isBuiltinBp && !currentBuildModes.includes(bp)) {
+        const itemLabel = pullProviderMeta(bp).label;
+        const curLabel = currentBuildModes.map(m => pullProviderMeta(m).label).join(' + ') || __.t('js.mode_none');
         toast(__.t('js.cannot_activate_mode', {mode: curLabel, item: itemLabel}), false);
         return;
     }
@@ -2616,6 +2669,7 @@ if (token) {
     document.getElementById('login-page').style.display = 'none';
     document.getElementById('app-page').style.display = 'block';
     switchTab('monitor');
+    loadSettings();  // 刷新恢复会话时同样初始化构建模式状态
 } else {
     document.getElementById('login-page').style.display = 'flex';
     document.getElementById('app-page').style.display = 'none';

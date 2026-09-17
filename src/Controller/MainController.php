@@ -36,7 +36,7 @@ class MainController extends BaseController
      */
     public function jobsList(Request $request, Response $response): Response
     {
-        if ($this->mapping->buildMode() === AppConfig::BUILD_MODE_GITLAB_CI) {
+        if (!in_array(AppConfig::PROVIDER_JENKINS, $this->config->getBuildModes(), true)) {
             return $this->output($response, $this->mapping->activeJobNames(), $request);
         }
         try {
@@ -51,35 +51,27 @@ class MainController extends BaseController
      */
     public function mapList(Request $request, Response $response): Response
     {
-        $buildMode = $this->config->getBuildMode();
-        $cacheKey = AppConfig::CACHE_KEY_MAP_LIST_PREFIX . $buildMode;
+        $buildModes = $this->config->getBuildModes();
+        $cacheKey = AppConfig::CACHE_KEY_MAP_LIST_PREFIX . implode(',', $buildModes);
 
-        // 有缓存且未过期，直接返回（gitlab_ci 模式跳过缓存，避免 Jenkins 旧数据）
-        if ($buildMode !== AppConfig::BUILD_MODE_GITLAB_CI) {
-            try {
-                $pdo = $this->pdo;
-                $cached = $pdo->prepare("SELECT value FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key = ? AND expires_at > ?");
-                $cached->execute([$cacheKey, time()]);
-                $row = $cached->fetch();
-                if ($row) {
-                    $data = json_decode($row['value'], true);
-                    if (is_array($data)) {
-                        return $this->output($response, $data, $request);
-                    }
+        // 有缓存且未过期，直接返回（cache key 已含启用集合，跨模式不会串数据）
+        try {
+            $pdo = $this->pdo;
+            $cached = $pdo->prepare("SELECT value FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key = ? AND expires_at > ?");
+            $cached->execute([$cacheKey, time()]);
+            $row = $cached->fetch();
+            if ($row) {
+                $data = json_decode($row['value'], true);
+                if (is_array($data)) {
+                    return $this->output($response, $data, $request);
                 }
-            } catch (\Exception $e) {
-                \App\Helper\Log::exception($e);
             }
+        } catch (\Exception $e) {
+            \App\Helper\Log::exception($e);
         }
         try {
-            $maps = $this->config->getJobGitMap();
-            // 过滤禁用 + 模式筛选
-            $maps = array_filter($maps, fn($m) => ($m['status'] ?? AppConfig::STATUS_ACTIVE) === AppConfig::STATUS_ACTIVE);
-            if ($buildMode === AppConfig::BUILD_MODE_GITLAB_CI) {
-                $maps = array_values(array_filter($maps, fn($m) => ($m['build_provider'] ?? AppConfig::PROVIDER_JENKINS) === AppConfig::PROVIDER_GITLAB_CI));
-            } elseif ($buildMode === AppConfig::BUILD_MODE_JENKINS) {
-                $maps = array_values(array_filter($maps, fn($m) => ($m['build_provider'] ?? AppConfig::PROVIDER_JENKINS) !== AppConfig::PROVIDER_GITLAB_CI));
-            }
+            // 过滤禁用 + 启用集合筛选（custom_push 开启时一并保留），与 MappingManager::activeMaps 语义一致
+            $maps = $this->mapping->activeMaps();
         } catch (\Exception $e) {
             $maps = [];
         }
@@ -226,8 +218,7 @@ class MainController extends BaseController
             'harbor_version'  => null,
         ];
 
-        $buildMode = $this->config->getBuildMode();
-        if ($buildMode !== AppConfig::BUILD_MODE_GITLAB_CI) {
+        if (in_array(AppConfig::PROVIDER_JENKINS, $this->config->getBuildModes(), true)) {
             try {
                 // 健康检查用独立短超时 Client，避免 Jenkins 宕机时卡住
                 $jk = $this->config->getJenkinsConfig();
@@ -361,6 +352,7 @@ class MainController extends BaseController
             'checks'                => $checks,
             'stats'                 => $stats,
             'build_mode'            => $this->config->getBuildMode(),
+            'build_modes'           => $this->config->getBuildModes(),
             'build_mode_source'     => $this->config->getBuildModeSource(),
             'custom_push_enabled'  => $this->config->getCustomPushEnabled(),
             'custom_push_providers' => array_column($this->config->getCustomBuildProviders(), 'name'),

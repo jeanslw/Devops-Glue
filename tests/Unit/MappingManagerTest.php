@@ -161,4 +161,19 @@ class MappingManagerTest extends TestCase
         $this->assertSame(AppConfig::PROVIDER_GITLAB_CI, $r['provider']);
         $this->assertSame('42', $r['projectId']);
     }
+
+    public function testGiteaCiUsesJobNameAsProjectId(): void
+    {
+        // 单独启用 gitea_ci（setUp 默认 both=jenkins+gitlab_ci，会过滤掉 gitea_ci 记录）
+        $this->pdo->exec("UPDATE " . AppConfig::TABLE_APP_SETTINGS . " SET value='gitea_ci' WHERE setting_key='build_mode'");
+        $this->insertMap([
+            'job_name'       => 'org/repo',
+            'build_provider' => AppConfig::PROVIDER_GITEA_CI,
+            'current_path'   => 'org/repo',
+        ]);
+
+        $r = $this->makeManager()->resolveProject('org/repo');
+        $this->assertSame(AppConfig::PROVIDER_GITEA_CI, $r['provider']);
+        $this->assertSame('org/repo', $r['projectId']);
+    }
 }

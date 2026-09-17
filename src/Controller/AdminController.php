@@ -11,6 +11,7 @@ use App\Service\ApiTokenService;
 use App\Service\AutoDiscover;
 use App\Service\HarborService;
 use App\Service\I18nService;
+use App\Service\JenkinsService;
 use App\Service\TokenService;
 use App\Helper\ClientIp;
 
@@ -24,6 +25,7 @@ class AdminController extends BaseController
     private AdminAuthService $adminAuthService;
     private AdminUserRepository $adminUserRepository;
     private ?HarborService $harbor;
+    private ?JenkinsService $jenkins = null;
 
     public function __construct(
         I18nService $i18n,
@@ -34,7 +36,8 @@ class AdminController extends BaseController
         ?AutoDiscover $autoDiscover = null,
         ?TokenService $tokenService = null,
         ?ApiTokenService $apiTokenService = null,
-        ?HarborService $harbor = null
+        ?HarborService $harbor = null,
+        ?JenkinsService $jenkins = null
     ) {
         parent::__construct($i18n);
         $this->config             = $config;
@@ -45,6 +48,7 @@ class AdminController extends BaseController
         $this->adminAuthService   = $adminAuthService;
         $this->adminUserRepository = $adminUserRepository;
         $this->harbor             = $harbor;
+        $this->jenkins            = $jenkins;
     }
 
     /** POST /api/admin/discover — 自动扫描并保存未入库的项目 */
@@ -501,6 +505,17 @@ class AdminController extends BaseController
             $versions['harbor']['robot_account']    = $this->config->isHarborRobotAccount();
         }
 
+        // Jenkins：只读检测版本（Jenkins 无独立 API 版本，直接展示服务器版本；未配置则不显示）
+        $hasJenkins = !empty($this->config->getJenkinsConfig()['url']);
+        $versions['jenkins'] = [
+            'value'      => '',
+            'source'     => 'config',
+            'configured' => $hasJenkins,
+        ];
+        if ($hasJenkins) {
+            $versions['jenkins']['detected_version'] = $this->jenkins?->getVersion();
+        }
+
         return $this->output($response, ['versions' => $versions], $request);
     }
 
@@ -540,7 +555,7 @@ class AdminController extends BaseController
         if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_MODE_EDIT)) {
             return $resp;
         }
-        $mode = $this->config->getBuildMode();
+        $modes = $this->config->getBuildModes();
 
         // 检查实际可用性（由配置决定，不是模式）
         $jenkinsCfg = $this->config->getJenkinsConfig();
@@ -548,12 +563,17 @@ class AdminController extends BaseController
         $hasGitlab = $this->config->isPlatformConfigured('gitlab');
         $glCfg = $hasGitlab ? $this->config->getGitlabConfig() : [];
         $hasGitlabCi = $hasGitlab && !empty($glCfg['base_url']) && !empty($glCfg['token']);
+        $hasGitea = $this->config->isPlatformConfigured('gitea');
+        $giteaCfg = $hasGitea ? $this->config->getGiteaConfig() : [];
+        $hasGiteaCi = $hasGitea && !empty($giteaCfg['base_url']) && !empty($giteaCfg['token']);
 
         return $this->output($response, [
-            'mode'          => $mode,
+            'mode'          => $this->config->getBuildMode(), // 兼容：join 串
+            'modes'         => $modes,
             'source'        => $this->config->getBuildModeSource(),
             'has_jenkins'   => $hasJenkins,
             'has_gitlab_ci' => $hasGitlabCi,
+            'has_gitea_ci'  => $hasGiteaCi,
             'custom_push_enabled' => $this->config->getCustomPushEnabled(),
             'stale_tag_cleanup_enabled' => $this->config->getStaleTagCleanupEnabled(),
             'custom_providers' => array_column($this->config->getCustomBuildProviders(), 'name'),
@@ -570,26 +590,39 @@ class AdminController extends BaseController
             return $resp;
         }
         $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
-        $mode = trim($body['mode'] ?? '');
+        // 优先读 modes 数组；兼容旧单值 mode
+        $modes = $body['modes'] ?? null;
+        if (!is_array($modes)) {
+            $modes = isset($body['mode']) ? [trim((string) $body['mode'])] : [];
+        }
+        $modes = array_values(array_unique(array_filter(array_map('trim', $modes), fn($s) => $s !== '')));
         $cpEnabled = !empty($body['custom_push_enabled']);
         $staleCleanup = !empty($body['stale_tag_cleanup_enabled']);
 
-        if (!in_array($mode, [AppConfig::BUILD_MODE_JENKINS, AppConfig::BUILD_MODE_GITLAB_CI, AppConfig::BUILD_MODE_BOTH])) {
-            return $this->jsonError($response, 'build.mode_required', 400);
+        foreach ($modes as $m) {
+            if (!in_array($m, AppConfig::BUILTIN_PULL_PROVIDERS, true)) {
+                return $this->jsonError($response, 'build.mode_required', 400);
+            }
         }
 
-        // 拒绝不可用的 Provider（仅校验单 provider 模式；both 始终允许，配合 custom_push 可无拉取式 CI）
+        // 拒绝不可用的 Provider
         $jenkinsCfg = $this->config->getJenkinsConfig();
         $hasJenkins = !empty($jenkinsCfg['url']);
         $hasGitlab = $this->config->isPlatformConfigured('gitlab');
         $glCfg = $hasGitlab ? $this->config->getGitlabConfig() : [];
         $hasGitlabCi = $hasGitlab && !empty($glCfg['base_url']) && !empty($glCfg['token']);
+        $hasGitea = $this->config->isPlatformConfigured('gitea');
+        $giteaCfg = $hasGitea ? $this->config->getGiteaConfig() : [];
+        $hasGiteaCi = $hasGitea && !empty($giteaCfg['base_url']) && !empty($giteaCfg['token']);
 
-        if ($mode === AppConfig::BUILD_MODE_JENKINS && !$hasJenkins) {
+        if (in_array(AppConfig::PROVIDER_JENKINS, $modes, true) && !$hasJenkins) {
             return $this->jsonError($response, 'build.jenkins_unavail', 400);
         }
-        if ($mode === AppConfig::BUILD_MODE_GITLAB_CI && !$hasGitlabCi) {
+        if (in_array(AppConfig::PROVIDER_GITLAB_CI, $modes, true) && !$hasGitlabCi) {
             return $this->jsonError($response, 'build.gitlab_ci_unavail', 400);
+        }
+        if (in_array(AppConfig::PROVIDER_GITEA_CI, $modes, true) && !$hasGiteaCi) {
+            return $this->jsonError($response, 'build.gitea_ci_unavail', 400);
         }
 
         // custom_push 开启时要求至少配了一个 custom_providers
@@ -598,22 +631,18 @@ class AdminController extends BaseController
         }
 
         try {
-            $this->config->setBuildMode($mode);
+            $this->config->setBuildModes($modes);
             $this->config->setCustomPushEnabled($cpEnabled);
             $this->config->setStaleTagCleanupEnabled($staleCleanup);
 
-            // 切到单 provider 模式时，将其他 provider 的 active 记录降为 pending
-            if ($mode === AppConfig::BUILD_MODE_JENKINS || $mode === AppConfig::BUILD_MODE_GITLAB_CI) {
-                $otherProviders = match ($mode) {
-                    AppConfig::BUILD_MODE_JENKINS      => [AppConfig::PROVIDER_GITLAB_CI],
-                    AppConfig::BUILD_MODE_GITLAB_CI   => [AppConfig::PROVIDER_JENKINS],
-                    default                            => [],
-                };
+            // 将不在启用集合中的拉取式 provider 的 active 记录降为 pending
+            $removed = array_values(array_diff(AppConfig::BUILTIN_PULL_PROVIDERS, $modes));
+            if (!empty($removed)) {
                 $maps = $this->config->getJobGitMap();
                 $changed = false;
                 foreach ($maps as &$m) {
                     $bp = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
-                    if (in_array($bp, $otherProviders, true) && ($m['status'] ?? AppConfig::STATUS_ACTIVE) !== AppConfig::STATUS_PENDING) {
+                    if (in_array($bp, $removed, true) && ($m['status'] ?? AppConfig::STATUS_ACTIVE) !== AppConfig::STATUS_PENDING) {
                         $m['status'] = AppConfig::STATUS_PENDING;
                         $changed = true;
                     }
@@ -643,7 +672,7 @@ class AdminController extends BaseController
                 }
             }
 
-            return $this->output($response, ['success' => true, 'mode' => $mode, 'custom_push_enabled' => $cpEnabled, 'stale_tag_cleanup_enabled' => $staleCleanup], $request);
+            return $this->output($response, ['success' => true, 'modes' => $modes, 'custom_push_enabled' => $cpEnabled, 'stale_tag_cleanup_enabled' => $staleCleanup], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.save_failed') . ': ' . $e->getMessage(), 500);
         }
@@ -1611,12 +1640,8 @@ class AdminController extends BaseController
     {
         try {
             $pdo = $this->pdo;
-            $modes = [AppConfig::BUILD_MODE_JENKINS, AppConfig::BUILD_MODE_GITLAB_CI, AppConfig::BUILD_MODE_BOTH];
-            foreach ($modes as $mode) {
-                $pdo->prepare("DELETE FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key = ?")->execute([AppConfig::CACHE_KEY_MAP_LIST_PREFIX . $mode]);
-            }
-            // custom_push 缓存 key 也清理
-            $pdo->prepare("DELETE FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key = ?")->execute([AppConfig::CACHE_KEY_MAP_LIST_PREFIX . AppConfig::PROVIDER_CUSTOM_PUSH]);
+            // 构建模式集合化后缓存 key 变多，按前缀统一清理
+            $pdo->prepare("DELETE FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key LIKE ?")->execute([AppConfig::CACHE_KEY_MAP_LIST_PREFIX . '%']);
         } catch (\Exception $e) {
             // 缓存清理失败不影响主流程
         }

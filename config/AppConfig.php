@@ -3,7 +3,7 @@ namespace App\Config;
 
 class AppConfig
 {
-    public const APP_VERSION = '2.8.1';
+    public const APP_VERSION = '2.8.2';
 
 
     // ── 表名常量 ──
@@ -179,12 +179,17 @@ class AppConfig
     // ── 构建模式常量 ──
     public const BUILD_MODE_JENKINS   = 'jenkins';
     public const BUILD_MODE_GITLAB_CI = 'gitlab_ci';
-    public const BUILD_MODE_BOTH      = 'both';
+    public const BUILD_MODE_GITEA_CI  = 'gitea_ci';
+    public const BUILD_MODE_BOTH      = 'both'; // 旧格式遗留，读取时映射为 jenkins,gitlab_ci，不再作为存储值
     // 注：custom_push 不再作为 build_mode 值，改为独立开关 custom_push_enabled
 
     // ── 构建提供者常量 ──
     public const PROVIDER_JENKINS     = 'jenkins';
     public const PROVIDER_GITLAB_CI   = 'gitlab_ci';
+    public const PROVIDER_GITEA_CI    = 'gitea_ci';
+
+    /** 内置「拉取式」构建 provider 集合（build_mode 只在这些值里选；custom_push 是独立开关，不在此列） */
+    public const BUILTIN_PULL_PROVIDERS = [self::PROVIDER_JENKINS, self::PROVIDER_GITLAB_CI, self::PROVIDER_GITEA_CI];
     /**
      * 自定义推送式 CI（user push 模式）默认注册名。
      * custom_push 模式由用户在 settings.php 的 build.custom_providers 中通过 name 字段自定义，
@@ -729,26 +734,72 @@ class AppConfig
     // ─── 构建系统模式（数据库为唯一来源） ───
 
     /**
-     * 获取构建模式。
-     * 逻辑：DB ci_app_settings 表 → 返回。若 DB 无记录（首次运行），从 .env 取种子值写入 DB，然后返回。
-     * 此后 DB 为唯一真相来源，.env 不再参与运行时决策。
+     * 获取启用的构建 provider 集合（主 API）。
+     * 逻辑：DB ci_app_settings.build_mode → 解析为集合返回。若 DB 无记录（首次运行），
+     * 从 .env BUILD_MODE 取种子值写入 DB 后返回。此后 DB 为唯一真相来源，.env 不再参与运行时决策。
+     *
+     * 旧格式（jenkins / gitlab_ci / both 单值）惰性映射到新格式（both → jenkins,gitlab_ci），
+     * 并在读取时自愈回写为规范逗号串。
+     *
+     * @return string[] 已启用的拉取式 provider（jenkins/gitlab_ci/gitea_ci），可为空数组（仅 custom_push）
      */
-    public function getBuildMode(): string
+    public function getBuildModes(): array
     {
         try {
             $pdo = $this->getPdo();
             $row = $pdo->query("SELECT value FROM " . self::TABLE_APP_SETTINGS . " WHERE setting_key = 'build_mode'")->fetch();
-            if ($row && in_array($row['value'], [self::BUILD_MODE_JENKINS, self::BUILD_MODE_GITLAB_CI, self::BUILD_MODE_BOTH])) {
-                return $row['value'];
+            if ($row && is_string($row['value'] ?? null)) {
+                $modes = self::parseBuildModes($row['value']);
+                if ($row['value'] !== implode(',', $modes)) {
+                    $this->persistBuildModes($modes);
+                }
+                return $modes;
             }
             // DB 无记录 → 首次运行，以 .env 为种子写入 DB
-            $envMode = $_ENV['BUILD_MODE'] ?? self::BUILD_MODE_BOTH;
-            $this->setBuildMode($envMode);
-            return $envMode;
+            $modes = self::parseBuildModes($_ENV['BUILD_MODE'] ?? self::BUILD_MODE_BOTH);
+            $this->persistBuildModes($modes);
+            return $modes;
         } catch (\Exception $e) {
             // DB 彻底不可用时的最后兜底
-            return $_ENV['BUILD_MODE'] ?? self::BUILD_MODE_BOTH;
+            return self::parseBuildModes($_ENV['BUILD_MODE'] ?? self::BUILD_MODE_BOTH);
         }
+    }
+
+    /**
+     * 解析 build_mode 值为规范化 provider 集合（旧格式 both/jenkins/gitlab_ci 兼容映射）。
+     */
+    private static function parseBuildModes(string $value): array
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return [];
+        }
+        if ($value === self::BUILD_MODE_BOTH) {
+            return [self::PROVIDER_JENKINS, self::PROVIDER_GITLAB_CI];
+        }
+        if (in_array($value, self::BUILTIN_PULL_PROVIDERS, true)) {
+            return [$value];
+        }
+        // 新格式：逗号分隔集合，只保留内置拉取式 provider，未知值丢弃。
+        // array_intersect 以 BUILTIN_PULL_PROVIDERS 的顺序返回（jenkins,gitlab_ci,gitea_ci），保持规范顺序。
+        $parts = array_values(array_filter(array_map('trim', explode(',', $value)), fn($s) => $s !== ''));
+        return array_values(array_intersect(self::BUILTIN_PULL_PROVIDERS, $parts));
+    }
+
+    private function persistBuildModes(array $modes): void
+    {
+        $pdo = $this->getPdo();
+        $sql = \App\Service\Database::sqlUpsert(self::TABLE_APP_SETTINGS, 'setting_key, value, updated_at', '?, ?, ' . \App\Service\Database::sqlNow());
+        $pdo->prepare($sql)->execute(['build_mode', implode(',', $modes)]);
+    }
+
+    /**
+     * 兼容字符串：返回 join 出的规范串（供缓存 key / 汇总 / configMode 复用）。
+     * @deprecated 新代码优先用 getBuildModes()
+     */
+    public function getBuildMode(): string
+    {
+        return implode(',', $this->getBuildModes());
     }
 
     /**
@@ -759,7 +810,7 @@ class AppConfig
         try {
             $pdo = $this->getPdo();
             $row = $pdo->query("SELECT value FROM " . self::TABLE_APP_SETTINGS . " WHERE setting_key = 'build_mode'")->fetch();
-            if ($row && in_array($row['value'], [self::BUILD_MODE_JENKINS, self::BUILD_MODE_GITLAB_CI, self::BUILD_MODE_BOTH])) {
+            if ($row && is_string($row['value'] ?? null)) {
                 return 'database';
             }
         } catch (\Exception $e) {
@@ -769,16 +820,22 @@ class AppConfig
     }
 
     /**
-     * 设置构建模式（写入 app_settings 表）
+     * 设置启用的构建 provider 集合（写入 app_settings 表）
+     */
+    public function setBuildModes(array $modes): void
+    {
+        // array_intersect 以 BUILTIN_PULL_PROVIDERS 的顺序返回，天然去重，保持规范顺序
+        $modes = array_values(array_intersect(self::BUILTIN_PULL_PROVIDERS, array_map('trim', $modes)));
+        $this->persistBuildModes($modes);
+    }
+
+    /**
+     * 兼容桥接：单值/旧格式字符串 → 集合。
+     * @deprecated 新代码优先用 setBuildModes()
      */
     public function setBuildMode(string $mode): void
     {
-        if (!in_array($mode, [self::BUILD_MODE_JENKINS, self::BUILD_MODE_GITLAB_CI, self::BUILD_MODE_BOTH])) {
-            throw new \InvalidArgumentException("Invalid build mode: {$mode}");
-        }
-        $pdo = $this->getPdo();
-        $sql = \App\Service\Database::sqlUpsert(self::TABLE_APP_SETTINGS, 'setting_key, value, updated_at', '?, ?, ' . \App\Service\Database::sqlNow());
-        $pdo->prepare($sql)->execute(['build_mode', $mode]);
+        $this->setBuildModes(self::parseBuildModes($mode));
     }
 
     /**
