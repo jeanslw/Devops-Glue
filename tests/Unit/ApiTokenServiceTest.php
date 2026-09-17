@@ -38,7 +38,7 @@ class ApiTokenServiceTest extends TestCase
             created_at TEXT DEFAULT (datetime(\'now\',\'localtime\'))
         )');
 
-        $this->service = new ApiTokenService($this->pdo, new AppConfig([]));
+        $this->service = new ApiTokenService($this->pdo);
     }
 
     protected function tearDown(): void

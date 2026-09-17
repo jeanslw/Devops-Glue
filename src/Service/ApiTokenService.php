@@ -13,7 +13,7 @@ use App\Config\AppConfig;
  */
 class ApiTokenService
 {
-    public function __construct(private \PDO $pdo, private AppConfig $config)
+    public function __construct(private \PDO $pdo)
     {
     }
 
@@ -36,7 +36,7 @@ class ApiTokenService
 
         $scopes = $this->normalizeScopes($data['scopes'] ?? []);
 
-        $expiresAt = isset($data['expires_at']) && $data['expires_at'] !== '' && $data['expires_at'] !== null
+        $expiresAt = isset($data['expires_at']) && $data['expires_at'] !== ''
             ? (int)$data['expires_at']
             : null;
 

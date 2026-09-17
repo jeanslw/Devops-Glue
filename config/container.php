@@ -139,10 +139,7 @@ return [
 
     // API Token 服务（服务账号 / 第三方调用，独立于 RBAC）
     ApiTokenService::class => function (\Psr\Container\ContainerInterface $c) {
-        return new ApiTokenService(
-            $c->get(\PDO::class),
-            $c->get(AppConfig::class)
-        );
+        return new ApiTokenService($c->get(\PDO::class));
     },
 
     // 管理员用户仓库

@@ -111,7 +111,7 @@ class JenkinsBuildProvider implements BuildProviderInterface
 
         // 3. 参数校验：缺失的参数自动用 defaultValue 填充
         foreach ($allParams as $name => $def) {
-            if (!array_key_exists($name, $variables) && array_key_exists('defaultValue', $def) && $def['defaultValue'] !== null) {
+            if (!array_key_exists($name, $variables) && $def['defaultValue'] !== null) {
                 $variables[$name] = $def['defaultValue'];
             }
         }
@@ -158,7 +158,7 @@ class JenkinsBuildProvider implements BuildProviderInterface
             $paramDefs = $this->jenkins->getParameterDefinitions($projectId);
             $result = [];
             foreach ($paramDefs as $key => $def) {
-                $class = $def['_class'] ?? '';
+                $class = $def['_class'];
                 $item = ['key' => $key];
 
                 // 类型映射
