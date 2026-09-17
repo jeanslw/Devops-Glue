@@ -271,6 +271,7 @@
                             <option value="" data-i18n="map.all_build_sources">全部构建源</option>
                             <option value="jenkins" data-i18n="build.mode_jenkins">⚡ Jenkins</option>
                             <option value="gitlab_ci" data-i18n="build.mode_gitlab_ci">🐺 GitLab CI</option>
+                            <option value="gitea_ci" data-i18n="build.mode_gitea_ci">🦎 Gitea Actions</option>
                             <option value="custom_push" data-i18n="build.mode_custom_push">📤 Custom_Push</option>
                         </select>
                         <select id="map-platform-filter" onchange="onFilterChange()" style="padding:7px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;min-width:110px;">
@@ -315,6 +316,7 @@
                                         <option value="" data-i18n="form.please_select">— 请选择 —</option>
                                         <option value="jenkins" data-i18n="js.mode_jenkins_name">jenkins</option>
                                         <option value="gitlab_ci" data-i18n="js.mode_gitlab_ci_name">gitlab_ci</option>
+                                        <option value="gitea_ci" data-i18n="js.mode_gitea_ci_name">Gitea Actions</option>
                                         <option value="custom_push" data-i18n="js.mode_custom_push_name">Custom_Push</option>
                                     </select>
                                     <small id="cp-disabled-hint" data-i18n="js.cp_disabled_hint" style="display:none;color:#d97706;">Custom_Push 未启用，选择后将保存为「待定」</small>
@@ -384,6 +386,7 @@
                             <tbody id="ver-tbody"></tbody>
                         </table>
                         <div id="harbor-compat" style="display:none;margin-top:16px;padding:12px 16px;border-radius:8px;border:1px solid #e5e7eb;background:#f9fafb;font-size:13px;"></div>
+                        <div id="jenkins-compat" style="display:none;margin-top:8px;padding:12px 16px;border-radius:8px;border:1px solid #e5e7eb;background:#f9fafb;font-size:13px;"></div>
                         <div style="margin-top:16px;text-align:right;">
                             <button class="btn btn-save" onclick="saveVersions()">💾 <span data-i18n="common.save">保存</span></button>
                             <span id="ver-status" style="font-size:13px;color:#16a34a;margin-left:12px;display:none;" data-i18n="build.mode_saved">已保存</span>
@@ -444,12 +447,7 @@
                             <div class="mode-card">
                                 <div class="mode-card-hd">
                                     <span class="mode-card-title" data-i18n="build.mode_label">构建模式</span>
-                                    <select id="build-mode-select" onchange="onBuildModeChange()">
-                                        <option value="jenkins" data-i18n="build.mode_jenkins">⚡ Jenkins</option>
-                                        <option value="gitlab_ci" data-i18n="build.mode_gitlab_ci">🐺 GitLab CI</option>
-                                        <option value="both" data-i18n="build.mode_both">⚡ Jenkins + 🐺 GitLab CI</option>
-                                    </select>
-                                    <code id="build-mode-value">—</code>
+                                    <div id="build-mode-checkboxes" class="build-mode-checkboxes"></div>
                                     <span id="build-mode-status" class="mode-save-status" data-i18n="build.mode_saved">✅ 已保存</span>
                                 </div>
                                 <ul class="mode-card-notes">

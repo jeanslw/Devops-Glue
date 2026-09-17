@@ -71,9 +71,9 @@ Devops-Glue supports two orthogonal CI modes that can be enabled simultaneously:
 
 ### Pull-based CI (Traditional)
 
-- **Switch**: `build_mode` (`jenkins` / `gitlab_ci` / `both`)
+- **Switch**: `build_mode` — enabled CI source set (`jenkins` / `gitlab_ci` / `gitea_ci`, multi-select)
 - **Direction**: Devops-Glue actively calls CI APIs to trigger builds, poll status, and fetch image tags
-- **Providers**: `JenkinsBuildProvider`, `GitLabCIBuildProvider`
+- **Providers**: `JenkinsBuildProvider`, `GitlabCiBuildProvider`, `GiteaCiBuildProvider`
 - **Flow**: Devops-Glue → CI API → Build → Harbor → scan-sync → `ci_pipeline_artifacts`.
 
 ### Push-based CI (Custom_Push)
@@ -87,14 +87,14 @@ Devops-Glue supports two orthogonal CI modes that can be enabled simultaneously:
 
 `build_mode` and `custom_push_enabled` are independent and can be combined freely:
 
-| build_mode | custom_push_enabled | Effect |
+| build_mode (enabled CI sources) | custom_push_enabled | Effect |
 |---|---|---|
 | jenkins | false | Jenkins pull-based only |
 | gitlab_ci | false | GitLab CI pull-based only |
-| both | false | Jenkins + GitLab CI pull-based |
+| gitea_ci | false | Gitea Actions pull-based only |
+| jenkins,gitlab_ci,gitea_ci | false | All three pull-based CIs |
 | jenkins | true | Jenkins + Custom_Push simultaneously |
-| gitlab_ci | true | GitLab CI + Custom_Push simultaneously |
-| both | true | All three working simultaneously |
+| gitlab_ci,gitea_ci | true | GitLab CI + Gitea Actions + Custom_Push simultaneously |
 
 ### Custom_Push Key Design
 

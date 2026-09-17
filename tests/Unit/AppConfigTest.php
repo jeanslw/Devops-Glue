@@ -36,14 +36,24 @@ class AppConfigTest extends TestCase
 
     public function testBuildModeConstantsAreValid(): void
     {
-        $modes = [AppConfig::BUILD_MODE_JENKINS, AppConfig::BUILD_MODE_GITLAB_CI, AppConfig::BUILD_MODE_BOTH];
-        $this->assertCount(3, array_unique($modes));
+        $modes = [AppConfig::BUILD_MODE_JENKINS, AppConfig::BUILD_MODE_GITLAB_CI, AppConfig::BUILD_MODE_GITEA_CI, AppConfig::BUILD_MODE_BOTH];
+        $this->assertCount(4, array_unique($modes));
     }
 
     public function testProviderConstantsMatchBuildModes(): void
     {
         $this->assertEquals(AppConfig::BUILD_MODE_JENKINS, AppConfig::PROVIDER_JENKINS);
         $this->assertEquals(AppConfig::BUILD_MODE_GITLAB_CI, AppConfig::PROVIDER_GITLAB_CI);
+        $this->assertEquals(AppConfig::BUILD_MODE_GITEA_CI, AppConfig::PROVIDER_GITEA_CI);
+    }
+
+    public function testBuiltinPullProvidersContainThreeSources(): void
+    {
+        $this->assertSame(
+            [AppConfig::PROVIDER_JENKINS, AppConfig::PROVIDER_GITLAB_CI, AppConfig::PROVIDER_GITEA_CI],
+            AppConfig::BUILTIN_PULL_PROVIDERS,
+            '内置拉取式 provider 集合必须是 jenkins/gitlab_ci/gitea_ci 且顺序稳定'
+        );
     }
 
     public function testCustomPushConstants(): void

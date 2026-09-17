@@ -88,7 +88,8 @@ Returns connectivity status of Jenkins, Git platforms, and Harbor, plus system s
     "harbor_components": {"core": true, "jobservice": true, "registry": true}
   },
   "stats": {"total_maps": 15, "active_maps": 12, "git_platforms": 2, "harbor_repos": 8},
-  "build_mode": "both",
+  "build_mode": "jenkins,gitlab_ci,gitea_ci",
+  "build_modes": ["jenkins", "gitlab_ci", "gitea_ci"],
   "build_mode_source": "database",
   "db_driver": "mysql",
   "app_version": "2.7.0",
@@ -313,7 +314,7 @@ Token expires in 24 hours. `super_admin` role returns `"*"` for permissions.
 | `/api/admin/custom_builds` | GET | Custom_Push build records (supports `?page=&per_page=`; requires `ci.mode.edit`) |
 | `/api/admin/security_checks` | GET | Security scan audit records (supports `?project=&check_type=&state=&writeback=&exclude=&page=&per_page=`) |
 | `/api/admin/platform_versions` | GET/PUT | Platform API version config |
-| `/api/admin/build_mode` | GET/PUT | Build mode (jenkins/gitlab_ci/both) |
+| `/api/admin/build_mode` | GET/PUT | Build mode (enabled CI source set, e.g. jenkins,gitlab_ci,gitea_ci) |
 | `/api/admin/users` | GET | User list (admin sees all; non-admin cannot see admin users) |
 | `/api/admin/users` | POST | Create user (body: `username`, `password`, `role`, `systems`) |
 | `/api/admin/users/{username}` | PUT | Update user (body: `password` and/or `role`) |

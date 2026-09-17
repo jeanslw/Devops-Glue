@@ -134,7 +134,7 @@ On first boot the system automatically performs the following initialization:
 1. **Create tables**: creates all tables (permissions, roles, mapping, users, API tokens, etc.) when `DB_AUTO_MIGRATE=true`.
 2. **Seed data**: writes built-in permissions, implied rules, and the system role `super_admin`.
 3. **Root admin account**: reads `ADMIN_USER` (default `admin`) and `ADMIN_PASSWORD` from `.env` and creates a `super_admin` account with full permissions.
-4. **Build mode seed value**: reads `BUILD_MODE` (default `both`).
+4. **Build mode seed value**: reads `BUILD_MODE` (default `jenkins,gitlab_ci,gitea_ci`; the legacy value `both` is mapped to `jenkins,gitlab_ci`).
 
 > When `ADMIN_PASSWORD` is not set, it is treated as first-time initialization and no admin account is created; set the password in `.env` before logging in.
 
@@ -156,7 +156,7 @@ The admin panel sidebar contains the following modules:
 | Mapping | Job ↔ Git ↔ Harbor mapping configuration |
 | Security Audit | SAST / secret / dependency vulnerability scan results and write-back records |
 | Platform Versions | API versions of each connected platform |
-| Build Mode | Build mode (jenkins / gitlab_ci / both) |
+| Build Mode | Build mode (jenkins / gitlab_ci / gitea_ci, multi-select) |
 | User Management | User list, role management, change password |
 | Permission Management | Permission list, permission registration, implied rules |
 | API Management | Create / revoke / delete API tokens (only shown with the required permission) |
@@ -264,19 +264,28 @@ Harbor is used to associate build artifacts (image repositories) and to trigger 
 
 ## 12. Configure Build Mode
 
-On the "Build Mode" page, choose the build mode:
+On the "Build Mode" page, select the enabled CI sources with checkboxes (multi-select; only configured CIs are shown, plus a "Select All" option at the bottom):
 
-- `jenkins`: Jenkins only
-- `gitlab_ci`: GitLab CI only
-- `both`: Jenkins and GitLab CI side by side
+- `jenkins`: Jenkins
+- `gitlab_ci`: GitLab CI
+- `gitea_ci`: Gitea Actions
 
-This corresponds to `BUILD_MODE` in `.env`. First boot uses `.env`; afterwards you can switch directly in the admin panel.
+The stored value is a comma-separated set in the database (e.g. `jenkins,gitlab_ci,gitea_ci`). `BUILD_MODE` in `.env` is only a first-boot seed; afterwards the admin panel is authoritative. The legacy single value `both` is mapped to `jenkins,gitlab_ci` on read.
+
+### Gitea Actions prerequisites
+
+`gitea_ci` uses **Gitea Actions** as the CI backend. To run a Gitea-hosted project end-to-end (trigger → pipeline/logs → artifact tag), the following are required:
+
+- **Workflow file**: the repository must contain a workflow with a `workflow_dispatch` trigger (e.g. `.gitea/workflows/build.yml`) for manual triggering. Without it, `trigger` returns a "workflow required" message; `push`-triggered workflows still run and are read back normally.
+- **Runner available**: the Gitea server must have Actions enabled (`[actions] ENABLED=true`) and at least one runner online.
+- **Push image to Harbor**: Gitea Actions exposes no "artifact tag" API. The build-artifact tag association into `ci_pipeline_artifacts` uses the **Harbor scan-sync** flow — identical to Jenkins / GitLab CI. The workflow must push its image to Harbor, then call `POST /api/build/{owner/repo}/scan-sync` with `{ "tag", "pipeline_iid", "sha" }` (`pipeline_iid`/`sha` optional; when omitted, Glue falls back to the latest run and latest Harbor tag).
+- **`harbor_repository` configured**: the mapping must set `harbor_repository` to `project/repo` form, otherwise `scan-sync` returns 400.
 
 ### Pull-based CI vs Push-based CI
 
 Devops-Glue supports two orthogonal CI paradigms:
 
-- **Pull-based CI**: controlled by `build_mode` (`jenkins` / `gitlab_ci` / `both`). Devops-Glue actively queries Jenkins / GitLab CI to pull build status, logs, and image tags.
+- **Pull-based CI**: controlled by the enabled CI source set (`jenkins` / `gitlab_ci` / `gitea_ci`). Devops-Glue actively queries Jenkins / GitLab CI / Gitea Actions to pull build status, logs, and image tags.
 - **Push-based CI**: controlled by the independent boolean switch `custom_push_enabled`. Users trigger builds in their own CI scripts and push build status, log URLs, and image tags back to Devops-Glue. Devops-Glue only stores build metadata and log URL pointers — it **does not participate in build execution** and **does not store log content**.
 
 The two are independent and can be enabled simultaneously (e.g. `jenkins + custom_push`).
@@ -295,7 +304,7 @@ The two are independent and can be enabled simultaneously (e.g. `jenkins + custo
 
 No code changes needed — works out of the box:
 
-1. On the "Build Mode" page, check the **Custom_Push** checkbox. It is independent of the `build_mode` dropdown (which only has the three options `jenkins` / `gitlab_ci` / `both`).
+1. On the "Build Mode" page, check the **Custom_Push** checkbox. It is independent of the build-mode checkboxes (`jenkins` / `gitlab_ci` / `gitea_ci`).
 2. Register a provider in the `build.custom_providers` array of `config/settings.php`.
 
 Configuration example:
@@ -571,11 +580,9 @@ Mapping management establishes the three-way Job ↔ Git repository ↔ Harbor i
 
 The system automatically scans enabled CI platforms and adds discovered jobs to the mapping list (initial status is "pending" and requires manual activation):
 
-- `BUILD_MODE=both`: scan both Jenkins and GitLab CI jobs
-- `BUILD_MODE=jenkins`: scan Jenkins jobs only
-- `BUILD_MODE=gitlab_ci`: scan GitLab CI jobs only
+Only CI sources currently enabled are scanned (jenkins / gitlab_ci / gitea_ci, per the multi-select).
 
-> **Note:** When `BUILD_MODE=both`, the same `repository URL` may produce duplicate entries (one from Jenkins, one from GitLab CI). After enabling one pipeline (jenkins or gitlab_ci), the other is auto-hidden; reverting to "pending" status shows the duplicates again. This is expected behavior.
+> **Note:** When multiple CI sources are enabled, the same repository may be discovered under several sources (e.g. Jenkins and Gitea Actions pointing at the same repo). Only one entry stays "active" at a time — the same repository is deduplicated by normalized remote (host + path, port ignored). Activating one entry auto-hides the others for that repository; reverting it to "pending" shows them again. This is expected behavior.
 
 ### Manual Mapping
 
@@ -718,7 +725,7 @@ JENKINS_BASE_URL=http://your-jenkins:8080
 JENKINS_USER=admin
 JENKINS_TOKEN=your_token
 
-BUILD_MODE=both           # jenkins / gitlab_ci / both (seed value on first boot)
+BUILD_MODE=jenkins,gitlab_ci,gitea_ci   # enabled CI sources, comma-separated (seed value on first boot)
 BUILD_TIMEOUT=300         # Build timeout in seconds
 
 # ============ Git Platforms ============

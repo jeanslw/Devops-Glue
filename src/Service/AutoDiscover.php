@@ -14,25 +14,25 @@ class AutoDiscover
     private MappingManager $mapping;
     private ?Logger $logger;
     private ?Client $gitlabClient = null;
+    private ?Client $giteaClient = null;
 
-    public function __construct(JenkinsService $jenkins, ProviderRegistry $gitRegistry, AppConfig $config, MappingManager $mapping, ?Logger $logger = null, ?Client $gitlabClient = null)
+    public function __construct(JenkinsService $jenkins, ProviderRegistry $gitRegistry, AppConfig $config, MappingManager $mapping, ?Logger $logger = null, ?Client $gitlabClient = null, ?Client $giteaClient = null)
     {
-        $this->jenkins     = $jenkins;
-        $this->gitRegistry = $gitRegistry;
-        $this->config      = $config;
-        $this->mapping     = $mapping;
-        $this->logger      = $logger;
+        $this->jenkins      = $jenkins;
+        $this->gitRegistry  = $gitRegistry;
+        $this->config       = $config;
+        $this->mapping      = $mapping;
+        $this->logger       = $logger;
         $this->gitlabClient = $gitlabClient;
+        $this->giteaClient  = $giteaClient;
     }
 
     public function discover(): array
     {
-        $buildMode = $this->mapping->buildMode();
+        $enabled = $this->mapping->activeBuildProviders();
 
-        // ⚠️ 关键安全约束：按当前构建模式严格隔离
-        // - jenkins 模式：只参考 build_provider=jenkins 的已有记录去重
-        // - gitlab_ci 模式：只参考 build_provider=gitlab_ci 的已有记录去重
-        // - both 模式：jenkins + gitlab_ci 都纳入去重
+        // ⚠️ 关键安全约束：按「已启用的拉取式 provider 集合」严格隔离
+        // - 只参考 build_provider ∈ enabled 的已有记录去重（跨源：同仓库仅一条 active）
         // - custom_push_enabled 开启时：custom_push 记录也纳入去重（正交维度）
         $cpEnabled = $this->config->getCustomPushEnabled();
         $activeRemotes = [];   // 归一化后的 key：host/path（统一格式，跨协议去重）
@@ -40,9 +40,8 @@ class AutoDiscover
         foreach ($this->config->getJobGitMap() as $m) {
             $bp = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
 
-            // 单 provider 模式：排斥对方 provider 的记录，杜绝交叉污染
-            if ($buildMode !== AppConfig::BUILD_MODE_BOTH && $bp !== $buildMode) {
-                // 但 custom_push 记录在 custom_push_enabled 时始终纳入去重
+            // 非启用 provider 的记录不参与去重（custom_push 开启时始终纳入）
+            if (!in_array($bp, $enabled, true)) {
                 if (!($cpEnabled && $bp === AppConfig::PROVIDER_CUSTOM_PUSH)) {
                     continue;
                 }
@@ -65,7 +64,7 @@ class AutoDiscover
         $errors    = [];
         $found     = [];
 
-        if (in_array($buildMode, [AppConfig::BUILD_MODE_JENKINS, AppConfig::BUILD_MODE_BOTH])) {
+        if (in_array(AppConfig::PROVIDER_JENKINS, $enabled, true)) {
             try {
                 $found = array_merge($found, $this->scanJenkins($activeRemotes, $existingNames));
             } catch (\Exception $e) {
@@ -73,11 +72,19 @@ class AutoDiscover
             }
         }
 
-        if (in_array($buildMode, [AppConfig::BUILD_MODE_GITLAB_CI, AppConfig::BUILD_MODE_BOTH])) {
+        if (in_array(AppConfig::PROVIDER_GITLAB_CI, $enabled, true)) {
             try {
                 $found = array_merge($found, $this->scanGitlabCi($activeRemotes, $existingNames));
             } catch (\Exception $e) {
                 $errors[] = 'GitLab CI: ' . $e->getMessage();
+            }
+        }
+
+        if (in_array(AppConfig::PROVIDER_GITEA_CI, $enabled, true)) {
+            try {
+                $found = array_merge($found, $this->scanGiteaCi($activeRemotes, $existingNames));
+            } catch (\Exception $e) {
+                $errors[] = 'Gitea Actions: ' . $e->getMessage();
             }
         }
 
@@ -100,15 +107,15 @@ class AutoDiscover
     public function saveDiscovered(array $discovered): int
     {
         $saved = 0;
-        $buildMode = $this->mapping->buildMode();
+        $enabled = $this->mapping->activeBuildProviders();
         $cpEnabled = $this->config->getCustomPushEnabled();
         $maps  = $this->config->getJobGitMap();
 
-        // 同样按模式隔离：只收集当前模式相关 provider 的 job_name，防止跨 provider 误判重复
+        // 同样按集合隔离：只收集启用 provider 的 job_name，防止跨 provider 误判重复
         $names = [];
         foreach ($maps as $m) {
             $bp = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
-            if ($buildMode !== AppConfig::BUILD_MODE_BOTH && $bp !== $buildMode) {
+            if (!in_array($bp, $enabled, true)) {
                 // custom_push 记录在 custom_push_enabled 时始终纳入去重
                 if (!($cpEnabled && $bp === AppConfig::PROVIDER_CUSTOM_PUSH)) {
                     continue;
@@ -244,6 +251,71 @@ class AutoDiscover
         return $found;
     }
 
+    // ── Gitea Actions ──
+
+    private function scanGiteaCi(array $activeRemotes, array $existingNames): array
+    {
+        $found = [];
+        $giteaCfg = $this->config->getGiteaConfig();
+        $base  = rtrim($giteaCfg['base_url'] ?? '', '/');
+        if (empty($base) || !$this->giteaClient) {
+            return $found;
+        }
+
+        try {
+            $page = 1;
+            $seen = [];  // 归一化 key，仅本 provider 内去重
+            while ($page <= 10) {
+                $resp = $this->giteaClient->get("{$base}/api/v1/user/repos?limit=100&page={$page}");
+                if ($resp->getStatusCode() === 401) {
+                    throw new \RuntimeException('Gitea Token 无效，请检查 GITEA_TOKEN');
+                }
+                if ($resp->getStatusCode() >= 400) {
+                    break;
+                }
+                $data = json_decode($resp->getBody(), true);
+                if (!is_array($data) || empty($data)) {
+                    break;
+                }
+
+                foreach ($data as $p) {
+                    $fullName = $p['full_name'] ?? '';
+                    $remote   = $p['clone_url'] ?? '';
+                    $rKey     = $remote ? $this->normalizeRemote($remote) : '';
+                    // 该仓库已被启用集合内的已有 active 记录映射（归一化 key 比对，跨源生效）
+                    if ($rKey && in_array($rKey, $activeRemotes)) {
+                        continue;
+                    }
+                    // 本 provider 内同一仓库不重复显示
+                    if ($rKey && in_array($rKey, $seen)) {
+                        continue;
+                    }
+                    if (in_array($fullName, $existingNames)) {
+                        continue;
+                    }
+                    if ($rKey) {
+                        $seen[] = $rKey;
+                    }
+
+                    $found[] = ['entry' => [
+                        'job_name'       => $fullName,
+                        'build_provider' => AppConfig::PROVIDER_GITEA_CI,
+                        'git_platform'   => 'gitea',
+                        'git_remote'     => $remote,
+                        'current_path'   => $fullName,
+                        'project_id'     => null,
+                        'web_url'        => $p['html_url'] ?? '',
+                        'harbor_repository' => '',
+                    ], 'source' => 'gitea_ci'];
+                }
+                $page++;
+            }
+        } catch (\Exception $e) {
+            $this->logger?->warning('AutoDiscover Gitea Actions 扫描失败', ['error' => $e->getMessage()]);
+        }
+        return $found;
+    }
+
     // ── Git 平台扫描（custom_push 模式专用） ──
 
     /**
@@ -314,56 +386,12 @@ class AutoDiscover
     // ── helpers ──
 
     /**
-     * 归一化 Git remote URL 为纯路径（org/repo），用于跨协议/跨 host 去重。
-     *
-     * 只保留仓库路径，忽略协议和 host，解决内网同一仓库用域名/IP 不同的问题。
-     * 同一 DevOps 实例内，不同 host 上路径相同的仓库视为同一仓库。
-     *
-     * 支持格式：
-     *   git@github.com:org/repo.git  → org/repo
-     *   https://github.com/org/repo   → org/repo
-     *   https://10.0.0.5/team/repo    → team/repo
-     *   git@git.internal.com:team/repo → team/repo（域名/IP 不同但路径相同 → 命中）
+     * 归一化 Git remote URL 为「host/org/repo」去重键，用于跨协议去重。
+     * 委托给 App\Helper\GitRemote::normalize()（可单测的公共助手）。
      */
     private function normalizeRemote(string $remote): string
     {
-        $r = trim($remote);
-        if (empty($r)) {
-            return '';
-        }
-
-        // 处理 ssh://user@host:port/path 格式（带端口）
-        if (preg_match('#^ssh://#i', $r)) {
-            $parts = parse_url($r);
-            if (isset($parts['path'])) {
-                $path = ltrim($parts['path'], '/');
-                $path = preg_replace('#\.git$#i', '', $path);
-                return strtolower($path);
-            }
-            return '';
-        }
-
-        // 去掉其他协议前缀 (http, https, git)
-        $r = preg_replace('#^(https?|git)://#i', '', $r);
-
-        // git@host:path → host/path
-        if (preg_match('#^git@([^:]+):(.+)#', $r, $m)) {
-            $r = $m[1] . '/' . $m[2];
-        }
-
-        // 去掉尾部 .git
-        $r = preg_replace('#\.git$#i', '', $r);
-        $r = rtrim($r, '/');
-
-        // 提取路径部分（去掉 host），统一小写用于比对
-        $slashPos = strpos($r, '/');
-        if ($slashPos !== false) {
-            $r = strtolower(substr($r, $slashPos + 1));
-        } else {
-            $r = strtolower($r);
-        }
-
-        return $r;
+        return \App\Helper\GitRemote::normalize($remote);
     }
 
     private function detectPlatform(string $remote): string

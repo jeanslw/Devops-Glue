@@ -149,10 +149,11 @@ If an old container stored the DB in the writable layer and you are adding the `
 
 Devops-Glue integrates via two complementary CI modes, so **theoretically all CI systems are supported**:
 
-- **Pull-based CI (built-in)**: controlled by `build_mode`, with built-in support for **Jenkins** and **GitLab CI**:
-  - `jenkins` — Jenkins only
-  - `gitlab_ci` — GitLab CI only
-  - `both` — Both available simultaneously
+- **Pull-based CI (built-in)**: controlled by the enabled CI source set, with built-in support for **Jenkins**, **GitLab CI**, and **Gitea Actions**:
+  - `jenkins` — Jenkins
+  - `gitlab_ci` — GitLab CI
+  - `gitea_ci` — Gitea Actions
+  - (multi-select, stored as a comma-separated set)
 - **Push-based CI (Custom_Push)**: controlled by the independent `custom_push_enabled` switch. Users report build results by calling `/api/build/{path}/report` from their own CI scripts, so **any CI tool** (GitHub Actions, Drone, Gitee Go, Travis CI, CircleCI, self-hosted scripts, etc.) can be integrated.
 
 ### Q: build_mode switch doesn't take effect?
@@ -162,8 +163,9 @@ Check if the `build_provider` field of each mapping item matches the actual buil
 ### Q: Error: "Build system 'xxx' not configured"?
 
 The selected `build_mode` requires environment variables that aren't configured:
-- `jenkins` / `both` → requires `JENKINS_BASE_URL`
-- `gitlab_ci` / `both` → requires `GITLAB_BASE_URL` + `GITLAB_TOKEN`
+- `jenkins` → requires `JENKINS_BASE_URL`
+- `gitlab_ci` → requires `GITLAB_BASE_URL` + `GITLAB_TOKEN`
+- `gitea_ci` → requires `GITEA_BASE_URL` + `GITEA_TOKEN`
 
 ### Q: Build trigger timeout (504)?
 
@@ -242,24 +244,24 @@ A mapping is the relationship between a Jenkins Job / GitLab CI project, a Git r
 
 ### Q: What does "Auto Discover" do?
 
-Scans all projects in the current build mode, auto-extracts Git repository information, and imports them into `ci_job_git_map` with one click.
-- **Jenkins mode**: scans all Jobs, parses SCM configuration to extract Git info
-- **GitLab CI mode**: scans all project repositories via GitLab API
-- **both mode**: scans both
+Scans all projects for the currently enabled CI sources, auto-extracts Git repository information, and imports them into `ci_job_git_map` with one click.
+- **Jenkins**: scans all Jobs, parses SCM configuration to extract Git info
+- **GitLab CI**: scans all project repositories via GitLab API
+- **Gitea Actions**: scans all accessible repositories via Gitea API
 
 ### Q: Can't find a matching mapping for a project?
 
 - Verify `job_name` or `current_path` exactly matches the actual value
 - Verify the mapping status is `active`
-- Verify `build_mode` is correct (e.g., `jenkins` mode won't return mappings with `build_provider=gitlab_ci`)
+- Verify `build_mode` is correct (e.g., with only `jenkins` enabled, mappings with `build_provider=gitlab_ci` are filtered out)
 
 ### Q: Why don't mapping changes take effect immediately?
 
-The mapping list has a 30-second cache (`cache` table, key=`map_list_{mode}`). Wait 30 seconds for auto-refresh, or switch to `gitlab_ci` mode (which skips caching).
+The mapping list has a 30-second cache (`cache` table, key=`map_list_{enabled-set}`). Wait 30 seconds for auto-refresh; the cache is also invalidated automatically on any mapping change.
 
-### Q: Duplicate entries appear in "Auto Discover" under `both` mode?
+### Q: Duplicate entries appear in "Auto Discover" when multiple CIs are enabled?
 
-`both` mode scans both Jenkins and GitLab CI, so the same `repository URL` may produce two entries (one from each). After enabling one pipeline, the other is auto-hidden; reverting to "pending" status shows the duplicates again. This is expected behavior.
+With multiple CI sources enabled, the same repository may be discovered under several sources (e.g. Jenkins and Gitea Actions). Only one entry stays "active" — the same repository is deduplicated by normalized remote (host + path, port ignored). After enabling one entry, the others for that repository are auto-hidden; reverting to "pending" status shows them again. This is expected behavior.
 
 ### Q: What is the "pending" mapping status?
 

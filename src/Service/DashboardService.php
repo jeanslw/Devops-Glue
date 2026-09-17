@@ -194,19 +194,20 @@ class DashboardService
     }
 
     /**
-     * jenkins / gitlab_ci 活跃映射的实时流水线列表。
+     * 外部拉取式 CI（jenkins / gitlab_ci / gitea_ci）活跃映射的实时流水线列表。
      *
-     * 只查外部 CI（jenkins、gitlab_ci）；custom_push 的构建在 ci_custom_builds，
-     * 由 customBuilds() 覆盖，此处跳过。每个 job 独立 try/catch，单点失败降级为 error 字段。
+     * 只查外部 CI；custom_push 的构建在 ci_custom_builds，由 customBuilds() 覆盖，此处跳过。
+     * 每个 job 独立 try/catch，单点失败降级为 error 字段。
      *
      * @return array<int,array<string,mixed>>
      */
     private function jenkinsGitlabPipelines(): array
     {
+        $pullProviders = AppConfig::BUILTIN_PULL_PROVIDERS;
         $entries = [];
         foreach ($this->mapping->activeMaps() as $m) {
             $bp = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
-            if ($bp !== AppConfig::PROVIDER_JENKINS && $bp !== AppConfig::PROVIDER_GITLAB_CI) {
+            if (!in_array($bp, $pullProviders, true)) {
                 continue;
             }
 
@@ -215,11 +216,11 @@ class DashboardService
                 continue;
             }
 
-            // resolveProject 已按 provider 归一化 projectId（gitlab→数字 id，jenkins→job 路径）
+            // resolveProject 已按 provider 归一化 projectId（gitlab→数字 id，jenkins→job 路径，gitea→owner/repo）
             $resolved  = $this->mapping->resolveProject($job);
             $provider  = $resolved['provider'];
             $projectId = $resolved['projectId'];
-            if (!in_array($provider, [AppConfig::PROVIDER_JENKINS, AppConfig::PROVIDER_GITLAB_CI], true)) {
+            if (!in_array($provider, $pullProviders, true)) {
                 continue;
             }
 

@@ -22,6 +22,7 @@ use App\Service\Git\GitProviderFactory;
 use App\Service\Build\BuildProviderRegistry;
 use App\Service\Build\JenkinsBuildProvider;
 use App\Service\Build\GitlabCiBuildProvider;
+use App\Service\Build\GiteaCiBuildProvider;
 use App\Controller\MainController;
 use App\Controller\GitController;
 use App\Controller\HarborController;
@@ -101,7 +102,8 @@ return [
             $c->get(AppConfig::class),
             $c->get(MappingManager::class),
             $c->get(Logger::class),
-            $c->get('gitlabHttpClient')
+            $c->get('gitlabHttpClient'),
+            $c->get('giteaHttpClient')
         );
     },
 
@@ -317,6 +319,16 @@ return [
             }
         }
 
+        // Gitea Actions（自建 Gitea，base_url + token 齐备才注册）
+        if ($config->isPlatformConfigured('gitea')) {
+            $giteaCfg = $config->getGiteaConfig();
+            if (!empty($giteaCfg['base_url']) && !empty($giteaCfg['token'])) {
+                $registry->register(AppConfig::PROVIDER_GITEA_CI, function () use ($giteaCfg, $logger) {
+                    return new GiteaCiBuildProvider($giteaCfg['base_url'], $giteaCfg['token'], $logger);
+                });
+            }
+        }
+
         // ---- 自定义 Build Provider（custom_push 等）----
         // 与 Git 自定义平台解耦：独立配置项 build.custom_providers。
         // 构造签名统一为 (array $config, \PDO $pdo, ?GitService $git, ?Logger $logger)。
@@ -420,7 +432,8 @@ return [
             $c->get(AutoDiscover::class),
             $c->get(TokenService::class),
             $c->get(ApiTokenService::class),
-            $c->get(HarborService::class)
+            $c->get(HarborService::class),
+            $c->get(JenkinsService::class)
         );
     },
 
@@ -469,6 +482,23 @@ return [
         }
         return new Client([
             'headers'         => ['PRIVATE-TOKEN' => $token],
+            'timeout'         => 10,
+            'connect_timeout' => 5,
+            'http_errors'     => false,
+        ]);
+    },
+
+    // Gitea HTTP 客户端（共享，供 AutoDiscover 扫描 Gitea 项目复用）
+    'giteaHttpClient' => function (\Psr\Container\ContainerInterface $c) {
+        $config = $c->get(AppConfig::class);
+        $giteaCfg = $config->getGiteaConfig();
+        $base   = rtrim($giteaCfg['base_url'] ?? '', '/');
+        $token  = $giteaCfg['token'] ?? '';
+        if (empty($base) || empty($token)) {
+            return null; // Gitea 未配置时返回 null，消费者自行降级
+        }
+        return new Client([
+            'headers'         => ['Authorization' => 'token ' . $token],
             'timeout'         => 10,
             'connect_timeout' => 5,
             'http_errors'     => false,

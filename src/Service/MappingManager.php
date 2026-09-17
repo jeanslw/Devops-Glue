@@ -16,21 +16,26 @@ class MappingManager
         $this->config = $config;
     }
 
-    /** 当前全局 BUILD_MODE（数据库为唯一来源） */
-    public function buildMode(): string
+    /** 当前启用的拉取式构建 provider 集合（数据库为唯一来源） */
+    public function activeBuildProviders(): array
     {
-        return $this->config->getBuildMode();
+        return $this->config->getBuildModes();
     }
 
-    /** 是否注册了某类 Provider */
+    /** 是否启用了某类 Provider */
     public function hasJenkins(): bool
     {
-        return in_array($this->config->getBuildMode(), [AppConfig::BUILD_MODE_JENKINS, AppConfig::BUILD_MODE_BOTH]);
+        return in_array(AppConfig::PROVIDER_JENKINS, $this->activeBuildProviders(), true);
     }
 
     public function hasGitlabCi(): bool
     {
-        return in_array($this->config->getBuildMode(), [AppConfig::BUILD_MODE_GITLAB_CI, AppConfig::BUILD_MODE_BOTH]);
+        return in_array(AppConfig::PROVIDER_GITLAB_CI, $this->activeBuildProviders(), true);
+    }
+
+    public function hasGiteaCi(): bool
+    {
+        return in_array(AppConfig::PROVIDER_GITEA_CI, $this->activeBuildProviders(), true);
     }
 
     public function hasCustomPush(): bool
@@ -40,37 +45,22 @@ class MappingManager
 
     // ── 全量查询（过滤禁用 + 模式筛选） ──
 
-    /** 返回当前模式下活跃的映射条目 */
+    /** 返回当前启用集合下活跃的映射条目（custom_push 独立开关，开启时一并保留） */
     public function activeMaps(): array
     {
         $maps = $this->config->getJobGitMap();
         $maps = array_filter($maps, fn($m) => ($m['status'] ?? AppConfig::STATUS_ACTIVE) === AppConfig::STATUS_ACTIVE);
 
-        $mode = $this->config->getBuildMode();
+        $enabled = $this->config->getBuildModes();
         $cpEnabled = $this->config->getCustomPushEnabled();
 
-        if ($mode === AppConfig::BUILD_MODE_GITLAB_CI) {
-            // gitlab_ci 模式：保留 gitlab_ci + custom_push（如果开启）
-            $maps = array_filter($maps, function ($m) use ($cpEnabled) {
-                $bp = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
-                return $bp === AppConfig::PROVIDER_GITLAB_CI
-                    || ($cpEnabled && $bp === AppConfig::PROVIDER_CUSTOM_PUSH);
-            });
-        } elseif ($mode === AppConfig::BUILD_MODE_JENKINS) {
-            // jenkins 模式：保留 jenkins + custom_push（如果开启）
-            $maps = array_filter($maps, function ($m) use ($cpEnabled) {
-                $bp = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
-                return $bp !== AppConfig::PROVIDER_GITLAB_CI
-                    && !(!$cpEnabled && $bp === AppConfig::PROVIDER_CUSTOM_PUSH);
-            });
-        } else {
-            // both 模式：保留 jenkins + gitlab_ci，custom_push 仅在开启时保留
-            if (!$cpEnabled) {
-                $maps = array_filter($maps, function ($m) {
-                    return ($m['build_provider'] ?? AppConfig::PROVIDER_JENKINS) !== AppConfig::PROVIDER_CUSTOM_PUSH;
-                });
+        $maps = array_filter($maps, function ($m) use ($enabled, $cpEnabled) {
+            $bp = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
+            if (in_array($bp, $enabled, true)) {
+                return true;
             }
-        }
+            return $cpEnabled && $bp === AppConfig::PROVIDER_CUSTOM_PUSH;
+        });
         return array_values($maps);
     }
 
