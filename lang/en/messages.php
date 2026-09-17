@@ -305,6 +305,7 @@ return [
     'js.scan_failed'            => 'Scan failed',
     'js.network_error'          => 'Network error',
     'js.save_failed'            => 'Save failed',
+    'js.no_version_changes'     => 'Platform versions unchanged, nothing to save',
     'js.operation_failed'       => 'Operation failed',
     'js.delete_failed'          => 'Delete failed',
     'js.activate_failed'        => 'Activation failed',

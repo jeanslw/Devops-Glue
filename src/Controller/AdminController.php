@@ -516,12 +516,17 @@ class AdminController extends BaseController
         $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
 
         $versions = $body['versions'] ?? [];
-        if (!is_array($versions) || empty($versions)) {
+        if (!is_array($versions)) {
             return $this->jsonError($response, 'platform.versions_empty', 400);
         }
 
+        // 空数组/空对象 = 未作任何更改：合法（前端已短路，此处兜底），直接返回当前生效版本
+        if ($versions === []) {
+            return $this->output($response, ['success' => true, 'changed' => false, 'versions' => $this->config->getPlatformApiVersions()], $request);
+        }
+
         $this->config->savePlatformApiVersions($versions);
-        return $this->output($response, ['success' => true, 'versions' => $this->config->getPlatformApiVersions()], $request);
+        return $this->output($response, ['success' => true, 'changed' => true, 'versions' => $this->config->getPlatformApiVersions()], $request);
     }
 
     // ──────────────────────── 构建系统模式 ────────────────────────

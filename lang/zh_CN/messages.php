@@ -304,6 +304,7 @@ return [
     'js.scan_failed'            => '扫描失败',
     'js.network_error'          => '网络错误',
     'js.save_failed'            => '保存失败',
+    'js.no_version_changes'     => '平台版本配置未作更改，无需保存',
     'js.operation_failed'       => '操作失败',
     'js.delete_failed'          => '删除失败',
     'js.activate_failed'        => '启用失败',
