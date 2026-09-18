@@ -176,8 +176,9 @@ GET /api/main/git/discovery
 | `/api/build/{path}/variables` | GET/POST | 构建参数 / CI 变量（raw: 参数名数组；json: 完整元数据） |
 | `/api/build/{path}/branches` | GET/POST | Git 分支列表（纯字符串数组） |
 | `/api/build/{path}/pipelines` | GET/POST | 流水线列表（`?list=id\|build\|time\|success`） |
-| `/api/build/{path}/pipelines/{id}` | GET/POST | 流水线详情 + Jobs |
-| `/api/build/{path}/logs/{id}` | GET/POST | 构建日志（text/plain） |
+| `/api/build/{path}/pipelines/{id}` | GET/POST | 流水线详情 + Jobs（每项含 `id` + `log_url`）—— Gitea 专属 |
+| `/api/build/{path}/pipelines/{id}/logs` | GET/POST | 流水线日志（text/plain；`id`=run id，返回该 run 下全部 job 日志拼接）—— Gitea 专属 |
+| `/api/build/{path}/logs/{id}` | GET/POST | 构建日志（text/plain；`id`=job id，取自 `/pipelines/{runId}` 返回的 `jobs[].id`，非 run id） |
 | `/api/build/{path}/pipelines/{id}/retry` | POST | 重试流水线（仅 GitLab CI） |
 | `/api/build/{path}/pipelines/{id}/cancel` | POST | 取消流水线（仅 GitLab CI） |
 | `/api/build/{path}/scan-sync` | POST | Harbor 扫描同步（`{"tag":"v3.0.0"}`，tag 可选，不传取最新） |

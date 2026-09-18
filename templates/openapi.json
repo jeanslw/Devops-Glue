@@ -15,14 +15,38 @@
     }
   ],
   "tags": [
-    { "name": "Health", "description": "健康检查" },
-    { "name": "Main", "description": "概览、映射、平台发现" },
-    { "name": "Build", "description": "构建/Pipeline（Jenkins + GitLab CI）" },
-    { "name": "Git", "description": "代码仓库分支" },
-    { "name": "Harbor", "description": "镜像仓库与安全扫描" },
-    { "name": "Admin", "description": "管理后台（需 Bearer Token）" },
-    { "name": "RBAC", "description": "权限与角色管理（数据驱动，含权限注册、隐含规则、角色管理）" },
-    { "name": "SSO", "description": "OAuth2 / OIDC 单点登录（Grafana / Jenkins / Harbor / GitLab）" }
+    {
+      "name": "Health",
+      "description": "健康检查"
+    },
+    {
+      "name": "Main",
+      "description": "概览、映射、平台发现"
+    },
+    {
+      "name": "Build",
+      "description": "构建/Pipeline（Jenkins + GitLab CI）"
+    },
+    {
+      "name": "Git",
+      "description": "代码仓库分支"
+    },
+    {
+      "name": "Harbor",
+      "description": "镜像仓库与安全扫描"
+    },
+    {
+      "name": "Admin",
+      "description": "管理后台（需 Bearer Token）"
+    },
+    {
+      "name": "RBAC",
+      "description": "权限与角色管理（数据驱动，含权限注册、隐含规则、角色管理）"
+    },
+    {
+      "name": "SSO",
+      "description": "OAuth2 / OIDC 单点登录（Grafana / Jenkins / Harbor / GitLab）"
+    }
   ],
   "components": {
     "securitySchemes": {
@@ -39,7 +63,11 @@
         "required": false,
         "schema": {
           "type": "string",
-          "enum": ["raw", "json", "xml"],
+          "enum": [
+            "raw",
+            "json",
+            "xml"
+          ],
           "default": "raw"
         },
         "description": "输出格式"
@@ -48,82 +76,209 @@
     "responses": {
       "400": {
         "description": "参数错误",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
       },
       "401": {
         "description": "未登录或 token 无效",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
       },
       "404": {
         "description": "资源不存在",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
       },
       "500": {
         "description": "服务端错误",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
       }
     },
     "schemas": {
       "Error": {
         "type": "object",
         "properties": {
-          "code": { "type": "integer", "example": 400 },
-          "message": { "type": "string", "example": "错误描述" }
+          "code": {
+            "type": "integer",
+            "example": 400
+          },
+          "message": {
+            "type": "string",
+            "example": "错误描述"
+          }
         }
       },
       "HealthResult": {
         "type": "object",
         "properties": {
-          "status": { "type": "string", "enum": ["ok", "degraded"], "example": "ok" },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "degraded"
+            ],
+            "example": "ok"
+          },
           "checks": {
             "type": "object",
             "properties": {
-              "jenkins": { "type": "boolean", "nullable": true, "description": "true=可达, false=不可达, null=gitlab_ci 模式" },
-              "jenkins_version": { "type": "string", "nullable": true, "example": "2.555.3" },
+              "jenkins": {
+                "type": "boolean",
+                "nullable": true,
+                "description": "true=可达, false=不可达, null=gitlab_ci 模式"
+              },
+              "jenkins_version": {
+                "type": "string",
+                "nullable": true,
+                "example": "2.555.3"
+              },
               "git": {
-                "type": "array", "nullable": true,
+                "type": "array",
+                "nullable": true,
                 "description": "null 表示未配置 Git 平台",
                 "items": {
                   "type": "object",
                   "properties": {
-                    "name": { "type": "string", "example": "gitlab" },
-                    "api_version": { "type": "string", "example": "v4" },
-                    "reachable": { "type": "boolean" }
+                    "name": {
+                      "type": "string",
+                      "example": "gitlab"
+                    },
+                    "api_version": {
+                      "type": "string",
+                      "example": "v4"
+                    },
+                    "reachable": {
+                      "type": "boolean"
+                    }
                   }
                 }
               },
-              "harbor": { "type": "boolean", "nullable": true },
-              "harbor_version": { "type": "string", "nullable": true, "example": "v2" },
+              "harbor": {
+                "type": "boolean",
+                "nullable": true
+              },
+              "harbor_version": {
+                "type": "string",
+                "nullable": true,
+                "example": "v2"
+              },
               "harbor_components": {
                 "type": "object",
                 "nullable": true,
                 "description": "Harbor 各子组件健康状态（core/jobservice/registry 任一为 false 则整体不健康）",
                 "properties": {
-                  "core":       { "type": "boolean", "example": true,  "description": "Harbor Core API 网关" },
-                  "jobservice": { "type": "boolean", "example": false, "description": "异步任务/镜像扫描服务" },
-                  "registry":   { "type": "boolean", "example": true,  "description": "镜像仓库管理（依赖 registryctl）" }
+                  "core": {
+                    "type": "boolean",
+                    "example": true,
+                    "description": "Harbor Core API 网关"
+                  },
+                  "jobservice": {
+                    "type": "boolean",
+                    "example": false,
+                    "description": "异步任务/镜像扫描服务"
+                  },
+                  "registry": {
+                    "type": "boolean",
+                    "example": true,
+                    "description": "镜像仓库管理（依赖 registryctl）"
+                  }
                 }
               }
             }
           },
-          "app_env": { "type": "string", "example": "production" },
-          "time": { "type": "string", "example": "2026-07-25 12:00:00" }
+          "app_env": {
+            "type": "string",
+            "example": "production"
+          },
+          "time": {
+            "type": "string",
+            "example": "2026-07-25 12:00:00"
+          }
         }
       },
       "JobGitMapEntry": {
         "type": "object",
-        "required": ["job_name"],
+        "required": [
+          "job_name"
+        ],
         "properties": {
-          "job_name": { "type": "string", "description": "Jenkins Job 完整路径 / GitLab CI 项目路径", "example": "php/myapp" },
-          "git_platform": { "type": "string", "description": "Git 平台标识", "example": "gitlab" },
-          "build_provider": { "type": "string", "enum": ["jenkins", "gitlab_ci"], "default": "jenkins" },
-          "git_remote": { "type": "string", "description": "Git 仓库远程地址", "example": "http://git.company.com/project.git" },
-          "project_id": { "type": "integer", "nullable": true, "description": "Git 项目 ID", "example": 5 },
-          "web_url": { "type": "string", "description": "项目主页", "example": "http://git.company.com/project" },
-          "current_path": { "type": "string", "description": "项目路径（URL slug）", "example": "tools/registry" },
-          "harbor_repository": { "type": "string", "description": "关联 Harbor 仓库", "example": "mycode/myapp" },
-          "api_version": { "type": "string", "description": "平台 API 版本（元数据）" },
-          "status": { "type": "string", "enum": ["active", "inactive"], "default": "active" }
+          "job_name": {
+            "type": "string",
+            "description": "Jenkins Job 完整路径 / GitLab CI 项目路径",
+            "example": "php/myapp"
+          },
+          "git_platform": {
+            "type": "string",
+            "description": "Git 平台标识",
+            "example": "gitlab"
+          },
+          "build_provider": {
+            "type": "string",
+            "enum": [
+              "jenkins",
+              "gitlab_ci"
+            ],
+            "default": "jenkins"
+          },
+          "git_remote": {
+            "type": "string",
+            "description": "Git 仓库远程地址",
+            "example": "http://git.company.com/project.git"
+          },
+          "project_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Git 项目 ID",
+            "example": 5
+          },
+          "web_url": {
+            "type": "string",
+            "description": "项目主页",
+            "example": "http://git.company.com/project"
+          },
+          "current_path": {
+            "type": "string",
+            "description": "项目路径（URL slug）",
+            "example": "tools/registry"
+          },
+          "harbor_repository": {
+            "type": "string",
+            "description": "关联 Harbor 仓库",
+            "example": "mycode/myapp"
+          },
+          "api_version": {
+            "type": "string",
+            "description": "平台 API 版本（元数据）"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "inactive"
+            ],
+            "default": "active"
+          }
         }
       },
       "MapGroupedResult": {
@@ -132,76 +287,224 @@
         "additionalProperties": {
           "type": "object",
           "properties": {
-            "git_platform": { "type": "string", "example": "gitlab" },
-            "build_provider": { "type": "string", "enum": ["jenkins", "gitlab_ci"] },
-            "git_remote": { "type": "string" },
-            "project_id": { "type": "integer", "nullable": true },
-            "web_url": { "type": "string" },
-            "harbor_repository": { "type": "string" },
-            "platform_source": { "type": "string", "enum": ["auto", "manual"] },
-            "detection_method": { "type": "string", "enum": ["exact", "fallback", "manual"] },
-            "jobs": { "type": "array", "items": { "type": "string" } }
+            "git_platform": {
+              "type": "string",
+              "example": "gitlab"
+            },
+            "build_provider": {
+              "type": "string",
+              "enum": [
+                "jenkins",
+                "gitlab_ci"
+              ]
+            },
+            "git_remote": {
+              "type": "string"
+            },
+            "project_id": {
+              "type": "integer",
+              "nullable": true
+            },
+            "web_url": {
+              "type": "string"
+            },
+            "harbor_repository": {
+              "type": "string"
+            },
+            "platform_source": {
+              "type": "string",
+              "enum": [
+                "auto",
+                "manual"
+              ]
+            },
+            "detection_method": {
+              "type": "string",
+              "enum": [
+                "exact",
+                "fallback",
+                "manual"
+              ]
+            },
+            "jobs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
           }
         }
       },
       "PipelineItem": {
         "type": "object",
         "properties": {
-          "id": { "type": "integer", "example": 52 },
-          "iid": { "type": "integer", "example": 52 },
-          "sha": { "type": "string", "example": "abc123def456" },
-          "ref": { "type": "string", "example": "main" },
-          "status": { "type": "string", "example": "success" },
-          "created_at": { "type": "string", "example": "2026-07-25T10:00:00Z" },
-          "web_url": { "type": "string", "example": "http://jenkins/job/myapp/52" }
+          "id": {
+            "type": "integer",
+            "example": 52
+          },
+          "iid": {
+            "type": "integer",
+            "example": 52
+          },
+          "sha": {
+            "type": "string",
+            "example": "abc123def456"
+          },
+          "ref": {
+            "type": "string",
+            "example": "main"
+          },
+          "status": {
+            "type": "string",
+            "example": "success"
+          },
+          "created_at": {
+            "type": "string",
+            "example": "2026-07-25T10:00:00Z"
+          },
+          "web_url": {
+            "type": "string",
+            "example": "http://jenkins/job/myapp/52"
+          }
         }
       },
       "ScanSyncResult": {
         "type": "object",
         "properties": {
-          "build_provider": { "type": "string", "example": "jenkins" },
-          "sha": { "type": "string", "example": "abc123def" },
-          "tag": { "type": "string", "example": "v3.0.0" },
-          "harbor_repository": { "type": "string", "example": "mycode/myapp" },
-          "vulnerability_count": { "type": "integer", "example": 3 },
-          "scan_state": { "type": "string", "enum": ["success", "failed", "pending", "unknown"], "example": "failed" },
+          "build_provider": {
+            "type": "string",
+            "example": "jenkins"
+          },
+          "sha": {
+            "type": "string",
+            "example": "abc123def"
+          },
+          "tag": {
+            "type": "string",
+            "example": "v3.0.0"
+          },
+          "harbor_repository": {
+            "type": "string",
+            "example": "mycode/myapp"
+          },
+          "vulnerability_count": {
+            "type": "integer",
+            "example": 3
+          },
+          "scan_state": {
+            "type": "string",
+            "enum": [
+              "success",
+              "failed",
+              "pending",
+              "unknown"
+            ],
+            "example": "failed"
+          },
           "commit_status": {
             "type": "object",
             "properties": {
-              "success": { "type": "boolean" },
-              "message": { "type": "string" }
+              "success": {
+                "type": "boolean"
+              },
+              "message": {
+                "type": "string"
+              }
             }
           }
         }
       },
       "CommitStatusRequest": {
         "type": "object",
-        "required": ["sha", "state", "context", "description"],
+        "required": [
+          "sha",
+          "state",
+          "context",
+          "description"
+        ],
         "properties": {
-          "sha": { "type": "string", "description": "commit SHA", "example": "abc123def456" },
-          "state": { "type": "string", "enum": ["pending", "success", "failed", "error"], "example": "failed" },
-          "context": { "type": "string", "description": "检查名称", "example": "secret-scan" },
-          "description": { "type": "string", "description": "简短描述", "example": "发现 3 个密钥泄露" },
-          "target_url": { "type": "string", "description": "详情链接（可选）", "example": "https://sonar.example.com/dashboard?id=myapp" },
-          "check_type": { "type": "string", "description": "检查类型标签（默认等于 context）", "example": "secret-scan" },
-          "tag": { "type": "string", "description": "关联镜像 tag（可选）", "example": "v3.0.0" }
+          "sha": {
+            "type": "string",
+            "description": "commit SHA",
+            "example": "abc123def456"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "success",
+              "failed",
+              "error"
+            ],
+            "example": "failed"
+          },
+          "context": {
+            "type": "string",
+            "description": "检查名称",
+            "example": "secret-scan"
+          },
+          "description": {
+            "type": "string",
+            "description": "简短描述",
+            "example": "发现 3 个密钥泄露"
+          },
+          "target_url": {
+            "type": "string",
+            "description": "详情链接（可选）",
+            "example": "https://sonar.example.com/dashboard?id=myapp"
+          },
+          "check_type": {
+            "type": "string",
+            "description": "检查类型标签（默认等于 context）",
+            "example": "secret-scan"
+          },
+          "tag": {
+            "type": "string",
+            "description": "关联镜像 tag（可选）",
+            "example": "v3.0.0"
+          }
         }
       },
       "CommitStatusResult": {
         "type": "object",
         "properties": {
-          "project": { "type": "string", "example": "php/myapp" },
-          "sha": { "type": "string", "example": "abc123def456" },
-          "state": { "type": "string", "example": "failed" },
-          "context": { "type": "string", "example": "secret-scan" },
-          "description": { "type": "string", "example": "发现 3 个密钥泄露" },
-          "check_type": { "type": "string", "example": "secret-scan" },
-          "git_platform": { "type": "string", "example": "gitlab" },
+          "project": {
+            "type": "string",
+            "example": "php/myapp"
+          },
+          "sha": {
+            "type": "string",
+            "example": "abc123def456"
+          },
+          "state": {
+            "type": "string",
+            "example": "failed"
+          },
+          "context": {
+            "type": "string",
+            "example": "secret-scan"
+          },
+          "description": {
+            "type": "string",
+            "example": "发现 3 个密钥泄露"
+          },
+          "check_type": {
+            "type": "string",
+            "example": "secret-scan"
+          },
+          "git_platform": {
+            "type": "string",
+            "example": "gitlab"
+          },
           "commit_status": {
             "type": "object",
             "properties": {
-              "success": { "type": "boolean" },
-              "message": { "type": "string" }
+              "success": {
+                "type": "boolean"
+              },
+              "message": {
+                "type": "string"
+              }
             }
           }
         }
@@ -209,21 +512,48 @@
       "TagQueryResult": {
         "type": "object",
         "properties": {
-          "build_provider": { "type": "string", "example": "jenkins" },
-          "project_id": { "type": "string", "example": "php/myapp" },
-          "pipeline": { "type": "string", "nullable": true, "example": "52" },
-          "tag": { "type": "string", "nullable": true, "example": "v3.0.0" },
-          "status": { "type": "string", "example": "success" },
-          "harbor_repository": { "type": "string", "example": "mycode/myapp" },
+          "build_provider": {
+            "type": "string",
+            "example": "jenkins"
+          },
+          "project_id": {
+            "type": "string",
+            "example": "php/myapp"
+          },
+          "pipeline": {
+            "type": "string",
+            "nullable": true,
+            "example": "52"
+          },
+          "tag": {
+            "type": "string",
+            "nullable": true,
+            "example": "v3.0.0"
+          },
+          "status": {
+            "type": "string",
+            "example": "success"
+          },
+          "harbor_repository": {
+            "type": "string",
+            "example": "mycode/myapp"
+          },
           "all": {
-            "type": "object", "nullable": true,
+            "type": "object",
+            "nullable": true,
             "description": "不传 pipeline 时返回该项目全部 pipeline→tag 映射",
             "additionalProperties": {
               "type": "object",
               "properties": {
-                "tag": { "type": "string" },
-                "harbor": { "type": "string" },
-                "status": { "type": "string" }
+                "tag": {
+                  "type": "string"
+                },
+                "harbor": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -231,52 +561,133 @@
       },
       "LoginRequest": {
         "type": "object",
-        "required": ["username", "password"],
+        "required": [
+          "username",
+          "password"
+        ],
         "properties": {
-          "username": { "type": "string", "example": "admin" },
-          "password": { "type": "string", "example": "admin123" }
+          "username": {
+            "type": "string",
+            "example": "admin"
+          },
+          "password": {
+            "type": "string",
+            "example": "admin123"
+          }
         }
       },
       "LoginResult": {
         "type": "object",
         "properties": {
-          "token": { "type": "string", "example": "a1b2c3...", "description": "Bearer token，24h 过期" }
+          "token": {
+            "type": "string",
+            "example": "a1b2c3...",
+            "description": "Bearer token，24h 过期"
+          }
         }
       },
       "DiscoverResult": {
         "type": "object",
         "properties": {
-          "found": { "type": "integer", "example": 3 },
-          "saved": { "type": "integer", "example": 2 },
-          "errors": { "type": "array", "items": { "type": "string" } },
-          "items": { "type": "array", "items": { "type": "string" }, "description": "发现的 job 名称列表" }
+          "found": {
+            "type": "integer",
+            "example": 3
+          },
+          "saved": {
+            "type": "integer",
+            "example": 2
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "发现的 job 名称列表"
+          }
         }
       },
       "PlatformVersionItem": {
         "type": "object",
         "properties": {
-          "value": { "type": "string", "example": "v4" },
-          "source": { "type": "string", "enum": ["config", "json", "default"] },
-          "configured": { "type": "boolean", "description": "该平台是否已配置" }
+          "value": {
+            "type": "string",
+            "example": "v4"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "config",
+              "json",
+              "default"
+            ]
+          },
+          "configured": {
+            "type": "boolean",
+            "description": "该平台是否已配置"
+          }
         }
       },
       "ConfigModeResult": {
         "type": "object",
         "properties": {
-          "mode": { "type": "string", "enum": ["jenkins", "gitlab_ci", "both"], "example": "both" },
-          "source": { "type": "string", "enum": ["database", "env"], "example": "database", "description": "配置来源：database=UI 或 DB 设置，env=.env 降级兜底" },
-          "has_jenkins": { "type": "boolean" },
-          "has_gitlab_ci": { "type": "boolean" }
+          "mode": {
+            "type": "string",
+            "enum": [
+              "jenkins",
+              "gitlab_ci",
+              "both"
+            ],
+            "example": "both"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "database",
+              "env"
+            ],
+            "example": "database",
+            "description": "配置来源：database=UI 或 DB 设置，env=.env 降级兜底"
+          },
+          "has_jenkins": {
+            "type": "boolean"
+          },
+          "has_gitlab_ci": {
+            "type": "boolean"
+          }
         }
       },
       "MePermissionsResult": {
         "type": "object",
         "properties": {
-          "role": { "type": "string", "description": "当前用户角色名", "example": "builder" },
+          "role": {
+            "type": "string",
+            "description": "当前用户角色名",
+            "example": "builder"
+          },
           "permissions": {
             "oneOf": [
-              { "type": "string", "const": "*", "description": "super_admin 通配符，表示拥有所有权限" },
-              { "type": "array", "items": { "type": "string" }, "description": "当前角色的权限键列表", "example": ["ci.trigger", "cd.build-manage"] }
+              {
+                "type": "string",
+                "const": "*",
+                "description": "super_admin 通配符，表示拥有所有权限"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "当前角色的权限键列表",
+                "example": [
+                  "ci.trigger",
+                  "cd.build-manage"
+                ]
+              }
             ]
           }
         }
@@ -285,55 +696,143 @@
         "type": "object",
         "description": "构建模式及实际 Provider 可用性",
         "properties": {
-          "mode": { "type": "string", "enum": ["jenkins", "gitlab_ci", "both"], "description": "当前生效的构建模式", "example": "both" },
-          "source": { "type": "string", "enum": ["config_file", "env", "cache"], "description": "模式值的来源", "example": "config_file" },
-          "has_jenkins": { "type": "boolean", "description": "Jenkins 是否配置了可用地址" },
-          "has_gitlab_ci": { "type": "boolean", "description": "GitLab CI 是否配置了可用 base_url + token" }
+          "mode": {
+            "type": "string",
+            "enum": [
+              "jenkins",
+              "gitlab_ci",
+              "both"
+            ],
+            "description": "当前生效的构建模式",
+            "example": "both"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "config_file",
+              "env",
+              "cache"
+            ],
+            "description": "模式值的来源",
+            "example": "config_file"
+          },
+          "has_jenkins": {
+            "type": "boolean",
+            "description": "Jenkins 是否配置了可用地址"
+          },
+          "has_gitlab_ci": {
+            "type": "boolean",
+            "description": "GitLab CI 是否配置了可用 base_url + token"
+          }
         }
       },
       "AdminUserEntry": {
         "type": "object",
         "description": "管理员用户条目（不含密码哈希）",
         "properties": {
-          "username": { "type": "string", "example": "deployer" },
-          "role": { "type": "string", "description": "关联角色名（对应 roles.name）", "example": "deployer" },
-          "systems": { "type": "string", "description": "逗号分隔的系统标识：ci/cd", "example": "cd,ci" },
-          "updated_at": { "type": "string", "format": "date-time", "nullable": true },
-          "is_root": { "type": "boolean", "description": "是否为 .env ADMIN_USER 指定的内置根账号，根账号不可删除" }
+          "username": {
+            "type": "string",
+            "example": "deployer"
+          },
+          "role": {
+            "type": "string",
+            "description": "关联角色名（对应 roles.name）",
+            "example": "deployer"
+          },
+          "systems": {
+            "type": "string",
+            "description": "逗号分隔的系统标识：ci/cd",
+            "example": "cd,ci"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "is_root": {
+            "type": "boolean",
+            "description": "是否为 .env ADMIN_USER 指定的内置根账号，根账号不可删除"
+          }
         }
       },
       "RbacUserEntry": {
         "type": "object",
         "description": "RBAC 服务账号读接口的用户条目（不含密码哈希）",
         "properties": {
-          "username": { "type": "string", "example": "alice" },
-          "role": { "type": "string", "description": "关联角色名", "example": "deployer" },
-          "systems": { "type": "string", "description": "逗号分隔系统标识：ci/cd", "example": "cd" },
-          "status": { "type": "integer", "description": "1=启用, 0=停用", "example": 1 }
+          "username": {
+            "type": "string",
+            "example": "alice"
+          },
+          "role": {
+            "type": "string",
+            "description": "关联角色名",
+            "example": "deployer"
+          },
+          "systems": {
+            "type": "string",
+            "description": "逗号分隔系统标识：ci/cd",
+            "example": "cd"
+          },
+          "status": {
+            "type": "integer",
+            "description": "1=启用, 0=停用",
+            "example": 1
+          }
         }
       },
       "RbacRoleEntry": {
         "type": "object",
         "description": "RBAC 角色目录条目（供审批规则选角色）",
         "properties": {
-          "name": { "type": "string", "description": "角色唯一名称", "example": "deployer" },
-          "description": { "type": "string", "nullable": true, "example": "部署人员" }
+          "name": {
+            "type": "string",
+            "description": "角色唯一名称",
+            "example": "deployer"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "example": "部署人员"
+          }
         }
       },
       "RoleEntry": {
         "type": "object",
         "description": "角色及其权限定义",
         "properties": {
-          "id": { "type": "integer", "example": 3 },
-          "name": { "type": "string", "description": "角色唯一名称，同时作为 admin_users.role 外键引用", "example": "deployer" },
-          "description": { "type": "string", "example": "部署人员" },
-          "is_system": { "type": "boolean", "description": "是否为系统内置角色，内置角色不可删除/改权限" },
-          "created_at": { "type": "string", "format": "date-time", "nullable": true },
+          "id": {
+            "type": "integer",
+            "example": 3
+          },
+          "name": {
+            "type": "string",
+            "description": "角色唯一名称，同时作为 admin_users.role 外键引用",
+            "example": "deployer"
+          },
+          "description": {
+            "type": "string",
+            "example": "部署人员"
+          },
+          "is_system": {
+            "type": "boolean",
+            "description": "是否为系统内置角色，内置角色不可删除/改权限"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
           "permissions": {
             "type": "array",
-            "items": { "type": "string" },
+            "items": {
+              "type": "string"
+            },
             "description": "该角色拥有的权限键列表（已展开隐含权限）",
-            "example": ["cd.build-manage", "cd.deploy-manage", "cd.notification-manage"]
+            "example": [
+              "cd.build-manage",
+              "cd.deploy-manage",
+              "cd.notification-manage"
+            ]
           }
         }
       },
@@ -341,19 +840,48 @@
         "type": "object",
         "description": "权限定义项（数据驱动，可由 CD 项目通过 API 注册）",
         "properties": {
-          "perm_key": { "type": "string", "description": "权限键，格式：xx.yyy", "example": "cd.deploy-manage" },
-          "description": { "type": "string", "description": "权限描述（i18n 兜底用）", "example": "Deploy Management" },
-          "parent_key": { "type": "string", "nullable": true, "description": "父级权限键，用于层级菜单展示", "example": "cd.notification-manage" },
-          "created_at": { "type": "string", "format": "date-time", "nullable": true, "description": "注册时间，内置权限为 null", "example": "2026-08-07 12:34:56" },
-          "is_builtin": { "type": "boolean", "description": "是否内置权限（内置不可删除）", "example": false }
+          "perm_key": {
+            "type": "string",
+            "description": "权限键，格式：xx.yyy",
+            "example": "cd.deploy-manage"
+          },
+          "description": {
+            "type": "string",
+            "description": "权限描述（i18n 兜底用）",
+            "example": "Deploy Management"
+          },
+          "parent_key": {
+            "type": "string",
+            "nullable": true,
+            "description": "父级权限键，用于层级菜单展示",
+            "example": "cd.notification-manage"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "注册时间，内置权限为 null",
+            "example": "2026-08-07 12:34:56"
+          },
+          "is_builtin": {
+            "type": "boolean",
+            "description": "是否内置权限（内置不可删除）",
+            "example": false
+          }
         }
       },
       "ImpliedRule": {
         "type": "object",
         "description": "权限隐含关系：拥有 source_key 时自动拥有 target_key",
         "properties": {
-          "source_key": { "type": "string", "example": "cd.bot" },
-          "target_key": { "type": "string", "example": "cd.notification-manage" }
+          "source_key": {
+            "type": "string",
+            "example": "cd.bot"
+          },
+          "target_key": {
+            "type": "string",
+            "example": "cd.notification-manage"
+          }
         }
       },
       "PermissionListResult": {
@@ -361,23 +889,36 @@
         "properties": {
           "permissions": {
             "type": "array",
-            "items": { "$ref": "#/components/schemas/PermissionEntry" }
+            "items": {
+              "$ref": "#/components/schemas/PermissionEntry"
+            }
           },
           "implied": {
             "type": "object",
             "description": "隐含规则映射：source_key → [target_key,...]",
             "additionalProperties": {
               "type": "array",
-              "items": { "type": "string" }
+              "items": {
+                "type": "string"
+              }
             },
-            "example": { "cd.bot": ["cd.notification-manage"], "cd.deploy.single": ["cd.deploy-manage"] }
+            "example": {
+              "cd.bot": [
+                "cd.notification-manage"
+              ],
+              "cd.deploy.single": [
+                "cd.deploy-manage"
+              ]
+            }
           },
           "builtin_implied": {
             "type": "object",
             "description": "内置隐含规则映射（种子数据，不可删除）：source_key → [target_key,...]，用于前端区分内置/用户添加",
             "additionalProperties": {
               "type": "array",
-              "items": { "type": "string" }
+              "items": {
+                "type": "string"
+              }
             }
           }
         }
@@ -386,57 +927,202 @@
         "type": "object",
         "description": "可选 scope 目录项",
         "properties": {
-          "key": { "type": "string", "description": "scope 键", "example": "build.write" },
-          "label": { "type": "string", "description": "scope 显示名（本地化）", "example": "BUILD（写）" }
+          "key": {
+            "type": "string",
+            "description": "scope 键",
+            "example": "build.write"
+          },
+          "label": {
+            "type": "string",
+            "description": "scope 显示名（本地化）",
+            "example": "BUILD（写）"
+          }
         }
       },
       "ApiTokenEntry": {
         "type": "object",
         "description": "API Token 条目（不含明文，明文仅在创建时返回一次）",
         "properties": {
-          "id": { "type": "integer", "example": 1 },
-          "name": { "type": "string", "example": "cd-service-account" },
-          "scopes": { "type": "array", "items": { "type": "string" }, "description": "接口权限 scope 列表", "example": ["main", "build.read", "build.write"] },
-          "enabled": { "type": "boolean", "description": "false 表示已撤销（禁用）" },
-          "expires_at": { "type": "integer", "nullable": true, "description": "过期时间（Unix 秒），null=永不过期", "example": 1786579200 },
-          "expired": { "type": "boolean", "description": "是否已过期" },
-          "created_by": { "type": "string", "example": "admin" },
-          "note": { "type": "string", "nullable": true, "description": "用途备注" },
-          "created_at": { "type": "string", "format": "date-time", "nullable": true, "example": "2026-08-13 10:00:00" }
+          "id": {
+            "type": "integer",
+            "example": 1
+          },
+          "name": {
+            "type": "string",
+            "example": "cd-service-account"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "接口权限 scope 列表",
+            "example": [
+              "main",
+              "build.read",
+              "build.write"
+            ]
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "false 表示已撤销（禁用）"
+          },
+          "expires_at": {
+            "type": "integer",
+            "nullable": true,
+            "description": "过期时间（Unix 秒），null=永不过期",
+            "example": 1786579200
+          },
+          "expired": {
+            "type": "boolean",
+            "description": "是否已过期"
+          },
+          "created_by": {
+            "type": "string",
+            "example": "admin"
+          },
+          "note": {
+            "type": "string",
+            "nullable": true,
+            "description": "用途备注"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "example": "2026-08-13 10:00:00"
+          }
         }
       },
       "ApiTokenCreateRequest": {
         "type": "object",
-        "required": ["name"],
+        "required": [
+          "name"
+        ],
         "properties": {
-          "name": { "type": "string", "description": "Token 名称", "example": "cd-service-account" },
-          "scopes": { "type": "array", "items": { "type": "string" }, "description": "接口权限 scope 列表（非法 key 会被忽略）", "example": ["main", "build.read", "build.write"] },
-          "expires_at": { "type": "integer", "nullable": true, "description": "过期时间（Unix 秒），留空=永不过期", "example": 1786579200 },
-          "note": { "type": "string", "nullable": true, "description": "用途备注（可选）", "example": "CD 服务账号" }
+          "name": {
+            "type": "string",
+            "description": "Token 名称",
+            "example": "cd-service-account"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "接口权限 scope 列表（非法 key 会被忽略）",
+            "example": [
+              "main",
+              "build.read",
+              "build.write"
+            ]
+          },
+          "expires_at": {
+            "type": "integer",
+            "nullable": true,
+            "description": "过期时间（Unix 秒），留空=永不过期",
+            "example": 1786579200
+          },
+          "note": {
+            "type": "string",
+            "nullable": true,
+            "description": "用途备注（可选）",
+            "example": "CD 服务账号"
+          }
         }
       },
       "ApiTokenCreateResult": {
         "type": "object",
         "properties": {
-          "id": { "type": "integer", "example": 1 },
-          "token": { "type": "string", "description": "一次性明文 Token（dg_ 前缀 + 64 位十六进制），仅返回一次", "example": "dg_8f3a4b1c…" }
+          "id": {
+            "type": "integer",
+            "example": 1
+          },
+          "token": {
+            "type": "string",
+            "description": "一次性明文 Token（dg_ 前缀 + 64 位十六进制），仅返回一次",
+            "example": "dg_8f3a4b1c…"
+          }
         }
       },
       "OidcDiscovery": {
         "type": "object",
         "description": "OIDC Discovery 文档（RFC 8414）",
         "properties": {
-          "issuer": { "type": "string", "example": "https://glue.example.com" },
-          "authorization_endpoint": { "type": "string", "example": "https://glue.example.com/oauth/authorize" },
-          "token_endpoint": { "type": "string", "example": "https://glue.example.com/oauth/token" },
-          "userinfo_endpoint": { "type": "string", "example": "https://glue.example.com/oauth/userinfo" },
-          "jwks_uri": { "type": "string", "example": "https://glue.example.com/.well-known/jwks.json" },
-          "response_types_supported": { "type": "array", "items": { "type": "string" }, "example": ["code"] },
-          "subject_types_supported": { "type": "array", "items": { "type": "string" }, "example": ["public"] },
-          "id_token_signing_alg_values_supported": { "type": "array", "items": { "type": "string" }, "example": ["RS256"] },
-          "scopes_supported": { "type": "array", "items": { "type": "string" }, "example": ["openid", "profile", "email"] },
-          "claims_supported": { "type": "array", "items": { "type": "string" } },
-          "token_endpoint_auth_methods_supported": { "type": "array", "items": { "type": "string" }, "example": ["client_secret_basic", "client_secret_post"] }
+          "issuer": {
+            "type": "string",
+            "example": "https://glue.example.com"
+          },
+          "authorization_endpoint": {
+            "type": "string",
+            "example": "https://glue.example.com/oauth/authorize"
+          },
+          "token_endpoint": {
+            "type": "string",
+            "example": "https://glue.example.com/oauth/token"
+          },
+          "userinfo_endpoint": {
+            "type": "string",
+            "example": "https://glue.example.com/oauth/userinfo"
+          },
+          "jwks_uri": {
+            "type": "string",
+            "example": "https://glue.example.com/.well-known/jwks.json"
+          },
+          "response_types_supported": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "code"
+            ]
+          },
+          "subject_types_supported": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "public"
+            ]
+          },
+          "id_token_signing_alg_values_supported": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "RS256"
+            ]
+          },
+          "scopes_supported": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "openid",
+              "profile",
+              "email"
+            ]
+          },
+          "claims_supported": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "token_endpoint_auth_methods_supported": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "client_secret_basic",
+              "client_secret_post"
+            ]
+          }
         }
       },
       "Jwks": {
@@ -448,12 +1134,31 @@
             "items": {
               "type": "object",
               "properties": {
-                "kty": { "type": "string", "example": "RSA" },
-                "use": { "type": "string", "example": "sig" },
-                "alg": { "type": "string", "example": "RS256" },
-                "kid": { "type": "string", "example": "oidc-rsa-0123456789abcdef" },
-                "n": { "type": "string", "description": "RSA 模数（base64url）" },
-                "e": { "type": "string", "description": "RSA 公钥指数（base64url）", "example": "AQAB" }
+                "kty": {
+                  "type": "string",
+                  "example": "RSA"
+                },
+                "use": {
+                  "type": "string",
+                  "example": "sig"
+                },
+                "alg": {
+                  "type": "string",
+                  "example": "RS256"
+                },
+                "kid": {
+                  "type": "string",
+                  "example": "oidc-rsa-0123456789abcdef"
+                },
+                "n": {
+                  "type": "string",
+                  "description": "RSA 模数（base64url）"
+                },
+                "e": {
+                  "type": "string",
+                  "description": "RSA 公钥指数（base64url）",
+                  "example": "AQAB"
+                }
               }
             }
           }
@@ -463,25 +1168,71 @@
         "type": "object",
         "description": "OAuth2 / OIDC 令牌端点响应",
         "properties": {
-          "access_token": { "type": "string", "example": "…" },
-          "token_type": { "type": "string", "example": "Bearer" },
-          "expires_in": { "type": "integer", "example": 3600 },
-          "scope": { "type": "string", "nullable": true, "example": "openid profile email" },
-          "id_token": { "type": "string", "nullable": true, "description": "仅当授权请求 scope 含 openid 时返回（RS256 签名）" }
+          "access_token": {
+            "type": "string",
+            "example": "…"
+          },
+          "token_type": {
+            "type": "string",
+            "example": "Bearer"
+          },
+          "expires_in": {
+            "type": "integer",
+            "example": 3600
+          },
+          "scope": {
+            "type": "string",
+            "nullable": true,
+            "example": "openid profile email"
+          },
+          "id_token": {
+            "type": "string",
+            "nullable": true,
+            "description": "仅当授权请求 scope 含 openid 时返回（RS256 签名）"
+          }
         }
       },
       "OidcUserInfo": {
         "type": "object",
         "description": "OAuth2 / OIDC userinfo 端点响应",
         "properties": {
-          "sub": { "type": "string", "example": "admin" },
-          "username": { "type": "string", "example": "admin" },
-          "preferred_username": { "type": "string", "example": "admin" },
-          "name": { "type": "string", "example": "admin" },
-          "email": { "type": "string", "example": "admin@devops-glue.local" },
-          "email_verified": { "type": "boolean", "example": false },
-          "role": { "type": "string", "example": "super_admin" },
-          "groups": { "type": "array", "items": { "type": "string" }, "example": ["super_admin"] }
+          "sub": {
+            "type": "string",
+            "example": "admin"
+          },
+          "username": {
+            "type": "string",
+            "example": "admin"
+          },
+          "preferred_username": {
+            "type": "string",
+            "example": "admin"
+          },
+          "name": {
+            "type": "string",
+            "example": "admin"
+          },
+          "email": {
+            "type": "string",
+            "example": "admin@devops-glue.local"
+          },
+          "email_verified": {
+            "type": "boolean",
+            "example": false
+          },
+          "role": {
+            "type": "string",
+            "example": "super_admin"
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "super_admin"
+            ]
+          }
         }
       }
     }
@@ -489,67 +1240,131 @@
   "paths": {
     "/api/health": {
       "get": {
-        "tags": ["Health"],
+        "tags": [
+          "Health"
+        ],
         "summary": "健康检查",
         "description": "检查 Jenkins、Git 平台、Harbor 连通性。此接口需要 Bearer Token 鉴权。全部正常返回 200，部分降级返回 503。",
         "operationId": "health",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "全部正常",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HealthResult" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResult"
+                }
+              }
+            }
           },
           "503": {
             "description": "部分服务不可达（降级运行）",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HealthResult" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResult"
+                }
+              }
+            }
           },
           "401": {
             "description": "未授权（需要 Bearer token)",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
     },
-
     "/api/main/jobs/list": {
       "get": {
-        "tags": ["Main"],
+        "tags": [
+          "Main"
+        ],
         "summary": "获取所有 Job 列表",
         "description": "jenkins 模式从 Jenkins 实时拉取，gitlab_ci 模式从数据库读取。Jenkins 不可达时降级返回数据库缓存。",
         "operationId": "mainJobsList",
-        "security": [{ "bearerAuth": [] }],
-        "parameters": [{ "$ref": "#/components/parameters/format" }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Job 名称数组",
-            "content": { "application/json": { "schema": { "type": "array", "items": { "type": "string" } } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
     },
     "/api/main/map/list": {
       "get": {
-        "tags": ["Main"],
+        "tags": [
+          "Main"
+        ],
         "summary": "Job / Git / Harbor 三方映射",
         "description": "按项目分组返回映射关系。jenkins 模式带 30s 缓存。",
         "operationId": "mainMapList",
-        "security": [{ "bearerAuth": [] }],
-        "parameters": [{ "$ref": "#/components/parameters/format" }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
         "responses": {
           "200": {
             "description": "分组映射对象",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MapGroupedResult" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MapGroupedResult"
+                }
+              }
+            }
           }
         }
       }
     },
     "/api/main/git/platforms": {
       "get": {
-        "tags": ["Main"],
+        "tags": [
+          "Main"
+        ],
         "summary": "已接入的 Git 平台列表",
         "description": "返回静态配置的 Git 平台信息与 Harbor API 信息。",
         "operationId": "mainGitPlatforms",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "平台配置",
@@ -558,8 +1373,16 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "git_platforms": { "type": "array", "items": { "type": "object" } },
-                    "harbor": { "type": "object", "nullable": true }
+                    "git_platforms": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "harbor": {
+                      "type": "object",
+                      "nullable": true
+                    }
                   }
                 }
               }
@@ -570,11 +1393,17 @@
     },
     "/api/main/git/discovery": {
       "get": {
-        "tags": ["Main"],
+        "tags": [
+          "Main"
+        ],
         "summary": "平台接入检测",
         "description": "对比映射中使用的 Git 平台与已配置平台，分别返回已配置和未配置列表。",
         "operationId": "mainGitDiscovery",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "configured + unconfigured 列表",
@@ -588,8 +1417,12 @@
                       "items": {
                         "type": "object",
                         "properties": {
-                          "name": { "type": "string" },
-                          "api_base_url": { "type": "string" }
+                          "name": {
+                            "type": "string"
+                          },
+                          "api_base_url": {
+                            "type": "string"
+                          }
                         }
                       }
                     },
@@ -598,8 +1431,12 @@
                       "items": {
                         "type": "object",
                         "properties": {
-                          "name": { "type": "string" },
-                          "example_remote": { "type": "string" }
+                          "name": {
+                            "type": "string"
+                          },
+                          "example_remote": {
+                            "type": "string"
+                          }
                         }
                       }
                     }
@@ -611,15 +1448,24 @@
         }
       }
     },
-
     "/api/build/jobs/list": {
       "get": {
-        "tags": ["Build"],
+        "tags": [
+          "Build"
+        ],
         "summary": "Build 视角的 Job 列表（CI 管理页）",
         "description": "返回当前 build_mode 下的活跃映射，含 ci_provider、project_id、current_path、harbor_repository、git_platform。?format=raw 返回纯 job 名数组。CD 部署侧的项目列表请用 /api/build/projects。",
         "operationId": "buildJobsList",
-        "security": [{ "bearerAuth": [] }],
-        "parameters": [{ "$ref": "#/components/parameters/format" }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
         "responses": {
           "200": {
             "description": "raw 格式返回 job 名数组，json 格式返回含 provider 信息的对象数组",
@@ -630,12 +1476,28 @@
                   "items": {
                     "type": "object",
                     "properties": {
-                      "job_name": { "type": "string" },
-                      "ci_provider": { "type": "string", "enum": ["jenkins", "gitlab_ci"] },
-                      "project_id": { "type": "string" },
-                      "current_path": { "type": "string" },
-                      "harbor_repository": { "type": "string" },
-                      "git_platform": { "type": "string" }
+                      "job_name": {
+                        "type": "string"
+                      },
+                      "ci_provider": {
+                        "type": "string",
+                        "enum": [
+                          "jenkins",
+                          "gitlab_ci"
+                        ]
+                      },
+                      "project_id": {
+                        "type": "string"
+                      },
+                      "current_path": {
+                        "type": "string"
+                      },
+                      "harbor_repository": {
+                        "type": "string"
+                      },
+                      "git_platform": {
+                        "type": "string"
+                      }
                     }
                   }
                 }
@@ -647,11 +1509,17 @@
     },
     "/api/build/projects": {
       "get": {
-        "tags": ["Build"],
+        "tags": [
+          "Build"
+        ],
         "summary": "活跃映射 + 每项目最新 tag（CD 部署侧）",
         "description": "返回所有活跃映射（不过滤 build_mode），并为每项目附带最新镜像 tag（latest_tag / latest_pipeline / tag_time）。供 CD 列表/部署解析使用；CI 管理页的 Job 列表请用 /api/build/jobs/list。",
         "operationId": "buildProjectsList",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "活跃映射数组，每项含 job_name/build_provider/current_path/harbor_repository/git_platform/status 及 latest_tag/latest_pipeline/tag_time",
@@ -662,15 +1530,33 @@
                   "items": {
                     "type": "object",
                     "properties": {
-                      "job_name": { "type": "string" },
-                      "build_provider": { "type": "string" },
-                      "current_path": { "type": "string" },
-                      "harbor_repository": { "type": "string" },
-                      "git_platform": { "type": "string" },
-                      "status": { "type": "string" },
-                      "latest_tag": { "type": "string" },
-                      "latest_pipeline": { "type": "string" },
-                      "tag_time": { "type": "string" }
+                      "job_name": {
+                        "type": "string"
+                      },
+                      "build_provider": {
+                        "type": "string"
+                      },
+                      "current_path": {
+                        "type": "string"
+                      },
+                      "harbor_repository": {
+                        "type": "string"
+                      },
+                      "git_platform": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "latest_tag": {
+                        "type": "string"
+                      },
+                      "latest_pipeline": {
+                        "type": "string"
+                      },
+                      "tag_time": {
+                        "type": "string"
+                      }
                     }
                   }
                 }
@@ -682,32 +1568,69 @@
     },
     "/api/build/config-mode": {
       "get": {
-        "tags": ["Build"],
+        "tags": [
+          "Build"
+        ],
         "summary": "获取构建模式配置",
         "description": "返回当前有效的构建模式及来源。数据库为唯一来源，首次运行从 .env 种子写入 DB。",
         "operationId": "buildConfigMode",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "配置模式",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ConfigModeResult" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigModeResult"
+                }
+              }
+            }
           }
         }
       }
     },
     "/api/build/{path}/pipelines": {
       "get": {
-        "tags": ["Build"],
+        "tags": [
+          "Build"
+        ],
         "summary": "Pipeline 列表",
         "description": "统一查询 Jenkins/GitLab CI 的 Pipeline。?list=id 返回 ID 数组，?list=success 返回成功的 Pipeline ID。",
         "operationId": "buildPipelines",
-        "security": [{ "bearerAuth": [] }],
-        "parameters": [
-          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" }, "example": "tools/runner-ci" },
-          { "$ref": "#/components/parameters/format" },
+        "security": [
           {
-            "name": "list", "in": "query",
-            "schema": { "type": "string", "enum": ["id", "build", "time", "success"] },
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "tools/runner-ci"
+          },
+          {
+            "$ref": "#/components/parameters/format"
+          },
+          {
+            "name": "list",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "id",
+                "build",
+                "time",
+                "success"
+              ]
+            },
             "description": "id=ID数组, build=带#前缀, time=带时间, success=仅成功"
           }
         ],
@@ -719,92 +1642,258 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "build_provider": { "type": "string" },
-                    "project_id": { "type": "string" },
-                    "pipelines": { "type": "array", "items": { "$ref": "#/components/schemas/PipelineItem" } }
+                    "build_provider": {
+                      "type": "string"
+                    },
+                    "project_id": {
+                      "type": "string"
+                    },
+                    "pipelines": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/PipelineItem"
+                      }
+                    }
                   }
                 }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/400" }
+          "400": {
+            "$ref": "#/components/responses/400"
+          }
         }
       }
     },
     "/api/build/{path}/pipelines/{id}": {
       "get": {
-        "tags": ["Build"],
-        "summary": "Pipeline 详情 + Jobs",
-        "description": "?format=raw 返回纯状态数组（如 [\"success\", \"failed\"]）",
+        "tags": [
+          "Build"
+        ],
+        "summary": "Pipeline 详情 + Jobs（Gitea 专属）",
+        "description": "Gitea 专属：输入 run id（/api/build/{path}/pipelines 返回的 id）获取该 run 详情。?format=raw 返回纯状态数组（如 [\"success\", \"failed\"]）。默认返回 jobs，每项含 id（job id）与 log_url（该 job 日志链接，指向 /api/build/{path}/logs/{jobId}）",
         "operationId": "buildPipelineDetail",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
-          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" } },
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
         ],
         "responses": {
-          "200": { "description": "Jobs 列表" },
-          "400": { "$ref": "#/components/responses/400" }
+          "200": {
+            "description": "Jobs 列表，每项含 id（job id）与 log_url（日志链接）"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          }
+        }
+      }
+    },
+    "/api/build/{path}/pipelines/{id}/logs": {
+      "get": {
+        "tags": [
+          "Build"
+        ],
+        "summary": "Pipeline 日志（Gitea 专属，输入 run id，返回全部 job 日志）",
+        "description": "Gitea 专属：输入 run id（即 /api/build/{path}/pipelines 返回的 id），返回该 run 下全部 job 的日志文本（多 job 用 ===== 分隔）。无需先查 job id。",
+        "operationId": "buildPipelineLogs",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "run id（Pipeline id，不是 job id）"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "text/plain 原始日志（多 job 用 ===== 分隔）"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          }
         }
       }
     },
     "/api/build/{path}/pipelines/{id}/retry": {
       "post": {
-        "tags": ["Build"],
+        "tags": [
+          "Build"
+        ],
         "summary": "重试 Pipeline（仅 GitLab CI）",
         "operationId": "buildRetry",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
-          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" } },
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
         ],
         "responses": {
-          "200": { "description": "retry 结果" },
-          "400": { "$ref": "#/components/responses/400" }
+          "200": {
+            "description": "retry 结果"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          }
         }
       }
     },
     "/api/build/{path}/pipelines/{id}/cancel": {
       "post": {
-        "tags": ["Build"],
+        "tags": [
+          "Build"
+        ],
         "summary": "取消 Pipeline（仅 GitLab CI）",
         "operationId": "buildCancel",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
-          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" } },
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
         ],
         "responses": {
-          "200": { "description": "cancel 结果" },
-          "400": { "$ref": "#/components/responses/400" }
+          "200": {
+            "description": "cancel 结果"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          }
         }
       }
     },
     "/api/build/{path}/logs/{id}": {
       "get": {
-        "tags": ["Build"],
-        "summary": "构建日志（Jenkins / GitLab CI 通用）",
+        "tags": [
+          "Build"
+        ],
+        "summary": "构建日志（Jenkins / GitLab CI / Gitea Actions，id=job id）",
         "operationId": "buildLogs",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
-          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" }, "example": "tools/runner-ci" },
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" }, "example": 32 }
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "tools/runner-ci"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "example": 32,
+            "description": "job id（取自 /api/build/{path}/pipelines/{runId} 返回的 jobs[].id，不是 run id）"
+          }
         ],
         "responses": {
-          "200": { "description": "text/plain 原始日志" },
-          "400": { "$ref": "#/components/responses/400" }
+          "200": {
+            "description": "text/plain 原始日志"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          }
         }
       }
     },
     "/api/build/{path}/trigger": {
       "post": {
-        "tags": ["Build"],
+        "tags": [
+          "Build"
+        ],
         "summary": "触发构建（POST，推荐）",
         "description": "POST body JSON 中 variables=参数对象（推荐）。也可在根级直接写参数名（兼容旧版）。参数名需与 Jenkins Job 定义的参数名一致，先用 GET /api/build/{path}/variables 查看可用参数。",
         "operationId": "buildTrigger",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
-          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" }, "example": "php/myapp" }
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "php/myapp"
+          }
         ],
         "requestBody": {
           "content": {
@@ -812,73 +1901,151 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "ref": { "type": "string", "example": "main", "description": "分支名（透传，不做映射；GitLab CI 模式下必填）" },
-                  "variables": { "type": "object", "example": { "param1": "value1" }, "description": "构建参数（key 需与 Job 定义的参数名一致）" }
+                  "ref": {
+                    "type": "string",
+                    "example": "main",
+                    "description": "分支名（透传，不做映射；GitLab CI 模式下必填）"
+                  },
+                  "variables": {
+                    "type": "object",
+                    "example": {
+                      "param1": "value1"
+                    },
+                    "description": "构建参数（key 需与 Job 定义的参数名一致）"
+                  }
                 }
               }
             }
           }
         },
         "responses": {
-          "200": { "description": "build_provider + project_id + 触发结果" },
-          "400": { "$ref": "#/components/responses/400" }
+          "200": {
+            "description": "build_provider + project_id + 触发结果"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          }
         }
       },
       "get": {
-        "tags": ["Build"],
+        "tags": [
+          "Build"
+        ],
         "summary": "触发构建（GET，Query String 传参）",
         "description": "兼容旧版调用方式，参数通过 Query String 传入。ref 仅 GitLab CI 模式使用。",
         "operationId": "buildTriggerGet",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
-          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" }, "example": "static" }
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "static"
+          }
         ],
         "responses": {
-          "200": { "description": "触发结果" }
+          "200": {
+            "description": "触发结果"
+          }
         }
       }
     },
     "/api/build/{path}/variables": {
       "get": {
-        "tags": ["Build"],
+        "tags": [
+          "Build"
+        ],
         "summary": "构建参数 / CI 变量",
         "description": "返回 Jenkins Job 参数定义或 GitLab CI 变量。?format=json 返回完整含 build_provider，默认返回 {key: options} 简化格式。",
         "operationId": "buildVariables",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
-          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
-          "200": { "description": "变量 key→options 映射" },
-          "400": { "$ref": "#/components/responses/400" }
+          "200": {
+            "description": "变量 key→options 映射"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          }
         }
       }
     },
     "/api/build/{path}/branches": {
       "get": {
-        "tags": ["Build"],
+        "tags": [
+          "Build"
+        ],
         "summary": "Git 分支列表",
         "description": "返回纯字符串数组，可直接用作 Rundeck Option Model Provider 的远程 URL。",
         "operationId": "buildBranches",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
-          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
-          "200": { "description": "分支名数组，如 [\"main\", \"master\", \"dev\"]" },
-          "400": { "$ref": "#/components/responses/400" }
+          "200": {
+            "description": "分支名数组，如 [\"main\", \"master\", \"dev\"]"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          }
         }
       }
     },
     "/api/build/{path}/scan-sync": {
       "post": {
-        "tags": ["Build"],
+        "tags": [
+          "Build"
+        ],
         "summary": "Harbor 镜像扫描 → Commit Status 回写",
         "description": "CI pipeline 构建完成后调用。自动获取 Harbor 漏洞报告，将结果回写到 Git 平台 commit status（harbor-scan 上下文）。tag 不传则取 Harbor 最新。",
         "operationId": "buildScanSync",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
-          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" }, "example": "php/myapp" }
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "php/myapp"
+          }
         ],
         "requestBody": {
           "content": {
@@ -886,7 +2053,11 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "tag": { "type": "string", "example": "v3.0.0", "description": "镜像 tag，不传取 Harbor 最新" }
+                  "tag": {
+                    "type": "string",
+                    "example": "v3.0.0",
+                    "description": "镜像 tag，不传取 Harbor 最新"
+                  }
                 }
               }
             }
@@ -895,21 +2066,43 @@
         "responses": {
           "200": {
             "description": "扫描同步结果",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ScanSyncResult" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanSyncResult"
+                }
+              }
+            }
           },
-          "400": { "$ref": "#/components/responses/400" }
+          "400": {
+            "$ref": "#/components/responses/400"
+          }
         }
       }
     },
     "/api/build/{path}/report": {
       "post": {
-        "tags": ["Build"],
+        "tags": [
+          "Build"
+        ],
         "summary": "自定义推送式 CI 构建结果单次上报",
         "description": "custom_push 构建源专用：用户 CI 在构建完成后一次性上报终态结果（success/failed/aborted），无 pending/running 中间态。Devops-Glue 只存元数据与日志 URL 指针，不参与构建也不存日志内容。\n\nstatus=success 时必须带 tag，同步写入 ci_pipeline_artifacts（provider、project_id、pipeline_iid、project_key、repository、tag、status）；CD 层通过现有 GET /api/build/{path}/tag 读取。\n\n请求体除控制字段（pipeline_iid / status / finished_at / started_at / ref / sha / exit_code / log_url / web_url / tag / harbor_repository）外，其余字段作为自定义构建参数一并存入 variables_json。",
         "operationId": "buildReport",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
-          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" }, "example": "php/myapp" }
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "php/myapp"
+          }
         ],
         "requestBody": {
           "required": true,
@@ -917,20 +2110,86 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["pipeline_iid", "status", "finished_at"],
+                "required": [
+                  "pipeline_iid",
+                  "status",
+                  "finished_at"
+                ],
                 "properties": {
-                  "pipeline_iid":      { "type": "integer", "example": 123, "description": "构建编号（必填，用户 CI 传入）" },
-                  "status":            { "type": "string", "enum": ["success", "failed", "aborted"], "example": "success", "description": "构建终态结果（必填）" },
-                  "finished_at":       { "type": "string", "format": "date-time", "example": "2026-08-18T10:05:12+08:00", "description": "构建完成时间（必填）" },
-                  "started_at":        { "type": "string", "format": "date-time", "example": "2026-08-18T10:00:00+08:00", "description": "构建开始时间（可选）" },
-                  "ref":               { "type": "string", "example": "main", "description": "构建分支/tag（可选）" },
-                  "sha":               { "type": "string", "example": "a1b2c3d4e5f6", "description": "commit SHA（可选）" },
-                  "exit_code":         { "type": "integer", "example": 0, "description": "构建退出码（可选）" },
-                  "log_url":           { "type": "string", "format": "uri", "example": "https://ci.example.com/build/123/log", "description": "日志 URL（仅存指针，Devops-Glue 不存日志内容）" },
-                  "web_url":           { "type": "string", "format": "uri", "example": "https://ci.example.com/build/123", "description": "用户 CI 构建页链接（可选）" },
-                  "tag":               { "type": "string", "example": "v1.0.0", "description": "镜像 tag（status=success 时必填，写入 ci_pipeline_artifacts；上报时校验该 tag 真实存在于 Harbor，不存在返回 400；failed/aborted 不需要）" },
-                  "harbor_repository": { "type": "string", "example": "team/myapp", "description": "Harbor 仓库路径（由 job_git_map 配置决定，body 传入会被忽略；project/repo 两段式，不接受 registry 地址/URL；上报时校验仓库与 tag 均真实存在于 Harbor，任一不存在返回 400）" },
-                  "env":               { "type": "string", "enum": ["dev", "staging", "prod"], "example": "prod", "description": "镜像目标环境（自定义变量，可选）" }
+                  "pipeline_iid": {
+                    "type": "integer",
+                    "example": 123,
+                    "description": "构建编号（必填，用户 CI 传入）"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "success",
+                      "failed",
+                      "aborted"
+                    ],
+                    "example": "success",
+                    "description": "构建终态结果（必填）"
+                  },
+                  "finished_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "example": "2026-08-18T10:05:12+08:00",
+                    "description": "构建完成时间（必填）"
+                  },
+                  "started_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "example": "2026-08-18T10:00:00+08:00",
+                    "description": "构建开始时间（可选）"
+                  },
+                  "ref": {
+                    "type": "string",
+                    "example": "main",
+                    "description": "构建分支/tag（可选）"
+                  },
+                  "sha": {
+                    "type": "string",
+                    "example": "a1b2c3d4e5f6",
+                    "description": "commit SHA（可选）"
+                  },
+                  "exit_code": {
+                    "type": "integer",
+                    "example": 0,
+                    "description": "构建退出码（可选）"
+                  },
+                  "log_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "example": "https://ci.example.com/build/123/log",
+                    "description": "日志 URL（仅存指针，Devops-Glue 不存日志内容）"
+                  },
+                  "web_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "example": "https://ci.example.com/build/123",
+                    "description": "用户 CI 构建页链接（可选）"
+                  },
+                  "tag": {
+                    "type": "string",
+                    "example": "v1.0.0",
+                    "description": "镜像 tag（status=success 时必填，写入 ci_pipeline_artifacts；上报时校验该 tag 真实存在于 Harbor，不存在返回 400；failed/aborted 不需要）"
+                  },
+                  "harbor_repository": {
+                    "type": "string",
+                    "example": "team/myapp",
+                    "description": "Harbor 仓库路径（由 job_git_map 配置决定，body 传入会被忽略；project/repo 两段式，不接受 registry 地址/URL；上报时校验仓库与 tag 均真实存在于 Harbor，任一不存在返回 400）"
+                  },
+                  "env": {
+                    "type": "string",
+                    "enum": [
+                      "dev",
+                      "staging",
+                      "prod"
+                    ],
+                    "example": "prod",
+                    "description": "镜像目标环境（自定义变量，可选）"
+                  }
                 }
               },
               "examples": {
@@ -970,11 +2229,32 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "build_provider": { "type": "string", "example": "custom_push" },
-                    "pipeline_iid":   { "type": "integer", "example": 123 },
-                    "success":        { "type": "boolean", "example": true },
-                    "pipeline_id":    { "type": "integer", "example": 1, "description": "内部自增 id" },
-                    "action":         { "type": "string", "enum": ["created", "updated"], "example": "created", "description": "首次写入 created；重复上报覆盖 updated" }
+                    "build_provider": {
+                      "type": "string",
+                      "example": "custom_push"
+                    },
+                    "pipeline_iid": {
+                      "type": "integer",
+                      "example": 123
+                    },
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "pipeline_id": {
+                      "type": "integer",
+                      "example": 1,
+                      "description": "内部自增 id"
+                    },
+                    "action": {
+                      "type": "string",
+                      "enum": [
+                        "created",
+                        "updated"
+                      ],
+                      "example": "created",
+                      "description": "首次写入 created；重复上报覆盖 updated"
+                    }
                   }
                 },
                 "example": {
@@ -987,67 +2267,150 @@
               }
             }
           },
-          "400": { "$ref": "#/components/responses/400" }
+          "400": {
+            "$ref": "#/components/responses/400"
+          }
         }
       }
     },
     "/api/build/{path}/commit-status": {
       "post": {
-        "tags": ["Build"],
+        "tags": [
+          "Build"
+        ],
         "summary": "通用安全扫描 Commit Status 回写",
         "description": "类似 GitHub Actions Security Check。SAST、密钥扫描、依赖漏洞、IaC 审计等任何安全扫描工具的结果都可以通过此端点回写到 Git 平台 commit/MR 页面。自动审计记录写入 ci_security_checks 表。",
         "operationId": "buildCommitStatus",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
-          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" }, "example": "php/myapp" }
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "php/myapp"
+          }
         ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/CommitStatusRequest" }
+              "schema": {
+                "$ref": "#/components/schemas/CommitStatusRequest"
+              }
             }
           }
         },
         "responses": {
           "200": {
             "description": "回写成功",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CommitStatusResult" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommitStatusResult"
+                }
+              }
+            }
           },
-          "400": { "$ref": "#/components/responses/400" }
+          "400": {
+            "$ref": "#/components/responses/400"
+          }
         }
       }
     },
     "/api/build/{path}/tag": {
       "get": {
-        "tags": ["Build"],
+        "tags": [
+          "Build"
+        ],
         "summary": "查询 Pipeline → Tag 映射",
         "description": "?pipeline=52 查指定 pipeline 的 tag，不传返回该项目的全部映射。?format=raw 返回 '仓库:tag' 格式。",
         "operationId": "buildTagQuery",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
-          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" }, "example": "php/myapp" },
-          { "name": "pipeline", "in": "query", "schema": { "type": "string" }, "description": "Pipeline 编号（不传返回全部）" }
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "php/myapp"
+          },
+          {
+            "name": "pipeline",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Pipeline 编号（不传返回全部）"
+          }
         ],
         "responses": {
           "200": {
             "description": "pipeline→tag 映射",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TagQueryResult" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagQueryResult"
+                }
+              }
+            }
           }
         }
       }
     },
     "/api/build/{path}/tags": {
       "get": {
-        "tags": ["Build"],
+        "tags": [
+          "Build"
+        ],
         "summary": "项目 tag 列表（分页）",
         "description": "返回指定项目的镜像 tag 列表（分页），键解析精确匹配 job_name / current_path。?page=1&page_size=50。",
         "operationId": "buildTagsList",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
-          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" }, "example": "php/myapp" },
-          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 }, "description": "页码" },
-          { "name": "page_size", "in": "query", "schema": { "type": "integer", "default": 50 }, "description": "每页条数（1-200）" }
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "php/myapp"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            },
+            "description": "页码"
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 50
+            },
+            "description": "每页条数（1-200）"
+          }
         ],
         "responses": {
           "200": {
@@ -1062,16 +2425,30 @@
                       "items": {
                         "type": "object",
                         "properties": {
-                          "tag": { "type": "string" },
-                          "pipeline_iid": { "type": "string" },
-                          "created_at": { "type": "string" }
+                          "tag": {
+                            "type": "string"
+                          },
+                          "pipeline_iid": {
+                            "type": "string"
+                          },
+                          "created_at": {
+                            "type": "string"
+                          }
                         }
                       }
                     },
-                    "total": { "type": "integer" },
-                    "page": { "type": "integer" },
-                    "page_size": { "type": "integer" },
-                    "total_pages": { "type": "integer" }
+                    "total": {
+                      "type": "integer"
+                    },
+                    "page": {
+                      "type": "integer"
+                    },
+                    "page_size": {
+                      "type": "integer"
+                    },
+                    "total_pages": {
+                      "type": "integer"
+                    }
                   }
                 }
               }
@@ -1080,154 +2457,371 @@
         }
       }
     },
-
     "/api/git/{job}/branches": {
       "get": {
-        "tags": ["Git"],
+        "tags": [
+          "Git"
+        ],
         "summary": "查询 Job 对应的 Git 分支列表",
         "operationId": "gitBranches",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
-          { "name": "job", "in": "path", "required": true, "schema": { "type": "string" }, "example": "php/myapp", "allowReserved": true },
-          { "$ref": "#/components/parameters/format" }
+          {
+            "name": "job",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "php/myapp",
+            "allowReserved": true
+          },
+          {
+            "$ref": "#/components/parameters/format"
+          }
         ],
         "responses": {
           "200": {
             "description": "分支名数组",
-            "content": { "application/json": { "schema": { "type": "array", "items": { "type": "string" } } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
           },
-          "404": { "$ref": "#/components/responses/404" }
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
         }
       }
     },
-
     "/api/harbor/projects": {
       "get": {
-        "tags": ["Harbor"],
+        "tags": [
+          "Harbor"
+        ],
         "summary": "获取项目列表（自动翻页，上限 1000）",
         "operationId": "harborProjects",
-        "security": [{ "bearerAuth": [] }],
-        "parameters": [{ "$ref": "#/components/parameters/format" }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
         "responses": {
           "200": {
             "description": "项目名数组",
-            "content": { "application/json": { "schema": { "type": "array", "items": { "type": "string" } } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
           },
-          "500": { "$ref": "#/components/responses/500" }
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
         }
       }
     },
     "/api/harbor/{project}/repositories": {
       "get": {
-        "tags": ["Harbor"],
+        "tags": [
+          "Harbor"
+        ],
         "summary": "获取仓库列表（自动翻页，上限 1000）",
         "operationId": "harborRepositories",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
-          { "name": "project", "in": "path", "required": true, "schema": { "type": "string" }, "example": "mycode" },
-          { "$ref": "#/components/parameters/format" }
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "mycode"
+          },
+          {
+            "$ref": "#/components/parameters/format"
+          }
         ],
         "responses": {
           "200": {
             "description": "仓库名数组（已去项目前缀）",
-            "content": { "application/json": { "schema": { "type": "array", "items": { "type": "string" } } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
     },
     "/api/harbor/{project}/repositories/{repository}/tags": {
       "get": {
-        "tags": ["Harbor"],
+        "tags": [
+          "Harbor"
+        ],
         "summary": "获取 Tag 列表（自动翻页，上限 2000）",
         "description": "仓库名含 / 需双重编码（%2F）。",
         "operationId": "harborTags",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
-          { "name": "project", "in": "path", "required": true, "schema": { "type": "string" }, "example": "mycode" },
-          { "name": "repository", "in": "path", "required": true, "schema": { "type": "string" }, "example": "diagnosis-runtime", "allowReserved": true },
-          { "$ref": "#/components/parameters/format" }
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "mycode"
+          },
+          {
+            "name": "repository",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "diagnosis-runtime",
+            "allowReserved": true
+          },
+          {
+            "$ref": "#/components/parameters/format"
+          }
         ],
         "responses": {
           "200": {
             "description": "Tag 名数组",
-            "content": { "application/json": { "schema": { "type": "array", "items": { "type": "string" } } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
     },
     "/api/harbor/{project}/repositories/{repository}/tags/{tag}/scan": {
       "post": {
-        "tags": ["Harbor"],
+        "tags": [
+          "Harbor"
+        ],
         "summary": "触发镜像安全扫描",
         "operationId": "harborScanTrigger",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
-          { "name": "project", "in": "path", "required": true, "schema": { "type": "string" }, "example": "mycode" },
-          { "name": "repository", "in": "path", "required": true, "schema": { "type": "string" }, "example": "myapp", "allowReserved": true },
-          { "name": "tag", "in": "path", "required": true, "schema": { "type": "string" }, "example": "v1.0.0" }
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "mycode"
+          },
+          {
+            "name": "repository",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "myapp",
+            "allowReserved": true
+          },
+          {
+            "name": "tag",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "v1.0.0"
+          }
         ],
         "responses": {
           "200": {
             "description": "扫描已触发",
-            "content": { "application/json": { "schema": { "type": "object", "properties": { "status": { "type": "string", "example": "ok" } } } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "ok"
+                    }
+                  }
+                }
+              }
+            }
           },
-          "503": { "description": "扫描功能未启用（Harbor 未安装 Trivy/Clair）" }
+          "503": {
+            "description": "扫描功能未启用（Harbor 未安装 Trivy/Clair）"
+          }
         }
       },
       "get": {
-        "tags": ["Harbor"],
+        "tags": [
+          "Harbor"
+        ],
         "summary": "获取镜像漏洞扫描报告",
         "description": "返回漏洞列表。Harbor v2 返回结构化漏洞数据，v1 返回原始报告。无漏洞时返回空数组。",
         "operationId": "harborScanReport",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
-          { "name": "project", "in": "path", "required": true, "schema": { "type": "string" }, "example": "mycode" },
-          { "name": "repository", "in": "path", "required": true, "schema": { "type": "string" }, "example": "myapp", "allowReserved": true },
-          { "name": "tag", "in": "path", "required": true, "schema": { "type": "string" }, "example": "v1.0.0" }
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "mycode"
+          },
+          {
+            "name": "repository",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "myapp",
+            "allowReserved": true
+          },
+          {
+            "name": "tag",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "v1.0.0"
+          }
         ],
         "responses": {
-          "200": { "description": "漏洞报告数组，无漏洞时为空数组" },
-          "503": { "description": "扫描功能未启用" }
+          "200": {
+            "description": "漏洞报告数组，无漏洞时为空数组"
+          },
+          "503": {
+            "description": "扫描功能未启用"
+          }
         }
       }
     },
-
     "/api/admin/login": {
       "post": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "管理后台登录",
         "description": "返回 Bearer token（24h 过期）。优先查数据库 bcrypt 密码，数据库不可用时降级到 .env。",
         "operationId": "adminLogin",
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginRequest" } } }
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          }
         },
         "responses": {
           "200": {
             "description": "登录成功",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginResult" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResult"
+                }
+              }
+            }
           },
-          "401": { "$ref": "#/components/responses/401" }
+          "401": {
+            "$ref": "#/components/responses/401"
+          }
         }
       }
     },
     "/api/admin/password": {
       "put": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "修改管理员密码",
         "description": "需旧密码验证。密码变更后自动清除所有旧 token，强制重新登录。新密码至少 8 位。",
         "operationId": "adminChangePassword",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["old_password", "new_password"],
+                "required": [
+                  "old_password",
+                  "new_password"
+                ],
                 "properties": {
-                  "old_password": { "type": "string", "example": "admin123" },
-                  "new_password": { "type": "string", "example": "newpass456", "minLength": 8 }
+                  "old_password": {
+                    "type": "string",
+                    "example": "admin123"
+                  },
+                  "new_password": {
+                    "type": "string",
+                    "example": "newpass456",
+                    "minLength": 8
+                  }
                 }
               }
             }
@@ -1241,43 +2835,81 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "success": { "type": "boolean", "example": true },
-                    "message": { "type": "string", "example": "密码已更新，请重新登录" }
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "密码已更新，请重新登录"
+                    }
                   }
                 }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/400" },
-          "401": { "$ref": "#/components/responses/401" },
-          "403": { "description": "旧密码错误" }
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "旧密码错误"
+          }
         }
       }
     },
     "/api/admin/discover": {
       "post": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "自动发现未入库的 Jenkins Job",
         "description": "扫描 Jenkins 中所有 Job，通过 git remote 自动匹配 Git 平台，返回新发现的条目并写入映射表。Jenkins 不可用返回 503。",
         "operationId": "adminDiscover",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "发现结果",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DiscoverResult" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoverResult"
+                }
+              }
+            }
           },
-          "401": { "$ref": "#/components/responses/401" },
-          "503": { "description": "自动发现功能未启用（Jenkins 不可用）" }
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "503": {
+            "description": "自动发现功能未启用（Jenkins 不可用）"
+          }
         }
       }
     },
     "/api/admin/job_git_map": {
       "get": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "列出所有 Job-Git 映射",
         "operationId": "adminMapList",
-        "security": [{ "bearerAuth": [] }],
-        "parameters": [{ "$ref": "#/components/parameters/format" }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
         "responses": {
           "200": {
             "description": "映射列表 + 可用 Git 平台",
@@ -1286,50 +2918,96 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "maps": { "type": "array", "items": { "$ref": "#/components/schemas/JobGitMapEntry" } },
-                    "platforms": { "type": "array", "items": { "type": "string" }, "description": "已配置的 Git 平台名称" }
+                    "maps": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/JobGitMapEntry"
+                      }
+                    },
+                    "platforms": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "已配置的 Git 平台名称"
+                    }
                   }
                 }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/401" }
+          "401": {
+            "$ref": "#/components/responses/401"
+          }
         }
       },
       "post": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "新增一条映射",
         "operationId": "adminMapCreate",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobGitMapEntry" } } }
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobGitMapEntry"
+              }
+            }
+          }
         },
         "responses": {
-          "200": { "description": "新增成功，返回 {success, entry}" },
-          "400": { "$ref": "#/components/responses/400" },
-          "401": { "$ref": "#/components/responses/401" },
-          "409": { "description": "job_name 已存在" }
+          "200": {
+            "description": "新增成功，返回 {success, entry}"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "409": {
+            "description": "job_name 已存在"
+          }
         }
       },
       "put": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "更新一条映射（按 _original_job_name 匹配原名称）",
         "operationId": "adminMapUpdate",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "allOf": [
-                  { "$ref": "#/components/schemas/JobGitMapEntry" },
+                  {
+                    "$ref": "#/components/schemas/JobGitMapEntry"
+                  },
                   {
                     "type": "object",
                     "properties": {
-                      "_original_job_name": { "type": "string", "description": "修改前的 job_name（必填）" }
+                      "_original_job_name": {
+                        "type": "string",
+                        "description": "修改前的 job_name（必填）"
+                      }
                     },
-                    "required": ["_original_job_name"]
+                    "required": [
+                      "_original_job_name"
+                    ]
                   }
                 ]
               }
@@ -1337,44 +3015,116 @@
           }
         },
         "responses": {
-          "200": { "description": "更新成功，返回 {success, entry}" },
-          "401": { "$ref": "#/components/responses/401" },
-          "404": { "$ref": "#/components/responses/404" }
+          "200": {
+            "description": "更新成功，返回 {success, entry}"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
         }
       },
       "delete": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "删除一条映射",
         "operationId": "adminMapDelete",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
           {
-            "name": "job_name", "in": "query", "required": true,
-            "schema": { "type": "string" },
+            "name": "job_name",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
             "description": "要删除的 Job 名称"
           }
         ],
         "responses": {
-          "200": { "description": "删除成功，返回 {success: true}" },
-          "400": { "$ref": "#/components/responses/400" },
-          "401": { "$ref": "#/components/responses/401" },
-          "404": { "$ref": "#/components/responses/404" }
+          "200": {
+            "description": "删除成功，返回 {success: true}"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
         }
       }
     },
     "/api/admin/security_checks": {
       "get": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "查看安全扫描审计记录",
         "description": "分页查询 ci_security_checks 表。支持按 project、check_type、state 筛选。",
         "operationId": "adminSecurityChecks",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
-          { "name": "project", "in": "query", "schema": { "type": "string" }, "description": "项目名（模糊匹配）" },
-          { "name": "check_type", "in": "query", "schema": { "type": "string" }, "description": "检查类型（sast/secret-scan/sca/iac-audit 等）" },
-          { "name": "state", "in": "query", "schema": { "type": "string", "enum": ["pending", "success", "failed", "error"] }, "description": "扫描状态" },
-          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
-          { "name": "per_page", "in": "query", "schema": { "type": "integer", "default": 20, "maximum": 100 } }
+          {
+            "name": "project",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "项目名（模糊匹配）"
+          },
+          {
+            "name": "check_type",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "检查类型（sast/secret-scan/sca/iac-audit 等）"
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "success",
+                "failed",
+                "error"
+              ]
+            },
+            "description": "扫描状态"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 100
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -1384,15 +3134,33 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "checks": { "type": "array", "items": { "type": "object" } },
-                    "total": { "type": "integer" },
-                    "page": { "type": "integer" },
-                    "per_page": { "type": "integer" },
-                    "total_pages": { "type": "integer" },
+                    "checks": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "page": {
+                      "type": "integer"
+                    },
+                    "per_page": {
+                      "type": "integer"
+                    },
+                    "total_pages": {
+                      "type": "integer"
+                    },
                     "filter_opts": {
                       "type": "object",
                       "properties": {
-                        "check_types": { "type": "array", "items": { "type": "string" } }
+                        "check_types": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
                       }
                     }
                   }
@@ -1400,17 +3168,25 @@
               }
             }
           },
-          "401": { "$ref": "#/components/responses/401" }
+          "401": {
+            "$ref": "#/components/responses/401"
+          }
         }
       }
     },
     "/api/admin/platform_versions": {
       "get": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "获取平台 API 版本及配置状态",
         "description": "返回各平台版本号、来源（config/json/default）、是否已配置。",
         "operationId": "adminVersionsList",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "版本信息",
@@ -1421,100 +3197,170 @@
                   "properties": {
                     "versions": {
                       "type": "object",
-                      "additionalProperties": { "$ref": "#/components/schemas/PlatformVersionItem" }
+                      "additionalProperties": {
+                        "$ref": "#/components/schemas/PlatformVersionItem"
+                      }
                     }
                   }
                 }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/401" }
+          "401": {
+            "$ref": "#/components/responses/401"
+          }
         }
       },
       "put": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "更新平台 API 版本",
         "description": "传入 {versions: {gitlab: 'v5', harbor: 'v2.0'}}。与默认值相同的项不保存。",
         "operationId": "adminVersionsUpdate",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["versions"],
+                "required": [
+                  "versions"
+                ],
                 "properties": {
-                  "versions": { "type": "object", "description": "平台名→版本号", "example": { "gitlab": "v4" } }
+                  "versions": {
+                    "type": "object",
+                    "description": "平台名→版本号",
+                    "example": {
+                      "gitlab": "v4"
+                    }
+                  }
                 }
               }
             }
           }
         },
         "responses": {
-          "200": { "description": "更新成功，返回 {success, versions}" },
-          "400": { "$ref": "#/components/responses/400" },
-          "401": { "$ref": "#/components/responses/401" }
+          "200": {
+            "description": "更新成功，返回 {success, versions}"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          }
         }
       }
     },
     "/api/admin/me/permissions": {
       "get": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "获取当前用户的权限列表",
         "description": "使用 Bearer token 查询当前用户的角色和权限。仅需有效 token，不需要 admin 权限。super_admin 角色返回 \"*\" 通配符。",
         "operationId": "adminMePermissions",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "当前用户权限",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/MePermissionsResult" }
+                "schema": {
+                  "$ref": "#/components/schemas/MePermissionsResult"
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/401" }
+          "401": {
+            "$ref": "#/components/responses/401"
+          }
         }
       }
     },
     "/api/admin/permissions": {
       "get": {
-        "tags": ["Admin", "RBAC"],
+        "tags": [
+          "Admin",
+          "RBAC"
+        ],
         "summary": "列出所有权限及隐含规则",
         "description": "返回系统中所有已注册的权限定义（含 parent_key 层级）以及权限隐含关系映射。权限数据驱动，可由 CD 项目通过 POST 接口注册。",
         "operationId": "adminPermissionList",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "权限列表 + 隐含规则",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/PermissionListResult" }
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionListResult"
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/401" },
-          "500": { "$ref": "#/components/responses/500" }
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
         }
       },
       "post": {
-        "tags": ["Admin", "RBAC"],
+        "tags": [
+          "Admin",
+          "RBAC"
+        ],
         "summary": "注册新权限",
         "description": "注册一个新的权限键，供菜单显隐和 hasPermission 校验使用。仅 super_admin 可调用，通常由 CD 项目自动注册而非人工操作。description 必填（作为 i18n 兜底文案）。",
         "operationId": "adminPermissionRegister",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["perm_key", "description"],
+                "required": [
+                  "perm_key",
+                  "description"
+                ],
                 "properties": {
-                  "perm_key": { "type": "string", "description": "权限键，正则 ^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_-]*)+$", "example": "cd.bot" },
-                  "description": { "type": "string", "description": "权限描述（必填，i18n 兜底用）", "example": "Bot Config" },
-                  "parent_key": { "type": "string", "nullable": true, "description": "父级权限键，用于层级菜单", "example": "cd.notification-manage" }
+                  "perm_key": {
+                    "type": "string",
+                    "description": "权限键，正则 ^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_-]*)+$",
+                    "example": "cd.bot"
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "权限描述（必填，i18n 兜底用）",
+                    "example": "Bot Config"
+                  },
+                  "parent_key": {
+                    "type": "string",
+                    "nullable": true,
+                    "description": "父级权限键，用于层级菜单",
+                    "example": "cd.notification-manage"
+                  }
                 }
               }
             }
@@ -1528,33 +3374,55 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "perm_key": { "type": "string" },
-                    "description": { "type": "string" },
-                    "parent_key": { "type": "string", "nullable": true }
+                    "perm_key": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "parent_key": {
+                      "type": "string",
+                      "nullable": true
+                    }
                   }
                 }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/400" },
-          "401": { "$ref": "#/components/responses/401" },
-          "403": { "description": "非 super_admin" }
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "非 super_admin"
+          }
         }
       }
     },
     "/api/admin/permissions/{perm_key}": {
       "delete": {
-        "tags": ["Admin", "RBAC"],
+        "tags": [
+          "Admin",
+          "RBAC"
+        ],
         "summary": "删除权限",
         "description": "删除指定权限键，同时级联清理 role_permissions 和 implied_rules 中的关联记录。仅 super_admin 可调用。系统内置权限（AppConfig::DEFAULT_PERMISSIONS 中的 key）受保护不可删。",
         "operationId": "adminPermissionDelete",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "perm_key",
             "in": "path",
             "required": true,
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "description": "权限键",
             "example": "cd.bot"
           }
@@ -1566,34 +3434,60 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": { "deleted": { "type": "string" } }
+                  "properties": {
+                    "deleted": {
+                      "type": "string"
+                    }
+                  }
                 }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/400" },
-          "401": { "$ref": "#/components/responses/401" },
-          "403": { "description": "非 super_admin" }
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "非 super_admin"
+          }
         }
       }
     },
     "/api/admin/implied_rules": {
       "post": {
-        "tags": ["Admin", "RBAC"],
+        "tags": [
+          "Admin",
+          "RBAC"
+        ],
         "summary": "注册隐含规则",
         "description": "注册一条权限隐含关系：拥有 source_key 时自动拥有 target_key。仅 super_admin 可调用。source_key 和 target_key 必须已存在于 permissions 表中。",
         "operationId": "adminImpliedRuleCreate",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["source_key", "target_key"],
+                "required": [
+                  "source_key",
+                  "target_key"
+                ],
                 "properties": {
-                  "source_key": { "type": "string", "example": "cd.bot" },
-                  "target_key": { "type": "string", "example": "cd.notification-manage" }
+                  "source_key": {
+                    "type": "string",
+                    "example": "cd.bot"
+                  },
+                  "target_key": {
+                    "type": "string",
+                    "example": "cd.notification-manage"
+                  }
                 }
               }
             }
@@ -1604,34 +3498,53 @@
             "description": "注册成功",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/ImpliedRule" }
+                "schema": {
+                  "$ref": "#/components/schemas/ImpliedRule"
+                }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/400" },
-          "401": { "$ref": "#/components/responses/401" },
-          "403": { "description": "非 super_admin" }
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "非 super_admin"
+          }
         }
       },
       "delete": {
-        "tags": ["Admin", "RBAC"],
+        "tags": [
+          "Admin",
+          "RBAC"
+        ],
         "summary": "删除隐含规则",
         "description": "删除一条权限隐含关系。仅 super_admin 可调用。",
         "operationId": "adminImpliedRuleDelete",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "source_key",
             "in": "query",
             "required": true,
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "description": "源权限键"
           },
           {
             "name": "target_key",
             "in": "query",
             "required": true,
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "description": "目标权限键"
           }
         ],
@@ -1646,8 +3559,12 @@
                     "deleted": {
                       "type": "object",
                       "properties": {
-                        "source": { "type": "string" },
-                        "target": { "type": "string" }
+                        "source": {
+                          "type": "string"
+                        },
+                        "target": {
+                          "type": "string"
+                        }
                       }
                     }
                   }
@@ -1655,19 +3572,32 @@
               }
             }
           },
-          "400": { "$ref": "#/components/responses/400" },
-          "401": { "$ref": "#/components/responses/401" },
-          "403": { "description": "非 super_admin" }
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "非 super_admin"
+          }
         }
       }
     },
     "/api/admin/logout": {
       "post": {
-        "tags": ["Admin", "Auth"],
+        "tags": [
+          "Admin",
+          "Auth"
+        ],
         "summary": "登出（失效当前 Bearer token）",
         "description": "从 cache 表删除当前 Bearer token，使之后续请求被拒绝。无 token 的调用也返回成功。",
         "operationId": "adminLogout",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "登出成功",
@@ -1675,7 +3605,12 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": { "message": { "type": "string", "const": "logged_out" } }
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "const": "logged_out"
+                    }
+                  }
                 }
               }
             }
@@ -1685,34 +3620,64 @@
     },
     "/api/admin/build_mode": {
       "get": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "查询构建模式及 Provider 可用性",
         "description": "返回当前生效的构建模式（jenkins/gitlab_ci/both）、模式来源，以及 Jenkins/GitLabCI 两个 Provider 是否已实际配置可用。",
         "operationId": "adminGetBuildMode",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "构建模式",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BuildModeResult" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuildModeResult"
+                }
+              }
+            }
           },
-          "401": { "$ref": "#/components/responses/401" }
+          "401": {
+            "$ref": "#/components/responses/401"
+          }
         }
       },
       "put": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "更新构建模式",
         "description": "切换全局构建模式。切换到单 Provider 时，另一个 Provider 的 active job 映射会自动降级为 pending，避免意外参与构建。需目标 Provider 已配置可用才允许切换。",
         "operationId": "adminUpdateBuildMode",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["mode"],
+                "required": [
+                  "mode"
+                ],
                 "properties": {
-                  "mode": { "type": "string", "enum": ["jenkins", "gitlab_ci", "both"], "example": "both" }
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "jenkins",
+                      "gitlab_ci",
+                      "both"
+                    ],
+                    "example": "both"
+                  }
                 }
               }
             }
@@ -1726,57 +3691,118 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "success": { "type": "boolean", "const": true },
-                    "mode": { "type": "string", "enum": ["jenkins", "gitlab_ci", "both"] }
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "mode": {
+                      "type": "string",
+                      "enum": [
+                        "jenkins",
+                        "gitlab_ci",
+                        "both"
+                      ]
+                    }
                   }
                 }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/400" },
-          "401": { "$ref": "#/components/responses/401" },
-          "500": { "$ref": "#/components/responses/500" }
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
         }
       }
     },
     "/api/admin/users": {
       "get": {
-        "tags": ["Admin", "Users"],
+        "tags": [
+          "Admin",
+          "Users"
+        ],
         "summary": "列出所有管理员用户",
         "description": "admin 及以上角色看到所有用户；普通角色看不到 admin/super_admin 角色的用户。返回值不含密码哈希。",
         "operationId": "adminUserList",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "用户列表",
             "content": {
               "application/json": {
-                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/AdminUserEntry" } }
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AdminUserEntry"
+                  }
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/401" },
-          "500": { "$ref": "#/components/responses/500" }
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
         }
       },
       "post": {
-        "tags": ["Admin", "Users"],
+        "tags": [
+          "Admin",
+          "Users"
+        ],
         "summary": "新增管理员用户",
         "description": "创建新的后台用户。需要 ci.users.manage_admin 权限才能创建 admin/super_admin 角色；非管理员创建的账号 systems 不允许包含 ci。密码至少 8 位。",
         "operationId": "adminUserCreate",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["username", "password"],
+                "required": [
+                  "username",
+                  "password"
+                ],
                 "properties": {
-                  "username": { "type": "string", "description": "登录用户名（唯一）", "example": "alice" },
-                  "password": { "type": "string", "minLength": 8, "description": "明文密码，后端 bcrypt 哈希存储", "example": "MyPassw0rd!" },
-                  "role": { "type": "string", "description": "角色名，默认 deployer", "example": "deployer", "default": "deployer" },
-                  "systems": { "type": "string", "description": "逗号分隔：ci/cd，默认 cd", "example": "cd", "default": "cd" }
+                  "username": {
+                    "type": "string",
+                    "description": "登录用户名（唯一）",
+                    "example": "alice"
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 8,
+                    "description": "明文密码，后端 bcrypt 哈希存储",
+                    "example": "MyPassw0rd!"
+                  },
+                  "role": {
+                    "type": "string",
+                    "description": "角色名，默认 deployer",
+                    "example": "deployer",
+                    "default": "deployer"
+                  },
+                  "systems": {
+                    "type": "string",
+                    "description": "逗号分隔：ci/cd，默认 cd",
+                    "example": "cd",
+                    "default": "cd"
+                  }
                 }
               }
             }
@@ -1790,33 +3816,55 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "success": { "type": "boolean", "const": true },
-                    "username": { "type": "string" }
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "username": {
+                      "type": "string"
+                    }
                   }
                 }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/400" },
-          "401": { "$ref": "#/components/responses/401" },
-          "403": { "description": "越权：提升为管理员或给非管理员分配 ci 权限" },
-          "409": { "description": "用户名已存在" }
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "越权：提升为管理员或给非管理员分配 ci 权限"
+          },
+          "409": {
+            "description": "用户名已存在"
+          }
         }
       }
     },
     "/api/admin/users/{username}": {
       "put": {
-        "tags": ["Admin", "Users"],
+        "tags": [
+          "Admin",
+          "Users"
+        ],
         "summary": "更新用户（改密码 / 改角色）",
         "description": "仅更新传入字段：password 非空时改密码；role 传入时改角色。修改或升为 admin/super_admin 需要 ci.users.manage_admin 权限。password 至少 8 位。",
         "operationId": "adminUserUpdate",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "username",
             "in": "path",
             "required": true,
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "description": "目标用户名",
             "example": "alice"
           }
@@ -1829,8 +3877,15 @@
                 "type": "object",
                 "minProperties": 1,
                 "properties": {
-                  "password": { "type": "string", "minLength": 8, "description": "新密码（明文，可选，为空则不改）" },
-                  "role": { "type": "string", "description": "新角色名（可选，不传则不改）" }
+                  "password": {
+                    "type": "string",
+                    "minLength": 8,
+                    "description": "新密码（明文，可选，为空则不改）"
+                  },
+                  "role": {
+                    "type": "string",
+                    "description": "新角色名（可选，不传则不改）"
+                  }
                 }
               }
             }
@@ -1843,29 +3898,51 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": { "success": { "type": "boolean", "const": true } }
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  }
                 }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/400" },
-          "401": { "$ref": "#/components/responses/401" },
-          "403": { "description": "越权：改管理员/升管理员权限不足" },
-          "404": { "description": "用户不存在" }
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "越权：改管理员/升管理员权限不足"
+          },
+          "404": {
+            "description": "用户不存在"
+          }
         }
       },
       "delete": {
-        "tags": ["Admin", "Users"],
+        "tags": [
+          "Admin",
+          "Users"
+        ],
         "summary": "删除用户",
         "description": "删除指定后台用户。限制：1) 根账号（.env ADMIN_USER）任何人都不可删；2) 不能删除自己；3) 删除 admin/super_admin 角色需要 ci.users.manage_admin 权限。",
         "operationId": "adminUserDelete",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "username",
             "in": "path",
             "required": true,
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "description": "目标用户名",
             "example": "alice"
           }
@@ -1877,59 +3954,110 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": { "success": { "type": "boolean", "const": true } }
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  }
                 }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/400" },
-          "401": { "$ref": "#/components/responses/401" },
-          "403": { "description": "越权：删管理员/删自己/删根账号" },
-          "404": { "description": "用户不存在" }
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "越权：删管理员/删自己/删根账号"
+          },
+          "404": {
+            "description": "用户不存在"
+          }
         }
       }
     },
     "/api/admin/roles": {
       "get": {
-        "tags": ["Admin", "RBAC"],
+        "tags": [
+          "Admin",
+          "RBAC"
+        ],
         "summary": "列出所有角色及权限",
         "description": "返回角色列表，每个角色附带展开后的权限键数组。is_system=true 表示系统内置角色，不可删除、不可修改权限。",
         "operationId": "adminRoleList",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "角色列表",
             "content": {
               "application/json": {
-                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/RoleEntry" } }
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RoleEntry"
+                  }
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/401" },
-          "500": { "$ref": "#/components/responses/500" }
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
         }
       },
       "post": {
-        "tags": ["Admin", "RBAC"],
+        "tags": [
+          "Admin",
+          "RBAC"
+        ],
         "summary": "新建角色",
         "description": "创建自定义角色。仅 ci.users.manage_admin 权限可创建。permissions 传入时后端会自动展开隐含权限，并只保留权限表中已定义的 key。is_system 始终为 0（非内置）。",
         "operationId": "adminRoleCreate",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["name"],
+                "required": [
+                  "name"
+                ],
                 "properties": {
-                  "name": { "type": "string", "description": "角色名称（唯一）", "example": "custom_viewer" },
-                  "description": { "type": "string", "description": "角色描述", "example": "只读查看人员" },
+                  "name": {
+                    "type": "string",
+                    "description": "角色名称（唯一）",
+                    "example": "custom_viewer"
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "角色描述",
+                    "example": "只读查看人员"
+                  },
                   "permissions": {
                     "type": "array",
-                    "items": { "type": "string" },
+                    "items": {
+                      "type": "string"
+                    },
                     "description": "权限键数组（无需传隐含权限，后端自动展开）",
-                    "example": ["cd.build-manage", "ci.trigger"]
+                    "example": [
+                      "cd.build-manage",
+                      "ci.trigger"
+                    ]
                   }
                 }
               }
@@ -1944,34 +4072,58 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "success": { "type": "boolean", "const": true },
-                    "id": { "type": "integer" },
-                    "name": { "type": "string" }
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "id": {
+                      "type": "integer"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
                   }
                 }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/400" },
-          "401": { "$ref": "#/components/responses/401" },
-          "403": { "description": "非 ci.users.manage_admin 权限" },
-          "409": { "description": "角色名已存在" }
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "非 ci.users.manage_admin 权限"
+          },
+          "409": {
+            "description": "角色名已存在"
+          }
         }
       }
     },
     "/api/admin/roles/{id}": {
       "put": {
-        "tags": ["Admin", "RBAC"],
+        "tags": [
+          "Admin",
+          "RBAC"
+        ],
         "summary": "更新角色（名称 / 描述 / 权限，权限全量替换）",
         "description": "仅 ci.users.manage_admin 权限可调用。仅允许修改自定义角色（is_system=0）。name 改了会级联同步 admin_users.role 中引用该旧名称的记录。只要传入 permissions key（即使是空数组）就会全量替换该角色的权限，且后端自动展开隐含权限。",
         "operationId": "adminRoleUpdate",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "schema": { "type": "integer" },
+            "schema": {
+              "type": "integer"
+            },
             "description": "角色 ID",
             "example": 5
           }
@@ -1984,11 +4136,19 @@
                 "type": "object",
                 "minProperties": 1,
                 "properties": {
-                  "name": { "type": "string", "description": "新名称（可选，需唯一，修改会级联更新用户角色引用）" },
-                  "description": { "type": "string", "description": "新描述（可选，空则不改）" },
+                  "name": {
+                    "type": "string",
+                    "description": "新名称（可选，需唯一，修改会级联更新用户角色引用）"
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "新描述（可选，空则不改）"
+                  },
                   "permissions": {
                     "type": "array",
-                    "items": { "type": "string" },
+                    "items": {
+                      "type": "string"
+                    },
                     "description": "权限键数组（存在此 key 即全量替换，含空数组 = 清空所有权限）"
                   }
                 }
@@ -2003,30 +4163,54 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": { "success": { "type": "boolean", "const": true } }
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  }
                 }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/400" },
-          "401": { "$ref": "#/components/responses/401" },
-          "403": { "description": "非 ci.users.manage_admin 或修改系统内置角色" },
-          "404": { "description": "角色不存在" },
-          "409": { "description": "新名称与其他角色冲突" }
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "非 ci.users.manage_admin 或修改系统内置角色"
+          },
+          "404": {
+            "description": "角色不存在"
+          },
+          "409": {
+            "description": "新名称与其他角色冲突"
+          }
         }
       },
       "delete": {
-        "tags": ["Admin", "RBAC"],
+        "tags": [
+          "Admin",
+          "RBAC"
+        ],
         "summary": "删除角色",
         "description": "仅 ci.users.manage_admin 权限可调用。仅允许删除自定义角色（is_system=0）。仍有用户绑定此角色时拒绝删除，返回 400 role.in_use。删除时级联清理 role_permissions 关联记录。",
         "operationId": "adminRoleDelete",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "schema": { "type": "integer" },
+            "schema": {
+              "type": "integer"
+            },
             "description": "角色 ID",
             "example": 5
           }
@@ -2038,25 +4222,44 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": { "success": { "type": "boolean", "const": true } }
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  }
                 }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/400" },
-          "401": { "$ref": "#/components/responses/401" },
-          "403": { "description": "非 ci.users.manage_admin 或删除系统内置角色" },
-          "404": { "description": "角色不存在" }
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "非 ci.users.manage_admin 或删除系统内置角色"
+          },
+          "404": {
+            "description": "角色不存在"
+          }
         }
       }
     },
     "/api/admin/api_tokens/scopes": {
       "get": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "API Token scope 目录",
         "description": "返回可选的 scope 列表（供 UI 渲染）。仅 super_admin 可访问。",
         "operationId": "adminApiTokenScopes",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "scope 目录",
@@ -2065,25 +4268,42 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "scopes": { "type": "array", "items": { "$ref": "#/components/schemas/ApiTokenScopeEntry" } }
+                    "scopes": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ApiTokenScopeEntry"
+                      }
+                    }
                   }
                 }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/401" },
-          "403": { "description": "非 super_admin" },
-          "500": { "$ref": "#/components/responses/500" }
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "非 super_admin"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
         }
       }
     },
     "/api/admin/api_tokens": {
       "get": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "列出所有 API Token",
         "description": "返回 Token 列表（不含明文）。仅 super_admin 可访问。",
         "operationId": "adminApiTokenList",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Token 列表",
@@ -2092,28 +4312,47 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "tokens": { "type": "array", "items": { "$ref": "#/components/schemas/ApiTokenEntry" } }
+                    "tokens": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ApiTokenEntry"
+                      }
+                    }
                   }
                 }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/401" },
-          "403": { "description": "非 super_admin" },
-          "503": { "description": "API Token 服务不可用" }
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "非 super_admin"
+          },
+          "503": {
+            "description": "API Token 服务不可用"
+          }
         }
       },
       "post": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "创建 API Token",
         "description": "创建 Token，返回一次性明文（仅此一次，请立即保存）。仅 super_admin 可访问。",
         "operationId": "adminApiTokenCreate",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/ApiTokenCreateRequest" }
+              "schema": {
+                "$ref": "#/components/schemas/ApiTokenCreateRequest"
+              }
             }
           }
         },
@@ -2122,30 +4361,48 @@
             "description": "创建成功，返回一次性明文",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/ApiTokenCreateResult" }
+                "schema": {
+                  "$ref": "#/components/schemas/ApiTokenCreateResult"
+                }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/400" },
-          "401": { "$ref": "#/components/responses/401" },
-          "403": { "description": "非 super_admin" },
-          "500": { "$ref": "#/components/responses/500" }
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "非 super_admin"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
         }
       }
     },
     "/api/admin/api_tokens/{id}/revoke": {
       "post": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "撤销 API Token（禁用，保留记录）",
         "description": "将 Token 置为禁用（enabled=0），立即失效但保留记录。仅 super_admin 可访问。",
         "operationId": "adminApiTokenRevoke",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "schema": { "type": "integer" },
+            "schema": {
+              "type": "integer"
+            },
             "description": "Token ID",
             "example": 1
           }
@@ -2157,30 +4414,49 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": { "ok": { "type": "boolean", "const": true } }
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  }
                 }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/401" },
-          "403": { "description": "非 super_admin" },
-          "503": { "description": "API Token 服务不可用" }
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "非 super_admin"
+          },
+          "503": {
+            "description": "API Token 服务不可用"
+          }
         }
       }
     },
     "/api/admin/api_tokens/{id}": {
       "delete": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "删除 API Token（硬删除记录）",
         "description": "硬删除 Token 记录。仅 super_admin 可访问。",
         "operationId": "adminApiTokenDelete",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "schema": { "type": "integer" },
+            "schema": {
+              "type": "integer"
+            },
             "description": "Token ID",
             "example": 1
           }
@@ -2192,67 +4468,152 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": { "ok": { "type": "boolean", "const": true } }
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  }
                 }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/401" },
-          "403": { "description": "非 super_admin" },
-          "503": { "description": "API Token 服务不可用" }
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "非 super_admin"
+          },
+          "503": {
+            "description": "API Token 服务不可用"
+          }
         }
       }
     },
-
     "/.well-known/openid-configuration": {
       "get": {
-        "tags": ["SSO"],
+        "tags": [
+          "SSO"
+        ],
         "summary": "OIDC Discovery 文档",
         "description": "返回 OIDC 自动发现文档（RFC 8414），供 Jenkins/Harbor/GitLab 客户端自动发现各端点。",
         "operationId": "oidcDiscovery",
         "responses": {
           "200": {
             "description": "Discovery 文档",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OidcDiscovery" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OidcDiscovery"
+                }
+              }
+            }
           }
         }
       }
     },
     "/.well-known/jwks.json": {
       "get": {
-        "tags": ["SSO"],
+        "tags": [
+          "SSO"
+        ],
         "summary": "OIDC JWKS 公钥",
         "description": "返回 RS256 签名公钥（n/e/kid），供客户端验签 id_token。绝不含私钥。",
         "operationId": "oidcJwks",
         "responses": {
           "200": {
             "description": "JWKS 公钥集合",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Jwks" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Jwks"
+                }
+              }
+            }
           }
         }
       }
     },
     "/oauth/authorize": {
       "get": {
-        "tags": ["SSO"],
+        "tags": [
+          "SSO"
+        ],
         "summary": "OAuth 授权登录页",
         "description": "浏览器跳转入口，校验 client_id/redirect_uri 后渲染登录表单（HTML）。",
         "operationId": "oauthAuthorizeForm",
         "parameters": [
-          { "name": "client_id", "in": "query", "required": true, "schema": { "type": "string" }, "description": "客户端标识（如 grafana）" },
-          { "name": "redirect_uri", "in": "query", "required": true, "schema": { "type": "string" }, "description": "授权回调地址（须与注册值逐字符一致）" },
-          { "name": "state", "in": "query", "schema": { "type": "string" }, "description": "客户端状态，回跳时原样带回" },
-          { "name": "scope", "in": "query", "schema": { "type": "string" }, "description": "空格分隔 scope，含 openid 时走 OIDC" },
-          { "name": "nonce", "in": "query", "schema": { "type": "string" }, "description": "OIDC nonce，id_token 回显" },
-          { "name": "response_type", "in": "query", "schema": { "type": "string" }, "description": "固定 code" }
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "客户端标识（如 grafana）"
+          },
+          {
+            "name": "redirect_uri",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "授权回调地址（须与注册值逐字符一致）"
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "客户端状态，回跳时原样带回"
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "空格分隔 scope，含 openid 时走 OIDC"
+          },
+          {
+            "name": "nonce",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "OIDC nonce，id_token 回显"
+          },
+          {
+            "name": "response_type",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "固定 code"
+          }
         ],
         "responses": {
-          "200": { "description": "登录表单（HTML）", "content": { "text/html": { "schema": { "type": "string" } } } },
-          "400": { "$ref": "#/components/responses/400" }
+          "200": {
+            "description": "登录表单（HTML）",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          }
         }
       },
       "post": {
-        "tags": ["SSO"],
+        "tags": [
+          "SSO"
+        ],
         "summary": "提交登录，签发授权码",
         "description": "表单提交（application/x-www-form-urlencoded）。认证成功 302 回跳 redirect_uri?code=xxx&state=xxx，失败 401 返回登录表单。",
         "operationId": "oauthAuthorizeSubmit",
@@ -2262,30 +4623,58 @@
             "application/x-www-form-urlencoded": {
               "schema": {
                 "type": "object",
-                "required": ["client_id", "redirect_uri", "username", "password"],
+                "required": [
+                  "client_id",
+                  "redirect_uri",
+                  "username",
+                  "password"
+                ],
                 "properties": {
-                  "client_id": { "type": "string" },
-                  "redirect_uri": { "type": "string" },
-                  "state": { "type": "string" },
-                  "scope": { "type": "string" },
-                  "nonce": { "type": "string" },
-                  "username": { "type": "string" },
-                  "password": { "type": "string", "format": "password" }
+                  "client_id": {
+                    "type": "string"
+                  },
+                  "redirect_uri": {
+                    "type": "string"
+                  },
+                  "state": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "string"
+                  },
+                  "nonce": {
+                    "type": "string"
+                  },
+                  "username": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string",
+                    "format": "password"
+                  }
                 }
               }
             }
           }
         },
         "responses": {
-          "302": { "description": "认证成功，回跳 redirect_uri 并携带 code/state" },
-          "400": { "$ref": "#/components/responses/400" },
-          "401": { "description": "用户名或密码错误，返回登录表单" }
+          "302": {
+            "description": "认证成功，回跳 redirect_uri 并携带 code/state"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "description": "用户名或密码错误，返回登录表单"
+          }
         }
       }
     },
     "/oauth/token": {
       "post": {
-        "tags": ["SSO"],
+        "tags": [
+          "SSO"
+        ],
         "summary": "授权码换访问令牌",
         "description": "code 换 access_token（scope 含 openid 时另返回 id_token）。client 凭据支持 form 或 HTTP Basic Auth（RFC 6749 §2.3.1）。",
         "operationId": "oauthToken",
@@ -2296,11 +4685,22 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "grant_type": { "type": "string", "example": "authorization_code" },
-                  "code": { "type": "string" },
-                  "redirect_uri": { "type": "string" },
-                  "client_id": { "type": "string" },
-                  "client_secret": { "type": "string" }
+                  "grant_type": {
+                    "type": "string",
+                    "example": "authorization_code"
+                  },
+                  "code": {
+                    "type": "string"
+                  },
+                  "redirect_uri": {
+                    "type": "string"
+                  },
+                  "client_id": {
+                    "type": "string"
+                  },
+                  "client_secret": {
+                    "type": "string"
+                  }
                 }
               }
             }
@@ -2309,36 +4709,66 @@
         "responses": {
           "200": {
             "description": "令牌响应",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OAuthTokenResponse" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthTokenResponse"
+                }
+              }
+            }
           },
-          "400": { "description": "invalid_grant / unsupported_grant_type" },
-          "401": { "description": "invalid_client" }
+          "400": {
+            "description": "invalid_grant / unsupported_grant_type"
+          },
+          "401": {
+            "description": "invalid_client"
+          }
         }
       }
     },
     "/oauth/userinfo": {
       "get": {
-        "tags": ["SSO"],
+        "tags": [
+          "SSO"
+        ],
         "summary": "用户信息",
         "description": "用 Bearer access_token 换取用户信息（含 groups=Glue 角色）。",
         "operationId": "oauthUserInfo",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "用户信息",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OidcUserInfo" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OidcUserInfo"
+                }
+              }
+            }
           },
-          "401": { "description": "invalid_token" }
+          "401": {
+            "description": "invalid_token"
+          }
         }
       }
     },
     "/oauth/userinfo/emails": {
       "get": {
-        "tags": ["SSO"],
+        "tags": [
+          "SSO"
+        ],
         "summary": "邮箱列表（GitHub 风格）",
         "description": "Grafana 兜底请求的邮箱子端点，返回与 userinfo 一致的占位邮箱。",
         "operationId": "oauthUserInfoEmails",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "邮箱数组",
@@ -2349,27 +4779,40 @@
                   "items": {
                     "type": "object",
                     "properties": {
-                      "email": { "type": "string" },
-                      "primary": { "type": "boolean" },
-                      "verified": { "type": "boolean" }
+                      "email": {
+                        "type": "string"
+                      },
+                      "primary": {
+                        "type": "boolean"
+                      },
+                      "verified": {
+                        "type": "boolean"
+                      }
                     }
                   }
                 }
               }
             }
           },
-          "401": { "description": "invalid_token" }
+          "401": {
+            "description": "invalid_token"
+          }
         }
       }
     },
-
     "/api/rbac/users": {
       "get": {
-        "tags": ["RBAC"],
+        "tags": [
+          "RBAC"
+        ],
         "summary": "列出所有用户（CD 服务账号读）",
         "description": "返回全部用户（按 username 升序，无分页，不含密码哈希）。仅 API token（rbac.user.write scope）可访问，交互式登录态一律 403。",
         "operationId": "rbacUserList",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "用户列表",
@@ -2378,34 +4821,68 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "users": { "type": "array", "items": { "$ref": "#/components/schemas/RbacUserEntry" } }
+                    "users": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/RbacUserEntry"
+                      }
+                    }
                   }
                 }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/401" },
-          "403": { "description": "非 API token 或缺少 rbac.user.write scope" },
-          "500": { "$ref": "#/components/responses/500" }
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "非 API token 或缺少 rbac.user.write scope"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
         }
       },
       "post": {
-        "tags": ["RBAC"],
+        "tags": [
+          "RBAC"
+        ],
         "summary": "建号（CD 服务账号写）",
         "description": "创建 CD 用户：systems 恒为 cd（不接受入参），用户名后端转小写，密码最短 8 位，禁止创建 super_admin；role 必须是 roles 表里真实存在的角色（否则 400 role_not_found）。仅 API token（rbac.user.write scope）。",
         "operationId": "rbacUserCreate",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["username", "password", "role"],
+                "required": [
+                  "username",
+                  "password",
+                  "role"
+                ],
                 "properties": {
-                  "username": { "type": "string", "description": "登录用户名（唯一，后端转小写）", "example": "alice" },
-                  "password": { "type": "string", "minLength": 8, "description": "明文密码，后端 bcrypt 哈希存储", "example": "MyPassw0rd!" },
-                  "role": { "type": "string", "description": "角色名（不可为 super_admin，必须是 roles 表里已存在的角色）", "example": "deployer" }
+                  "username": {
+                    "type": "string",
+                    "description": "登录用户名（唯一，后端转小写）",
+                    "example": "alice"
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 8,
+                    "description": "明文密码，后端 bcrypt 哈希存储",
+                    "example": "MyPassw0rd!"
+                  },
+                  "role": {
+                    "type": "string",
+                    "description": "角色名（不可为 super_admin，必须是 roles 表里已存在的角色）",
+                    "example": "deployer"
+                  }
                 }
               }
             }
@@ -2419,52 +4896,113 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "success": { "type": "boolean", "example": true },
-                    "username": { "type": "string", "example": "alice" }
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "username": {
+                      "type": "string",
+                      "example": "alice"
+                    }
                   }
                 }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/400" },
-          "401": { "$ref": "#/components/responses/401" },
-          "403": { "description": "非 API token / 缺少 scope / 尝试创建 super_admin" },
-          "409": { "description": "用户名已存在" },
-          "500": { "$ref": "#/components/responses/500" }
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "非 API token / 缺少 scope / 尝试创建 super_admin"
+          },
+          "409": {
+            "description": "用户名已存在"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
         }
       }
     },
-
     "/api/rbac/users/{username}": {
       "get": {
-        "tags": ["RBAC"],
+        "tags": [
+          "RBAC"
+        ],
         "summary": "查询单个用户（CD 服务账号读）",
         "description": "返回指定用户（不含密码哈希），不存在返回 404。仅 API token（rbac.user.write scope）。",
         "operationId": "rbacUserGet",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
-          { "name": "username", "in": "path", "required": true, "schema": { "type": "string" }, "description": "目标用户名", "example": "alice" }
+          {
+            "name": "username",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "目标用户名",
+            "example": "alice"
+          }
         ],
         "responses": {
           "200": {
             "description": "用户条目",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RbacUserEntry" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RbacUserEntry"
+                }
+              }
+            }
           },
-          "400": { "$ref": "#/components/responses/400" },
-          "401": { "$ref": "#/components/responses/401" },
-          "403": { "description": "非 API token 或缺少 scope" },
-          "404": { "$ref": "#/components/responses/404" },
-          "500": { "$ref": "#/components/responses/500" }
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "非 API token 或缺少 scope"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
         }
       },
       "put": {
-        "tags": ["RBAC"],
+        "tags": [
+          "RBAC"
+        ],
         "summary": "改角色 / 改密码（CD 服务账号写）",
         "description": "部分更新：password 非空时改密码（最短 8 位）；role 传入时改角色（不可为 super_admin，必须是 roles 表里已存在的角色，否则 400）。内置根账号与既有 super_admin 不可改。仅 API token（rbac.user.write scope）。",
         "operationId": "rbacUserUpdate",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
-          { "name": "username", "in": "path", "required": true, "schema": { "type": "string" }, "description": "目标用户名", "example": "alice" }
+          {
+            "name": "username",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "目标用户名",
+            "example": "alice"
+          }
         ],
         "requestBody": {
           "required": true,
@@ -2474,8 +5012,17 @@
                 "type": "object",
                 "minProperties": 1,
                 "properties": {
-                  "password": { "type": "string", "minLength": 8, "description": "新密码（可选，空则不改）", "example": "NewPassw0rd!" },
-                  "role": { "type": "string", "description": "新角色名（可选，不传则不改；必须是 roles 表里已存在的角色）", "example": "viewer" }
+                  "password": {
+                    "type": "string",
+                    "minLength": 8,
+                    "description": "新密码（可选，空则不改）",
+                    "example": "NewPassw0rd!"
+                  },
+                  "role": {
+                    "type": "string",
+                    "description": "新角色名（可选，不传则不改；必须是 roles 表里已存在的角色）",
+                    "example": "viewer"
+                  }
                 }
               }
             }
@@ -2486,53 +5033,118 @@
             "description": "更新成功",
             "content": {
               "application/json": {
-                "schema": { "type": "object", "properties": { "success": { "type": "boolean", "example": true } } }
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    }
+                  }
+                }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/400" },
-          "401": { "$ref": "#/components/responses/401" },
-          "403": { "description": "非 API token / 缺少 scope / 尝试改 root 或 super_admin" },
-          "404": { "$ref": "#/components/responses/404" },
-          "500": { "$ref": "#/components/responses/500" }
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "非 API token / 缺少 scope / 尝试改 root 或 super_admin"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
         }
       },
       "delete": {
-        "tags": ["RBAC"],
+        "tags": [
+          "RBAC"
+        ],
         "summary": "删号（CD 服务账号写）",
         "description": "删除指定用户。内置根账号与 super_admin 不可删。仅 API token（rbac.user.write scope）。",
         "operationId": "rbacUserDelete",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
-          { "name": "username", "in": "path", "required": true, "schema": { "type": "string" }, "description": "目标用户名", "example": "alice" }
+          {
+            "name": "username",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "目标用户名",
+            "example": "alice"
+          }
         ],
         "responses": {
           "200": {
             "description": "删除成功",
             "content": {
               "application/json": {
-                "schema": { "type": "object", "properties": { "success": { "type": "boolean", "example": true } } }
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    }
+                  }
+                }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/400" },
-          "401": { "$ref": "#/components/responses/401" },
-          "403": { "description": "非 API token / 缺少 scope / 尝试删 root 或 super_admin" },
-          "404": { "$ref": "#/components/responses/404" },
-          "500": { "$ref": "#/components/responses/500" }
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "非 API token / 缺少 scope / 尝试删 root 或 super_admin"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
         }
       }
     },
-
     "/api/rbac/users/{username}/verify-password": {
       "post": {
-        "tags": ["RBAC"],
+        "tags": [
+          "RBAC"
+        ],
         "summary": "校验密码（CD 服务账号读）",
         "description": "校验指定用户的密码，仅返回布尔（密码哈希不出 Glue），用户不存在返回 404。仅 API token（rbac.user.write scope）。",
         "operationId": "rbacUserVerifyPassword",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
-          { "name": "username", "in": "path", "required": true, "schema": { "type": "string" }, "description": "目标用户名", "example": "alice" }
+          {
+            "name": "username",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "目标用户名",
+            "example": "alice"
+          }
         ],
         "requestBody": {
           "required": true,
@@ -2540,9 +5152,15 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["password"],
+                "required": [
+                  "password"
+                ],
                 "properties": {
-                  "password": { "type": "string", "description": "待校验密码", "example": "MyPassw0rd!" }
+                  "password": {
+                    "type": "string",
+                    "description": "待校验密码",
+                    "example": "MyPassw0rd!"
+                  }
                 }
               }
             }
@@ -2553,26 +5171,49 @@
             "description": "校验结果",
             "content": {
               "application/json": {
-                "schema": { "type": "object", "properties": { "valid": { "type": "boolean", "example": true } } }
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "valid": {
+                      "type": "boolean",
+                      "example": true
+                    }
+                  }
+                }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/400" },
-          "401": { "$ref": "#/components/responses/401" },
-          "403": { "description": "非 API token 或缺少 scope" },
-          "404": { "$ref": "#/components/responses/404" },
-          "500": { "$ref": "#/components/responses/500" }
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "非 API token 或缺少 scope"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
         }
       }
     },
-
     "/api/rbac/roles": {
       "get": {
-        "tags": ["RBAC"],
+        "tags": [
+          "RBAC"
+        ],
         "summary": "角色目录（CD 服务账号读）",
         "description": "返回全部角色（name + description，按 name 升序），供审批规则选角色。仅 API token（rbac.user.write scope）。",
         "operationId": "rbacRoleList",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "角色目录",
@@ -2581,15 +5222,26 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "roles": { "type": "array", "items": { "$ref": "#/components/schemas/RbacRoleEntry" } }
+                    "roles": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/RbacRoleEntry"
+                      }
+                    }
                   }
                 }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/401" },
-          "403": { "description": "非 API token 或缺少 rbac.user.write scope" },
-          "500": { "$ref": "#/components/responses/500" }
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "非 API token 或缺少 rbac.user.write scope"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
         }
       }
     }

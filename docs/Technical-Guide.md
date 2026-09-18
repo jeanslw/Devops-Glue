@@ -1059,7 +1059,7 @@ LOG_PATH=/applogs/                 # Log directory
 | GET/POST | `/api/build/{path}/pipelines/{id}` | Token | Pipeline details + jobs |
 | POST | `/api/build/{path}/pipelines/{id}/retry` | Token | Retry pipeline (GitLab CI only) |
 | POST | `/api/build/{path}/pipelines/{id}/cancel` | Token | Cancel pipeline (GitLab CI only) |
-| GET/POST | `/api/build/{path}/logs/{id}` | Token | Build logs |
+| GET/POST | `/api/build/{path}/logs/{id}` | Token | Build logs (`id`=job id, not run id) |
 | GET/POST | `/api/build/{path}/trigger` | Token | Trigger build |
 | GET/POST | `/api/build/{path}/variables` | Token | Build parameters |
 | GET/POST | `/api/build/{path}/branches` | Token | Git branch list |

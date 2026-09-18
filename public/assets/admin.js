@@ -224,6 +224,7 @@ function toggleSidebar() {
 }
 
 function switchTab(name) {
+    stopPullAutoRefresh();
     document.querySelectorAll('.sidebar .menu-item').forEach(el => el.classList.remove('active'));
     var mi = document.querySelector('.menu-item[data-tab="' + name + '"]');
     if (mi) {
@@ -238,7 +239,7 @@ function switchTab(name) {
             }
         }
     }
-    ['monitor','mapping','security','versions','mode','push-records','users','roles','password','perm-list','perm-register','implied-rules','api-tokens'].forEach(t => {
+    ['monitor','mapping','security','versions','mode','pull-records','push-records','users','roles','password','perm-list','perm-register','implied-rules','api-tokens'].forEach(t => {
         var tabEl = document.getElementById('tab-' + t);
         if (tabEl) tabEl.style.display = name === t ? 'block' : 'none';
     });
@@ -247,6 +248,7 @@ function switchTab(name) {
     if (name === 'security') loadSecurityChecks();
     if (name === 'versions') loadVersions();
     if (name === 'mode') loadSettings();
+    if (name === 'pull-records') { loadPullProjects(); startPullAutoRefresh(); }
     if (name === 'push-records') loadPushRecords();
     if (name === 'users') loadUsers();
     if (name === 'roles') loadRoleList();
@@ -266,6 +268,11 @@ function toggleUserMenu() {
 
 function togglePermMenu() {
     var group = document.getElementById('menu-group-perms');
+    if (group) group.classList.toggle('expanded');
+}
+
+function toggleBuildRecordsMenu() {
+    var group = document.getElementById('menu-group-build-records');
     if (group) group.classList.toggle('expanded');
 }
 
@@ -433,7 +440,7 @@ async function loadMonitor() {
             ? __.t('common.enabled')
             : __.t('common.disabled');
         setSvc('icon-custom-push', 'name-custom-push', 'stat-custom-push', 'dot-custom-push', cpOk || null, '', cpLabel);
-        applyPushRecordsMenuVisibility(cpEnabled);
+        applyBuildRecordsMenuVisibility(cpEnabled);
 
     } catch(e) {
         const msg = e.name === 'AbortError' ? __.t('js.timeout') : __.t('js.cannot_connect');
@@ -1001,7 +1008,7 @@ async function loadSettings() {
         if (staleToggle) {
             staleToggle.checked = staleCleanup;
         }
-        applyPushRecordsMenuVisibility(cpEnabled);
+        applyBuildRecordsMenuVisibility(cpEnabled);
         configPanel.style.display = 'block';
         statusEl.style.display = 'none';
 
@@ -1230,10 +1237,233 @@ async function onStaleTagCleanupToggle() {
 
 let pushPage = 1, pushTotalPages = 1;
 
-/** Custom_Push 启用时显示「push 记录」菜单，关闭时隐藏 */
-function applyPushRecordsMenuVisibility(cpEnabled) {
-    var item = document.getElementById('menu-push-records');
-    if (item) item.style.display = cpEnabled ? '' : 'none';
+/** 「构建记录」菜单：拉取式记录随启用 CI 显示，自定义推送随 custom_push 显示 */
+function applyBuildRecordsMenuVisibility(cpEnabled) {
+    var group = document.getElementById('menu-group-build-records');
+    var pullItem = document.querySelector('#menu-group-build-records .submenu .menu-item[data-tab="pull-records"]');
+    var pushItem = document.querySelector('#menu-group-build-records .submenu .menu-item[data-tab="push-records"]');
+    var pullOk = currentBuildModes.length > 0;
+    var pushOk = !!cpEnabled;
+    if (pullItem) pullItem.style.display = pullOk ? '' : 'none';
+    if (pushItem) pushItem.style.display = pushOk ? '' : 'none';
+    if (group) group.style.display = (pullOk || pushOk) ? '' : 'none';
+}
+
+// ═══════════ 拉取式记录 ═══════════
+
+let currentPullPath = '';
+let pullTimer = null;
+let pullRecordsCache = [];
+let pullLogJobs = [];
+let pullPage = 1;
+const pullPageSize = 20;
+
+function startPullAutoRefresh() {
+    stopPullAutoRefresh();
+    pullTimer = setInterval(() => {
+        const sel = document.getElementById('pull-project-select');
+        if (sel && sel.value) loadPullRecords(true);
+    }, 10000);
+}
+function stopPullAutoRefresh() {
+    if (pullTimer) { clearInterval(pullTimer); pullTimer = null; }
+}
+
+function encodePath(p) {
+    return String(p).split('/').map(encodeURIComponent).join('/');
+}
+
+/** 填充「已启用项目」下拉（拉取式 CI，排除 custom_push） */
+async function loadPullProjects() {
+    const sel = document.getElementById('pull-project-select');
+    if (!sel) return;
+    const prev = currentPullPath || sel.value;
+    try {
+        const res = await fetch('/api/build/jobs/list?format=json', { headers: authHeaders() });
+        if (handle401(res)) return;
+        const data = await res.json();
+        const all = Array.isArray(data.data) ? data.data : [];
+        const projects = all.filter(m => isPullProvider(m.ci_provider));
+        let opts = '<option value="">' + esc(__.t('form.please_select')) + '</option>';
+        projects.forEach(m => {
+            const bp = m.ci_provider || 'jenkins';
+            const name = m.job_name || m.current_path || '';
+            // 用 job_name 作为 /pipelines 的 {path}（与「复制 Pipeline ID」一致）；
+            // Jenkins 需要真实 job 路径，current_path 可能不是 job 名，传错会查空。
+            const path = m.job_name || m.current_path || '';
+            const meta = pullProviderMeta(bp);
+            opts += '<option value="' + esc(path) + '" data-provider="' + esc(bp) + '">' + meta.icon + ' ' + esc(name) + '</option>';
+        });
+        sel.innerHTML = opts;
+        if (prev) {
+            const exists = Array.prototype.some.call(sel.options, o => o.value === prev);
+            if (exists) sel.value = prev;
+        }
+        if (projects.length === 0) {
+            const empty = document.getElementById('pull-records-empty');
+            if (empty) { empty.style.display = 'block'; empty.textContent = __.t('pull.no_projects'); }
+        }
+    } catch (e) {
+        sel.innerHTML = '<option value="">' + esc(__.t('pull.load_failed')) + '</option>';
+    }
+}
+
+/** 拉取并渲染选中项目的构建记录（silent=true 静默刷新） */
+async function loadPullRecords(silent) {
+    const sel = document.getElementById('pull-project-select');
+    const tbody = document.getElementById('pull-records-tbody');
+    const table = document.getElementById('pull-records-table');
+    const empty = document.getElementById('pull-records-empty');
+    const loading = document.getElementById('pull-records-loading');
+    const pagination = document.getElementById('pull-pagination');
+    if (!sel || !tbody) return;
+    const path = sel.value;
+    if (!path) {
+        if (!silent) toast(__.t('pull.select_first'), false);
+        return;
+    }
+    currentPullPath = path;
+    if (!silent) { pullPage = 1; if (loading) loading.style.display = 'block'; if (table) table.style.display = 'none'; if (empty) empty.style.display = 'none'; if (pagination) pagination.style.display = 'none'; }
+    try {
+        const res = await fetch('/api/build/' + encodePath(path) + '/pipelines?per_page=200', { headers: authHeaders() });
+        if (handle401(res)) return;
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const list = await res.json();
+        const records = Array.isArray(list) ? list : [];
+        const selOpt = sel.options[sel.selectedIndex];
+        const provider = selOpt ? (selOpt.getAttribute('data-provider') || 'jenkins') : 'jenkins';
+        // GitLab 的 /pipelines/{id} 用 iid；Jenkins / Gitea 用 id（build 号 / run id）
+        pullRecordsCache = records.map(r => Object.assign({}, r, {
+            _runId: provider === 'gitlab_ci' ? (r.iid || r.id || 0) : (r.id || 0)
+        }));
+        if (loading) loading.style.display = 'none';
+        if (!records.length) {
+            if (table) table.style.display = 'none';
+            if (pagination) pagination.style.display = 'none';
+            if (empty) { empty.style.display = 'block'; empty.textContent = __.t('pull.no_records'); }
+            return;
+        }
+        if (empty) empty.style.display = 'none';
+        if (table) table.style.display = 'table';
+        const statusBadge = (s) => {
+            const st = (s || '').toLowerCase();
+            let bg = '#f3f4f6', fg = '#6b7280';
+            if (st === 'success') { bg = '#ecfdf5'; fg = '#065f46'; }
+            else if (st === 'failed' || st === 'canceled') { bg = '#fef2f2'; fg = '#dc2626'; }
+            else if (st === 'running') { bg = '#dbeafe'; fg = '#1d4ed8'; }
+            else if (st === 'pending') { bg = '#fef3c7'; fg = '#d97706'; }
+            else if (st === 'unstable') { bg = '#fff7ed'; fg = '#c2410c'; }
+            else if (st === 'manual') { bg = '#f5f3ff'; fg = '#6d28d9'; }
+            return '<span class="badge" style="background:' + bg + ';color:' + fg + ';">' + esc(s || '—') + '</span>';
+        };
+        const totalPages = Math.max(1, Math.ceil(records.length / pullPageSize));
+        if (pullPage > totalPages) pullPage = totalPages;
+        const start = (pullPage - 1) * pullPageSize;
+        const pageRecords = records.slice(start, start + pullPageSize);
+        tbody.innerHTML = pageRecords.map((r, j) => {
+            const i = start + j;
+            const num = r.iid || r.id || '';
+            const ref = r.ref || '';
+            const sha = r.sha ? String(r.sha).slice(0, 8) : '';
+            const time = r.created_at || '';
+            const safeWeb = safeUrl(r.web_url);
+            const viewCell = safeWeb
+                ? '<a href="' + esc(safeWeb) + '" target="_blank" rel="noopener noreferrer">' + esc(__.t('pull.view')) + '</a>'
+                : '';
+            const actionsCell = '<button class="btn btn-sm" onclick="openPullLog(' + i + ')">📋 ' + esc(__.t('pull.log')) + '</button>'
+                + (viewCell ? ' ' + viewCell : '');
+            return '<tr>'
+                + '<td>' + (num ? '#' + esc(String(num)) : '—') + '</td>'
+                + '<td>' + statusBadge(r.status) + '</td>'
+                + '<td>' + (ref ? '<code style="font-size:11px;">' + esc(ref) + '</code>' : '—') + '</td>'
+                + '<td>' + (sha ? '<code style="font-size:11px;word-break:break-all;">' + esc(sha) + '</code>' : '—') + '</td>'
+                + '<td>' + (time ? esc(time) : '—') + '</td>'
+                + '<td>' + actionsCell + '</td>'
+                + '</tr>';
+        }).join('');
+        if (pagination) {
+            if (records.length > pullPageSize) {
+                pagination.style.display = 'flex';
+                let pag = '<span style="color:#6b7280;">' + __.t('js.total_items', {total: records.length}) + '</span>';
+                pag += '<button class="btn btn-sm" onclick="pullPage=1;loadPullRecords(true)" ' + (pullPage <= 1 ? 'disabled' : '') + '>« ' + __.t('js.page_first') + '</button>';
+                pag += '<button class="btn btn-sm" onclick="pullPage=Math.max(1,pullPage-1);loadPullRecords(true)" ' + (pullPage <= 1 ? 'disabled' : '') + '>‹ ' + __.t('js.page_prev') + '</button>';
+                pag += '<span style="color:#374151;font-weight:600;">' + pullPage + ' / ' + totalPages + '</span>';
+                pag += '<button class="btn btn-sm" onclick="pullPage=Math.min(' + totalPages + ',pullPage+1);loadPullRecords(true)" ' + (pullPage >= totalPages ? 'disabled' : '') + '>' + __.t('js.page_next') + ' ›</button>';
+                pag += '<button class="btn btn-sm" onclick="pullPage=' + totalPages + ';loadPullRecords(true)" ' + (pullPage >= totalPages ? 'disabled' : '') + '>' + __.t('js.page_last') + ' »</button>';
+                pagination.innerHTML = pag;
+            } else {
+                pagination.style.display = 'none';
+            }
+        }
+    } catch (e) {
+        if (loading) loading.style.display = 'none';
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#dc2626;">' + __.t('pull.load_failed') + ': ' + esc(e.message) + '</td></tr>';
+    }
+}
+
+/** 打开构建日志弹窗：先取 run 下的 jobs，再逐 job 拉日志 */
+async function openPullLog(idx) {
+    const r = pullRecordsCache[idx];
+    const modal = document.getElementById('pull-log-modal');
+    const title = document.getElementById('pull-log-title');
+    const jobsBox = document.getElementById('pull-log-jobs');
+    const content = document.getElementById('pull-log-content');
+    if (!r || !modal || !content) return;
+    const runId = r._runId || r.id || 0;
+    const runLabel = r.iid || r.id || '';
+    if (title) title.textContent = '📋 ' + (runLabel ? '#' + runLabel + ' ' : '') + __.t('pull.log_title');
+    if (jobsBox) jobsBox.innerHTML = '';
+    content.textContent = __.t('common.loading');
+    modal.style.display = 'flex';
+    pullLogJobs = [];
+    try {
+        const res = await fetch('/api/build/' + encodePath(currentPullPath) + '/pipelines/' + runId + '?format=json', { headers: authHeaders() });
+        if (handle401(res)) return;
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        const jobs = (data.data && Array.isArray(data.data.jobs)) ? data.data.jobs : [];
+        if (!jobs.length) {
+            content.textContent = __.t('pull.no_log');
+            return;
+        }
+        pullLogJobs = jobs;
+        if (jobsBox) {
+            jobsBox.innerHTML = jobs.map((j, k) =>
+                '<button class="btn btn-sm' + (k === 0 ? ' active' : '') + '" onclick="pullShowLog(' + k + ')">'
+                + esc(j.name || ('job ' + j.id)) + '</button>'
+            ).join('');
+        }
+        await pullShowLog(0);
+    } catch (e) {
+        content.textContent = __.t('pull.log_load_failed') + ': ' + e.message;
+    }
+}
+
+async function pullShowLog(i) {
+    const content = document.getElementById('pull-log-content');
+    const jobsBox = document.getElementById('pull-log-jobs');
+    if (!content) return;
+    const j = pullLogJobs[i];
+    if (!j) { content.textContent = __.t('pull.no_log'); return; }
+    if (jobsBox) {
+        Array.prototype.forEach.call(jobsBox.children, (b, k) => b.classList.toggle('active', k === i));
+    }
+    content.textContent = __.t('common.loading');
+    try {
+        const url = j.log_url || ('/api/build/' + encodePath(currentPullPath) + '/logs/' + j.id);
+        const res = await fetch(url, { headers: authHeaders() });
+        if (handle401(res)) return;
+        if (!res.ok) { content.textContent = __.t('pull.no_log') + ' (HTTP ' + res.status + ')'; return; }
+        content.textContent = await res.text();
+    } catch (e) {
+        content.textContent = __.t('pull.log_load_failed') + ': ' + e.message;
+    }
+}
+
+function closePullLog() {
+    const modal = document.getElementById('pull-log-modal');
+    if (modal) modal.style.display = 'none';
+    pullLogJobs = [];
 }
 
 async function loadPushRecords() {
@@ -1262,6 +1492,8 @@ async function loadPushRecords() {
             else if (st === 'failed' || st === 'canceled') { bg = '#fef2f2'; fg = '#dc2626'; }
             else if (st === 'running') { bg = '#dbeafe'; fg = '#1d4ed8'; }
             else if (st === 'pending') { bg = '#fef3c7'; fg = '#d97706'; }
+            else if (st === 'unstable') { bg = '#fff7ed'; fg = '#c2410c'; }
+            else if (st === 'manual') { bg = '#f5f3ff'; fg = '#6d28d9'; }
             return '<span class="badge" style="background:' + bg + ';color:' + fg + ';">' + esc(s || '—') + '</span>';
         };
         tbody.innerHTML = records.map(r => {
@@ -1381,7 +1613,12 @@ async function loadPermList() {
 
 // 删除已注册权限（内置权限后端已保护，此入口仅对非内置且拥有 ci.permissions.register 者可见）
 async function deletePermission(key) {
-    if (!confirm(__.t('perm.confirm_delete'))) return;
+    if (!await confirmDialog({
+        title: '🗑️ ' + __.t('perm.confirm_delete'),
+        message: key,
+        note: __.t('perm.confirm_delete'),
+        confirmText: __.t('common.confirm')
+    })) return;
     try {
         var res = await fetch('/api/admin/permissions/' + encodeURIComponent(key), {
             method: 'DELETE',
@@ -1533,7 +1770,12 @@ async function submitImpliedForm(e) {
 }
 
 async function deleteImpliedRule(src, tgt) {
-    if (!confirm(__.t('implied.confirm_delete'))) return;
+    if (!await confirmDialog({
+        title: '🗑️ ' + __.t('implied.confirm_delete'),
+        message: src + ' → ' + tgt,
+        note: __.t('implied.confirm_delete'),
+        confirmText: __.t('common.confirm')
+    })) return;
     try {
         var res = await fetch('/api/admin/implied_rules?source_key=' + encodeURIComponent(src) + '&target_key=' + encodeURIComponent(tgt), {
             method: 'DELETE',
@@ -1878,7 +2120,11 @@ async function loadUsers() {
 /** 启用 / 停用用户（调用 PUT /api/admin/users/{username}/status） */
 async function toggleUserStatus(username, enable) {
     const actionLabel = enable ? __.t('user.enable') : __.t('user.disable');
-    if (!confirm(actionLabel + ' ' + username + ' ?')) return;
+    if (!await confirmDialog({
+        title: '⚠️ ' + actionLabel,
+        message: username,
+        confirmText: __.t('common.confirm')
+    })) return;
     try {
         const res = await fetch('/api/admin/users/' + encodeURIComponent(username) + '/status', {
             method: 'PUT',
@@ -2043,7 +2289,11 @@ async function submitUserForm(e) {
 }
 
 async function deleteUser(username) {
-    if (!confirm(__.t('user.confirm_delete') + ' ' + username + ' ?')) return;
+    if (!await confirmDialog({
+        title: '🗑️ ' + __.t('user.confirm_delete'),
+        message: username,
+        confirmText: __.t('common.confirm')
+    })) return;
     try {
         const res = await fetch('/api/admin/users/' + encodeURIComponent(username), { method: 'DELETE', headers: authHeaders() });
         if (handle401(res)) return;
@@ -2411,7 +2661,12 @@ async function submitRoleForm(e) {
 }
 
 async function deleteRole(id, name) {
-    if (!confirm(__.t('role.delete_confirm'))) return;
+    if (!await confirmDialog({
+        title: '🗑️ ' + __.t('role.delete_confirm'),
+        message: name || '',
+        note: __.t('role.delete_confirm'),
+        confirmText: __.t('common.confirm')
+    })) return;
     try {
         var res = await fetch('/api/admin/roles/' + id, { method: 'DELETE', headers: authHeaders() });
         if (handle401(res)) return;
@@ -2543,7 +2798,11 @@ function copyApiToken() {
 }
 
 async function revokeApiToken(id) {
-    if (!confirm(__.t('api_token.confirm_revoke'))) return;
+    if (!await confirmDialog({
+        title: '⛔ ' + __.t('api_token.confirm_revoke'),
+        message: __.t('api_token.confirm_revoke'),
+        confirmText: __.t('common.confirm')
+    })) return;
     try {
         var res = await fetch('/api/admin/api_tokens/' + id + '/revoke', { method: 'POST', headers: authHeaders() });
         if (handle401(res)) return;
@@ -2554,7 +2813,11 @@ async function revokeApiToken(id) {
 }
 
 async function deleteApiToken(id) {
-    if (!confirm(__.t('api_token.confirm_delete'))) return;
+    if (!await confirmDialog({
+        title: '🗑️ ' + __.t('api_token.confirm_delete'),
+        message: __.t('api_token.confirm_delete'),
+        confirmText: __.t('common.confirm')
+    })) return;
     try {
         var res = await fetch('/api/admin/api_tokens/' + id, { method: 'DELETE', headers: authHeaders() });
         if (handle401(res)) return;

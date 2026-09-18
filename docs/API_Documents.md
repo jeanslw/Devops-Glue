@@ -176,8 +176,9 @@ Returns configured and unconfigured Git platform list.
 | `/api/build/{path}/variables` | GET/POST | Build parameters / CI variables (raw: param name array; json: full metadata) |
 | `/api/build/{path}/branches` | GET/POST | Git branch list (plain string array) |
 | `/api/build/{path}/pipelines` | GET/POST | Pipeline list (`?list=id\|build\|time\|success`) |
-| `/api/build/{path}/pipelines/{id}` | GET/POST | Pipeline detail + Jobs |
-| `/api/build/{path}/logs/{id}` | GET/POST | Build logs (text/plain) |
+| `/api/build/{path}/pipelines/{id}` | GET/POST | Pipeline detail + Jobs (each job has `id` + `log_url`) — Gitea-specific |
+| `/api/build/{path}/pipelines/{id}/logs` | GET/POST | Pipeline logs (text/plain; `id`=run id, returns all job logs combined) — Gitea-specific |
+| `/api/build/{path}/logs/{id}` | GET/POST | Build logs (text/plain; `id`=job id from `jobs[].id` of `/pipelines/{runId}`, not the run id) |
 | `/api/build/{path}/pipelines/{id}/retry` | POST | Retry pipeline (GitLab CI only) |
 | `/api/build/{path}/pipelines/{id}/cancel` | POST | Cancel pipeline (GitLab CI only) |
 | `/api/build/{path}/scan-sync` | POST | Harbor scan sync (`{"tag":"v3.0.0"}`, tag optional = latest) |

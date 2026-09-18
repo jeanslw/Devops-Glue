@@ -7,6 +7,10 @@
     <link rel="icon" href="/favicon.ico" type="image/x-icon">
     <link rel="stylesheet" href="/assets/admin.css">
     <link rel="stylesheet" href="/assets/pulse.css">
+    <!-- 后台主界面整体缩放 90%：用 zoom（真实重排布局）而非 transform:scale（会在四周留白、fixed 定位错位）。
+         仅作用于 #app-page（主界面），登录页 #login-page 为兄弟节点、保持 100% 原样。
+         如需改回原大小，把 0.9 改为 1 或删除本块即可。 -->
+    <style>#app-page{zoom:0.9;}</style>
 </head>
 <body>
 
@@ -70,9 +74,6 @@
             <div class="menu-item" data-tab="mode" onclick="switchTab('mode')">
                 <span class="menu-icon">🔧</span> <span data-i18n="admin.sidebar_mode">配置模式</span>
             </div>
-            <div class="menu-item" id="menu-push-records" data-tab="push-records" onclick="switchTab('push-records')" style="display:none;padding-left:44px;">
-                <span class="menu-icon">📤</span> <span data-i18n="admin.sidebar_push_records">Custom_Push_Log</span>
-            </div>
             <div class="menu-group" id="menu-group-users">
                 <div class="menu-item menu-group-title" onclick="toggleUserMenu()">
                     <span class="menu-icon">👥</span>
@@ -106,6 +107,21 @@
                     </div>
                     <div class="menu-item submenu-item" data-tab="implied-rules" onclick="switchTab('implied-rules')">
                         <span class="menu-icon">🔗</span> <span data-i18n="admin.sidebar_implied_rules">隐含规则</span>
+                    </div>
+                </div>
+            </div>
+            <div class="menu-group" id="menu-group-build-records" style="display:none;">
+                <div class="menu-item menu-group-title" onclick="toggleBuildRecordsMenu()">
+                    <span class="menu-icon">📊</span>
+                    <span data-i18n="admin.sidebar_build_records">构建记录</span>
+                    <span class="menu-arrow">▼</span>
+                </div>
+                <div class="submenu">
+                    <div class="menu-item submenu-item" data-tab="pull-records" onclick="switchTab('pull-records')">
+                        <span class="menu-icon">📥</span> <span data-i18n="admin.sidebar_pull_records">拉取式记录</span>
+                    </div>
+                    <div class="menu-item submenu-item" data-tab="push-records" onclick="switchTab('push-records')">
+                        <span class="menu-icon">📤</span> <span data-i18n="admin.sidebar_push_records">自定义推送</span>
                     </div>
                 </div>
             </div>
@@ -159,6 +175,23 @@
                     <div class="modal-footer">
                         <button type="button" class="btn btn-cancel" onclick="resolveConfirm(false)" data-i18n="common.cancel">取消</button>
                         <button type="button" class="btn btn-save" id="confirm-ok-btn" onclick="resolveConfirm(true)" data-i18n="common.confirm">确认</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 构建日志弹窗 -->
+            <div id="pull-log-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this) closePullLog()">
+                <div class="modal-content" style="max-width:1760px;width:92vw;max-height:92vh;display:flex;flex-direction:column;">
+                    <div class="modal-header">
+                        <h3 id="pull-log-title">📋 <span data-i18n="pull.log_title">构建日志</span></h3>
+                        <button type="button" class="modal-close" onclick="closePullLog()" aria-label="Close">×</button>
+                    </div>
+                    <div class="modal-body" style="flex:1;min-height:0;overflow:auto;">
+                        <div id="pull-log-jobs" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;"></div>
+                        <pre id="pull-log-content" style="margin:0;background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-all;min-height:420px;max-height:70vh;overflow:auto;"></pre>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-cancel" onclick="closePullLog()" data-i18n="common.cancel">关闭</button>
                     </div>
                 </div>
             </div>
@@ -486,9 +519,42 @@
                 </div>
             </div>
 
-            <!-- ═══ push 记录 Tab ═══ -->
+            <!-- ═══ 拉取式记录 Tab ═══ -->
+            <div id="tab-pull-records" style="display:none;">
+                <div class="toolbar"><h3 data-i18n="admin.sidebar_pull_records">📥 拉取式记录</h3></div>
+                <div class="filter-bar" style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;align-items:center;">
+                    <label for="pull-project-select" style="font-size:13px;color:#374151;font-weight:500;" data-i18n="pull.project_label">项目</label>
+                    <select id="pull-project-select" style="padding:7px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;min-width:240px;">
+                        <option value="" data-i18n="form.please_select">— 请选择 —</option>
+                    </select>
+                    <span style="margin-left:auto;display:flex;gap:10px;">
+                        <button class="btn" onclick="loadPullRecords(true)" data-i18n="pull.refresh">刷新</button>
+                        <button class="btn btn-pri" onclick="loadPullRecords(false)" data-i18n="pull.confirm_btn">确定</button>
+                    </span>
+                </div>
+                <div class="card" style="margin-top:12px;overflow-x:auto;">
+                    <div id="pull-records-loading" style="display:none;text-align:center;padding:40px;color:#9ca3af;" data-i18n="common.loading">加载中…</div>
+                    <table id="pull-records-table" style="display:none;">
+                        <thead>
+                            <tr>
+                                <th data-i18n="pull.pipeline">流水线</th>
+                                <th data-i18n="map.status">状态</th>
+                                <th data-i18n="pull.branch">分支</th>
+                                <th data-i18n="pull.commit">Commit</th>
+                                <th data-i18n="pull.time">时间</th>
+                                <th data-i18n="map.actions">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="pull-records-tbody"></tbody>
+                    </table>
+                    <div id="pull-records-empty" style="display:none;text-align:center;padding:40px;color:#9ca3af;" data-i18n="pull.no_records">该项目暂无构建记录</div>
+                    <div id="pull-pagination" style="display:none;justify-content:center;align-items:center;gap:8px;padding:12px 0;flex-wrap:wrap;"></div>
+                </div>
+            </div>
+
+            <!-- ═══ 自定义推送 Tab ═══ -->
             <div id="tab-push-records" style="display:none;">
-                <div class="toolbar"><h3 data-i18n="admin.sidebar_push_records">📤 Custom_Push_Log</h3></div>
+                <div class="toolbar"><h3 data-i18n="admin.sidebar_push_records">📤 自定义推送</h3></div>
                 <div class="card" style="margin-top:12px;overflow-x:auto;">
                     <table>
                         <thead>

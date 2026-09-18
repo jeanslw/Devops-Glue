@@ -111,6 +111,7 @@ $app->group('/api', function (RouteCollectorProxy $api) {
         $build->map(['GET', 'POST'], '/projects', [BuildController::class, 'projectsList']);
         $build->map(['GET', 'POST'], '/{path:.+}/pipelines', [BuildController::class, 'pipelines']);
         $build->map(['GET', 'POST'], '/{path:.+}/pipelines/{id:\d+}', [BuildController::class, 'pipelineDetail']);
+        $build->map(['GET', 'POST'], '/{path:.+}/pipelines/{id:\d+}/logs', [BuildController::class, 'pipelineLogs']);
         $build->map(['POST'], '/{path:.+}/pipelines/{id:\d+}/retry', [BuildController::class, 'retry']);
         $build->map(['POST'], '/{path:.+}/pipelines/{id:\d+}/cancel', [BuildController::class, 'cancel']);
         $build->map(['GET', 'POST'], '/{path:.+}/logs/{id:\d+}', [BuildController::class, 'logs']);

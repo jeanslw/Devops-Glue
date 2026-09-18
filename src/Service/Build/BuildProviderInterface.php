@@ -30,6 +30,9 @@ interface BuildProviderInterface
     /** 获取 Git 分支列表（纯字符串数组，适配 Rundeck 等外部工具） */
     public function getBranches(string $projectId): array;
 
+    /** 构建 runner/agent 状态列表，每项含 id, name, status(online/offline), busy, labels */
+    public function getRunners(string $projectId): array;
+
     /** 回写 commit 状态（用于 Harbor 扫描结果等外部检查） */
     public function setCommitStatus(string $projectId, string $sha, string $state, string $name, string $description, string $targetUrl = ''): array;
 }

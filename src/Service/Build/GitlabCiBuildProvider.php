@@ -41,7 +41,7 @@ class GitlabCiBuildProvider implements BuildProviderInterface
             return array_map(fn($p) => [
                 'id'         => $p['id'] ?? 0,
                 'iid'        => $p['iid'] ?? 0,
-                'status'     => $p['status'] ?? 'unknown',
+                'status'     => BuildStatus::normalize((string) ($p['status'] ?? '')),
                 'ref'        => $p['ref'] ?? '',
                 'sha'        => $p['sha'] ?? '',
                 'web_url'    => $p['web_url'] ?? '',
@@ -77,7 +77,7 @@ class GitlabCiBuildProvider implements BuildProviderInterface
                 'id'         => $j['id'] ?? 0,
                 'name'       => $j['name'] ?? '',
                 'stage'      => $j['stage'] ?? '',
-                'status'     => $j['status'] ?? 'unknown',
+                'status'     => BuildStatus::normalize((string) ($j['status'] ?? '')),
                 'runner'     => $j['runner']['description'] ?? '',
                 'created_at' => $j['created_at'] ?? '',
                 'duration'   => $j['duration'] ?? 0,
@@ -201,6 +201,11 @@ class GitlabCiBuildProvider implements BuildProviderInterface
             $this->logger?->warning('GitLab 分支查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
             return [];
         }
+    }
+
+    public function getRunners(string $projectId): array
+    {
+        return []; // runner 状态暂仅 Gitea Actions 提供，GitLab CI 降级为空
     }
 
     public function setCommitStatus(string $projectId, string $sha, string $state, string $name, string $description, string $targetUrl = ''): array

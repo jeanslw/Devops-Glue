@@ -68,16 +68,23 @@ class GiteaCiBuildProvider implements BuildProviderInterface
             if (!is_array($data)) {
                 return [];
             }
+            // Gitea 1.27 的 /actions/runs 返回 ActionWorkflowRunsResponse 对象 {total_count, workflow_runs:[...]}
+            //（GitHub 兼容风格），真实列表在 workflow_runs 键下，不能把整个对象当数组遍历。
+            $runs = $data['workflow_runs'] ?? $data;
+            if (!is_array($runs)) {
+                return [];
+            }
             return array_map(fn($r) => [
                 'id'         => $r['id'] ?? 0,
                 'iid'        => $r['run_number'] ?? 0,
-                'status'     => $r['status'] ?? 'unknown',
+                'status'     => BuildStatus::normalize((string) ($r['status'] ?? '')),
                 'ref'        => $r['head_branch'] ?? '',
                 'sha'        => $r['head_sha'] ?? '',
                 'web_url'    => "{$this->baseUrl}/{$owner}/{$repoName}/actions/runs/" . ($r['id'] ?? 0),
-                'created_at' => $this->fmtTime($r['created_at'] ?? ''),
-                'updated_at' => $this->fmtTime($r['updated_at'] ?? ''),
-            ], $data);
+                // Gitea 1.27 的 run 对象无 created_at/updated_at，只有 started_at/completed_at（与 jobs 一致）
+                'created_at' => $this->fmtTime($r['started_at'] ?? ''),
+                'updated_at' => $this->fmtTime($r['completed_at'] ?? ''),
+            ], $runs);
         } catch (\Exception $e) {
             $this->logger?->error('Gitea Actions runs 查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
             return [];
@@ -91,6 +98,17 @@ class GiteaCiBuildProvider implements BuildProviderInterface
         }
         $ts = strtotime($iso);
         return $ts ? date('Y-m-d H:i:s', $ts) : $iso;
+    }
+
+    /** job 耗时（秒）：stopped_at - started_at，任一缺失或非法返回 0 */
+    private function calcDuration(string $startedAt, string $stoppedAt): int
+    {
+        $start = strtotime($startedAt);
+        $stop  = strtotime($stoppedAt);
+        if ($start !== false && $stop !== false && $stop >= $start) {
+            return $stop - $start;
+        }
+        return 0;
     }
 
     public function getJobs(string $projectId, int $pipelineId): array
@@ -110,16 +128,22 @@ class GiteaCiBuildProvider implements BuildProviderInterface
             if (!is_array($data)) {
                 return [];
             }
+            // Gitea 1.27 的 /actions/runs/{run}/jobs 返回 ActionWorkflowJobsResponse 对象
+            // {total_count, jobs:[...]}，真实列表在 jobs 键下；job 完成时间字段是 completed_at（无 stopped_at）。
+            $jobs = $data['jobs'] ?? $data;
+            if (!is_array($jobs)) {
+                return [];
+            }
             return array_map(fn($j) => [
                 'id'         => $j['id'] ?? 0,
                 'name'       => $j['name'] ?? ($j['display_title'] ?? ''),
                 'stage'      => '',
-                'status'     => $j['status'] ?? 'unknown',
+                'status'     => BuildStatus::normalize((string) ($j['status'] ?? '')),
                 'runner'     => $j['runner_name'] ?? '',
                 'runner_id'  => $j['runner_id'] ?? null,
                 'created_at' => $j['started_at'] ?? '',
-                'duration'   => 0,
-            ], $data);
+                'duration'   => $this->calcDuration((string) ($j['started_at'] ?? ''), (string) ($j['completed_at'] ?? '')),
+            ], $jobs);
         } catch (\Exception $e) {
             $this->logger?->error('Gitea Actions jobs 查询失败', ['project' => $projectId, 'pipeline' => $pipelineId, 'error' => $e->getMessage()]);
             return [];
@@ -158,7 +182,13 @@ class GiteaCiBuildProvider implements BuildProviderInterface
         $workflow = trim((string) ($variables['workflow'] ?? ''));
         unset($variables['workflow']);
         if ($workflow === '') {
-            return ['success' => false, 'message' => 'Gitea Actions 暂不支持无 workflow 的主动触发，请通过 webhook/手动触发，或传入 workflow 文件名'];
+            // 未指定 workflow 时自动发现仓库可用 workflow，返回列表供调用方选择
+            $workflows = $this->getWorkflows($projectId);
+            return [
+                'success'   => false,
+                'message'   => 'Gitea Actions 主动触发需指定 workflow 文件名，可用列表见 workflows 字段',
+                'workflows' => $workflows,
+            ];
         }
         $url = "{$this->baseUrl}/api/v1/repos/{$owner}/{$repoName}/actions/workflows/" . rawurlencode($workflow) . '/dispatches?return_run_details=true';
         try {
@@ -174,10 +204,12 @@ class GiteaCiBuildProvider implements BuildProviderInterface
             $resp = $this->http->post($url, ['json' => $body]);
             $data = json_decode($resp->getBody(), true);
             $ok = $resp->getStatusCode() < 400;
+            // Gitea 1.27 在 return_run_details=true 时返回 RunDetails {workflow_run_id, run_url, html_url}，
+            // 没有 GitHub 风格的 id 字段，故优先取 workflow_run_id、兼容 id 为回退。
             return [
                 'success' => $ok,
-                'run_id'  => $ok ? ($data['id'] ?? null) : null,
-                'web_url' => $ok ? ($data['html_url'] ?? '') : '',
+                'run_id'  => $ok ? ($data['workflow_run_id'] ?? $data['id'] ?? null) : null,
+                'web_url' => $ok ? ($data['html_url'] ?? $data['run_url'] ?? '') : '',
                 'message' => $ok ? 'workflow 已触发' : ($data['message'] ?? '触发失败'),
             ];
         } catch (\Exception $e) {
@@ -217,10 +249,16 @@ class GiteaCiBuildProvider implements BuildProviderInterface
         $url = "{$this->baseUrl}/api/v1/repos/{$owner}/{$repoName}/actions/runs/{$pipelineId}/cancel";
         try {
             $resp = $this->http->post($url);
+            $status = $resp->getStatusCode();
             $data = json_decode($resp->getBody(), true);
+            // Gitea 1.27.0 起提供 POST /actions/runs/{run}/cancel（同批还有 force-cancel/rerun/approve/logs），
+            // 老版本（<1.27）或 Actions 未启用时该端点 404/405，需明确区分「端点不存在」而非「取消失败」。
+            if ($status === 404 || $status === 405) {
+                return ['success' => false, 'message' => '当前 Gitea 版本不提供取消运行的 API（需 Gitea 1.27+），请在 Gitea 界面操作'];
+            }
             return [
-                'success' => $resp->getStatusCode() < 400,
-                'message' => $resp->getStatusCode() < 400 ? 'cancel 已触发' : ($data['message'] ?? 'cancel 失败'),
+                'success' => $status < 400,
+                'message' => $status < 400 ? 'cancel 已触发' : ($data['message'] ?? 'cancel 失败'),
             ];
         } catch (\Exception $e) {
             $this->logger?->error('Gitea Actions cancel 失败', ['project' => $projectId, 'run' => $pipelineId, 'error' => $e->getMessage()]);
@@ -230,7 +268,107 @@ class GiteaCiBuildProvider implements BuildProviderInterface
 
     public function getVariables(string $projectId): array
     {
-        return []; // Gitea Actions variables 接口版本差异大，降级为空
+        $repo = $this->splitRepo($projectId);
+        if (!$repo) {
+            return [];
+        }
+        [$owner, $repoName] = $repo;
+        $url = "{$this->baseUrl}/api/v1/repos/{$owner}/{$repoName}/actions/variables?limit=100&page=1";
+        try {
+            $resp = $this->http->get($url);
+            if ($resp->getStatusCode() >= 400) {
+                return []; // Actions variables 端点不可用（老版本）→ 优雅降级
+            }
+            $data = json_decode($resp->getBody(), true);
+            if (!is_array($data)) {
+                return [];
+            }
+            $vars = [];
+            foreach ($data as $v) {
+                $name = (string) ($v['name'] ?? '');
+                if ($name === '') {
+                    continue;
+                }
+                $vars[] = [
+                    'key'   => $name,
+                    'value' => '***', // 脱敏，对齐 GitLab provider
+                    'type'  => 'string',
+                ];
+            }
+            return $vars;
+        } catch (\Exception $e) {
+            $this->logger?->error('Gitea Actions variables 查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
+            return [];
+        }
+    }
+
+    /** 仓库可用 workflow 列表（id=文件名 dispatch 用；name=展示名；path=文件路径；state=active/disabled） */
+    public function getWorkflows(string $projectId): array
+    {
+        $repo = $this->splitRepo($projectId);
+        if (!$repo) {
+            return [];
+        }
+        [$owner, $repoName] = $repo;
+        $url = "{$this->baseUrl}/api/v1/repos/{$owner}/{$repoName}/actions/workflows";
+        try {
+            $resp = $this->http->get($url);
+            if ($resp->getStatusCode() >= 400) {
+                return [];
+            }
+            $data = json_decode($resp->getBody(), true);
+            if (!is_array($data)) {
+                return [];
+            }
+            return array_map(fn($w) => [
+                'id'    => $w['id'] ?? '',
+                'name'  => $w['name'] ?? '',
+                'path'  => $w['path'] ?? '',
+                'state' => $w['state'] ?? '',
+            ], $data['workflows'] ?? []);
+        } catch (\Exception $e) {
+            $this->logger?->error('Gitea Actions workflows 查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
+            return [];
+        }
+    }
+
+    /**
+     * repo 级 runner 状态（Gitea 1.21+）：online/offline + busy + labels；last_seen 不暴露。
+     * 注意：Gitea 1.27 的 ActionRunner 仅含 id/name/status/busy/disabled/ephemeral/labels，
+     * os/arch/version 字段 1.27 不返回，保留在此仅为占位（恒为空串），勿依赖。
+     */
+    public function getRunners(string $projectId): array
+    {
+        $repo = $this->splitRepo($projectId);
+        if (!$repo) {
+            return [];
+        }
+        [$owner, $repoName] = $repo;
+        $url = "{$this->baseUrl}/api/v1/repos/{$owner}/{$repoName}/actions/runners?page=1&limit=100";
+        try {
+            $resp = $this->http->get($url);
+            if ($resp->getStatusCode() >= 400) {
+                return [];
+            }
+            $data = json_decode($resp->getBody(), true);
+            if (!is_array($data)) {
+                return [];
+            }
+            return array_map(fn($r) => [
+                'id'       => $r['id'] ?? 0,
+                'name'     => $r['name'] ?? '',
+                'status'   => $r['status'] ?? 'unknown',
+                'busy'     => (bool) ($r['busy'] ?? false),
+                'labels'   => array_column((array) ($r['labels'] ?? []), 'name'),
+                'os'       => $r['os'] ?? '',
+                'arch'     => $r['arch'] ?? '',
+                'version'  => $r['version'] ?? '',
+                'disabled' => (bool) ($r['disabled'] ?? false),
+            ], $data['runners'] ?? []);
+        } catch (\Exception $e) {
+            $this->logger?->error('Gitea Actions runners 查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
+            return [];
+        }
     }
 
     public function getBranches(string $projectId): array

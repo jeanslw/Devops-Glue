@@ -36,14 +36,26 @@ class MainController extends BaseController
      */
     public function jobsList(Request $request, Response $response): Response
     {
-        if (!in_array(AppConfig::PROVIDER_JENKINS, $this->config->getBuildModes(), true)) {
+        $modes = $this->config->getBuildModes();
+        if (!in_array(AppConfig::PROVIDER_JENKINS, $modes, true)) {
             return $this->output($response, $this->mapping->activeJobNames(), $request);
         }
         try {
-            return $this->output($response, $this->jenkins->getAllJobs(), $request);
+            $names = $this->jenkins->getAllJobs();
         } catch (\Exception $e) {
             return $this->output($response, $this->mapping->activeJobNames(), $request);
         }
+        // 多源模式：jenkins 实时 Job 之外，合并其余已启用拉取式 provider 的活跃映射 job_name
+        $others = array_values(array_diff($modes, [AppConfig::PROVIDER_JENKINS]));
+        if ($others) {
+            foreach ($this->mapping->activeMaps() as $m) {
+                if (in_array($m['build_provider'] ?? '', $others, true)) {
+                    $names[] = $m['job_name'] ?? '';
+                }
+            }
+            $names = array_values(array_unique(array_filter($names, fn($n) => $n !== '')));
+        }
+        return $this->output($response, $names, $request);
     }
 
     /**

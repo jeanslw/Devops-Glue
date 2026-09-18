@@ -482,16 +482,15 @@
 
         /* ── 配置模式：CI 流程图（拉取式 / 推送式，含响应式）── */
         #mode-display .mf-badges { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:20px; }
-        .mf-row { margin-top:14px; display:flex; align-items:stretch; justify-content:center; gap:12px; flex-wrap:wrap; }
-        .mf-row--single { align-items:center; }
+        .mf-row { margin-top:14px; display:flex; align-items:stretch; gap:12px; flex-wrap:wrap; }
+        .mf-row--single { align-items:center; justify-content:center; }
         .mf-divider { width:1px; align-self:stretch; background:#e5e7eb; margin:8px 0; }
         .mf-side {
-            flex:1 1 260px; min-width:220px; max-width:460px; padding:12px 10px;
-            display:flex; flex-direction:column; align-items:center; gap:8px;
+            flex:1 1 0; min-width:220px; padding:12px 10px;
+            display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px;
         }
-        /* 拉取式节点多（git + 多个 CI + harbor），略给更大宽度，分界线轻微靠右 */
-        .mf-side--pull { flex:1.35 1 300px; max-width:540px; }
-        .mf-side--push { flex:1 1 220px; max-width:320px; }
+        /* 拉取式 / 推送式两侧等宽，内容在各自半区内居中，分界线位于两半之间 */
+        .mf-row--single .mf-side { flex:1 1 260px; max-width:460px; }
         .mf-side-title { font-size:12px; font-weight:700; letter-spacing:2px; color:#6b7280; }
         .mf-side-desc { font-size:11px; color:#9ca3af; text-align:center; max-width:250px; line-height:1.5; }
         .mf-flow { display:flex; align-items:center; gap:8px; flex-wrap:nowrap; justify-content:center; }

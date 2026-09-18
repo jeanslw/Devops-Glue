@@ -249,7 +249,9 @@ class BuildController extends BaseController
         }
 
         $p = $this->registry->create($provider);
-        $data = $p->getPipelines($projectId);
+        // ?per_page=N 透传给 provider（默认 20），供「拉取式记录」分页一次拉取更多
+        $perPage = (int) ($request->getQueryParams()['per_page'] ?? 0);
+        $data = $p->getPipelines($projectId, $perPage > 0 ? $perPage : 20);
         $format = $request->getQueryParams()['format'] ?? 'raw';
 
         // Jenkins 风格列表格式（list 参数优先级更高）
@@ -298,8 +300,15 @@ class BuildController extends BaseController
         $p  = $this->registry->create($provider);
         $jobs = $p->getJobs($projectId, $pipelineId);
 
-        // ?format=raw → Jenkins 风格 ["SUCCESS"] / ["failed"]
-        if (($request->getQueryParams()['format'] ?? 'raw') === 'raw') {
+        // 同一 run 下可能有多个 job：为每个 job 附上各自日志链接（Glue 自己的 logs 端点），
+        // 调用方拿到 jobs[].id + jobs[].log_url 即可直接跳转对应 job 的日志。
+        foreach ($jobs as $i => $j) {
+            $jobId = (int) ($j['id'] ?? 0);
+            $jobs[$i]['log_url'] = $jobId > 0 ? "/api/build/{$path}/logs/{$jobId}" : null;
+        }
+
+        // ?format=raw → 显式请求 Jenkins 风格 ["SUCCESS"]；默认返回完整 jobs（含 log_url）
+        if (($request->getQueryParams()['format'] ?? '') === 'raw') {
             $statuses = array_map(fn($j) => $j['status'] ?? 'unknown', $jobs);
             return $this->output($response, $statuses, $request);
         }
@@ -332,6 +341,35 @@ class BuildController extends BaseController
         $p     = $this->registry->create($provider);
         $trace = $p->getJobTrace($projectId, $jobId);
         return $this->output($response, $trace, $request, true);
+    }
+
+    /** GET /api/build/{path}/pipelines/{id}/logs — 输入 run id 直接返回该 run 下全部 job 日志（多 job 拼接） */
+    public function pipelineLogs(Request $request, Response $response, array $args): Response
+    {
+        $path       = $args['path'] ?? '';
+        $pipelineId = (int) ($args['id'] ?? 0);
+        [$provider, $projectId] = $this->resolve($path);
+
+        if (!$this->registry->isRegistered($provider)) {
+            return $this->jsonError($response, $this->__('build.provider_not_configured', ['{provider}' => $provider]), 400);
+        }
+
+        $p    = $this->registry->create($provider);
+        $jobs = $p->getJobs($projectId, $pipelineId);
+
+        $chunks = [];
+        foreach ($jobs as $j) {
+            $jobId = (int) ($j['id'] ?? 0);
+            if ($jobId <= 0) {
+                continue;
+            }
+            $name     = $j['name'] ?? ('job ' . $jobId);
+            $trace    = $p->getJobTrace($projectId, $jobId);
+            $chunks[] = "===== Job #{$jobId} {$name} =====\n" . $trace;
+        }
+
+        $text = $chunks ? implode("\n\n", $chunks) : '日志不可用';
+        return $this->output($response, $text, $request, true);
     }
 
     /** POST /api/build/{path}/trigger（兼容 GET Query String 触发） */
