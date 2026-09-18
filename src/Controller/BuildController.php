@@ -50,6 +50,11 @@ class BuildController extends BaseController
     /** GET /api/build/jobs/list — CI 管理页视角的 Job 列表（按 build_mode 过滤）。CD 部署侧的项目列表请用 projectsList。 */
     public function jobsList(Request $request, Response $response): Response
     {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_BUILD_RECORDS_PULL)) {
+            return $resp;
+        }
+
         $all = [];
         foreach ($this->mapping->activeMaps() as $m) {
             $all[] = [
@@ -238,6 +243,11 @@ class BuildController extends BaseController
     /** GET /api/build/{path}/pipelines — raw: 流水线数组, json/xml: 完整元数据 */
     public function pipelines(Request $request, Response $response, array $args): Response
     {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_BUILD_RECORDS_PULL)) {
+            return $resp;
+        }
+
         $path = $args['path'] ?? '';
         [$provider, $projectId] = $this->resolve($path);
 
@@ -289,6 +299,11 @@ class BuildController extends BaseController
     /** GET /api/build/{path}/pipelines/{id} */
     public function pipelineDetail(Request $request, Response $response, array $args): Response
     {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_BUILD_RECORDS_PULL)) {
+            return $resp;
+        }
+
         $path = $args['path'] ?? '';
         $pipelineId = (int) ($args['id'] ?? 0);
         [$provider, $projectId] = $this->resolve($path);
@@ -330,6 +345,11 @@ class BuildController extends BaseController
     /** GET /api/build/{path}/jobs/{id}/trace */
     public function jobTrace(Request $request, Response $response, array $args): Response
     {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_BUILD_RECORDS_PULL)) {
+            return $resp;
+        }
+
         $path  = $args['path'] ?? '';
         $jobId = (int) ($args['id'] ?? 0);
         [$provider, $projectId] = $this->resolve($path);
@@ -346,6 +366,11 @@ class BuildController extends BaseController
     /** GET /api/build/{path}/pipelines/{id}/logs — 输入 run id 直接返回该 run 下全部 job 日志（多 job 拼接） */
     public function pipelineLogs(Request $request, Response $response, array $args): Response
     {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_BUILD_RECORDS_PULL)) {
+            return $resp;
+        }
+
         $path       = $args['path'] ?? '';
         $pipelineId = (int) ($args['id'] ?? 0);
         [$provider, $projectId] = $this->resolve($path);

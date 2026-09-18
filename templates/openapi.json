@@ -685,6 +685,7 @@
                 "description": "当前角色的权限键列表",
                 "example": [
                   "ci.trigger",
+                  "ci.build-records.pull",
                   "cd.build-manage"
                 ]
               }

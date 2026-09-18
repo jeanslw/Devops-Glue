@@ -681,7 +681,7 @@ class AdminController extends BaseController
     public function customBuildList(Request $request, Response $response): Response
     {
         $this->initAuthFromRequest($request);
-        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_MODE_EDIT)) {
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_BUILD_RECORDS_PUSH)) {
             return $resp;
         }
 

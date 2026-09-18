@@ -38,6 +38,7 @@ Devops-Glue API is a Slim4-based unified API layer that provides a single manage
 
 | Devops-Glue API | Devops-Glue CD |
 |:---:|:---:|
+| v2.8.2 | v1.5.x |
 | v2.8.1 | v1.5.x |
 | v2.8.0 | v1.5.x |
 | v2.7 | v1.5 |
@@ -771,8 +772,12 @@ LDAP_BASE_DN=ou=users,dc=example,dc=com
 LDAP_BIND_DN=cn=admin,dc=example,dc=com
 LDAP_BIND_PASSWORD=
 LDAP_USER_FILTER=(uid=%s)      # %s is replaced with the login username
+LDAP_ATTRS=uid,cn,mail,dn      # attributes read back after login (comma-separated); mail refreshes the stored email
 LDAP_USER_DN_PATTERN=          # when non-empty, direct-bind mode is used, e.g. uid=%s,ou=users,dc=example,dc=com
 LDAP_NETWORK_TIMEOUT=5
+# LDAPS with a self-signed cert (pass-through vars read directly by the OpenLDAP client, not the app; for Docker set them in config/.env):
+LDAPTLS_CACERT=/path/to/ca.pem
+LDAPTLS_REQCERT=never          # internal testing only, skip cert verification; forbidden in production
 
 # ============ Database ============
 DB_DRIVER=mysql               # sqlite or mysql

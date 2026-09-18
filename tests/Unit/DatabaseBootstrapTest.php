@@ -90,7 +90,7 @@ class DatabaseBootstrapTest extends TestCase
         $descStmt->execute([AppConfig::ROLE_VIEWER]);
         $this->assertSame(AppConfig::DEFAULT_ROLE_DESCRIPTIONS[AppConfig::ROLE_VIEWER], $descStmt->fetchColumn(), 'viewer 描述应被种子写入');
 
-        // 只读 = 恰好 8 个纯读视图 key（6 CD + 2 CI），无任何写 key，尤其不含 cd.image-registry 与 ci.manage
+        // 只读 = 恰好 11 个纯读视图 key（6 CD + 5 CI），无任何写 key，尤其不含 cd.image-registry 与 ci.manage
         $keys = $pdo->query(
             'SELECT rp.perm_key FROM ' . AppConfig::TABLE_ROLE_PERMISSIONS . ' rp'
             . ' JOIN ' . AppConfig::TABLE_ROLES . ' r ON r.id = rp.role_id'
@@ -105,7 +105,10 @@ class DatabaseBootstrapTest extends TestCase
             'cd.monitor.system',
             AppConfig::PERM_CI_USERS_LIST,
             AppConfig::PERM_CI_PERMISSIONS_LIST,
-        ], $keys, 'viewer 应恰好拥有 8 个纯读视图 key（6 CD + 2 CI）');
+            AppConfig::PERM_CI_BUILD_RECORDS,
+            AppConfig::PERM_CI_BUILD_RECORDS_PULL,
+            AppConfig::PERM_CI_BUILD_RECORDS_PUSH,
+        ], $keys, 'viewer 应恰好拥有 11 个纯读视图 key（6 CD + 5 CI）');
     }
 
     public function testBootstrapSkipsSeedWhenSchemaVersionMatches(): void
