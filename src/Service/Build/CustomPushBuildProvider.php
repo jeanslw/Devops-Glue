@@ -74,7 +74,7 @@ class CustomPushBuildProvider implements BuildProviderInterface
                 return [
                     'id'         => (int) $r['id'],
                     'iid'        => (int) $r['pipeline_iid'],
-                    'status'     => $r['status'] ?? 'unknown',
+                    'status'     => BuildStatus::normalize((string) ($r['status'] ?? '')),
                     'ref'        => $r['ref'] ?? '',
                     'sha'        => $r['sha'] ?? '',
                     'web_url'    => $r['web_url'] ?? '',
@@ -106,7 +106,7 @@ class CustomPushBuildProvider implements BuildProviderInterface
                 'id'         => $pipelineId,
                 'name'       => 'build',
                 'stage'      => 'build',
-                'status'     => strtolower($r['status'] ?? 'unknown'),
+                'status'     => BuildStatus::normalize((string) ($r['status'] ?? '')),
                 'runner'     => $this->name,
                 'created_at' => $r['started_at'] ?? '',
                 'duration'   => 0,
@@ -444,6 +444,11 @@ class CustomPushBuildProvider implements BuildProviderInterface
     }
 
     // ── commit status ────────────────────────────────────────────
+
+    public function getRunners(string $projectId): array
+    {
+        return []; // runner 状态暂仅 Gitea Actions 提供，custom_push 降级为空
+    }
 
     public function setCommitStatus(string $projectId, string $sha, string $state, string $name, string $description, string $targetUrl = ''): array
     {

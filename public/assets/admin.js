@@ -1262,6 +1262,8 @@ async function loadPushRecords() {
             else if (st === 'failed' || st === 'canceled') { bg = '#fef2f2'; fg = '#dc2626'; }
             else if (st === 'running') { bg = '#dbeafe'; fg = '#1d4ed8'; }
             else if (st === 'pending') { bg = '#fef3c7'; fg = '#d97706'; }
+            else if (st === 'unstable') { bg = '#fff7ed'; fg = '#c2410c'; }
+            else if (st === 'manual') { bg = '#f5f3ff'; fg = '#6d28d9'; }
             return '<span class="badge" style="background:' + bg + ';color:' + fg + ';">' + esc(s || '—') + '</span>';
         };
         tbody.innerHTML = records.map(r => {

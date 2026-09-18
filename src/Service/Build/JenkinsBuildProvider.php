@@ -36,7 +36,7 @@ class JenkinsBuildProvider implements BuildProviderInterface
                 $result[] = [
                     'id'         => (int) $bid,
                     'iid'        => (int) $bid,
-                    'status'     => $info['status'],
+                    'status'     => BuildStatus::normalize((string) $info['status']),
                     'ref'        => $info['ref'] ?? '',
                     'sha'        => $info['sha'] ?? '',
                     'web_url'    => $this->jenkins->getJobUrl($projectId) . '/' . $bid . '/',
@@ -62,7 +62,7 @@ class JenkinsBuildProvider implements BuildProviderInterface
             'id'         => $pipelineId,
             'name'       => $projectId,
             'stage'      => 'build',
-            'status'     => strtolower($status),
+            'status'     => BuildStatus::normalize($status),
             'runner'     => AppConfig::PROVIDER_JENKINS,
             'created_at' => '',
             'duration'   => 0,
@@ -219,6 +219,11 @@ class JenkinsBuildProvider implements BuildProviderInterface
             $this->logger?->warning('Git 分支查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
             return [];
         }
+    }
+
+    public function getRunners(string $projectId): array
+    {
+        return []; // runner 状态暂仅 Gitea Actions 提供，Jenkins 降级为空
     }
 
     public function setCommitStatus(string $projectId, string $sha, string $state, string $name, string $description, string $targetUrl = ''): array
