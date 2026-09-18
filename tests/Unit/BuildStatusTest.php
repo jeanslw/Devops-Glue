@@ -43,7 +43,9 @@ class BuildStatusTest extends TestCase
         $this->assertSame('canceled', BuildStatus::normalize('cancelled'));
         $this->assertSame('pending', BuildStatus::normalize('waiting'));
         $this->assertSame('pending', BuildStatus::normalize('blocked'));
+        $this->assertSame('pending', BuildStatus::normalize('queued'));
         $this->assertSame('running', BuildStatus::normalize('running'));
+        $this->assertSame('running', BuildStatus::normalize('in_progress'));
         $this->assertSame('skipped', BuildStatus::normalize('skipped'));
         $this->assertSame('unknown', BuildStatus::normalize('unknown'));
     }

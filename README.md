@@ -21,10 +21,11 @@ DevOps-Glue API is a Slim 4–based integration platform designed to enhance Dev
 
 ##  Why Devops-Glue + CD?
 
-> 🔧 **A Unified Management Console for Jenkins & GitLab CI & Custom CI**
-> ✅ Make your distributed Jenkins instances, GitLab CI projects, and Custom CI manageable, observable, and auditable
+> 🔧 **A Unified Management Console for Jenkins & GitLab CI & Gitea CI & Custom CI**
+> ✅ Make your distributed Jenkins instances, GitLab CI projects,Gitea CI projects and Custom CI manageable, observable, and auditable
 
 - 🔍 **Unified Build View**: Cross-engine search and aggregation of all build history — no more platform switching
+- 🔧 **Support LDAP/SSO Login**: Easily integrate into the company's internal management system, say goodbye to information silos, and achieve account connectivity
 - 📝 **Custom_Push**: Orthogonal push-based CI — pull and push coexist simultaneously. [\[**Use case**\]](docs/ADMIN_MANUAL.md#12-configure-build-mode)
 - 🔐 **Fine-grained RBAC**: More flexible access control than native plugins, tailored for team-scale organizations
 - 🚀 **Non-invasive Integration**: API-only connection with zero changes to existing CI configs — onboard in under 5 minutes
@@ -37,8 +38,8 @@ DevOps-Glue API is a Slim 4–based integration platform designed to enhance Dev
 ## Features
 
 - **Custom Push CI (Custom_Push)** — User CI pushes build status, log URL, image tags; Devops-Glue only stores metadata without participating in builds. Orthogonal to pull-based CI, can be enabled simultaneously
-- **Multi-Build Pipeline** — Jenkins + GitLab CI + Custom_Push, switch or coexist, unified API
-- **Multi-Platform Git** — GitLab · GitHub · Gitee · Gitea, self-hosted or SaaS
+- **Multi-Build Pipeline** — Jenkins + GitLab CI + Gitea CI + Custom_Push, switch or coexist, unified API
+- **Multi-Platform Git** — GitLab · GitHub · Gitee · Gitea, Built in-house or SaaS
 - **Full-Chain Mapping** — Job ↔ Git repo ↔ Harbor image, build→code→artifact auto-association
 - **Security Scan Audit** — SAST, secret scanning, dependency vulns written back via Commit Status
 - **Role-Based Access (Data-Driven RBAC)** — custom multi-level roles with per-role permissions. Only `super_admin` is a built-in system role; every other role and its permission set is user-defined in the admin UI. Permission keys and implied rules are stored in DB; no code change required when new menus/modules are added.
@@ -140,6 +141,7 @@ See [docs/ADMIN_MANUAL.md](docs/ADMIN_MANUAL.md) for full environment variable r
 | [API Reference](docs/API_Documents.md) | EN | API endpoints, request/response formats, quick tests |
 | [ARCHITECTURE](docs/ARCHITECTURE.md) | EN | Overall data flow, component relationships, deployment pattern matrix|
 | [Admin Manual](docs/ADMIN_MANUAL.md) | EN | Environment variables, mapping config, custom Git platform |
+| [User Manual](docs/USER_MANUAL.md) | EN | User Guide|
 | [Single Sign-On](docs/Single-Sign-On.md) | EN | OAuth2 / OIDC SSO for Grafana / Jenkins / Harbor / GitLab |
 | [Technical Guide](docs/Technical-Guide.md) | EN | Architecture, DB design, data flows, troubleshooting |
 | [Integrated Service Version Compatibility](docs/Integrated-Service-Version-Compatibility.md) | EN | Jenkins / GitLab / Gitea / Harbor version support and boundaries |

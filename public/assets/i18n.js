@@ -105,6 +105,8 @@
             });
             // 更新 <html lang>
             document.documentElement.lang = currentLang;
+            // 标记 i18n 就绪，供页面淡入（配合 index.html 的 body:not(.i18n-ready) 防闪烁）
+            document.body.classList.add('i18n-ready');
             // 更新页面 title
             var titleEl = document.querySelector('title[data-i18n]');
             if (titleEl) {

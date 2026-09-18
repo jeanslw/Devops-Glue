@@ -40,7 +40,8 @@ final class BuildStatus
         'canceled'  => self::CANCELED,
         'aborted'   => self::CANCELED,
         // 运行中
-        'running' => self::RUNNING,
+        'running'     => self::RUNNING,
+        'in_progress' => self::RUNNING, // Gitea Actions job 运行中
         // 排队/等待（含定时）
         'pending'              => self::PENDING,
         'waiting'              => self::PENDING,
@@ -49,6 +50,7 @@ final class BuildStatus
         'waiting_for_resource' => self::PENDING,
         'preparing'            => self::PENDING,
         'scheduled'            => self::PENDING,
+        'queued'               => self::PENDING, // Gitea Actions job 排队中
         // 等待人工触发（GitLab manual）
         'manual' => self::MANUAL,
         // 跳过/未构建

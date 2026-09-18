@@ -6,6 +6,7 @@
     <title data-i18n="index.title">Devops-Glue</title>
     <link rel="icon" href="/favicon.ico" type="image/x-icon">
     <link rel="stylesheet" href="/assets/pulse.css">
+    <noscript><style>body [data-i18n]{opacity:1!important}</style></noscript>
     <style>
         * { margin:0; padding:0; box-sizing:border-box; }
         body {
@@ -13,6 +14,11 @@
             background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
             min-height:100vh; color:#333;
         }
+
+        /* 防止 i18n 异步加载闪烁（FOUC）：翻译就绪前隐藏可翻译文本，就绪后淡入。
+           由 i18n.js 在 _applyToDOM 时给 <body> 打上 i18n-ready 标记。 */
+        body:not(.i18n-ready) [data-i18n] { opacity:0; }
+        body.i18n-ready [data-i18n] { opacity:1; transition:opacity .18s ease; }
 
         .navbar {
             background:rgba(255,255,255,.1); backdrop-filter:blur(10px);
@@ -125,7 +131,7 @@
         <div class="feat-card">
             <div class="feat-icon">🔀</div>
             <h4 data-i18n="index.feat_multi_build_title">多链路构建</h4>
-            <p data-i18n="index.feat_multi_build_desc">Jenkins · GitLab CI · Custom_Push 三种 CI 源统一接入，拉取式与推送式正交并存，统一 API 入口，构建触发、状态上报、日志查看完全一致。</p>
+            <p data-i18n="index.feat_multi_build_desc">Jenkins · GitLab CI · Gitea CI · Custom_Push 四种 CI 源统一接入，拉取式与推送式正交并存，统一 API 入口，构建触发、状态上报、日志查看完全一致。</p>
         </div>
         <!-- 2 -->
         <div class="feat-card">
@@ -143,7 +149,7 @@
         <div class="feat-card">
             <div class="feat-icon">🖥️</div>
             <h4 data-i18n="index.feat_dashboard_title">可视化管理后台</h4>
-            <p data-i18n="index.feat_dashboard_desc">Web 管理界面，服务监测、项目拓扑、映射配置一目了然。无需改配置文件，表单操作即可完成所有配置，上手即用。</p>
+            <p data-i18n="index.feat_dashboard_desc">Web 管理界面，服务监测、项目拓扑、构建日志、映射配置一目了然。无需改配置文件，表单操作即可完成所有配置，上手即用。</p>
         </div>
         <!-- 5 -->
         <div class="feat-card">

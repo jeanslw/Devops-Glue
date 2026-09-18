@@ -20,11 +20,12 @@ Devops-Glue API 是基于 Slim4 为小团队打造的 DevOps 工具链增强集�
 
 ## 为什么选择 Devops-Glue + CD？
 
-> 🔧 **给 Jenkins / GitLab CI / Custom CI 加一层统一管理控制台**
-> ✅ **分散不同的CI系统**： Jenkins 、 GitLab CI 项目、Custom CI 变得可管理、可视化、可审计
+> 🔧 **给 Jenkins / GitLab CI / Gitea CI / Custom CI 加一层统一管理控制台**
+> ✅ **分散不同的CI系统**： Jenkins 、 GitLab CI 项目、Gitea CI 、Custom CI 变得可管理、可视化、可审计
 
 - 🔍 **统一构建视图**：跨引擎聚合检索所有构建历史，告别多平台切换
-- 📝 **Custom_Push功能**：新增的Custom_Push功能，正交设计让拉取式、推送式同时兼得 [\[**应用案例**\]](docs/管理员配置手册.md#12-配置构建模式)
+- 🔧 **支持LDAP/SSO登录**：轻松融入企业内部管理体系，彻底告别信息孤岛，实现账户互通。
+- 📝 **Custom_Push**：新增的Custom_Push功能，正交设计让拉取式、推送式同时兼得 [\[**应用案例**\]](docs/管理员配置手册.md#12-配置构建模式)
 - 🔐 **细粒度 RBAC**：比原生插件更灵活的权限管控，精准匹配中小团队组织架构
 - 🚀 **非侵入式接入**：仅通过 API 对接，零修改现有 CI 配置，5 分钟完成纳管
 
@@ -36,8 +37,8 @@ Devops-Glue API 是基于 Slim4 为小团队打造的 DevOps 工具链增强集�
 ## 功能特性
 
 - **自定义推送式 CI（Custom_Push）** — 用户 CI 推送构建状态、日志地址、镜像 tag，Devops-Glue 仅存元数据，与 pull-based CI 正交可同时启用
-- **多构建通道** — Jenkins + GitLab CI + Custom_Push，随意切换或并存，统一 API
-- **多平台 Git** — GitLab · GitHub · Gitee · Gitea，自托管或 SaaS 均可
+- **多构建通道** — Jenkins + GitLab CI + Gitea CI + Custom_Push，随意切换或并存，统一 API
+- **多平台 Git** — GitLab · GitHub · Gitee · Gitea，企业内部自建 或 SaaS 均可
 - **全链路映射** — Job ↔ Git 仓库 ↔ Harbor 镜像，构建→代码→产物自动关联
 - **安全扫描审计** — SAST、密钥扫描、依赖漏洞检测，通过 Commit Status 回写
 - **角色权限（数据驱动 RBAC）** — 多级自定义角色，权限按角色可配置。仅 `super_admin` 为内置系统角色，其余角色及其权限由管理员在后台创建，权限键与隐含规则全部存数据库。
@@ -138,6 +139,7 @@ curl http://localhost:8080/api/health
 | [API 参考](docs/API_文档.md) | 中文 | API 接口、请求/响应格式、快速测试 |
 | [架构全景图](docs/架构全景图.md) | 中文 | 整体数据流、组件关系、部署模式矩阵|
 | [管理员手册](docs/管理员配置手册.md) | 中文 | 环境变量、映射配置、自定义 Git 平台 |
+| [用户配置手册](docs/用户配置手册.md) | 中文 | 用户使用配置手册 |
 | [单点登录](docs/单点登录.md) | 中文 | Grafana / Jenkins / Harbor / GitLab 用 Glue 账号单点登录（OAuth2 / OIDC） |
 | [技术文档](docs/技术文档.md) | 中文 | 架构设计、数据库设计、数据流程、故障排查（中文） |
 | [对接服务版本兼容性说明](docs/对接服务版本兼容性说明.md) | 中文 | Jenkins / GitLab / Gitea / Harbor 版本支持情况与边界 |
