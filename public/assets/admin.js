@@ -1237,13 +1237,13 @@ async function onStaleTagCleanupToggle() {
 
 let pushPage = 1, pushTotalPages = 1;
 
-/** 「构建记录」菜单：拉取式记录随启用 CI 显示，自定义推送随 custom_push 显示 */
+/** 「构建记录」菜单：拉取式记录随启用 CI + 权限显示，自定义推送随 custom_push + 权限显示 */
 function applyBuildRecordsMenuVisibility(cpEnabled) {
     var group = document.getElementById('menu-group-build-records');
     var pullItem = document.querySelector('#menu-group-build-records .submenu .menu-item[data-tab="pull-records"]');
     var pushItem = document.querySelector('#menu-group-build-records .submenu .menu-item[data-tab="push-records"]');
-    var pullOk = currentBuildModes.length > 0;
-    var pushOk = !!cpEnabled;
+    var pullOk = currentBuildModes.length > 0 && hasPermission('ci.build-records.pull');
+    var pushOk = !!cpEnabled && hasPermission('ci.build-records.push');
     if (pullItem) pullItem.style.display = pullOk ? '' : 'none';
     if (pushItem) pushItem.style.display = pushOk ? '' : 'none';
     if (group) group.style.display = (pullOk || pushOk) ? '' : 'none';

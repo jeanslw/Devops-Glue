@@ -142,6 +142,8 @@ return [
         'bind_dn'         => env('LDAP_BIND_DN', ''),
         'bind_password'   => env('LDAP_BIND_PASSWORD', ''),
         'user_filter'     => env('LDAP_USER_FILTER', '(uid=%s)'),        // %s → 登录用户名
+        // 登录成功后回读的属性（逗号分隔）；mail 用于回刷 email，可按目录 schema 增补（如 email/sAMAccountName）
+        'attrs'           => array_values(array_filter(array_map('trim', explode(',', env('LDAP_ATTRS', 'uid,cn,mail,dn'))))),
         'user_dn_pattern' => env('LDAP_USER_DN_PATTERN', ''),            // 非空则走直连模式
         'network_timeout' => (int) env('LDAP_NETWORK_TIMEOUT', '5'),
     ],

@@ -430,6 +430,7 @@ if ($globalToken) {
                     'ci.manage', 'ci.users.manage', 'ci.users.list', 'ci.users.password', 'ci.users.manage_admin', 'ci.mapping.edit',
                     'ci.platform.edit', 'ci.mode.edit', 'ci.discover', 'ci.trigger',
                     'ci.permissions.manage', 'ci.permissions.list', 'ci.permissions.register', 'ci.permissions.rules',
+                    'ci.build-records', 'ci.build-records.pull', 'ci.build-records.push',
                     'cd.build-manage', 'cd.deploy-manage', 'cd.server-manage', 'cd.webshell',
                     'cd.deploy-record', 'cd.image-registry', 'cd.resource-monitor', 'cd.notification-manage',
                     'cd.deploy.single', 'cd.deploy.docker', 'cd.deploy.k8s',

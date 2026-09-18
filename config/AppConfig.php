@@ -49,6 +49,10 @@ class AppConfig
     public const PERM_CI_MODE_EDIT          = 'ci.mode.edit';
     public const PERM_CI_DISCOVER           = 'ci.discover';
     public const PERM_CI_TRIGGER            = 'ci.trigger';
+    // 构建记录（一级菜单 + 拉取式/推送式两个二级只读视图）
+    public const PERM_CI_BUILD_RECORDS      = 'ci.build-records';
+    public const PERM_CI_BUILD_RECORDS_PULL = 'ci.build-records.pull';
+    public const PERM_CI_BUILD_RECORDS_PUSH = 'ci.build-records.push';
     // CD 权限（对应 CD 系统侧边栏菜单）
     public const PERM_CD_BUILD   = 'cd.build-manage';
     public const PERM_CD_DEPLOY  = 'cd.deploy-manage';
@@ -80,6 +84,9 @@ class AppConfig
         self::PERM_CI_MODE_EDIT          => ['name' => 'Edit Build Mode', 'parent' => null],
         self::PERM_CI_DISCOVER           => ['name' => 'View Discovery', 'parent' => null],
         self::PERM_CI_TRIGGER            => ['name' => 'Trigger Build', 'parent' => null],
+        self::PERM_CI_BUILD_RECORDS      => ['name' => 'Build Records', 'parent' => null],
+        self::PERM_CI_BUILD_RECORDS_PULL => ['name' => 'Pull Records', 'parent' => self::PERM_CI_BUILD_RECORDS],
+        self::PERM_CI_BUILD_RECORDS_PUSH => ['name' => 'Push Records', 'parent' => self::PERM_CI_BUILD_RECORDS],
         // CD 一级菜单（8 个）
         self::PERM_CD_BUILD              => ['name' => 'Build Management', 'parent' => null],
         self::PERM_CD_DEPLOY             => ['name' => 'Deploy Management', 'parent' => null],
@@ -113,6 +120,8 @@ class AppConfig
     public const IMPLIED_PERMISSIONS = [
         // 父→子
         self::PERM_CD_BUILD => [self::PERM_CI_TRIGGER],
+        // 映射管理 → 拉取式记录只读：映射页「复制 Pipeline ID」按钮依赖 /api/build/{path}/pipelines
+        self::PERM_CI_MAPPING_EDIT => [self::PERM_CI_BUILD_RECORDS_PULL],
         // 子→父（选了二级自动显示一级菜单）
         self::PERM_CI_USERS_LIST         => [self::PERM_CI_USERS_MANAGE],
         self::PERM_CI_USERS_PASSWORD     => [self::PERM_CI_USERS_MANAGE],
@@ -133,6 +142,9 @@ class AppConfig
         self::PERM_CD_WEBHOOK => [self::PERM_CD_NOTIFY],
         // 审批操作 → 审批中心（选了二级自动显示一级菜单）
         self::PERM_CD_APPROVE => [self::PERM_CD_APPROVAL_CENTER],
+        // 构建记录：选了二级（拉取式/推送式）自动显示一级菜单
+        self::PERM_CI_BUILD_RECORDS_PULL => [self::PERM_CI_BUILD_RECORDS],
+        self::PERM_CI_BUILD_RECORDS_PUSH => [self::PERM_CI_BUILD_RECORDS],
     ];
 
     /** 默认角色种子数据：super_admin 内置全权限（'*'），viewer 内置只读（CI + CD 两侧的纯读视图 key）。
@@ -144,6 +156,9 @@ class AppConfig
             // 刻意不含 ci.manage——它除了 gate 安全扫描/看板外，还是 isAdminRole() 的判定源（=管理员标记），非纯读。
             self::PERM_CI_USERS_LIST,        // CI 用户列表
             self::PERM_CI_PERMISSIONS_LIST,  // CI 权限列表
+            self::PERM_CI_BUILD_RECORDS,      // 构建记录一级菜单
+            self::PERM_CI_BUILD_RECORDS_PULL, // 拉取式记录（只读）
+            self::PERM_CI_BUILD_RECORDS_PUSH, // 自定义推送记录（只读）
             // CD 侧只读。刻意不含 cd.image-registry——它在 CD 同时 gate 删除 tag 等写操作。
             self::PERM_CD_BUILD,            // CI 构建结果
             self::PERM_CD_HISTORY,          // 部署记录
@@ -250,6 +265,9 @@ class AppConfig
         self::API_SCOPE_HARBOR_SCAN  => [self::PERM_CI_TRIGGER],
         // dashboard.read → ci.manage：DashboardController 内 requirePermission(ci.manage) 二次校验
         self::API_SCOPE_DASHBOARD    => [self::PERM_CI_MANAGE],
+        // build.read → ci.build-records.pull：构建记录只读端点（pipelines/logs 等）在 Controller 内二次校验，
+        // 保证持有 build.read scope 的 CD 服务账号 token 读取拉取式记录时不被 403。
+        self::API_SCOPE_BUILD_READ   => [self::PERM_CI_BUILD_RECORDS_PULL],
     ];
 
     /**
