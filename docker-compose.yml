@@ -19,7 +19,10 @@ services:
       # HTTPS certs (uncomment to enable; private key is mounted, never baked into the image)
       #- ./config/certs:/etc/nginx/certs:ro
       #- ./config/data:/app/config/data
-      - ./applog:/data/logs/ci-platform
+      - ./logs/ci-platform:/data/logs/ci-platform
+      # PHP 引擎层原生错误日志（php-error.log，fpm error_log + catch_workers_output）。
+      # 与应用业务日志 app-*.log 分开；若无需在宿主机留存，可删除此行。
+      - ./logs/php_log:/data/logs/php_log
       # 运行时数据持久化到宿主机（分类挂载，互不覆盖）：
       #   /data/db    — SQLite（DB_PATH=/data/db/data.db）。MySQL 模式几乎不用此目录。
       #   /data/cache — OIDC 私钥 + GitLab ID 缓存。不挂载则重建容器会换 kid/JWKS，下游 SSO 全挂。

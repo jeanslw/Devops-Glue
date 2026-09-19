@@ -3,7 +3,7 @@ namespace App\Config;
 
 class AppConfig
 {
-    public const APP_VERSION = '2.8.2';
+    public const APP_VERSION = '2.8.3';
 
 
     // ── 表名常量 ──
@@ -21,6 +21,7 @@ class AppConfig
     public const TABLE_IMPLIED_RULES     = 'implied_rules';
     public const TABLE_API_TOKENS        = 'api_tokens';
     public const TABLE_USER_IDENTITIES   = 'user_identities'; // 身份源关联表（v2.6.3 引入，支持 ldap/local 等多登录方式）
+    public const TABLE_OPERATION_LOGS    = 'ci_operation_logs'; // 后台操作审计日志
 
     // ── 角色常量 ──
     public const ROLE_SUPER_ADMIN = 'super_admin';
@@ -53,6 +54,10 @@ class AppConfig
     public const PERM_CI_BUILD_RECORDS      = 'ci.build-records';
     public const PERM_CI_BUILD_RECORDS_PULL = 'ci.build-records.pull';
     public const PERM_CI_BUILD_RECORDS_PUSH = 'ci.build-records.push';
+    // 操作日志（后台审计，一级菜单）
+    public const PERM_CI_OPERATION_LOGS   = 'ci.operation-logs';
+    // 系统信息（DB schema 状态面板，一级菜单，仅 super_admin 可触发迁移）
+    public const PERM_CI_SYSTEM           = 'ci.system';
     // CD 权限（对应 CD 系统侧边栏菜单）
     public const PERM_CD_BUILD   = 'cd.build-manage';
     public const PERM_CD_DEPLOY  = 'cd.deploy-manage';
@@ -87,6 +92,8 @@ class AppConfig
         self::PERM_CI_BUILD_RECORDS      => ['name' => 'Build Records', 'parent' => null],
         self::PERM_CI_BUILD_RECORDS_PULL => ['name' => 'Pull Records', 'parent' => self::PERM_CI_BUILD_RECORDS],
         self::PERM_CI_BUILD_RECORDS_PUSH => ['name' => 'Push Records', 'parent' => self::PERM_CI_BUILD_RECORDS],
+        self::PERM_CI_OPERATION_LOGS     => ['name' => 'Operation Logs', 'parent' => null],
+        self::PERM_CI_SYSTEM             => ['name' => 'System Info', 'parent' => null],
         // CD 一级菜单（8 个）
         self::PERM_CD_BUILD              => ['name' => 'Build Management', 'parent' => null],
         self::PERM_CD_DEPLOY             => ['name' => 'Deploy Management', 'parent' => null],
@@ -159,6 +166,7 @@ class AppConfig
             self::PERM_CI_BUILD_RECORDS,      // 构建记录一级菜单
             self::PERM_CI_BUILD_RECORDS_PULL, // 拉取式记录（只读）
             self::PERM_CI_BUILD_RECORDS_PUSH, // 自定义推送记录（只读）
+            self::PERM_CI_OPERATION_LOGS,    // 操作日志（只读）
             // CD 侧只读。刻意不含 cd.image-registry——它在 CD 同时 gate 删除 tag 等写操作。
             self::PERM_CD_BUILD,            // CI 构建结果
             self::PERM_CD_HISTORY,          // 部署记录
@@ -428,6 +436,12 @@ class AppConfig
     public function getLogPath(): string
     {
         return $this->config['app']['log_path'] ?? '';
+    }
+
+    // 是否调试模式（对应 APP_DEBUG）。true 时输出全量日志（含关键操作成功/失败），false 只留 error
+    public function isDebug(): bool
+    {
+        return !empty($this->config['app']['debug']);
     }
 
     // API 外部访问地址（用于 Swagger UI / OpenAPI，不设返回空字符串由调用方自动推导）

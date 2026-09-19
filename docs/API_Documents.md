@@ -176,8 +176,8 @@ Returns configured and unconfigured Git platform list.
 | `/api/build/{path}/variables` | GET/POST | Build parameters / CI variables (raw: param name array; json: full metadata) |
 | `/api/build/{path}/branches` | GET/POST | Git branch list (plain string array) |
 | `/api/build/{path}/pipelines` | GET/POST | Pipeline list (`?list=id\|build\|time\|success`) |
-| `/api/build/{path}/pipelines/{id}` | GET/POST | Pipeline detail + Jobs (each job has `id` + `log_url`) — Gitea-specific |
-| `/api/build/{path}/pipelines/{id}/logs` | GET/POST | Pipeline logs (text/plain; `id`=run id, returns all job logs combined) — Gitea-specific |
+| `/api/build/{path}/pipelines/{id}` | GET/POST | Pipeline detail + Jobs (each job has `id` + `log_url`) — Gitea CI only |
+| `/api/build/{path}/pipelines/{id}/logs` | GET/POST | Pipeline logs (text/plain; `id`=run id, returns all job logs combined) — Gitea CI only |
 | `/api/build/{path}/logs/{id}` | GET/POST | Build logs (text/plain; `id`=job id from `jobs[].id` of `/pipelines/{runId}`, not the run id) |
 | `/api/build/{path}/pipelines/{id}/retry` | POST | Retry pipeline (GitLab CI only) |
 | `/api/build/{path}/pipelines/{id}/cancel` | POST | Cancel pipeline (GitLab CI only) |
@@ -316,6 +316,10 @@ Token expires in 24 hours. `super_admin` role returns `"*"` for permissions.
 | `/api/admin/security_checks` | GET | Security scan audit records (supports `?project=&check_type=&state=&writeback=&exclude=&page=&per_page=`) |
 | `/api/admin/platform_versions` | GET/PUT | Platform API version config |
 | `/api/admin/build_mode` | GET/PUT | Build mode (enabled CI source set, e.g. jenkins,gitlab_ci,gitea_ci) |
+| `/api/admin/platform_config` | GET | Platform access status (masked — only returns each platform's `configured` boolean, never URL/account/credential; requires `ci.system`) |
+| `/api/admin/system_info` | GET | Database schema status (driver / schema version / is_current / PHP version / core table presence; requires `ci.system`) |
+| `/api/admin/migrate` | POST | Manually trigger database migration (create missing tables + seed permissions + mark schema current; super_admin only) |
+| `/api/admin/operation_logs` | GET | Operation audit log (filter by `?username=&action=&result=&operator_type=&date_from=&date_to=&page=&per_page=`; requires `ci.operation-logs`) |
 | `/api/admin/users` | GET | User list (admin sees all; non-admin cannot see admin users) |
 | `/api/admin/users` | POST | Create user (body: `username`, `password`, `role`, `systems`) |
 | `/api/admin/users/{username}` | PUT | Update user (body: `password` and/or `role`) |

@@ -41,6 +41,23 @@ function handle401(res) {
     return false;
 }
 
+// ═══════════ 主题（深色模式，localStorage 持久化）═══════════
+function applyTheme() {
+    const saved = localStorage.getItem('theme') || 'light';
+    document.documentElement.setAttribute('data-theme', saved);
+    const el = document.getElementById('theme-toggle');
+    if (el) el.textContent = saved === 'dark' ? '☀️' : '🌙';
+}
+function toggleTheme() {
+    const cur = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+    const next = cur === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('theme', next);
+    const el = document.getElementById('theme-toggle');
+    if (el) el.textContent = next === 'dark' ? '☀️' : '🌙';
+}
+applyTheme();
+
 function goToDocs() {
     // 会话 token 不入 URL（避免写入服务器 access log / 浏览器历史）；
     // /api/docs 页面 JS 会从同源 sessionStorage 读取同一份 token。
@@ -88,6 +105,8 @@ function doLogout() {
     applyRoleMenuVisibility();
     applyPermMenuVisibility();
     applyApiTokenMenuVisibility();
+    applyOperationLogMenuVisibility();
+    applySystemInfoMenuVisibility();
 })();
 
 /** 根据权限控制用户管理分组及子菜单显隐 */
@@ -128,6 +147,18 @@ function applyPermMenuVisibility() {
 function applyApiTokenMenuVisibility() {
     var item = document.getElementById('menu-api-tokens');
     if (item) item.style.display = (currentUserRole === 'super_admin') ? '' : 'none';
+}
+
+/** 操作日志菜单：按 ci.operation-logs 权限显隐 */
+function applyOperationLogMenuVisibility() {
+    var item = document.getElementById('menu-operation-logs');
+    if (item) item.style.display = hasPermission('ci.operation-logs') ? '' : 'none';
+}
+
+/** 系统设置菜单：按 ci.system 权限显隐 */
+function applySystemInfoMenuVisibility() {
+    var item = document.getElementById('menu-group-settings');
+    if (item) item.style.display = hasPermission('ci.system') ? '' : 'none';
 }
 
 let _discovering = false;
@@ -191,6 +222,8 @@ async function doLogin() {
             applyRoleMenuVisibility();
             applyPermMenuVisibility();
             applyApiTokenMenuVisibility();
+            applyOperationLogMenuVisibility();
+            applySystemInfoMenuVisibility();
             document.getElementById('login-page').style.display = 'none';
             document.getElementById('app-page').style.display = 'block';
             document.getElementById('top-user').textContent = '👤 ' + currentUserName;
@@ -240,7 +273,7 @@ function switchTab(name) {
             }
         }
     }
-    ['monitor','mapping','security','versions','mode','pull-records','push-records','users','roles','password','perm-list','perm-register','implied-rules','api-tokens'].forEach(t => {
+    ['monitor','mapping','security','versions','mode','pull-records','push-records','users','roles','password','perm-list','perm-register','implied-rules','api-tokens','operation-logs','platform-config','system-info'].forEach(t => {
         var tabEl = document.getElementById('tab-' + t);
         if (tabEl) tabEl.style.display = name === t ? 'block' : 'none';
     });
@@ -257,6 +290,9 @@ function switchTab(name) {
     if (name === 'perm-register') { }
     if (name === 'implied-rules') loadImpliedRules();
     if (name === 'api-tokens') loadApiTokens();
+    if (name === 'operation-logs') loadOperationLogs(1);
+    if (name === 'platform-config') loadPlatformConfig();
+    if (name === 'system-info') loadSystemInfo();
     // 小屏抽屉：选中菜单项后自动收起
     var sb = document.querySelector('.sidebar');
     if (sb && sb.classList.contains('open')) toggleSidebar();
@@ -274,6 +310,11 @@ function togglePermMenu() {
 
 function toggleBuildRecordsMenu() {
     var group = document.getElementById('menu-group-build-records');
+    if (group) group.classList.toggle('expanded');
+}
+
+function toggleSettingsMenu() {
+    var group = document.getElementById('menu-group-settings');
     if (group) group.classList.toggle('expanded');
 }
 
@@ -975,23 +1016,11 @@ function renderBuildModeCheckboxes(availability, selected) {
         const checked = selected.includes(bp) ? ' checked' : '';
         html += '<label class="bm-check"><input type="checkbox" class="bm-item" value="' + bp + '"' + checked + ' onchange="onBuildModesChange()"><span>' + meta.icon + ' ' + esc(meta.label) + '</span></label>';
     });
-    // 全选放在最下面
-    html += '<label class="bm-check"><input type="checkbox" id="bm-all" onchange="onBuildModeSelectAll()"><span>' + __.t('js.mode_select_all') + '</span></label>';
     box.innerHTML = html;
-    updateSelectAllState();
 }
 
 function getCheckedBuildModes() {
     return Array.from(document.querySelectorAll('#build-mode-checkboxes .bm-item:checked')).map(cb => cb.value);
-}
-
-function updateSelectAllState() {
-    const all = document.getElementById('bm-all');
-    const items = Array.from(document.querySelectorAll('#build-mode-checkboxes .bm-item'));
-    if (!all) return;
-    const checked = items.filter(cb => cb.checked).length;
-    all.checked = items.length > 0 && checked === items.length;
-    all.indeterminate = checked > 0 && checked < items.length;
 }
 
 async function loadSettings() {
@@ -1125,17 +1154,9 @@ async function loadSettings() {
 let currentCpEnabled = false;
 let currentStaleCleanupEnabled = false;
 
-async function onBuildModeSelectAll() {
-    const all = document.getElementById('bm-all');
-    document.querySelectorAll('#build-mode-checkboxes .bm-item').forEach(cb => { cb.checked = all.checked; });
-    updateSelectAllState();
-    await onBuildModesChange();
-}
-
 async function onBuildModesChange() {
     const newModes = getCheckedBuildModes();
     const oldModes = currentBuildModes.slice();
-    updateSelectAllState();
 
     if (arraysEqual(newModes, oldModes)) return;
 
@@ -2895,6 +2916,226 @@ async function loadApiTokens() {
     loading.style.display = 'none';
 }
 
+// ═══════════ 操作日志 ═══════════
+let oplogPage = 1;
+
+async function loadOperationLogs(page) {
+    if (typeof page === 'number') oplogPage = page;
+    const loading = document.getElementById('oplog-loading');
+    const wrap = document.getElementById('oplog-table-wrap');
+    const empty = document.getElementById('oplog-empty');
+    const pager = document.getElementById('oplog-pagination');
+    loading.style.display = 'block'; wrap.style.display = 'none'; empty.style.display = 'none'; pager.style.display = 'none';
+    const q = new URLSearchParams();
+    const username = document.getElementById('oplog-username').value.trim();
+    const action = document.getElementById('oplog-action').value.trim();
+    const result = document.getElementById('oplog-result').value;
+    const operatorType = document.getElementById('oplog-operator-type').value;
+    const dateFrom = document.getElementById('oplog-date-from').value;
+    const dateTo = document.getElementById('oplog-date-to').value;
+    if (username) q.set('username', username);
+    if (action) q.set('action', action);
+    if (result) q.set('result', result);
+    if (operatorType) q.set('operator_type', operatorType);
+    if (dateFrom) q.set('date_from', dateFrom);
+    if (dateTo) q.set('date_to', dateTo);
+    q.set('page', oplogPage);
+    q.set('per_page', 20);
+    try {
+        const res = await fetch('/api/admin/operation_logs?' + q.toString(), { headers: authHeaders() });
+        if (handle401(res)) return;
+        const data = await res.json();
+        if (!res.ok) { toast(data.message || __.t('js.operation_failed'), false, true); return; }
+        const rows = data.items || [];
+        const tbody = document.getElementById('oplog-tbody');
+        if (!rows.length) {
+            empty.style.display = 'block';
+        } else {
+            tbody.innerHTML = rows.map(function(r) {
+                let detail = '';
+                if (r.detail && typeof r.detail === 'object') {
+                    detail = Object.keys(r.detail).map(function(k) {
+                        const v = r.detail[k];
+                        const sv = (typeof v === 'object') ? JSON.stringify(v) : String(v);
+                        return esc(k) + '=' + esc(sv);
+                    }).join(', ');
+                } else if (r.detail) {
+                    detail = esc(String(r.detail));
+                }
+                const resultHtml = r.result === 'success'
+                    ? '<span style="color:#16a34a;">✅ ' + esc(__.t('oplog.success')) + '</span>'
+                    : '<span style="color:#dc2626;">❌ ' + esc(__.t('oplog.failure')) + '</span>';
+                const opBadge = r.operator_type === 'api_token'
+                    ? ' <span class="badge badge-default" title="' + esc(__.t('oplog.api_token')) + '">🔑 ' + esc(__.t('oplog.api_token')) + '</span>'
+                    : '';
+                const time = (r.created_at || '').replace('T', ' ').substring(0, 19);
+                return '<tr>' +
+                    '<td style="font-size:12px;white-space:nowrap;color:#6b7280;">' + esc(time) + '</td>' +
+                    '<td>' + esc(r.username) + opBadge + '</td>' +
+                    '<td>' + esc(oplogActionLabel(r.action)) + '</td>' +
+                    '<td>' + esc(r.target || '') + '</td>' +
+                    '<td style="font-size:12px;max-width:320px;overflow-wrap:anywhere;">' + detail + '</td>' +
+                    '<td style="font-size:12px;color:#6b7280;">' + esc(r.ip || '') + '</td>' +
+                    '<td>' + resultHtml + '</td>' +
+                '</tr>';
+            }).join('');
+            wrap.style.display = 'block';
+            renderOplogPagination(data);
+        }
+    } catch(e) {
+        toast(__.t('js.network_error') + ': ' + e.message, false, true);
+    }
+    loading.style.display = 'none';
+}
+
+function resetOperationLogs() {
+    document.getElementById('oplog-username').value = '';
+    document.getElementById('oplog-action').value = '';
+    document.getElementById('oplog-result').value = '';
+    document.getElementById('oplog-operator-type').value = '';
+    document.getElementById('oplog-date-from').value = '';
+    document.getElementById('oplog-date-to').value = '';
+    loadOperationLogs(1);
+}
+
+function oplogActionLabel(action) {
+    const key = 'oplog.act_' + action;
+    const label = __.t(key);
+    return label === key ? action : label;
+}
+
+function renderOplogPagination(data) {
+    const pager = document.getElementById('oplog-pagination');
+    if (data.total_pages <= 1) { pager.style.display = 'none'; return; }
+    const page = data.page, total = data.total_pages, totalItems = data.total;
+    let pag = '<span style="color:#6b7280;">' + __.t('js.total_items', {total: totalItems}) + '</span>';
+    pag += '<button class="btn btn-sm" onclick="loadOperationLogs(1)" ' + (page<=1?'disabled':'') + '>« ' + __.t('js.page_first') + '</button>';
+    pag += '<button class="btn btn-sm" onclick="loadOperationLogs(Math.max(1,' + (page-1) + '))" ' + (page<=1?'disabled':'') + '>‹ ' + __.t('js.page_prev') + '</button>';
+    pag += '<span style="color:#374151;font-weight:600;">' + page + ' / ' + total + '</span>';
+    pag += '<button class="btn btn-sm" onclick="loadOperationLogs(Math.min(' + total + ',' + (page+1) + '))" ' + (page>=total?'disabled':'') + '>' + __.t('js.page_next') + ' ›</button>';
+    pag += '<button class="btn btn-sm" onclick="loadOperationLogs(' + total + ')" ' + (page>=total?'disabled':'') + '>' + __.t('js.page_last') + ' »</button>';
+    pager.innerHTML = pag;
+    pager.style.display = 'flex';
+}
+
+// ═══════════ 系统信息 ═══════════
+async function loadSystemInfo() {
+    const loading = document.getElementById('sys-loading');
+    const body = document.getElementById('sys-body');
+    loading.style.display = '';
+    body.style.display = 'none';
+    try {
+        const res = await fetch('/api/admin/system_info', { headers: authHeaders() });
+        if (handle401(res)) return;
+        const d = await res.json();
+        if (!res.ok) { toast(d.message || 'load failed', false); loading.style.display = 'none'; return; }
+        document.getElementById('sys-driver').textContent = d.driver || '-';
+        document.getElementById('sys-schema-version').textContent = d.schema_version || __.t('sys.none');
+        document.getElementById('sys-php-version').textContent = d.php_version || '—';
+        const cur = document.getElementById('sys-is-current');
+        cur.textContent = d.is_current ? __.t('sys.current') : __.t('sys.outdated');
+        cur.style.color = d.is_current ? '#16a34a' : '#dc2626';
+        const tb = document.getElementById('sys-tables');
+        tb.innerHTML = '';
+        const tables = d.tables || {};
+        Object.keys(tables).forEach(function(name) {
+            const ok = tables[name];
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px;border-bottom:1px solid #f3f4f6;';
+            row.innerHTML = '<span style="width:10px;height:10px;border-radius:50%;background:' + (ok ? '#16a34a' : '#dc2626') + ';"></span>'
+                + esc(name)
+                + '<span style="margin-left:auto;color:' + (ok ? '#16a34a' : '#dc2626') + ';">' + (ok ? '✓' : '✗') + '</span>';
+            tb.appendChild(row);
+        });
+        const btn = document.getElementById('sys-migrate-btn');
+        if (btn) btn.style.display = (currentUserRole === 'super_admin') ? '' : 'none';
+        loading.style.display = 'none';
+        body.style.display = 'block';
+    } catch(e) {
+        toast(__.t('js.network_error') + ': ' + e.message, false);
+        loading.style.display = 'none';
+    }
+}
+
+async function doMigrate() {
+    if (!await confirmDialog({
+        title: __.t('common.confirm'),
+        message: __.t('sys.migrate_confirm'),
+        note: __.t('sys.migrate_note'),
+        confirmText: __.t('sys.migrate_btn')
+    })) return;
+    const st = document.getElementById('sys-migrate-status');
+    st.textContent = '⏳ …';
+    st.style.color = '#6b7280';
+    try {
+        const res = await fetch('/api/admin/migrate', { method: 'POST', headers: authHeaders() });
+        if (handle401(res)) return;
+        const d = await res.json();
+        if (res.ok) {
+            st.textContent = '✅ ' + __.t('sys.migrated');
+            st.style.color = '#16a34a';
+            toast(__.t('sys.migrated'), true);
+            loadSystemInfo();
+        } else {
+            st.textContent = '❌ ' + (d.message || __.t('sys.migrate_failed'));
+            st.style.color = '#dc2626';
+            toast(d.message || __.t('sys.migrate_failed'), false);
+        }
+    } catch(e) {
+        st.textContent = '❌ ' + e.message;
+        st.style.color = '#dc2626';
+        toast(__.t('js.network_error') + ': ' + e.message, false);
+    }
+}
+
+/** 平台配置 Tab：只读展示各平台接入状态 + stale 清理开关（开关写入复用 loadSettings 的模块态） */
+async function loadPlatformConfig() {
+    const loading = document.getElementById('pc-loading');
+    const body = document.getElementById('pc-body');
+    loading.style.display = '';
+    body.style.display = 'none';
+    try {
+        // 先同步 build_mode 状态（含 stale 开关值 + currentBuildModes/currentCpEnabled/currentStaleCleanupEnabled 模块变量）
+        await loadSettings();
+        const res = await fetch('/api/admin/platform_config', { headers: authHeaders() });
+        if (handle401(res)) return;
+        const d = await res.json();
+        if (!res.ok) { toast(d.message || 'load failed', false); loading.style.display = 'none'; return; }
+        const wrap = document.getElementById('pc-platforms');
+        wrap.innerHTML = '';
+        const platforms = d.platforms || {};
+        const defs = [
+            ['jenkins', '🤖 Jenkins'],
+            ['gitlab', '🦊 GitLab'],
+            ['github', '🐙 GitHub'],
+            ['gitee', '🐈 Gitee'],
+            ['gitea', '🦎 Gitea'],
+            ['harbor', '🐳 Harbor'],
+        ];
+        defs.forEach(function(def) {
+            const label = def[1];
+            const p = platforms[def[0]] || {};
+            const ok = !!p.configured;
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 0;font-size:13px;border-bottom:1px solid #f3f4f6;flex-wrap:wrap;';
+            row.innerHTML = '<span style="width:10px;height:10px;border-radius:50%;background:' + (ok ? '#16a34a' : '#dc2626') + ';flex-shrink:0;"></span>'
+                + '<span style="font-weight:600;min-width:120px;">' + esc(label) + '</span>'
+                + '<span style="margin-left:auto;color:' + (ok ? '#16a34a' : '#dc2626') + ';font-weight:600;">' + (ok ? '✓ ' : '✗ ') + (ok ? __.t('sys.configured') : __.t('sys.not_configured')) + '</span>';
+            wrap.appendChild(row);
+        });
+        loading.style.display = 'none';
+        body.style.display = 'block';
+    } catch(e) {
+        toast(__.t('js.network_error') + ': ' + e.message, false);
+        loading.style.display = 'none';
+    }
+}
+
+function toggleSysTables() {
+    const tb = document.getElementById('sys-tables');
+    if (tb) tb.style.display = tb.style.display === 'none' ? 'block' : 'none';
+}
+
 // ═══════════ Helpers ═══════════
 function esc(s) {
     if (!s) return '';
@@ -2954,6 +3195,8 @@ document.addEventListener('i18n-changed', function() {
         else if (tabName === 'mode') loadSettings();
         else if (tabName === 'roles') loadRoleList();
         else if (tabName === 'api-tokens') refreshApiTokenView();
+        else if (tabName === 'platform-config') loadPlatformConfig();
+        else if (tabName === 'system-info') loadSystemInfo();
     }
 });
 if (token) {

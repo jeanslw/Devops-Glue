@@ -12,7 +12,9 @@ use App\Service\MappingManager;
 use App\Service\PipelineTagService;
 use App\Service\PipelineArtifactService;
 use App\Service\PipelineIdentity;
+use App\Service\OperationLogRepository;
 use App\Service\Git\ProviderRegistry as GitProviderRegistry;
+use App\Helper\ClientIp;
 
 class BuildController extends BaseController
 {
@@ -24,6 +26,7 @@ class BuildController extends BaseController
     private ?HarborService $harbor;
     private ?GitProviderRegistry $gitRegistry;
     private \PDO $pdo;
+    private ?OperationLogRepository $operationLog = null;
 
     public function __construct(I18nService $i18n, BuildProviderRegistry $registry, AppConfig $config, MappingManager $mapping, \PDO $pdo, PipelineTagService $pipelineTags, PipelineArtifactService $artifacts, ?HarborService $harbor = null, ?GitProviderRegistry $gitRegistry = null)
     {
@@ -36,6 +39,26 @@ class BuildController extends BaseController
         $this->artifacts    = $artifacts;
         $this->harbor       = $harbor;
         $this->gitRegistry  = $gitRegistry;
+    }
+
+    private function opLog(): OperationLogRepository
+    {
+        if ($this->operationLog === null) {
+            $this->operationLog = new OperationLogRepository($this->pdo);
+        }
+        return $this->operationLog;
+    }
+
+    /** 客户端 IP（与 AdminController 一致：TRUSTED_PROXY_HOPS 门控） */
+    private function clientIp(Request $request): string
+    {
+        return ClientIp::resolve($request->getServerParams(), $this->config->getTrustedProxyHops());
+    }
+
+    /** 操作人类型：API token（服务账号）与后台登录用户区分 */
+    private function operatorType(): string
+    {
+        return $this->currentRole === AppConfig::ROLE_API_TOKEN ? 'api_token' : 'admin';
     }
 
     private function resolve(string $projectPath): array
@@ -435,6 +458,7 @@ class BuildController extends BaseController
             return $this->jsonError($response, 'custom_push 不支持主动触发，请通过 POST /api/build/{path}/report 上报构建结果', 400);
         }
         $result = $p->trigger($projectId, $ref, $vars);
+        $this->opLog()->record($this->currentUser, 'build_trigger', $path, ['provider' => $provider, 'ref' => $ref], $this->clientIp($request), 'success', $this->operatorType());
         return $this->output($response, [
             'build_provider' => $provider,
             'project_id'     => $projectId,
@@ -459,6 +483,7 @@ class BuildController extends BaseController
 
         $p      = $this->registry->create($provider);
         $result = $p->retry($projectId, $pipelineId);
+        $this->opLog()->record($this->currentUser, 'build_retry', $path, ['provider' => $provider, 'pipeline_id' => $pipelineId], $this->clientIp($request), 'success', $this->operatorType());
         return $this->output($response, [
             'build_provider' => $provider,
             'project_id'     => $projectId,
@@ -483,6 +508,7 @@ class BuildController extends BaseController
 
         $p      = $this->registry->create($provider);
         $result = $p->cancel($projectId, $pipelineId);
+        $this->opLog()->record($this->currentUser, 'build_cancel', $path, ['provider' => $provider, 'pipeline_id' => $pipelineId], $this->clientIp($request), 'success', $this->operatorType());
         return $this->output($response, [
             'build_provider' => $provider,
             'project_id'     => $projectId,

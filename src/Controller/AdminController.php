@@ -12,6 +12,7 @@ use App\Service\AutoDiscover;
 use App\Service\HarborService;
 use App\Service\I18nService;
 use App\Service\JenkinsService;
+use App\Service\OperationLogRepository;
 use App\Service\TokenService;
 use App\Helper\ClientIp;
 
@@ -26,6 +27,7 @@ class AdminController extends BaseController
     private AdminUserRepository $adminUserRepository;
     private ?HarborService $harbor;
     private ?JenkinsService $jenkins = null;
+    private ?OperationLogRepository $operationLog = null;
 
     public function __construct(
         I18nService $i18n,
@@ -49,6 +51,15 @@ class AdminController extends BaseController
         $this->adminUserRepository = $adminUserRepository;
         $this->harbor             = $harbor;
         $this->jenkins            = $jenkins;
+    }
+
+    /** 操作日志仓储（懒加载，写路径不阻塞主流程） */
+    private function opLog(): OperationLogRepository
+    {
+        if ($this->operationLog === null) {
+            $this->operationLog = new OperationLogRepository($this->pdo);
+        }
+        return $this->operationLog;
     }
 
     /** POST /api/admin/discover — 自动扫描并保存未入库的项目 */
@@ -77,6 +88,7 @@ class AdminController extends BaseController
             if ($saved > 0) {
                 $this->invalidateTopologyCache();
             }
+            $this->opLog()->record($this->currentUser, 'auto_discover', '', ['found' => count($found), 'saved' => $saved], $this->clientIp($request), 'success');
             return $this->output($response, [
                 'found' => count($found),
                 'saved' => $saved,
@@ -194,12 +206,14 @@ class AdminController extends BaseController
         // 登录失败限流：连续失败锁定（防暴力破解）
         $clientIp = $this->clientIp($request);
         if ($this->adminAuthService->isLoginLocked($clientIp, $user)) {
+            $this->opLog()->record($user, 'login_locked', '', [], $clientIp, 'failure');
             return $this->jsonError($response, 'auth.login_locked', 429);
         }
 
         $result = $this->adminAuthService->authenticate($user, $pass, $this->config->getSystemType());
         if (!$result['success']) {
             $this->adminAuthService->recordLoginFailure($clientIp, $user);
+            $this->opLog()->record($user, 'login_failed', '', [], $clientIp, 'failure');
             return $this->jsonError($response, $result['errorKey'], 401);
         }
         $this->adminAuthService->clearLoginFailure($clientIp, $user);
@@ -224,6 +238,8 @@ class AdminController extends BaseController
             return $this->jsonError($response, 'auth.token_store_failed', 500);
         }
         $perms = $this->tokenService?->loadPermissions($loginRole) ?? [];
+
+        $this->opLog()->record($user, 'login', '', [], $clientIp, 'success');
 
         return $this->output($response, [
             'token'       => $token,
@@ -250,10 +266,31 @@ class AdminController extends BaseController
     public function logout(Request $request, Response $response): Response
     {
         $header = $request->getHeaderLine('Authorization');
+        $username = '';
         if (preg_match('/^Bearer\s+(.+)$/i', $header, $m)) {
-            $this->tokenService?->revoke($m[1]);
+            $token = $m[1];
+            $username = $this->tokenUserFromCache($token);
+            $this->tokenService?->revoke($token);
+        }
+        if ($username !== '') {
+            $this->opLog()->record($username, 'logout', '', [], $this->clientIp($request), 'success');
         }
         return $this->output($response, ['message' => 'logged_out'], $request);
+    }
+
+    /** 从 cache 表反查 token 对应的用户名（login 时存的是 "user|role"） */
+    private function tokenUserFromCache(string $token): string
+    {
+        try {
+            $stmt = $this->pdo->prepare("SELECT value FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key = ?");
+            $stmt->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . $token]);
+            $value = $stmt->fetchColumn();
+            if ($value !== false && $value !== '') {
+                return (string)explode('|', $value, 2)[0];
+            }
+        } catch (\Throwable $e) {
+        }
+        return '';
     }
 
     /** PUT /api/admin/password — 修改当前登录用户的密码 */
@@ -280,6 +317,7 @@ class AdminController extends BaseController
             }
 
             if (!$this->adminAuthService->verifyCurrentPassword($username, $oldPass)) {
+                $this->opLog()->record($username, 'change_password', $username, [], $this->clientIp($request), 'failure');
                 return $this->jsonError($response, 'auth.old_password_wrong', 403);
             }
 
@@ -297,6 +335,7 @@ class AdminController extends BaseController
                 \App\Helper\Log::exception($e);
             }
 
+            $this->opLog()->record($username, 'change_password', $username, [], $this->clientIp($request), 'success');
             return $this->output($response, ['success' => true, 'message' => $this->__('auth.password_updated')], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.modify_failed') . ': ' . $e->getMessage(), 500);
@@ -399,6 +438,7 @@ class AdminController extends BaseController
         $this->config->saveJobGitMap($maps);
         $this->invalidateTopologyCache();
 
+        $this->opLog()->record($this->currentUser, 'create_mapping', $jobName, [], $this->clientIp($request), 'success');
         return $this->output($response, ['success' => true, 'entry' => $entry], $request);
     }
 
@@ -437,6 +477,7 @@ class AdminController extends BaseController
 
         $this->config->saveJobGitMap($maps);
         $this->invalidateTopologyCache();
+        $this->opLog()->record($this->currentUser, 'update_mapping', $oldName, ['job_name' => $updatedEntry['job_name'] ?? $oldName], $this->clientIp($request), 'success');
         return $this->output($response, ['success' => true, 'entry' => $updatedEntry], $request);
     }
 
@@ -470,6 +511,7 @@ class AdminController extends BaseController
 
         $this->config->deleteJobGitMap($jobName);
         $this->invalidateTopologyCache();
+        $this->opLog()->record($this->currentUser, 'delete_mapping', $jobName, [], $this->clientIp($request), 'success');
         return $this->output($response, ['success' => true], $request);
     }
 
@@ -538,6 +580,7 @@ class AdminController extends BaseController
         }
 
         $this->config->savePlatformApiVersions($versions);
+        $this->opLog()->record($this->currentUser, 'update_platform_version', '', ['versions' => $versions], $this->clientIp($request), 'success');
         return $this->output($response, ['success' => true, 'changed' => true, 'versions' => $this->config->getPlatformApiVersions()], $request);
     }
 
@@ -669,6 +712,7 @@ class AdminController extends BaseController
                 }
             }
 
+            $this->opLog()->record($this->currentUser, 'update_build_mode', '', ['modes' => $modes, 'custom_push_enabled' => $cpEnabled, 'stale_tag_cleanup_enabled' => $staleCleanup], $this->clientIp($request), 'success');
             return $this->output($response, ['success' => true, 'modes' => $modes, 'custom_push_enabled' => $cpEnabled, 'stale_tag_cleanup_enabled' => $staleCleanup], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.save_failed') . ': ' . $e->getMessage(), 500);
@@ -826,6 +870,7 @@ class AdminController extends BaseController
             $hash = password_hash($password, PASSWORD_BCRYPT);
             $this->adminUserRepository->createUser($username, $hash, $role, $systems, $email);
 
+            $this->opLog()->record($this->currentUser, 'create_user', $username, ['role' => $role, 'systems' => $systems], $this->clientIp($request), 'success');
             return $this->output($response, ['success' => true, 'username' => $username], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.save_failed') . ': ' . $e->getMessage(), 500);
@@ -911,6 +956,7 @@ class AdminController extends BaseController
             }
 
             $this->adminUserRepository->updateUser($targetUser, $passwordHash, $role, $email);
+            $this->opLog()->record($this->currentUser, 'update_user', $targetUser, ['role' => $role, 'password_changed' => $passwordHash !== null], $this->clientIp($request), 'success');
             return $this->output($response, ['success' => true], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.modify_failed') . ': ' . $e->getMessage(), 500);
@@ -957,6 +1003,7 @@ class AdminController extends BaseController
 
             $this->adminUserRepository->updatePassword($targetUser, password_hash($newPass, PASSWORD_BCRYPT));
 
+            $this->opLog()->record($this->currentUser, 'reset_user_password', $targetUser, [], $this->clientIp($request), 'success');
             return $this->output($response, ['success' => true, 'username' => $targetUser], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.modify_failed') . ': ' . $e->getMessage(), 500);
@@ -1005,6 +1052,7 @@ class AdminController extends BaseController
             }
 
             $this->adminUserRepository->setStatus($targetUser, $enabled ? 1 : 0);
+            $this->opLog()->record($this->currentUser, 'set_user_status', $targetUser, ['enabled' => $enabled], $this->clientIp($request), 'success');
             return $this->output($response, ['success' => true, 'enabled' => $enabled], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.modify_failed') . ': ' . $e->getMessage(), 500);
@@ -1047,6 +1095,7 @@ class AdminController extends BaseController
             }
 
             $this->adminUserRepository->deleteUser($targetUser);
+            $this->opLog()->record($this->currentUser, 'delete_user', $targetUser, [], $this->clientIp($request), 'success');
             return $this->output($response, ['success' => true], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.modify_failed') . ': ' . $e->getMessage(), 500);
@@ -1113,6 +1162,7 @@ class AdminController extends BaseController
                     }
                 }
             }
+            $this->opLog()->record($this->currentUser, 'create_role', $name, ['permissions' => $perms], $this->clientIp($request), 'success');
             return $this->output($response, ['success' => true, 'id' => (int)$roleId, 'name' => $name], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.save_failed') . ': ' . $e->getMessage(), 500);
@@ -1194,6 +1244,7 @@ class AdminController extends BaseController
                 }
             }
 
+            $this->opLog()->record($this->currentUser, 'update_role', (string)$r['name'], ['new_name' => $name !== '' ? $name : $r['name'], 'permissions' => is_array($perms) ? $perms : null], $this->clientIp($request), 'success');
             return $this->output($response, ['success' => true], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.modify_failed') . ': ' . $e->getMessage(), 500);
@@ -1225,6 +1276,7 @@ class AdminController extends BaseController
             }
             $pdo->prepare("DELETE FROM " . AppConfig::TABLE_ROLE_PERMISSIONS . " WHERE role_id = ?")->execute([$roleId]);
             $pdo->prepare("DELETE FROM " . AppConfig::TABLE_ROLES . " WHERE id = ?")->execute([$roleId]);
+            $this->opLog()->record($this->currentUser, 'delete_role', (string)$r['name'], [], $this->clientIp($request), 'success');
             return $this->output($response, ['success' => true], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.modify_failed') . ': ' . $e->getMessage(), 500);
@@ -1302,6 +1354,7 @@ class AdminController extends BaseController
                 // 新注册：写入注册时间
                 $pdo->prepare("INSERT INTO " . AppConfig::TABLE_PERMISSIONS . " (perm_key, description, parent_key, created_at) VALUES (?, ?, ?, " . \App\Service\Database::sqlNow() . ")")->execute([$permKey, $desc, $parent]);
             }
+            $this->opLog()->record($this->currentUser, 'register_permission', $permKey, ['description' => $desc, 'parent_key' => $parent], $this->clientIp($request), 'success');
             return $this->output($response, ['perm_key' => $permKey, 'description' => $desc, 'parent_key' => $parent], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.save_failed') . ': ' . $e->getMessage(), 500);
@@ -1331,6 +1384,7 @@ class AdminController extends BaseController
             $pdo->prepare("DELETE FROM " . AppConfig::TABLE_PERMISSIONS . " WHERE perm_key = ?")->execute([$permKey]);
             $pdo->prepare("DELETE FROM " . AppConfig::TABLE_ROLE_PERMISSIONS . " WHERE perm_key = ?")->execute([$permKey]);
             $pdo->prepare("DELETE FROM " . AppConfig::TABLE_IMPLIED_RULES . " WHERE source_key = ? OR target_key = ?")->execute([$permKey, $permKey]);
+            $this->opLog()->record($this->currentUser, 'delete_permission', $permKey, [], $this->clientIp($request), 'success');
             return $this->output($response, ['deleted' => $permKey], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.save_failed') . ': ' . $e->getMessage(), 500);
@@ -1364,6 +1418,7 @@ class AdminController extends BaseController
             }
             $sql = \App\Service\Database::sqlUpsert(AppConfig::TABLE_IMPLIED_RULES, 'source_key, target_key', '?, ?');
             $pdo->prepare($sql)->execute([$src, $tgt]);
+            $this->opLog()->record($this->currentUser, 'create_implied_rule', $src . ' → ' . $tgt, [], $this->clientIp($request), 'success');
             return $this->output($response, ['source_key' => $src, 'target_key' => $tgt], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.save_failed') . ': ' . $e->getMessage(), 500);
@@ -1393,6 +1448,7 @@ class AdminController extends BaseController
         try {
             $pdo = $this->pdo;
             $pdo->prepare("DELETE FROM " . AppConfig::TABLE_IMPLIED_RULES . " WHERE source_key = ? AND target_key = ?")->execute([$src, $tgt]);
+            $this->opLog()->record($this->currentUser, 'delete_implied_rule', $src . ' → ' . $tgt, [], $this->clientIp($request), 'success');
             return $this->output($response, ['deleted' => ['source' => $src, 'target' => $tgt]], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.save_failed') . ': ' . $e->getMessage(), 500);
@@ -1482,6 +1538,7 @@ class AdminController extends BaseController
             return $this->jsonError($response, $this->__('build.query_failed') . ': ' . $e->getMessage(), 500);
         }
 
+        $this->opLog()->record($this->currentUser, 'create_api_token', $body['name'] ?? '', ['id' => $created['id'], 'scopes' => $body['scopes'] ?? []], $this->clientIp($request), 'success');
         $response->getBody()->write(json_encode(['id' => $created['id'], 'token' => $created['token']], JSON_UNESCAPED_UNICODE));
         return $response->withHeader('Content-Type', 'application/json');
     }
@@ -1497,6 +1554,7 @@ class AdminController extends BaseController
             return $this->jsonError($response, 'api_token.service_unavailable', 503);
         }
         $revoked = $this->apiTokenService->revoke((int)($args['id'] ?? 0));
+        $this->opLog()->record($this->currentUser, 'revoke_api_token', (string)($args['id'] ?? ''), [], $this->clientIp($request), $revoked ? 'success' : 'failure');
         $response->getBody()->write(json_encode(['ok' => $revoked], JSON_UNESCAPED_UNICODE));
         return $response->withHeader('Content-Type', 'application/json');
     }
@@ -1512,8 +1570,118 @@ class AdminController extends BaseController
             return $this->jsonError($response, 'api_token.service_unavailable', 503);
         }
         $deleted = $this->apiTokenService->delete((int)($args['id'] ?? 0));
+        $this->opLog()->record($this->currentUser, 'delete_api_token', (string)($args['id'] ?? ''), [], $this->clientIp($request), $deleted ? 'success' : 'failure');
         $response->getBody()->write(json_encode(['ok' => $deleted], JSON_UNESCAPED_UNICODE));
         return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    // ────────────────────────── 操作日志 ──────────────────────────
+
+    /**
+     * GET /api/admin/operation_logs — 后台操作审计日志列表（分页 + 筛选）
+     * 权限：ci.operation-logs
+     */
+    public function operationLogList(Request $request, Response $response): Response
+    {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_OPERATION_LOGS)) {
+            return $resp;
+        }
+
+        $params  = $request->getQueryParams();
+        $filters = [
+            'username'      => trim($params['username'] ?? ''),
+            'action'        => trim($params['action'] ?? ''),
+            'result'        => trim($params['result'] ?? ''),
+            'operator_type' => trim($params['operator_type'] ?? ''),
+            'date_from'     => trim($params['date_from'] ?? ''),
+            'date_to'       => trim($params['date_to'] ?? ''),
+        ];
+        $page    = max(1, (int)($params['page'] ?? 1));
+        $perPage = max(1, min(100, (int)($params['per_page'] ?? 20)));
+
+        try {
+            return $this->output($response, $this->opLog()->list($filters, $page, $perPage), $request);
+        } catch (\Exception $e) {
+            return $this->jsonError($response, $this->__('build.query_failed') . ': ' . $e->getMessage(), 500);
+        }
+    }
+
+    // ────────────────────────── 系统信息 ──────────────────────────
+
+    /**
+     * GET /api/admin/system_info — 数据库 schema 状态（驱动/版本/核心表存在性）
+     * 权限：ci.system
+     */
+    public function systemInfo(Request $request, Response $response): Response
+    {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_SYSTEM)) {
+            return $resp;
+        }
+        try {
+            $status = \App\Service\Database::schemaStatus();
+            $status['php_version'] = PHP_VERSION;
+            return $this->output($response, $status, $request);
+        } catch (\Exception $e) {
+            return $this->jsonError($response, $this->__('build.query_failed') . ': ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * GET /api/admin/platform_config — 各平台接入配置状态（只返回「已配置」布尔，绝不下发 URL/账号/凭证）
+     * 权限：ci.system
+     */
+    public function platformConfig(Request $request, Response $response): Response
+    {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_SYSTEM)) {
+            return $resp;
+        }
+        try {
+            $c = $this->config;
+            $jenkins = $c->getJenkinsConfig();
+            $gitlab  = $c->getGitlabConfig();
+            $github  = $c->getGithubConfig();
+            $gitee   = $c->getGiteeConfig();
+            $gitea   = $c->getGiteaConfig();
+            $harbor  = $c->getHarborConfig();
+
+            // 只算「已配置/未配置」，不回传任何连接信息
+            $git = fn(array $cfg) => !empty($cfg['base_url']) && !empty($cfg['token']);
+
+            return $this->output($response, [
+                'platforms' => [
+                    'jenkins'     => ['configured' => !empty($jenkins['url'])],
+                    'gitlab'      => ['configured' => $git($gitlab)],
+                    'github'      => ['configured' => $git($github)],
+                    'gitee'       => ['configured' => $git($gitee)],
+                    'gitea'       => ['configured' => $git($gitea)],
+                    'harbor'      => ['configured' => !empty($harbor['url']) && !empty($harbor['password'])],
+                ],
+            ], $request);
+        } catch (\Exception $e) {
+            return $this->jsonError($response, $this->__('build.query_failed') . ': ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * POST /api/admin/migrate — 手动触发数据库迁移（建缺失表 + 种子 + 标记 schema 当前）
+     * 权限：仅 super_admin（DDL 敏感操作）
+     */
+    public function migrateSchema(Request $request, Response $response): Response
+    {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requireSuperAdmin($response)) {
+            return $resp;
+        }
+        try {
+            $status = \App\Service\Database::migrateNow();
+            $this->opLog()->record($this->currentUser, 'migrate_schema', '', ['driver' => $status['driver'], 'app_version' => $status['app_version']], $this->clientIp($request), 'success');
+            return $this->output($response, ['success' => true, 'status' => $status], $request);
+        } catch (\Exception $e) {
+            return $this->jsonError($response, $this->__('sys.migrate_failed') . ': ' . $e->getMessage(), 500);
+        }
     }
 
     // ────────────────────────── helpers ──────────────────────────
@@ -1618,6 +1786,12 @@ class AdminController extends BaseController
         }
         if (!isset($entry['job_name'])) {
             $entry['job_name'] = '';
+        }
+        // 主键归一到 canonical 键：job_name/current_path 去除首尾空白，防脏入参（历史曾因首部空格导致 Jenkins 404）
+        foreach (['job_name', 'current_path', 'git_remote', 'harbor_repository', 'web_url'] as $trimKey) {
+            if (isset($entry[$trimKey]) && is_string($entry[$trimKey])) {
+                $entry[$trimKey] = trim($entry[$trimKey]);
+            }
         }
         // 未启用 Custom_Push 时，新增/编辑为 custom_push 的映射强制降为待定，避免「关了开关仍能新增一条 active」
         if (

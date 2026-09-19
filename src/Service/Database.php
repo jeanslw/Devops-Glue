@@ -71,6 +71,62 @@ class Database
         self::$pdo->prepare($sql)->execute([self::SCHEMA_VERSION_KEY, \App\Config\AppConfig::APP_VERSION]);
     }
 
+    /** 当前代码版本定义的全部数据表（系统信息面板按此清单逐表探测存在性） */
+    private static function schemaTables(): array
+    {
+        return [
+            \App\Config\AppConfig::TABLE_JOB_GIT_MAP,
+            \App\Config\AppConfig::TABLE_PIPELINE_ARTIFACTS,
+            \App\Config\AppConfig::TABLE_CUSTOM_BUILDS,
+            \App\Config\AppConfig::TABLE_SECURITY_CHECKS,
+            \App\Config\AppConfig::TABLE_ADMIN_USERS,
+            \App\Config\AppConfig::TABLE_PLATFORM_VERSIONS,
+            \App\Config\AppConfig::TABLE_APP_SETTINGS,
+            \App\Config\AppConfig::TABLE_CACHE,
+            \App\Config\AppConfig::TABLE_ROLES,
+            \App\Config\AppConfig::TABLE_PERMISSIONS,
+            \App\Config\AppConfig::TABLE_ROLE_PERMISSIONS,
+            \App\Config\AppConfig::TABLE_IMPLIED_RULES,
+            \App\Config\AppConfig::TABLE_API_TOKENS,
+            \App\Config\AppConfig::TABLE_USER_IDENTITIES,
+            \App\Config\AppConfig::TABLE_OPERATION_LOGS,
+        ];
+    }
+
+    /** 系统信息：DB 驱动 + schema 版本 + 各核心表存在性（供后台「系统信息」面板只读查询） */
+    public static function schemaStatus(): array
+    {
+        $status = [];
+        foreach (self::schemaTables() as $t) {
+            $status[$t] = self::tableExists(self::$pdo, $t);
+        }
+        $recorded = null;
+        try {
+            $row = self::$pdo->query(
+                "SELECT value FROM " . \App\Config\AppConfig::TABLE_APP_SETTINGS
+                . " WHERE setting_key = '" . self::SCHEMA_VERSION_KEY . "'"
+            )->fetchColumn();
+            $recorded = ($row === false) ? null : (string) $row;
+        } catch (\Throwable $e) {
+            $recorded = null;
+        }
+        return [
+            'driver'         => self::$driver,
+            'schema_version' => $recorded,
+            'app_version'    => \App\Config\AppConfig::APP_VERSION,
+            'is_current'     => ($recorded !== null && $recorded === \App\Config\AppConfig::APP_VERSION),
+            'tables'         => $status,
+        ];
+    }
+
+    /** 手动触发迁移：建缺失表 + 种子 + 标记 schema 当前（后台「迁移数据库」按钮，super_admin 专用）。 */
+    public static function migrateNow(): array
+    {
+        self::ensureTables();
+        self::markSchemaCurrent();
+        return self::schemaStatus();
+    }
+
     private static function defaultConfig(): array
     {
         $driver = strtolower($_ENV['DB_DRIVER'] ?? '');
@@ -360,6 +416,19 @@ class Database
             writeback_message TEXT,
             created_at {$TS_TYPE} DEFAULT ({$NOW})
         ){$ENGINE}");
+
+        // ci_operation_logs（后台操作审计日志，append-only，只增不删）
+        $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_OPERATION_LOGS . " (
+            id {$PK},
+            username {$VARCHAR} NOT NULL,
+            action {$VARCHAR} NOT NULL,
+            target {$VARCHAR} DEFAULT '',
+            detail TEXT,
+            ip {$VARCHAR} DEFAULT '',
+            operator_type {$VARCHAR} DEFAULT 'admin',
+            result {$VARCHAR} DEFAULT 'success',
+            created_at {$TS_TYPE} DEFAULT ({$NOW})
+        ){$ENGINE}");
         // ── RBAC 权限系统 ──
         // roles
         $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_ROLES . " (
@@ -477,6 +546,9 @@ class Database
                 'parent_key' => $isMySQL ? 'VARCHAR(128)' : 'TEXT', // 权限层级
                 'created_at' => "{$TS_TYPE} DEFAULT NULL",          // 注册时间：内置为 NULL
             ],
+            \App\Config\AppConfig::TABLE_OPERATION_LOGS => [
+                'operator_type' => "{$VARCHAR} DEFAULT 'admin'", // 操作人类型：admin / api_token
+            ],
             \App\Config\AppConfig::TABLE_ADMIN_USERS => [
                 'email'      => "{$VARCHAR} NOT NULL DEFAULT ''", // 用户邮箱（OAuth userinfo 用，空则占位兜底）
                 'avatar_url' => 'TEXT',                                        // 头像 URL
@@ -510,6 +582,9 @@ class Database
         self::createIndex('idx_job_git_map_current_path', \App\Config\AppConfig::TABLE_JOB_GIT_MAP, 'current_path');
         self::createIndex('idx_security_checks_project', \App\Config\AppConfig::TABLE_SECURITY_CHECKS, 'project, check_type');
         self::createIndex('idx_security_checks_sha', \App\Config\AppConfig::TABLE_SECURITY_CHECKS, 'sha');
+        self::createIndex('idx_operation_logs_created', \App\Config\AppConfig::TABLE_OPERATION_LOGS, 'created_at');
+        self::createIndex('idx_operation_logs_user', \App\Config\AppConfig::TABLE_OPERATION_LOGS, 'username');
+        self::createIndex('idx_operation_logs_action', \App\Config\AppConfig::TABLE_OPERATION_LOGS, 'action');
 
         // 一次性 JSON 迁移（仅 SQLite）
         if (!$isMySQL) {
@@ -520,6 +595,27 @@ class Database
 
         // 新 canonical artifact 表的存量迁移：MySQL / SQLite 均需要执行一次。
         self::migratePipelineArtifacts($pdo);
+
+        // 存量脏数据清理：job_name/current_path 去除首尾空白（幂等，TRIM 语义两驱动一致）。
+        self::trimJobGitMapWhitespace($pdo);
+    }
+
+    /**
+     * 清理 ci_job_git_map 中 job_name/current_path 的首尾空白。
+     * 幂等：TRIM 后再次执行无变化；仅针对历史脏数据（曾导致 Jenkins `job/ foo` 404）。
+     */
+    private static function trimJobGitMapWhitespace(\PDO $pdo): void
+    {
+        try {
+            $table = \App\Config\AppConfig::TABLE_JOB_GIT_MAP;
+            if (!self::tableExists($pdo, $table)) {
+                return;
+            }
+            $pdo->exec("UPDATE {$table} SET job_name = TRIM(job_name), current_path = TRIM(current_path)");
+        } catch (\Throwable $e) {
+            // 清理失败不应阻断启动（属优化性修复），仅记录告警
+            \App\Helper\Log::error('trimJobGitMapWhitespace 失败', ['error' => $e->getMessage()]);
+        }
     }
 
     /**

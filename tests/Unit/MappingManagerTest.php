@@ -119,7 +119,7 @@ class MappingManagerTest extends TestCase
         $this->assertSame('tools/registry', $r['projectId']);
     }
 
-    public function testJenkinsKeepsRawPath(): void
+    public function testJenkinsByJobNameIsIdempotent(): void
     {
         $this->insertMap([
             'job_name'       => 'java/registry',
@@ -129,8 +129,48 @@ class MappingManagerTest extends TestCase
 
         $r = $this->makeManager()->resolveProject('java/registry');
         $this->assertSame(AppConfig::PROVIDER_JENKINS, $r['provider']);
-        // jenkins 不做归一化，projectId 保持原始 path
+        // 推 job_name（本身就是 Jenkins Job 路径）→ 保持 job_name
         $this->assertSame('java/registry', $r['projectId']);
+    }
+
+    public function testJenkinsByCurrentPathResolvesToJobName(): void
+    {
+        // Jenkins Job 路径（job_name）与 git 路径（current_path）不同名：
+        // 按 git 路径解析时，必须归一化回 Jenkins Job 路径，不能把 git 路径当 Jenkins URL，
+        // 否则拼出 job/tools/... 直接 404（历史 bug：jeanslw/Devops_CD → job/jeanslw/job/Devops_CD）。
+        $this->insertMap([
+            'job_name'       => 'java/registry',
+            'build_provider' => AppConfig::PROVIDER_JENKINS,
+            'current_path'   => 'tools/registry',
+        ]);
+
+        $r = $this->makeManager()->resolveProject('tools/registry');
+        $this->assertSame(AppConfig::PROVIDER_JENKINS, $r['provider']);
+        $this->assertSame('java/registry', $r['projectId']);
+    }
+
+    public function testDisabledProviderJobNameNotHijackedByOtherProviderCurrentPath(): void
+    {
+        // gitea_ci 未启用且映射 pending：其 job_name（owner/repo = jeanslw/Devops_CD）
+        // 绝不能被 active 的 jenkins current_path 别名「劫持」——否则未启用也会落到别的 CI 头上，
+        // 拼出 job/jeanslw/job/Devops_CD 404。
+        $this->insertMap([
+            'job_name'       => 'jeanslw/Devops_CD',
+            'build_provider' => AppConfig::PROVIDER_GITEA_CI,
+            'current_path'   => 'jeanslw/Devops_CD',
+            'status'         => AppConfig::STATUS_PENDING,
+        ]);
+        $this->insertMap([
+            'job_name'       => 'python/Devops_CD',
+            'build_provider' => AppConfig::PROVIDER_JENKINS,
+            'current_path'   => 'jeanslw/Devops_CD',
+            'status'         => AppConfig::STATUS_ACTIVE,
+        ]);
+
+        $r = $this->makeManager()->resolveProject('jeanslw/Devops_CD');
+        // 命中 gitea_ci（即便 pending），而不是落到 jenkins
+        $this->assertSame(AppConfig::PROVIDER_GITEA_CI, $r['provider']);
+        $this->assertSame('jeanslw/Devops_CD', $r['projectId']);
     }
 
     public function testDashPathIsNotNormalizedToSlashJob(): void

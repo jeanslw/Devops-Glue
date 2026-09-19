@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Devops-Glue API",
-    "version": "2.8.2",
+    "version": "2.8.3",
     "description": "DevOps 工具链集成接口 —— Jenkins/GitLab CI、GitLab/Gitee/GitHub/Gitea、Harbor 统一 API。",
     "contact": {
       "email": "jeanslw@qq.com"
@@ -1671,8 +1671,8 @@
         "tags": [
           "Build"
         ],
-        "summary": "Pipeline 详情 + Jobs（Gitea 专属）",
-        "description": "Gitea 专属：输入 run id（/api/build/{path}/pipelines 返回的 id）获取该 run 详情。?format=raw 返回纯状态数组（如 [\"success\", \"failed\"]）。默认返回 jobs，每项含 id（job id）与 log_url（该 job 日志链接，指向 /api/build/{path}/logs/{jobId}）",
+        "summary": "Pipeline 详情 + Jobs（仅 Gitea CI）",
+        "description": "仅 Gitea CI：输入 run id（/api/build/{path}/pipelines 返回的 id）获取该 run 详情。?format=raw 返回纯状态数组（如 [\"success\", \"failed\"]）。默认返回 jobs，每项含 id（job id）与 log_url（该 job 日志链接，指向 /api/build/{path}/logs/{jobId}）",
         "operationId": "buildPipelineDetail",
         "security": [
           {
@@ -1712,8 +1712,8 @@
         "tags": [
           "Build"
         ],
-        "summary": "Pipeline 日志（Gitea 专属，输入 run id，返回全部 job 日志）",
-        "description": "Gitea 专属：输入 run id（即 /api/build/{path}/pipelines 返回的 id），返回该 run 下全部 job 的日志文本（多 job 用 ===== 分隔）。无需先查 job id。",
+        "summary": "Pipeline 日志（仅 Gitea CI，输入 run id，返回全部 job 日志）",
+        "description": "仅 Gitea CI：输入 run id（即 /api/build/{path}/pipelines 返回的 id），返回该 run 下全部 job 的日志文本（多 job 用 ===== 分隔）。无需先查 job id。",
         "operationId": "buildPipelineLogs",
         "security": [
           {

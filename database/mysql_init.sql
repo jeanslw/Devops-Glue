@@ -126,6 +126,19 @@ CREATE TABLE IF NOT EXISTS `ci_security_checks` (
     `created_at`        DATETIME DEFAULT (NOW())
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- ── 8.1 ci_operation_logs（后台操作审计日志，append-only，只增不删）──
+CREATE TABLE IF NOT EXISTS `ci_operation_logs` (
+    `id`            INT AUTO_INCREMENT PRIMARY KEY,
+    `username`      VARCHAR(255) NOT NULL,
+    `action`        VARCHAR(255) NOT NULL,
+    `target`        VARCHAR(255) DEFAULT '',
+    `detail`        TEXT,
+    `ip`            VARCHAR(255) DEFAULT '',
+    `operator_type` VARCHAR(255) DEFAULT 'admin',
+    `result`        VARCHAR(255) DEFAULT 'success',
+    `created_at`    DATETIME DEFAULT (NOW())
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- ── 9. roles（角色）──
 CREATE TABLE IF NOT EXISTS `roles` (
     `id`          INT AUTO_INCREMENT PRIMARY KEY,
@@ -177,3 +190,6 @@ CREATE INDEX `idx_security_checks_project`  ON `ci_security_checks` (`project`(6
 CREATE INDEX `idx_security_checks_sha`      ON `ci_security_checks` (`sha`);
 CREATE INDEX `idx_custom_builds_job`        ON `ci_custom_builds` (`job_name`);
 CREATE INDEX `idx_custom_builds_status`     ON `ci_custom_builds` (`status`);
+CREATE INDEX `idx_operation_logs_created`   ON `ci_operation_logs` (`created_at`);
+CREATE INDEX `idx_operation_logs_user`      ON `ci_operation_logs` (`username`);
+CREATE INDEX `idx_operation_logs_action`    ON `ci_operation_logs` (`action`);
