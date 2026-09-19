@@ -31,6 +31,8 @@ $app->group('/api', function (RouteCollectorProxy $api) {
 
     // 健康检查（需要鉴权）：/api/health 返回详细检查信息，受 AuthMiddleware 保护
     $api->map(['GET'], '/health', [MainController::class, 'healthDetail'])->add(AuthMiddleware::class);
+    // 快速健康信息（需要鉴权）：不探测外部平台，毫秒级返回，用于先渲染非探测卡片
+    $api->map(['GET'], '/health/static', [MainController::class, 'healthStatic'])->add(AuthMiddleware::class);
 
     // 国际化：获取指定语言的语言包（供前端使用）
     $api->get('/i18n/{locale}', [MainController::class, 'i18n']);
