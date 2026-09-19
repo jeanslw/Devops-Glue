@@ -1,6 +1,7 @@
 const LOGIN_API    = '/api/admin/login';
 const MAP_API      = '/api/admin/job_git_map';
 const HEALTH_API   = '/api/health';
+const HEALTH_STATIC_API = '/api/health/static';
 const MAP_LIST_API  = '/api/main/map/list';
 const VERSIONS_API  = '/api/admin/platform_versions';
 let platforms = [];
@@ -340,7 +341,7 @@ async function loadMonitor() {
 
     // 调用受保护的 /api/health，需要带上 Authorization 头
 
-    function setSvc(iconId, nameId, statId, dotId, ok, ver, label, title) {
+    function setSvc(iconId, nameId, statId, dotId, ok, ver, label, title, i18nKey) {
         const icon = document.getElementById(iconId);
         const name = document.getElementById(nameId);
         const stat = document.getElementById(statId);
@@ -350,16 +351,29 @@ async function loadMonitor() {
             stat.textContent = label;
             stat.className = 'svc-stat ' + (ok===true?'ok':ok===null?'off':'err');
             if (title) stat.title = title; else stat.removeAttribute('title');
+            // 记录动态状态文本对应的 i18n key：语言切换时 _applyToDOM() 只会重翻 textContent
+            //（不影响 class/图标），从而实现"切语言只翻译、不重新探测、不产生重复日志"。
+            // 该 key 同时覆盖了 HTML 默认占位 common.detecting，避免切语言后显示回"检测中…"。
+            // 若该状态文本无翻译 key，则移除标记防止被错误覆盖。
+            if (i18nKey) stat.setAttribute('data-i18n', i18nKey);
+            else stat.removeAttribute('data-i18n');
         }
         if (dot)  { dot.className = 'dot ' + (ok===true?'dot-ok':ok===null?'dot-off':'dot-err'); }
         if (name && ver) name.innerHTML = (name.dataset.base || name.textContent) + ' <span class="svc-ver">' + esc(ver) + '</span>';
     }
 
+    // 并行发起：静态信息（纯 DB/配置，秒回）与外部探测（可能很慢），各自独立渲染
+    const staticReq = fetch(HEALTH_STATIC_API, { headers: authHeaders() });
+    const probeReq  = fetch(HEALTH_API, { headers: authHeaders() });
+
+    // ── 阶段一：立即渲染不依赖外部探测的部分（数据概览 + 系统监测 + Custom_Push）──
     try {
-        const res = await fetch(HEALTH_API, { headers: authHeaders() });
+        const res = await staticReq;
         if (handle401(res)) return;
         const data = await res.json();
-        const chk = data.checks || {};
+        // 静态卡片依赖 __.t() 翻译（如构建模式、数据库类型），首帧语言包可能尚未加载完成，
+        // 先等 i18n 就绪，避免显示翻译 key，且不重复探测外部平台。
+        await __.ready();
         const st  = data.stats || {};
 
         // 统计卡片
@@ -395,12 +409,32 @@ async function loadMonitor() {
         if (sysEnvType)   sysEnvType.textContent   = data.app_env || '—';
         if (sysTime)      sysTime.textContent      = (data.time ? String(data.time).substring(0, 16) : '—');
 
+        // Custom_Push（功能开关检测，不依赖外部网络探测）
+        const cpProviders = data.custom_push_providers || [];
+        const cpEnabled = data.custom_push_enabled || false;
+        const cpOk = cpEnabled && cpProviders.length > 0;
+        const cpLabel = cpEnabled ? __.t('common.enabled') : __.t('common.disabled');
+        const cpKey = cpEnabled ? 'common.enabled' : 'common.disabled';
+        setSvc('icon-custom-push', 'name-custom-push', 'stat-custom-push', 'dot-custom-push', cpOk || null, '', cpLabel, '', cpKey);
+        applyBuildRecordsMenuVisibility(cpEnabled);
+    } catch (e) {
+        // 静态信息失败：保留各卡片占位（"检测中…"/"—"），不整体置错，等待探测阶段
+    }
+
+    // ── 阶段二：外部平台探测结果，独立于静态部分，各卡各自更新 ──
+    try {
+        const res = await probeReq;
+        if (handle401(res)) return;
+        const data = await res.json();
+        const chk = data.checks || {};
+
         // Jenkins
         const jRaw = chk.jenkins;
         const jOk  = jRaw === true;
         const jVer = chk.jenkins_version || '';
         const jLabel = jOk ? __.t('common.ok') : jRaw===null ? __.t('common.na') : __.t('common.unreachable');
-        setSvc('icon-jenkins', 'name-jenkins', 'stat-jenkins', 'dot-jenkins', jRaw, jVer ? 'v'+jVer : '', jLabel);
+        const jKey = jOk ? 'common.ok' : (jRaw === null ? 'common.na' : 'common.unreachable');
+        setSvc('icon-jenkins', 'name-jenkins', 'stat-jenkins', 'dot-jenkins', jRaw, jVer ? 'v'+jVer : '', jLabel, '', jKey);
 
         // Git 平台
         const gitRows = document.getElementById('git-rows');
@@ -408,21 +442,22 @@ async function loadMonitor() {
         const dotGit = document.getElementById('dot-git');
         if (gitData === null || gitData === undefined) {
             dotGit.className = 'dot dot-off';
-            gitRows.innerHTML = '<div class="svc-row parent"><span class="svc-icon">⚪</span><span class="svc-name">' + __.t('monitor.git_platforms') + '</span><span class="svc-stat off">' + __.t('monitor.git_no_ref') + '</span></div>';
+            gitRows.innerHTML = '<div class="svc-row parent"><span class="svc-icon">⚪</span><span class="svc-name">' + __.t('monitor.git_platforms') + '</span><span class="svc-stat off" data-i18n="monitor.git_no_ref">' + __.t('monitor.git_no_ref') + '</span></div>';
         } else if (Array.isArray(gitData) && gitData.length > 0) {
             dotGit.className = gitData.every(g=>g.reachable) ? 'dot dot-ok' : 'dot dot-err';
             gitRows.innerHTML = gitData.map(g => {
                 const ok = g.reachable;
-                const label = ok ? __.t('monitor.git_reachable') : __.t('monitor.git_unreachable');
+                const okKey = ok ? 'monitor.git_reachable' : 'monitor.git_unreachable';
+                const label = __.t(okKey);
                 return '<div class="svc-row child">' +
                     '<span class="svc-icon">' + (ok ? '✅' : '❌') + '</span>' +
                     '<span class="svc-name">' + esc(g.name) + '<span class="svc-ver">' + esc(g.api_version || '') + '</span></span>' +
-                    '<span class="svc-stat ' + (ok?'ok':'err') + '">' + label + '</span>' +
+                    '<span class="svc-stat ' + (ok?'ok':'err') + '" data-i18n="' + okKey + '">' + label + '</span>' +
                 '</div>';
             }).join('') || '<div class="svc-row child"><span class="svc-icon">⚪</span><span class="svc-name">' + __.t('js.no_configured_platform') + '</span></div>';
         } else {
             dotGit.className = 'dot dot-off';
-            gitRows.innerHTML = '<div class="svc-row parent"><span class="svc-icon">⚪</span><span class="svc-name">' + __.t('monitor.git_platforms') + '</span><span class="svc-stat off">' + __.t('common.unknown') + '</span></div>';
+            gitRows.innerHTML = '<div class="svc-row parent"><span class="svc-icon">⚪</span><span class="svc-name">' + __.t('monitor.git_platforms') + '</span><span class="svc-stat off" data-i18n="common.unknown">' + __.t('common.unknown') + '</span></div>';
         }
 
         // Harbor
@@ -430,25 +465,16 @@ async function loadMonitor() {
         const hOk = hOkRaw === true;
         const hVer = chk.harbor_version || '';
         const hLabel = hOk ? __.t('common.ok') : hOkRaw===null ? __.t('common.not_configured') : __.t('common.unreachable');
-        setSvc('icon-harbor', 'name-harbor', 'stat-harbor', 'dot-harbor', hOk, hVer, hLabel, '');
-
-        // Custom_Push
-        const cpProviders = data.custom_push_providers || [];
-        const cpEnabled = data.custom_push_enabled || false;
-        const cpOk = cpEnabled && cpProviders.length > 0;
-        const cpLabel = cpEnabled
-            ? __.t('common.enabled')
-            : __.t('common.disabled');
-        setSvc('icon-custom-push', 'name-custom-push', 'stat-custom-push', 'dot-custom-push', cpOk || null, '', cpLabel);
-        applyBuildRecordsMenuVisibility(cpEnabled);
-
-    } catch(e) {
-        const msg = e.name === 'AbortError' ? __.t('js.timeout') : __.t('js.cannot_connect');
-        setSvc('icon-jenkins', 'name-jenkins', 'stat-jenkins', 'dot-jenkins', false, '', msg);
+        const hKey = hOk ? 'common.ok' : (hOkRaw === null ? 'common.not_configured' : 'common.unreachable');
+        setSvc('icon-harbor', 'name-harbor', 'stat-harbor', 'dot-harbor', hOk, hVer, hLabel, '', hKey);
+    } catch (e) {
+        const ek = e.name === 'AbortError' ? 'js.timeout' : 'js.cannot_connect';
+        const msg = __.t(ek);
+        setSvc('icon-jenkins', 'name-jenkins', 'stat-jenkins', 'dot-jenkins', false, '', msg, '', ek);
         document.getElementById('dot-git').className = 'dot dot-err';
-        document.getElementById('git-rows').innerHTML = '<div class="svc-row parent"><span class="svc-icon">❌</span><span class="svc-name">' + __.t('monitor.git_platforms') + '</span><span class="svc-stat err">' + msg + '</span></div>';
-        setSvc('icon-harbor', 'name-harbor', 'stat-harbor', 'dot-harbor', false, '', msg);
-        setSvc('icon-custom-push', 'name-custom-push', 'stat-custom-push', 'dot-custom-push', false, '', msg);
+        document.getElementById('git-rows').innerHTML = '<div class="svc-row parent"><span class="svc-icon">❌</span><span class="svc-name">' + __.t('monitor.git_platforms') + '</span><span class="svc-stat err" data-i18n="' + ek + '">' + msg + '</span></div>';
+        setSvc('icon-harbor', 'name-harbor', 'stat-harbor', 'dot-harbor', false, '', msg, '', ek);
+        // Custom_Push 属静态（功能开关）阶段，在此不再标错
     }
 }
 
@@ -2919,8 +2945,10 @@ document.addEventListener('i18n-changed', function() {
     var activeTab = document.querySelector('.sidebar .menu-item.active');
     if (activeTab) {
         var tabName = activeTab.getAttribute('data-tab');
-        if (tabName === 'monitor') loadMonitor();
-        else if (tabName === 'mapping') { if (currentMapView === 'topology') loadTopology(); else loadMaps(); }
+        // monitor：语言切换时不再重复调用 loadMonitor()。健康检查用于探测外部平台连通性，
+        // 与语言无关；且它会串行探测各平台（可能耗时数秒、失败时打印日志），重复触发会带来
+        // 重复的 /api/health 请求（日志翻倍）。进入 monitor 页时 switchTab 已加载过一次。
+        if (tabName === 'mapping') { if (currentMapView === 'topology') loadTopology(); else loadMaps(); }
         else if (tabName === 'security') loadSecurityChecks();
         else if (tabName === 'versions') loadVersions();
         else if (tabName === 'mode') loadSettings();

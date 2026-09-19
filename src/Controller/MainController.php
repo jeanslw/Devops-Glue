@@ -231,21 +231,22 @@ class MainController extends BaseController
         ];
 
         if (in_array(AppConfig::PROVIDER_JENKINS, $this->config->getBuildModes(), true)) {
+            $jk = $this->config->getJenkinsConfig();
+            $jenkinsUrl = rtrim((string)($jk['url'] ?? ''), '/');
             try {
                 // 健康检查用独立短超时 Client，避免 Jenkins 宕机时卡住
-                $jk = $this->config->getJenkinsConfig();
                 $probe = new \GuzzleHttp\Client([
                     'timeout'         => 5,
                     'connect_timeout' => 3,
                     'auth'            => [$jk['user'], $jk['token']],
                     'http_errors'     => false,
                 ]);
-                $probe->get(rtrim($jk['url'], '/') . '/api/json');
+                $probe->get($jenkinsUrl . '/api/json');
                 $checks['jenkins'] = true;
                 // 版本号沿用 JenkinsService 缓存（短超时探测连通性即可）
                 $checks['jenkins_version'] = $this->jenkins->getVersion();
             } catch (\Exception $e) {
-                \App\Helper\Log::exception($e);
+                \App\Helper\Log::error('[健康检查] Jenkins 连接失败', ['platform' => 'jenkins', 'url' => $jenkinsUrl, 'error' => $e->getMessage()]);
                 $checks['jenkins'] = false;
             }
         } else {
@@ -283,6 +284,7 @@ class MainController extends BaseController
                         $httpCode = $resp->getStatusCode();
                         $reachable = $httpCode > 0 && $httpCode < 500;
                     } catch (\Exception $e) {
+                        \App\Helper\Log::error('[健康检查] ' . $name . ' 连接失败', ['platform' => $name, 'url' => (string)$apiUrl, 'error' => $e->getMessage()]);
                         $reachable = false;
                     }
                 }
@@ -295,10 +297,12 @@ class MainController extends BaseController
         }
 
         if ($this->harbor) {
+            $harborUrl = rtrim((string)($this->config->getHarborConfig()['url'] ?? ''), '/');
+            $probeLogged = false;
             try {
                 // 健康检查用短超时 client，不影响正常 Harbor 操作
                 $qClient = new \GuzzleHttp\Client([
-                    'base_uri' => $this->config->getHarborConfig()['url'] ?? '',
+                    'base_uri' => $harborUrl,
                     'auth'     => [$this->config->getHarborConfig()['username'] ?? 'admin', $this->config->getHarborConfig()['password'] ?? ''],
                     'timeout'  => 5,
                     'connect_timeout' => 3,
@@ -326,12 +330,20 @@ class MainController extends BaseController
                         }
                     } catch (\Throwable $e) {
                         $componentResults[$name] = false;
+                        // 连接类失败：三个组件会同时连不上，这里只记一次避免刷屏
+                        if (!$probeLogged) {
+                            \App\Helper\Log::error('[健康检查] Harbor 连接失败', ['platform' => 'harbor', 'url' => $harborUrl, 'error' => $e->getMessage()]);
+                            $probeLogged = true;
+                        }
                     }
                 }
                 $checks['harbor'] = !in_array(false, $componentResults, true);
                 $checks['harbor_version'] = $this->harbor->getHarborVersion() ?? 'v2';
                 $checks['harbor_components'] = $componentResults;
             } catch (\Exception $e) {
+                if (!$probeLogged) {
+                    \App\Helper\Log::error('[健康检查] Harbor 连接失败', ['platform' => 'harbor', 'url' => $harborUrl, 'error' => $e->getMessage()]);
+                }
                 $checks['harbor'] = false;
                 $checks['harbor_version'] = $this->harbor->getHarborVersion() ?? 'v2';
                 $checks['harbor_components'] = null;
@@ -346,7 +358,32 @@ class MainController extends BaseController
             && ($checks['harbor'] === true || $checks['harbor'] === null);
         $status = $allOk ? 'ok' : 'degraded';
 
-        // 统计卡片数据
+        $data = $this->buildHealthStaticData();
+        $data['status'] = $status;
+        $data['checks'] = $checks;
+
+        $response->getBody()->write(json_encode($data));
+        $httpCode = $allOk ? 200 : 503;
+        return $response->withStatus($httpCode)->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
+     * 快速健康信息（不依赖外部探测）。
+     * 仅返回数据概览 + 系统信息 + Custom_Push，不探测 Jenkins / Git / Harbor，
+     * 毫秒级返回，供前端先渲染非探测卡片，避免被外部探测拖慢整个页面。
+     */
+    public function healthStatic(Request $request, Response $response): Response
+    {
+        $data = $this->buildHealthStaticData();
+        $data['status'] = 'ok';
+        return $this->output($response, $data, $request);
+    }
+
+    /**
+     * 汇总不依赖外部网络探测的健康信息（统计卡片 + 系统监测 + Custom_Push）。
+     */
+    private function buildHealthStaticData(): array
+    {
         $stats = ['total_maps' => 0, 'active_maps' => 0, 'git_platforms' => 0, 'harbor_repos' => 0];
         try {
             $pdo = $this->pdo;
@@ -359,9 +396,7 @@ class MainController extends BaseController
         } catch (\Exception $e) {
         }
 
-        $data = [
-            'status'                => $status,
-            'checks'                => $checks,
+        return [
             'stats'                 => $stats,
             'build_mode'            => $this->config->getBuildMode(),
             'build_modes'           => $this->config->getBuildModes(),
@@ -373,10 +408,6 @@ class MainController extends BaseController
             'app_env'               => $this->config->getAppEnv(),
             'time'                  => date('Y-m-d H:i:s'),
         ];
-
-        $response->getBody()->write(json_encode($data));
-        $httpCode = $allOk ? 200 : 503;
-        return $response->withStatus($httpCode)->withHeader('Content-Type', 'application/json');
     }
 
     /**

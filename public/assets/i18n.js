@@ -22,6 +22,10 @@
 
     let currentLang = 'zh-CN';
     let messages = {};
+    // 语言包就绪 Promise：_load 的 XHR 完成（成功或失败）后 resolve，
+    // 供依赖 __.t() 的动态渲染（如监测页静态卡片）先 await，避免首次加载时显示翻译 key。
+    let resolveReady;
+    const readyPromise = new Promise(function (resolve) { resolveReady = resolve; });
 
     window.__ = {
         get lang() { return currentLang; },
@@ -35,6 +39,12 @@
                 });
             }
             return msg;
+        },
+
+        // 返回一个 Promise，语言包加载完成（成功或失败）后 resolve。
+        // 需在获取翻译结果前 await 它，避免首帧渲染读到 key。
+        ready: function () {
+            return readyPromise;
         },
 
         init: function (lang) {
@@ -62,10 +72,12 @@
                 }
                 self._applyToDOM();
                 document.dispatchEvent(new CustomEvent('i18n-changed', { detail: { lang: currentLang } }));
+                resolveReady();
             };
             xhr.onerror = function () {
                 self._applyToDOM();
                 document.dispatchEvent(new CustomEvent('i18n-changed', { detail: { lang: currentLang } }));
+                resolveReady();
             };
             xhr.send();
         },

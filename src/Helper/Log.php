@@ -15,19 +15,29 @@ class Log
      */
     public static function exception(\Throwable $e): void
     {
+        self::error($e->getMessage(), ['trace' => $e->getTraceAsString()]);
+    }
+
+    /**
+     * 记录一条友好错误日志（message + 简要 context，不携带堆栈）。
+     * 若 Logger 未启用，回退到 error_log。
+     */
+    public static function error(string $message, array $context = []): void
+    {
         try {
             if (!self::$initialized) {
                 self::initLogger();
             }
             if (self::$logger !== null) {
-                self::$logger->error($e->getMessage(), ['trace' => $e->getTraceAsString()]);
+                self::$logger->error($message, $context);
                 return;
             }
             // 若 Logger 初始化失败或未启用，回退到 error_log
-            error_log((string)$e);
+            $suffix = empty($context) ? '' : ' ' . json_encode($context, JSON_UNESCAPED_UNICODE);
+            error_log($message . $suffix);
         } catch (\Throwable $inner) {
             // 任何失败都回退到 PHP 内置日志，避免阻塞原有流程
-            error_log((string)$e);
+            error_log($message);
         }
     }
 
