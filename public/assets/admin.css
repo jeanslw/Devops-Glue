@@ -583,10 +583,9 @@
             .btn { font-size:12px; padding:6px 14px; }
             table th, table td { font-size:12px; padding:8px 6px; }
             .setting-item { flex-direction:column; gap:4px; }
-            /* 小屏顶栏：单行不换行；隐藏用户名，仅保留 图标链接/语言切换/退出 */
+            /* 小屏顶栏：进一步收紧间距与字号（账号显示已在 ≤768px 隐藏） */
             .topbar .top-right { gap:8px; }
             .topbar .top-right > * { margin-right:0 !important; }
-            .topbar #top-user { display:none; }
             .topbar .top-right a, .topbar .top-right .lang-switch { font-size:12px; }
             .topbar .top-right select { padding:2px 6px; font-size:12px; }
             /* 流程图节点允许换行/收缩；配置卡片头部允许换行 */

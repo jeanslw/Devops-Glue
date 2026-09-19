@@ -89,8 +89,6 @@ function doLogout() {
     currentUserName = sessionStorage.getItem('admin_user') || '';
     currentUserIsRoot = sessionStorage.getItem('admin_is_root') === 'true';
     if (currentUserName) {
-        var topUser = document.getElementById('top-user');
-        if (topUser) topUser.textContent = '👤 ' + currentUserName;
         // 从后端拉取最新权限（sessionStorage 可能过期）
         try {
             var mr = await fetch('/api/admin/me/permissions', { headers: authHeaders() });
@@ -226,7 +224,6 @@ async function doLogin() {
             applySystemInfoMenuVisibility();
             document.getElementById('login-page').style.display = 'none';
             document.getElementById('app-page').style.display = 'block';
-            document.getElementById('top-user').textContent = '👤 ' + currentUserName;
             switchTab('monitor');
             loadSettings();  // 初始化构建模式状态（currentBuildModes 等）
         } else {
