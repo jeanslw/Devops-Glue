@@ -122,6 +122,19 @@ CREATE TABLE IF NOT EXISTS ci_security_checks (
     created_at        TEXT DEFAULT (datetime('now','localtime'))
 );
 
+-- ── 8.1 ci_operation_logs（后台操作审计日志，append-only，只增不删）──
+CREATE TABLE IF NOT EXISTS ci_operation_logs (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    username      TEXT NOT NULL,
+    action        TEXT NOT NULL,
+    target        TEXT DEFAULT '',
+    detail        TEXT,
+    ip            TEXT DEFAULT '',
+    operator_type TEXT DEFAULT 'admin',
+    result        TEXT DEFAULT 'success',
+    created_at    TEXT DEFAULT (datetime('now','localtime'))
+);
+
 -- ── 9. roles（角色）──
 CREATE TABLE IF NOT EXISTS roles (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -174,6 +187,9 @@ CREATE INDEX IF NOT EXISTS idx_security_checks_project    ON ci_security_checks(
 CREATE INDEX IF NOT EXISTS idx_security_checks_sha        ON ci_security_checks(sha);
 CREATE INDEX IF NOT EXISTS idx_custom_builds_job          ON ci_custom_builds(job_name);
 CREATE INDEX IF NOT EXISTS idx_custom_builds_status       ON ci_custom_builds(status);
+CREATE INDEX IF NOT EXISTS idx_operation_logs_created     ON ci_operation_logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_operation_logs_user        ON ci_operation_logs(username);
+CREATE INDEX IF NOT EXISTS idx_operation_logs_action      ON ci_operation_logs(action);
 
 -- =============================================================
 -- 迁移说明

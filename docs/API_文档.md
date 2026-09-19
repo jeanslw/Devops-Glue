@@ -176,8 +176,8 @@ GET /api/main/git/discovery
 | `/api/build/{path}/variables` | GET/POST | 构建参数 / CI 变量（raw: 参数名数组；json: 完整元数据） |
 | `/api/build/{path}/branches` | GET/POST | Git 分支列表（纯字符串数组） |
 | `/api/build/{path}/pipelines` | GET/POST | 流水线列表（`?list=id\|build\|time\|success`） |
-| `/api/build/{path}/pipelines/{id}` | GET/POST | 流水线详情 + Jobs（每项含 `id` + `log_url`）—— Gitea 专属 |
-| `/api/build/{path}/pipelines/{id}/logs` | GET/POST | 流水线日志（text/plain；`id`=run id，返回该 run 下全部 job 日志拼接）—— Gitea 专属 |
+| `/api/build/{path}/pipelines/{id}` | GET/POST | 流水线详情 + Jobs（每项含 `id` + `log_url`）—— 仅 Gitea CI |
+| `/api/build/{path}/pipelines/{id}/logs` | GET/POST | 流水线日志（text/plain；`id`=run id，返回该 run 下全部 job 日志拼接）—— 仅 Gitea CI |
 | `/api/build/{path}/logs/{id}` | GET/POST | 构建日志（text/plain；`id`=job id，取自 `/pipelines/{runId}` 返回的 `jobs[].id`，非 run id） |
 | `/api/build/{path}/pipelines/{id}/retry` | POST | 重试流水线（仅 GitLab CI） |
 | `/api/build/{path}/pipelines/{id}/cancel` | POST | 取消流水线（仅 GitLab CI） |
@@ -317,6 +317,10 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 | `/api/admin/security_checks` | GET | 安全扫描审计记录（支持 `?project=&check_type=&state=&writeback=&exclude=&page=&per_page=` 筛选） |
 | `/api/admin/platform_versions` | GET/PUT | 平台 API 版本配置 |
 | `/api/admin/build_mode` | GET/PUT | 构建模式（启用的 CI 源集合，如 jenkins,gitlab_ci,gitea_ci） |
+| `/api/admin/platform_config` | GET | 平台接入状态（脱敏，仅返回各平台 `configured` 布尔，不返回 URL/账号/凭证；需 `ci.system`） |
+| `/api/admin/system_info` | GET | 数据库 schema 状态（驱动 / schema 版本 / 是否当前 / PHP 版本 / 核心表存在性；需 `ci.system`） |
+| `/api/admin/migrate` | POST | 手动触发数据库迁移（补建缺失表 + 种子权限 + 标记 schema 当前；仅 super_admin） |
+| `/api/admin/operation_logs` | GET | 操作审计日志（支持 `?username=&action=&result=&operator_type=&date_from=&date_to=&page=&per_page=` 筛选；需 `ci.operation-logs`） |
 | `/api/admin/users` | GET | 用户列表（admin 可见全部；非 admin 看不到 admin 用户） |
 | `/api/admin/users` | POST | 创建用户（body: `username`、`password`、`role`、`systems`） |
 | `/api/admin/users/{username}` | PUT | 更新用户（body: `password` 和/或 `role`） |

@@ -241,7 +241,9 @@ class MainController extends BaseController
                     'auth'            => [$jk['user'], $jk['token']],
                     'http_errors'     => false,
                 ]);
-                $probe->get($jenkinsUrl . '/api/json');
+                $this->probeWithRetry(function () use ($probe, $jenkinsUrl) {
+                    $probe->get($jenkinsUrl . '/api/json');
+                });
                 $checks['jenkins'] = true;
                 // 版本号沿用 JenkinsService 缓存（短超时探测连通性即可）
                 $checks['jenkins_version'] = $this->jenkins->getVersion();
@@ -280,9 +282,15 @@ class MainController extends BaseController
                             'connect_timeout' => 2,
                             'http_errors'     => false,
                         ]);
-                        $resp = $client->head($apiUrl);
-                        $httpCode = $resp->getStatusCode();
-                        $reachable = $httpCode > 0 && $httpCode < 500;
+                        $this->probeWithRetry(function () use ($client, $apiUrl, &$reachable) {
+                            $resp = $client->head($apiUrl);
+                            $httpCode = $resp->getStatusCode();
+                            $reachable = $httpCode > 0 && $httpCode < 500;
+                            if (!$reachable) {
+                                // 5xx / 异常状态也重试一次（瞬时服务端抖动）
+                                throw new \RuntimeException("HTTP {$httpCode}");
+                            }
+                        });
                     } catch (\Exception $e) {
                         \App\Helper\Log::error('[健康检查] ' . $name . ' 连接失败', ['platform' => $name, 'url' => (string)$apiUrl, 'error' => $e->getMessage()]);
                         $reachable = false;
@@ -318,16 +326,19 @@ class MainController extends BaseController
                 $componentResults = [];
                 foreach ($components as $name => $path) {
                     try {
-                        $resp = $qClient->get($path);
-                        $code = $resp->getStatusCode();
-                        if ($code === 404) {
-                            // 该 Harbor 版本不支持此端点（如 v2.0 无 /jobservice/ping），跳过不判为失败
-                            $componentResults[$name] = true;
-                        } elseif ($code >= 200 && $code < 500) {
-                            $componentResults[$name] = true;
-                        } else {
-                            $componentResults[$name] = false;
-                        }
+                        $this->probeWithRetry(function () use ($qClient, $path, $name, &$componentResults) {
+                            $resp = $qClient->get($path);
+                            $code = $resp->getStatusCode();
+                            if ($code === 404) {
+                                // 该 Harbor 版本不支持此端点（如 v2.0 无 /jobservice/ping），跳过不判为失败
+                                $componentResults[$name] = true;
+                            } elseif ($code >= 200 && $code < 500) {
+                                $componentResults[$name] = true;
+                            } else {
+                                $componentResults[$name] = false;
+                                throw new \RuntimeException("HTTP {$code}"); // 5xx 重试一次
+                            }
+                        });
                     } catch (\Throwable $e) {
                         $componentResults[$name] = false;
                         // 连接类失败：三个组件会同时连不上，这里只记一次避免刷屏
@@ -365,6 +376,26 @@ class MainController extends BaseController
         $response->getBody()->write(json_encode($data));
         $httpCode = $allOk ? 200 : 503;
         return $response->withStatus($httpCode)->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
+     * 探测连通性：失败重试一次（间隔 0.5s），防止网络瞬时抖动导致误报不可达。
+     * 回调内部做探测，失败/非预期结果请抛异常；重试耗尽仍失败才向上抛出。
+     */
+    private function probeWithRetry(callable $probe, int $retries = 1): void
+    {
+        $attempts = $retries + 1;
+        for ($i = 0; $i < $attempts; $i++) {
+            try {
+                $probe();
+                return;
+            } catch (\Throwable $e) {
+                if ($i >= $attempts - 1) {
+                    throw $e;
+                }
+                usleep(500000); // 0.5s 后重试
+            }
+        }
     }
 
     /**

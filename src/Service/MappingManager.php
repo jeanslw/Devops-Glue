@@ -91,34 +91,59 @@ class MappingManager
      */
     public function resolveProject(string $projectPath): array
     {
-        $provider  = AppConfig::PROVIDER_JENKINS;
-        $projectId = $projectPath;
+        // 防御：入参/存量数据可能带首尾空白（历史脏数据曾导致 Jenkins `job/ foo` 404），
+        // 解析前先归一到 canonical 键，与 buildEntry/saveDiscovered 的 trim 写入对齐。
+        $projectPath = trim($projectPath);
 
-        foreach ($this->activeMaps() as $m) {
-            $job = $m['job_name'] ?? '';
-            $cp  = $m['current_path'] ?? '';
-            if ($job === $projectPath || $cp === $projectPath) {
-                $bp = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
-                if (!empty($bp)) {
-                    $provider = $bp;
-                }
-
-                if ($provider === AppConfig::PROVIDER_GITLAB_CI && !empty($m['project_id'])) {
-                    // GitLab CI：用数字 project_id 调外部 API
-                    $projectId = (string) $m['project_id'];
-                } elseif ($provider !== AppConfig::PROVIDER_JENKINS) {
-                    // 推送式 CI（custom_push 及 settings.php 自定义 push provider）：
-                    // 以 job_name（映射主键，跨 build_provider 切换的稳定身份）为规范本地记录键，
-                    // current_path 兜底，让推 job_name / current_path 都归一化到同一条记录。
-                    // 不用 current_path 当键：jenkins 转 custom_push 时 job_name≠current_path，
-                    // 若按 current_path 落库，改回 jenkins 后同一项目会被当成两条（project 分裂）。
-                    $projectId = (string) ($job !== '' ? $job : ($cp !== '' ? $cp : $projectPath));
-                }
-                // jenkins：projectId 保持原始 path（JenkinsService 按路径拼 URL）
-
-                break;
+        // Pass 1：按 job_name（canonical 主键）精确匹配，遍历「全部」映射（含 pending/disabled）。
+        // job_name 是各 CI 的唯一身份，绝不能被其它 provider 的 current_path 别名「劫持」——
+        // 否则 gitea_ci 未启用时，路径 jeanslw/Devops_CD（gitea 的 job_name）会落到 jenkins 的
+        // current_path 别名上，拼出 job/jeanslw/... 404（历史 bug）。
+        // 命中未启用 provider 时也返回该 provider，让调用方走 registry 的「未配置/未启用」分支。
+        foreach ($this->config->getJobGitMap() as $m) {
+            $job = trim((string) ($m['job_name'] ?? ''));
+            if ($job !== '' && $job === $projectPath) {
+                return $this->resolveMap($projectPath, $m);
             }
         }
+
+        // Pass 2：current_path 别名兜底（仅 active 映射，供 custom_push 推 git 路径归一化用）。
+        foreach ($this->activeMaps() as $m) {
+            $cp = trim((string) ($m['current_path'] ?? ''));
+            if ($cp !== '' && $cp === $projectPath) {
+                return $this->resolveMap($projectPath, $m);
+            }
+        }
+
+        // 完全未命中：保持 jenkins + 原始 path（unmapped 直连，JenkinsService 按路径拼 URL）。
+        return ['provider' => AppConfig::PROVIDER_JENKINS, 'projectId' => $projectPath];
+    }
+
+    /**
+     * 将命中的映射行解析为 [provider, projectId]。
+     * projectId 按 provider 归一化：gitlab_ci → 数字 project_id；jenkins → job_name（Job 路径）；
+     * 其余（custom_push / gitea_ci）→ job_name（current_path 兜底），保证推 job_name/current_path 收敛到同一条。
+     */
+    private function resolveMap(string $projectPath, array $m): array
+    {
+        $provider = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
+        if (empty($provider)) {
+            $provider = AppConfig::PROVIDER_JENKINS;
+        }
+        $job = trim((string) ($m['job_name'] ?? ''));
+        $cp  = trim((string) ($m['current_path'] ?? ''));
+
+        if ($provider === AppConfig::PROVIDER_GITLAB_CI && !empty($m['project_id'])) {
+            // GitLab CI：用数字 project_id 调外部 API
+            $projectId = (string) $m['project_id'];
+        } elseif ($provider === AppConfig::PROVIDER_JENKINS) {
+            // Jenkins：projectId 必须是 Jenkins Job 路径（job_name），而非 current_path（git 路径）。
+            $projectId = (string) ($job !== '' ? $job : $projectPath);
+        } else {
+            // custom_push / gitea_ci：以 job_name 为规范键，current_path 兜底。
+            $projectId = (string) ($job !== '' ? $job : ($cp !== '' ? $cp : $projectPath));
+        }
+
         return ['provider' => $provider, 'projectId' => $projectId];
     }
 

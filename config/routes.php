@@ -86,6 +86,10 @@ $app->group('/api', function (RouteCollectorProxy $api) {
             $auth->map(['POST'], '/implied_rules', [AdminController::class, 'impliedRuleCreate']);
             $auth->map(['DELETE'], '/implied_rules', [AdminController::class, 'impliedRuleDelete']);
             $auth->map(['GET'], '/me/permissions', [AdminController::class, 'mePermissions']);
+            $auth->map(['GET'], '/operation_logs', [AdminController::class, 'operationLogList']);
+            $auth->map(['GET'], '/platform_config', [AdminController::class, 'platformConfig']);
+            $auth->map(['GET'], '/system_info', [AdminController::class, 'systemInfo']);
+            $auth->map(['POST'], '/migrate', [AdminController::class, 'migrateSchema']);
             $auth->map(['GET'], '/api_tokens/scopes', [AdminController::class, 'apiTokenScopes']);
             $auth->map(['GET'], '/api_tokens', [AdminController::class, 'apiTokenList']);
             $auth->map(['POST'], '/api_tokens', [AdminController::class, 'apiTokenCreate']);

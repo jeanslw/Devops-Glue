@@ -118,7 +118,8 @@ return [
         $config = $c->get(AppConfig::class);
         return new Logger(
             $config->getLogPath(),
-            $config->getAppEnv() === 'production' ? 'info' : 'debug'
+            // 与环境无关：APP_DEBUG=true → debug（全量），false → info（生产保留诊断信息，仅过滤 debug 噪声）
+            $config->isDebug() ? 'debug' : 'info'
         );
     },
 

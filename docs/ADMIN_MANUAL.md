@@ -161,6 +161,8 @@ The admin panel sidebar contains the following modules:
 | User Management | User list, role management, change password |
 | Permission Management | Permission list, permission registration, implied rules |
 | API Management | Create / revoke / delete API tokens (only shown with the required permission) |
+| Operation Log | Admin operation audit log (paginated + filterable) |
+| System Settings | Platform access status (read-only) + database schema info & manual migration |
 
 ### 8.1 External LDAP / AD Logins (Optional)
 
@@ -265,7 +267,7 @@ Harbor is used to associate build artifacts (image repositories) and to trigger 
 
 ## 12. Configure Build Mode
 
-On the "Build Mode" page, select the enabled CI sources with checkboxes (multi-select; only configured CIs are shown, plus a "Select All" option at the bottom):
+On the "Build Mode" page, select the enabled CI sources with checkboxes (multi-select; only configured CIs are shown):
 
 - `jenkins`: Jenkins
 - `gitlab_ci`: GitLab CI

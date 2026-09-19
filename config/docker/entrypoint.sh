@@ -7,7 +7,7 @@ if [ -n "${TZ}" ] && [ -f "/usr/share/zoneinfo/${TZ}" ]; then
 fi
 # Bind mounts arrive as root. Own the runtime dirs as www-data, but never
 # chmod -R files: OIDC private key must stay 0600, SQLite db/WAL keep their own mode.
-for d in /data/db /data/cache /data/logs /data/backups /data/logs/ci-platform; do
+for d in /data/db /data/cache /data/logs /data/backups /data/logs/ci-platform /data/logs/php_log; do
     mkdir -p "$d"
     chown www-data:www-data "$d" 2>/dev/null || true
     chmod 0755 "$d" 2>/dev/null || true

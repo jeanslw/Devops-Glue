@@ -56,7 +56,7 @@ class JenkinsService
     {
         $result = [];
         foreach ($jobs as $job) {
-            $name = $job['name'];
+            $name = trim((string) ($job['name'] ?? ''));
             $fullName = $prefix ? "{$prefix}/{$name}" : $name;
             if (isset($job['jobs']) && is_array($job['jobs'])) {
                 $result = array_merge($result, $this->flattenJobs($job['jobs'], $fullName));
