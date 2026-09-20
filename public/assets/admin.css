@@ -809,3 +809,31 @@
 .ver-compat { padding:12px 16px; border-radius:8px; border:1px solid #e5e7eb; background:#f9fafb; font-size:13px; }
 [data-theme="dark"] .ver-compat { border-color:#334155; background:#1e293b; color:#e5e7eb; }
 [data-theme="dark"] .ver-compat code { color:#a5b4fc; }
+
+/* ── 面包屑导航 ── */
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #6b7280;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.breadcrumb .bc-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #6b7280;
+  text-decoration: none;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: color .15s, background .15s;
+}
+.breadcrumb a.bc-item:hover { color: #4f46e5; background: #eef2ff; }
+.breadcrumb .bc-current { color: #1f2937; font-weight: 600; }
+.breadcrumb .bc-sep { color: #d1d5db; font-size: 12px; }
+[data-theme="dark"] .breadcrumb,
+[data-theme="dark"] .breadcrumb .bc-item { color: #94a3b8; }
+[data-theme="dark"] .breadcrumb .bc-current { color: #e5e7eb; }
+[data-theme="dark"] .breadcrumb a.bc-item:hover { background: #312e81; color: #a5b4fc; }

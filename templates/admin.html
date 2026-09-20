@@ -10,7 +10,7 @@
     <!-- 后台主界面整体缩放 90%：用 zoom（真实重排布局）而非 transform:scale（会在四周留白、fixed 定位错位）。
          仅作用于 #app-page（主界面），登录页 #login-page 为兄弟节点、保持 100% 原样。
          如需改回原大小，把 0.9 改为 1 或删除本块即可。 -->
-    <style>#app-page{zoom:0.9;}</style>
+    <style>#app-page{zoom:0.95;}</style>
     <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('theme') || 'light');</script>
 </head>
 <body>
@@ -157,7 +157,8 @@
 
         <!-- 内容 -->
         <div class="content">
-
+            <!-- 面包屑导航 -->
+            <nav class="breadcrumb" id="breadcrumb" aria-label="Breadcrumb"></nav>
             <!-- Toast -->
             <div class="toast" id="toast"></div>
 
@@ -1018,7 +1019,7 @@
 </div><!-- /app-page -->
 
 <script src="/assets/i18n.js"></script>
-<script src="/assets/admin.js"></script>
+<script type="module" src="/assets/admin.js"></script>
 
 </body>
 </html>

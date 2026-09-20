@@ -15,6 +15,10 @@ vendor/
 backups/
 tests/report.py
 tests/smoke_api_tokens
+public/node_modules
+public/eslint.config.mjs
+public/package.json
+public/package-lock.json
 
 # tests: smoke_test.php tests/Unit 
 tests/smoke_api_tokens.php
