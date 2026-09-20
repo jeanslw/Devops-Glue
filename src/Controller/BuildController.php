@@ -285,6 +285,8 @@ class BuildController extends BaseController
         // ?per_page=N 透传给 provider（默认 20），供「拉取式记录」分页一次拉取更多
         $perPage = (int) ($request->getQueryParams()['per_page'] ?? 0);
         $data = $p->getPipelines($projectId, $perPage > 0 ? $perPage : 20);
+        // 「镜像 Tag」列：仅 harbor-scan 回写成功（writeback_status='success'）视为推送成功，投影到每行
+        $data = $this->attachPullTags($path, $data);
         $format = $request->getQueryParams()['format'] ?? 'raw';
 
         // Jenkins 风格列表格式（list 参数优先级更高）
@@ -935,6 +937,281 @@ class BuildController extends BaseController
             'harbor_repository' => $harbor,
             'all'            => $pipeline ? null : $entry,
         ], $request);
+    }
+
+    /**
+     * 拉取式记录「镜像 Tag」列的数据源投影。
+     *
+     * 仅当 ci_security_checks 中存在 check_type='harbor-scan' 且 writeback_status='success'
+     * 的记录时，才认为该 commit 的镜像 tag 已推送成功，并把对应 tag 关联到 pipeline 行上。
+     * 判断依据是「回写成功」（推送成功的审计事实），而非 ci_pipeline_artifacts（最终产物——
+     * 产物有记录并不代表推送成功，不能用产物倒推）。
+     */
+    private function attachPullTags(string $path, array $pipelines): array
+    {
+        if (empty($pipelines)) {
+            return $pipelines;
+        }
+        try {
+            // 同一项目可能以 job_name / current_path 别名落审计，一并纳入匹配，避免漏关联；
+            // 同时收集本项目 harbor_repository（用于判断「可日志兜底」）。
+            $aliases = [$path];
+            $harborRepo = '';
+            foreach ($this->config->getJobGitMap() as $m) {
+                $job = $m['job_name'] ?? '';
+                $cp  = $m['current_path'] ?? '';
+                $matched = ($job === $path || $cp === $path);
+                if ($matched && $harborRepo === '' && !empty($m['harbor_repository'])) {
+                    $harborRepo = (string) $m['harbor_repository'];
+                }
+                if ($matched && ($job !== '' || $cp !== '')) {
+                    foreach (['job_name', 'current_path'] as $f) {
+                        $v = $m[$f] ?? '';
+                        if ($v !== '' && $v !== $path && !in_array($v, $aliases, true)) {
+                            $aliases[] = $v;
+                        }
+                    }
+                }
+            }
+
+            $tagBySha = [];
+            $tagSourceBySha = [];
+
+            // 主数据源：harbor-scan 回写成功（推送成功的审计事实）→ sha→tag
+            $ph = implode(',', array_fill(0, count($aliases), '?'));
+            $stmt = $this->pdo->prepare(
+                "SELECT sha, tag FROM " . AppConfig::TABLE_SECURITY_CHECKS
+                . " WHERE check_type = 'harbor-scan' AND writeback_status = 'success'"
+                . " AND sha IS NOT NULL AND sha != '' AND project IN ({$ph})"
+            );
+            $stmt->execute($aliases);
+            foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $row) {
+                $sha = (string) ($row['sha'] ?? '');
+                if ($sha !== '' && ($row['tag'] ?? '') !== '') {
+                    $tagBySha[$sha] = $row['tag'];
+                    $tagSourceBySha[$sha] = 'scan';
+                }
+            }
+
+            // 兜底缓存：日志懒解析落库的 sha→tag（ci_pipeline_build_log，主源未命中时补位）
+            $shas = array_values(array_unique(array_filter(
+                array_map(fn($p) => (string) ($p['sha'] ?? ''), $pipelines),
+                fn($s) => $s !== ''
+            )));
+            if ($shas) {
+                $sph = implode(',', array_fill(0, count($shas), '?'));
+                $cstmt = $this->pdo->prepare(
+                    "SELECT sha, tag FROM " . AppConfig::TABLE_PIPELINE_BUILD_LOG
+                    . " WHERE sha IN ({$sph}) AND tag != ''"
+                );
+                $cstmt->execute($shas);
+                foreach ($cstmt->fetchAll(\PDO::FETCH_ASSOC) as $row) {
+                    $sha = (string) ($row['sha'] ?? '');
+                    if ($sha !== '' && ($row['tag'] ?? '') !== '' && !isset($tagBySha[$sha])) {
+                        $tagBySha[$sha] = $row['tag'];
+                        $tagSourceBySha[$sha] = 'log';
+                    }
+                }
+            }
+
+            foreach ($pipelines as $i => $p) {
+                $sha = (string) ($p['sha'] ?? '');
+                $tag = $sha !== '' && isset($tagBySha[$sha]) ? $tagBySha[$sha] : '';
+                $pipelines[$i]['tag'] = $tag;
+                $pipelines[$i]['tag_source'] = $sha !== '' && isset($tagBySha[$sha]) ? ($tagSourceBySha[$sha] ?? '') : '';
+                // 可日志兜底：未命中 tag + success + 映射配置了 harbor_repository
+                $pipelines[$i]['can_resolve_tag'] = $tag === ''
+                    && (($p['status'] ?? '') === 'success')
+                    && $harborRepo !== '';
+            }
+            return $pipelines;
+        } catch (\Throwable $e) {
+            \App\Helper\Log::exception($e);
+            return $pipelines;
+        }
+    }
+
+    /**
+     * POST /api/build/{path}/pipelines/{id}/resolve-tag
+     *
+     * 「镜像 Tag」日志兜底懒解析：对一条 status=success 且未命中 harbor-scan 回写的 pipeline，
+     * 遍历其 jobs 日志，按可配置关键字 + 本项目 harbor 仓库路径命中后尽力提取 tag，
+     * 并落库到 ci_pipeline_build_log（sha→tag 缓存），下次列表直接命中，不再重复拉日志。
+     * Body 可带 force=1 强制重解析：跳过缓存、覆盖旧 tag，用于修正历史解析错误。
+     */
+    public function resolveTag(Request $request, Response $response, array $args): Response
+    {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_BUILD_RECORDS_PULL)) {
+            return $resp;
+        }
+
+        $path       = $args['path'] ?? '';
+        $pipelineId = (int) ($args['id'] ?? 0);
+        $body       = $request->getParsedBody() ?? [];
+        $sha        = trim((string) ($body['sha'] ?? ''));
+        $force      = (bool) ($body['force'] ?? false);
+        if ($pipelineId <= 0) {
+            return $this->jsonError($response, $this->__('build.resolve_tag_missing_id'), 400);
+        }
+
+        [$provider, $projectId] = $this->resolve($path);
+        if (!$this->registry->isRegistered($provider)) {
+            return $this->jsonError($response, $this->__('build.provider_not_configured', ['{provider}' => $provider]), 400);
+        }
+
+        // 映射的 harbor_repository（两段式 project/repo）；缺配则无需兜底
+        $harborRepo = '';
+        foreach ($this->config->getJobGitMap() as $m) {
+            $job = $m['job_name'] ?? '';
+            $cp  = $m['current_path'] ?? '';
+            if ($job === $path || $cp === $path) {
+                if (!empty($m['harbor_repository'])) {
+                    $harborRepo = trim((string) $m['harbor_repository']);
+                }
+                break;
+            }
+        }
+        if ($harborRepo === '') {
+            return $this->output($response, ['tag' => '', 'resolved' => false, 'reason' => 'no_repository'], $request);
+        }
+
+        // 缓存命中：非强制时直接返回（含「已解析但无 tag」的空结果，避免重复拉日志）
+        if (!$force && $sha !== '') {
+            try {
+                $c = $this->pdo->prepare("SELECT tag FROM " . AppConfig::TABLE_PIPELINE_BUILD_LOG . " WHERE sha = ?");
+                $c->execute([$sha]);
+                $cached = $c->fetchColumn();
+                if ($cached !== false) {
+                    return $this->output($response, ['tag' => (string) $cached, 'resolved' => true, 'cached' => true], $request);
+                }
+            } catch (\Throwable $e) {
+                \App\Helper\Log::exception($e);
+            }
+        }
+
+        $keyword = $this->config->getTagLogKeyword();
+        $tag = '';
+        try {
+            $p = $this->registry->create($provider);
+            $jobs = $p->getJobs($projectId, $pipelineId);
+            foreach ($jobs as $j) {
+                $jobId = (int) ($j['id'] ?? 0);
+                if ($jobId <= 0) {
+                    continue;
+                }
+                $trace = (string) $p->getJobTrace($projectId, $jobId);
+                $tag = $this->extractTagFromTrace($trace, $harborRepo, $keyword, $pipelineId);
+                if ($tag !== '') {
+                    break;
+                }
+            }
+        } catch (\Throwable $e) {
+            \App\Helper\Log::exception($e);
+            $tag = '';
+        }
+
+        // 落库缓存（sha 为空则无法定位，只返回结果不缓存）
+        if ($sha !== '') {
+            try {
+                $sql = \App\Service\Database::sqlUpsert(
+                    AppConfig::TABLE_PIPELINE_BUILD_LOG,
+                    'project_key, provider, project_id, sha, pipeline_id, tag, repository, source, updated_at',
+                    '?, ?, ?, ?, ?, ?, ?, ?, ' . \App\Service\Database::sqlNow()
+                );
+                $this->pdo->prepare($sql)->execute([$path, $provider, (string) $projectId, $sha, (string) $pipelineId, $tag, $harborRepo, 'log']);
+            } catch (\Throwable $e) {
+                \App\Helper\Log::exception($e);
+            }
+        }
+
+        return $this->output($response, ['tag' => $tag, 'resolved' => true, 'cached' => false], $request);
+    }
+
+    /**
+     * 从单条 job 日志中尽力提取镜像 tag。
+     * 命中条件：日志包含推送成功关键字（可配置，默认 digest）且包含本项目 harbor 仓库路径。
+     * 提取优先级：`repo:tag` → `-t TAG` / `--tag TAG`；多条候选时优先「尾号 = 当前构建编号」。
+     */
+    private function extractTagFromTrace(string $trace, string $harborRepo, string $keyword, int $pipelineId = 0): string
+    {
+        $trace      = (string) $trace;
+        $harborRepo = trim((string) $harborRepo);
+        $keyword    = trim((string) $keyword);
+        if ($trace === '' || $harborRepo === '') {
+            return '';
+        }
+        // 推送成功关键字（大小写不敏感，支持 `|` 分隔多个，任一命中即可）；空关键字视为「不过滤」
+        if ($keyword !== '') {
+            $keywords = array_values(array_filter(array_map('trim', explode('|', $keyword)), fn($k) => $k !== ''));
+            if (!empty($keywords)) {
+                $hit = false;
+                foreach ($keywords as $kw) {
+                    if (stripos($trace, $kw) !== false) {
+                        $hit = true;
+                        break;
+                    }
+                }
+                if (!$hit) {
+                    return '';
+                }
+            }
+        }
+        // 日志须包含本项目 harbor 仓库路径
+        if (stripos($trace, $harborRepo) === false) {
+            return '';
+        }
+        $candidates = [];
+        // `repo:tag`（如 mycode/runner-ci:v1.2.3）
+        $quoted = preg_quote($harborRepo, '/');
+        if (preg_match_all('/' . $quoted . ':([^\s\'"\\\\]+)/i', $trace, $m)) {
+            foreach ($m[1] as $raw) {
+                $tag = $this->sanitizeTag($raw);
+                if ($tag !== '') {
+                    $candidates[] = $tag;
+                }
+            }
+        }
+        // `-t TAG` / `--tag TAG`（值可能是 repo:tag 或裸 tag）
+        if (preg_match_all('/-(?:-tag\s+|-t\s+)([^\s]+)/i', $trace, $m)) {
+            foreach ($m[1] as $raw) {
+                $tag = $this->sanitizeTag($raw);
+                if ($tag !== '') {
+                    $candidates[] = $tag;
+                }
+            }
+        }
+        return $this->pickTag($candidates, $pipelineId);
+    }
+
+    /**
+     * 从候选 tag 中选一个：优先「尾号数字 = 当前构建编号」的（如 v20260827-130 ↔ pipelineId=130），
+     * 避免日志里更早出现的上一条构建 tag（v20260827-129）被误采；无命中则取第一条。
+     */
+    private function pickTag(array $candidates, int $pipelineId): string
+    {
+        if (empty($candidates)) {
+            return '';
+        }
+        if ($pipelineId > 0) {
+            foreach ($candidates as $tag) {
+                if (preg_match('/(\d+)$/', $tag, $m) && (int) $m[1] === $pipelineId) {
+                    return $tag;
+                }
+            }
+        }
+        return $candidates[0];
+    }
+
+    /** 清洗 tag：去引号/尾随标点，`repo:tag` 取冒号后段。 */
+    private function sanitizeTag(string $raw): string
+    {
+        $tag = trim($raw, " \t\n\r\0\x0B\"'");
+        $tag = rtrim($tag, ",;)'\"");
+        if (($pos = strrpos($tag, ':')) !== false) {
+            $tag = substr($tag, $pos + 1);
+        }
+        return $tag;
     }
 
     // ── pipeline → tag 映射持久化（SQLite） ──

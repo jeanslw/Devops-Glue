@@ -537,11 +537,10 @@ class AdminController extends BaseController
         }
         unset($info);
 
-        // Harbor 附加探测信息：具体版本号 + 机器人账户支持情况（供管理界面明确提示）
+        // Harbor 机器人账户（配置态，快速）；实际版本探测已拆到 /platform_versions/probe，
+        // 本接口保持毫秒级返回，避免外部探测拖慢整页。
         if (isset($versions['harbor'])) {
-            $versions['harbor']['detected_version'] = $this->harbor?->getHarborVersion();
-            $versions['harbor']['robot_support']    = $this->harbor?->getRobotAccountSupport() ?? 'unknown';
-            $versions['harbor']['robot_account']    = $this->config->isHarborRobotAccount();
+            $versions['harbor']['robot_account'] = $this->config->isHarborRobotAccount();
         }
 
         // Jenkins：只读检测版本（Jenkins 无独立 API 版本，直接展示服务器版本；未配置则不显示）
@@ -551,11 +550,38 @@ class AdminController extends BaseController
             'source'     => 'config',
             'configured' => $hasJenkins,
         ];
-        if ($hasJenkins) {
-            $versions['jenkins']['detected_version'] = $this->jenkins?->getVersion();
-        }
 
         return $this->output($response, ['versions' => $versions], $request);
+    }
+
+    /**
+     * GET /api/admin/platform_versions/probe — 实际探测 Harbor / Jenkins 版本（慢，独立端点）。
+     * 与列表接口分离：列表毫秒级返回配置态，探测结果由前端后台补齐，避免平台不可达时整页卡住。
+     */
+    public function platformVersionsProbe(Request $request, Response $response): Response
+    {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_PLATFORM_EDIT)) {
+            return $resp;
+        }
+
+        $result = ['harbor' => [], 'jenkins' => []];
+        try {
+            $result['harbor']['detected_version'] = $this->harbor?->getHarborVersion();
+            $result['harbor']['robot_support']    = $this->harbor?->getRobotAccountSupport() ?? 'unknown';
+        } catch (\Throwable $e) {
+            \App\Helper\Log::error('[版本探测] Harbor 连接失败', ['error' => $e->getMessage()]);
+        }
+
+        if (!empty($this->config->getJenkinsConfig()['url'])) {
+            try {
+                $result['jenkins']['detected_version'] = $this->jenkins?->getVersion();
+            } catch (\Throwable $e) {
+                \App\Helper\Log::error('[版本探测] Jenkins 连接失败', ['error' => $e->getMessage()]);
+            }
+        }
+
+        return $this->output($response, $result, $request);
     }
 
     /**
@@ -615,7 +641,6 @@ class AdminController extends BaseController
             'has_gitlab_ci' => $hasGitlabCi,
             'has_gitea_ci'  => $hasGiteaCi,
             'custom_push_enabled' => $this->config->getCustomPushEnabled(),
-            'stale_tag_cleanup_enabled' => $this->config->getStaleTagCleanupEnabled(),
             'custom_providers' => array_column($this->config->getCustomBuildProviders(), 'name'),
         ], $request);
     }
@@ -637,7 +662,6 @@ class AdminController extends BaseController
         }
         $modes = array_values(array_unique(array_filter(array_map('trim', $modes), fn($s) => $s !== '')));
         $cpEnabled = !empty($body['custom_push_enabled']);
-        $staleCleanup = !empty($body['stale_tag_cleanup_enabled']);
 
         foreach ($modes as $m) {
             if (!in_array($m, AppConfig::BUILTIN_PULL_PROVIDERS, true)) {
@@ -673,7 +697,6 @@ class AdminController extends BaseController
         try {
             $this->config->setBuildModes($modes);
             $this->config->setCustomPushEnabled($cpEnabled);
-            $this->config->setStaleTagCleanupEnabled($staleCleanup);
 
             // 将不在启用集合中的拉取式 provider 的 active 记录降为 pending
             $removed = array_values(array_diff(AppConfig::BUILTIN_PULL_PROVIDERS, $modes));
@@ -712,8 +735,8 @@ class AdminController extends BaseController
                 }
             }
 
-            $this->opLog()->record($this->currentUser, 'update_build_mode', '', ['modes' => $modes, 'custom_push_enabled' => $cpEnabled, 'stale_tag_cleanup_enabled' => $staleCleanup], $this->clientIp($request), 'success');
-            return $this->output($response, ['success' => true, 'modes' => $modes, 'custom_push_enabled' => $cpEnabled, 'stale_tag_cleanup_enabled' => $staleCleanup], $request);
+            $this->opLog()->record($this->currentUser, 'update_build_mode', '', ['modes' => $modes, 'custom_push_enabled' => $cpEnabled], $this->clientIp($request), 'success');
+            return $this->output($response, ['success' => true, 'modes' => $modes, 'custom_push_enabled' => $cpEnabled], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.save_failed') . ': ' . $e->getMessage(), 500);
         }
@@ -1659,10 +1682,48 @@ class AdminController extends BaseController
                     'gitea'       => ['configured' => $git($gitea)],
                     'harbor'      => ['configured' => !empty($harbor['url']) && !empty($harbor['password'])],
                 ],
+                // 平台级 tag 设置（清理/回填/日志关键字），仅存于 ci_app_settings，由 ci.system 控制
+                'stale_tag_cleanup_enabled' => $c->getStaleTagCleanupEnabled(),
+                'backfill_tag_enabled'      => $c->getBackfillTagEnabled(),
+                'tag_log_keyword'           => $c->getTagLogKeyword(),
             ], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.query_failed') . ': ' . $e->getMessage(), 500);
         }
+    }
+
+    /**
+     * PUT /api/admin/platform_config — 更新平台级 tag 设置（清理开关 / 回填开关 / 日志关键字）
+     * 权限：ci.system（平台管理）。这些设置与「构建模式」无关，故从 build_mode 移出。
+     * 仅更新请求体显式携带的键，避免互相覆盖。
+     */
+    public function updatePlatformConfig(Request $request, Response $response): Response
+    {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_SYSTEM)) {
+            return $resp;
+        }
+        $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
+
+        try {
+            if (array_key_exists('stale_tag_cleanup_enabled', $body)) {
+                $this->config->setStaleTagCleanupEnabled(!empty($body['stale_tag_cleanup_enabled']));
+            }
+            if (array_key_exists('backfill_tag_enabled', $body)) {
+                $this->config->setBackfillTagEnabled(!empty($body['backfill_tag_enabled']));
+            }
+            if (array_key_exists('tag_log_keyword', $body)) {
+                $this->config->setTagLogKeyword(trim((string) ($body['tag_log_keyword'] ?? '')));
+            }
+        } catch (\Exception $e) {
+            return $this->jsonError($response, $this->__('build.query_failed') . ': ' . $e->getMessage(), 500);
+        }
+
+        return $this->output($response, [
+            'stale_tag_cleanup_enabled' => $this->config->getStaleTagCleanupEnabled(),
+            'backfill_tag_enabled'      => $this->config->getBackfillTagEnabled(),
+            'tag_log_keyword'           => $this->config->getTagLogKeyword(),
+        ], $request);
     }
 
     /**
@@ -1720,7 +1781,7 @@ class AdminController extends BaseController
                 'rows'    => array_sum($counts),
             ], $request);
         } catch (\Throwable $e) {
-            if ($this->currentUser !== null && $this->currentUser !== '') {
+            if ($this->currentUser !== '') {
                 try {
                     $this->opLog()->record($this->currentUser, 'backup_database', '', ['error' => $e->getMessage()], $this->clientIp($request), 'failure');
                 } catch (\Throwable $ignored) {

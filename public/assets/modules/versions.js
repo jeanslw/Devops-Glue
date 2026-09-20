@@ -15,8 +15,13 @@ let currentVersions = {};
 export async function loadVersions() {
     document.getElementById('ver-loading').style.display = 'block';
     document.getElementById('ver-table-wrap').style.display = 'none';
+
+    // 列表（配置态，毫秒级）+ 版本探测（慢）并发：探测结果后台补齐，避免平台不可达时整页卡住
+    const listReq  = fetch(VERSIONS_API, { headers: authHeaders() });
+    const probeReq = fetch(VERSIONS_API + '/probe', { headers: authHeaders() });
+
     try {
-        const res = await fetch(VERSIONS_API, { headers: authHeaders() });
+        const res = await listReq;
         if (handle401(res)) return;
         const data = await res.json();
         const raw = data.versions || {};
@@ -60,6 +65,24 @@ export async function loadVersions() {
     } catch(e) {
         document.getElementById('ver-loading').innerHTML = '<p style="color:#dc2626;">' + __.t('js.load_failed') + ': ' + esc(e.message) + '</p>';
     }
+
+    // 慢探测：后台补齐实际版本号 + Harbor 机器人支持情况（失败/超时保持「未知版本」占位）
+    try {
+        const res = await probeReq;
+        if (handle401(res)) return;
+        const data = await res.json();
+        if (data && data.harbor) {
+            const h = currentVersions.harbor || (currentVersions.harbor = {});
+            if (data.harbor.detected_version != null) h.detected_version = data.harbor.detected_version;
+            if (data.harbor.robot_support) h.robot_support = data.harbor.robot_support;
+        }
+        if (data && data.jenkins) {
+            const j = currentVersions.jenkins || (currentVersions.jenkins = {});
+            if (data.jenkins.detected_version != null) j.detected_version = data.jenkins.detected_version;
+        }
+        renderHarborCompat();
+        renderJenkinsCompat();
+    } catch(e) {}
 }
 
 function renderHarborCompat() {

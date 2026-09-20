@@ -1,5 +1,16 @@
 # Changelog
 
+## v2.8.4 (2026-09-20)
+- **Image Tag column for pull records** — Pull-type build records (jobs list / pipelines) gain an "Image Tag" column, projected from the harbor-scan writeback success onto `ci_pipeline_artifacts`.
+- **Log-derived tag fallback** — When the canonical artifact tag has not been written back yet, the build log is lazily parsed to derive the image tag using configurable keywords (multi-keyword, `|`-separated). The result is cached in `ci_pipeline_build_log` (`source='log'`) together with the canonical identity (`provider` / `project_id`) and Harbor `repository`, so it can be promoted later without re-resolving the provider.
+- **Tag backfill cron** — New `cli/backfill-pipeline-tags.php` and `PipelineTagService::backfillTagsFromBuildLog()` promote log-derived tags into the canonical `ci_pipeline_artifacts`, but only after Harbor explicitly confirms the tag exists; existing canonical tags are never overwritten, and an unreachable Harbor / empty repository or tag are skipped safely. Gated by a new `backfill_tag_enabled` switch (default off).
+- **Platform-config consolidation** — The tag-related settings (log keyword, stale-tag cleanup, backfill) moved from `/api/admin/build_mode` to the `ci.system`-gated `/api/admin/platform_config` endpoint, which now also accepts `PUT`.
+- **Configurable tag-cron intervals** — The `tag-cleanup` / `tag-backfill` supervisor loops read `TAG_CLEANUP_INTERVAL` / `TAG_BACKFILL_INTERVAL` (seconds, defaults 3600 / 1800) from the container environment, so both schedules are tunable without rebuilding.
+- **Image-tag re-parse** — Failed pull records whose tag was derived from the build log now expose a ↻ re-parse action that force-resolves the tag (bypassing the cache), fixing the "wrong previous-build tag" mismatch when the harbor-scan writeback missed.
+- **Non-blocking platform-version detection** — The platform-versions page now renders the config table instantly and probes Harbor / Jenkins versions in a separate request, so a slow or unreachable platform no longer freezes the page.
+- **Platform-config tag cards** — The three tag settings (stale cleanup / log backfill / log keyword) are split into three side-by-side cards with compact left-aligned toggles.
+- **Versioning** — `APP_VERSION` bumped to 2.8.4; OpenAPI `version` synced (CN/EN).
+
 ## v2.8.3 (2026-09-20)
 - **System Settings panel** — The single "System Info" menu becomes a "System Settings" dropdown with two sub-pages: **Platform Config** and **System Info**. It hosts the "Enable stale tag cleanup" toggle (moved from Build Mode). Added a new `GET /api/admin/platform_config` endpoint.
 - **Data Management panel** — The "System Info" sub-page is upgraded to "Data Management", split into two cards: **System Info** and **Database**. Added a **Backup Database** button (super_admin only): supports sqlite / mysql, backup only, no restore.

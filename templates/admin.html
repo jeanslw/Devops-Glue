@@ -553,6 +553,7 @@
                                 <th data-i18n="map.status">状态</th>
                                 <th data-i18n="pull.branch">分支</th>
                                 <th data-i18n="pull.commit">Commit</th>
+                                <th data-i18n="pull.tag">镜像Tag</th>
                                 <th data-i18n="pull.time">时间</th>
                                 <th data-i18n="map.actions">操作</th>
                             </tr>
@@ -967,18 +968,44 @@
                     <div id="pc-body" style="display:none;">
                         <h4 data-i18n="sys.platforms" style="margin:0 0 12px;">平台接入状态</h4>
                         <div id="pc-platforms"></div>
-                        <div class="mode-card" style="margin-top:20px;">
-                            <div class="mode-card-hd switch-row">
-                                <label class="mode-card-toggle" for="stale-tag-cleanup-toggle">
-                                    <input type="checkbox" id="stale-tag-cleanup-toggle" onchange="onStaleTagCleanupToggle()">
-                                    <span data-i18n="build.stale_tag_cleanup_toggle">🧹 启用清理过期 tag 记录</span>
-                                </label>
-                                <span id="stale-tag-status" class="mode-save-status" data-i18n="build.mode_saved">✅ 已保存</span>
+                        <div class="mode-cards pc-tag-cards" style="margin-top:16px;">
+                            <div class="mode-card">
+                                <div class="mode-card-hd switch-row">
+                                    <label class="mode-card-toggle" for="stale-tag-cleanup-toggle">
+                                        <input type="checkbox" id="stale-tag-cleanup-toggle" onchange="onStaleTagCleanupToggle()">
+                                        <span data-i18n="build.stale_tag_cleanup_toggle">🧹 启用清理过期 tag 记录</span>
+                                    </label>
+                                    <span id="stale-tag-status" class="mode-save-status" data-i18n="build.mode_saved">✅ 已保存</span>
+                                </div>
+                                <ul class="mode-card-notes">
+                                    <li data-i18n="build.stale_cleanup_note_on">启用：将以 Harbor 为准，删除系统中已不存在的 tag 记录，Harbor 库的 tag 不会删除。</li>
+                                    <li data-i18n="build.stale_cleanup_note_off">关闭：停止清理，系统中可能有 tag 实际不存在的情况。</li>
+                                </ul>
                             </div>
-                            <ul class="mode-card-notes">
-                                <li data-i18n="build.stale_cleanup_note_on">启用：将以 Harbor 为准，删除系统中已不存在的 tag 记录，Harbor 库的 tag 不会删除。</li>
-                                <li data-i18n="build.stale_cleanup_note_off">关闭：停止清理，系统中可能有 tag 实际不存在的情况。</li>
-                            </ul>
+                            <div class="mode-card">
+                                <div class="mode-card-hd switch-row">
+                                    <label class="mode-card-toggle" for="backfill-tag-toggle">
+                                        <input type="checkbox" id="backfill-tag-toggle" onchange="onBackfillTagToggle()">
+                                        <span data-i18n="build.backfill_tag_toggle">🔄 启用镜像 Tag 日志回填</span>
+                                    </label>
+                                    <span id="backfill-tag-status" class="mode-save-status" data-i18n="build.mode_saved">✅ 已保存</span>
+                                </div>
+                                <ul class="mode-card-notes">
+                                    <li data-i18n="build.backfill_note_on">启用：回填 cron 将把日志推导的 tag（经 Harbor 校验存在）补写进产物 tag 记录，仅补缺失项，不覆盖扫描结果。</li>
+                                    <li data-i18n="build.backfill_note_off">关闭：仅懒加载展示，不回写产物 tag 记录。</li>
+                                </ul>
+                            </div>
+                            <div class="mode-card">
+                                <div class="mode-card-hd">
+                                    <span class="mode-card-title" data-i18n="build.tag_log_keyword_title">🔍 镜像 Tag 日志关键字</span>
+                                    <input type="text" id="tag-log-keyword" onchange="onTagLogKeywordChange()" placeholder="digest|pushed"
+                                           style="flex:1 1 120px;min-width:0;padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+                                    <span id="tag-log-keyword-status" class="mode-save-status" data-i18n="build.mode_saved">✅ 已保存</span>
+                                </div>
+                                <ul class="mode-card-notes">
+                                    <li data-i18n="build.tag_log_keyword_note">拉取式记录「镜像 Tag」列未命中扫描回写时，用该关键字在构建日志中匹配推送成功片段（大小写不敏感，`|` 分隔多个，留空恢复默认 digest）。</li>
+                                </ul>
+                            </div>
                         </div>
                     </div>
                 </div>

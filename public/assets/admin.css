@@ -517,6 +517,10 @@
             gap:16px;
             margin-top:8px;
         }
+        /* 平台配置：tag 三功能卡片并排（3 列）+ 开关紧凑居左 */
+        .pc-tag-cards { grid-template-columns:repeat(3, 1fr); }
+        .pc-tag-cards .mode-card-toggle { flex:0 0 auto; }
+        .pc-tag-cards .mode-save-status { margin-left:0; }
         .mode-card {
             display:flex; flex-direction:column; gap:12px;
             border:1px solid #e5e7eb; border-radius:14px;
@@ -558,7 +562,7 @@
             font-size:12px; color:#16a34a; display:none; margin-left:auto;
             white-space:nowrap; flex-shrink:0;
         }
-        #custom-push-toggle, #stale-tag-cleanup-toggle {
+        #custom-push-toggle, #stale-tag-cleanup-toggle, #backfill-tag-toggle {
             width:16px; height:16px; margin:0; cursor:pointer;
             accent-color:#4f46e5;
         }

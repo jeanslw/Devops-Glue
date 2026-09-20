@@ -114,4 +114,106 @@ class PipelineTagService
 
         return $stat;
     }
+
+    /**
+     * 回填：把 ci_pipeline_build_log 中「日志推导」的 tag（source='log'）经 Harbor 校验存在后，
+     * 提升写入 canonical ci_pipeline_artifacts —— 仅当该 (provider, project_id, pipeline_iid)
+     * 尚无 tag 时才写，绝不覆盖 scanSync 的权威结果。
+     *
+     * 信任边界：只有 Harbor 明确返回「该 tag 存在」才会落库，故回填数据与 scanSync 同信任级。
+     *
+     * @return array{promoted:int,checked:int,unreachable:int,unverifiable:int,skipped:int}
+     */
+    public function backfillTagsFromBuildLog(): array
+    {
+        $stat = ['promoted' => 0, 'checked' => 0, 'unreachable' => 0, 'unverifiable' => 0, 'skipped' => 0];
+
+        if (!$this->harbor) {
+            return $stat;
+        }
+
+        try {
+            $rows = $this->pdo->query(
+                'SELECT project_key, provider, project_id, pipeline_id, tag, repository '
+                . 'FROM ' . AppConfig::TABLE_PIPELINE_BUILD_LOG
+                . " WHERE source = 'log' AND tag != '' AND provider != '' AND project_id != '' AND repository != ''"
+            )->fetchAll();
+        } catch (\Throwable $e) {
+            Log::exception($e);
+            return $stat;
+        }
+
+        if (!$rows) {
+            return $stat;
+        }
+
+        $artifactSvc = new PipelineArtifactService($this->pdo);
+        $repoCache = [];
+
+        foreach ($rows as $r) {
+            $provider     = (string) $r['provider'];
+            $projectId    = (string) $r['project_id'];
+            $pipelineIid  = (int) $r['pipeline_id'];
+            $projectKey   = (string) ($r['project_key'] ?? '');
+            $tag          = (string) ($r['tag'] ?? '');
+            $repo         = (string) ($r['repository'] ?? '');
+
+            if ($provider === '' || $projectId === '' || $pipelineIid <= 0 || $tag === '' || $repo === '') {
+                $stat['unverifiable']++;
+                continue;
+            }
+
+            try {
+                $identity = new PipelineIdentity($provider, $projectId, $pipelineIid);
+            } catch (\InvalidArgumentException $e) {
+                $stat['unverifiable']++;
+                continue;
+            }
+
+            // 已有 canonical tag → 权威优先，回填不覆盖
+            $existing = $artifactSvc->find($identity);
+            if ($existing && trim((string) ($existing['tag'] ?? '')) !== '') {
+                $stat['skipped']++;
+                continue;
+            }
+
+            // Harbor 校验 tag 存在（按仓库缓存，与 cleanupStaleTags 同思路）
+            if (!array_key_exists($repo, $repoCache)) {
+                $parts = explode('/', $repo, 2);
+                if (count($parts) === 2) {
+                    try {
+                        $tags = $this->harbor->getTags($parts[0], $parts[1]);
+                        $repoCache[$repo] = !isset($tags['error']) ? $tags : null;
+                    } catch (\Throwable $e) {
+                        Log::exception($e);
+                        $repoCache[$repo] = null;
+                    }
+                } else {
+                    $repoCache[$repo] = null;
+                }
+            }
+
+            $validTags = $repoCache[$repo];
+            if ($validTags === null) {
+                $stat['unreachable']++;
+                continue;
+            }
+            $stat['checked']++;
+            if (!in_array($tag, $validTags, true)) {
+                continue; // Harbor 中不存在该 tag，不回填
+            }
+
+            // 回填写入 canonical（Harbor 已确认存在）
+            try {
+                $res = $artifactSvc->record($identity, $projectKey, $tag, $repo, '');
+                if ($res['written']) {
+                    $stat['promoted']++;
+                }
+            } catch (\Throwable $e) {
+                Log::exception($e);
+            }
+        }
+
+        return $stat;
+    }
 }

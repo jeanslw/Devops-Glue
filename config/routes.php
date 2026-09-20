@@ -64,6 +64,7 @@ $app->group('/api', function (RouteCollectorProxy $api) {
             $auth->map(['PUT'], '/job_git_map', [AdminController::class, 'jobGitMapUpdate']);
             $auth->map(['DELETE'], '/job_git_map', [AdminController::class, 'jobGitMapDelete']);
             $auth->map(['GET'], '/platform_versions', [AdminController::class, 'platformVersionsList']);
+            $auth->map(['GET'], '/platform_versions/probe', [AdminController::class, 'platformVersionsProbe']);
             $auth->map(['PUT'], '/platform_versions', [AdminController::class, 'platformVersionsUpdate']);
             $auth->map(['POST'], '/discover', [AdminController::class, 'discover']);
             $auth->map(['GET'], '/security_checks', [AdminController::class, 'securityChecksList']);
@@ -88,6 +89,7 @@ $app->group('/api', function (RouteCollectorProxy $api) {
             $auth->map(['GET'], '/me/permissions', [AdminController::class, 'mePermissions']);
             $auth->map(['GET'], '/operation_logs', [AdminController::class, 'operationLogList']);
             $auth->map(['GET'], '/platform_config', [AdminController::class, 'platformConfig']);
+            $auth->map(['PUT'], '/platform_config', [AdminController::class, 'updatePlatformConfig']);
             $auth->map(['GET'], '/system_info', [AdminController::class, 'systemInfo']);
             $auth->map(['POST'], '/migrate', [AdminController::class, 'migrateSchema']);
             $auth->map(['POST'], '/backup', [AdminController::class, 'backupDatabase']);
@@ -118,6 +120,7 @@ $app->group('/api', function (RouteCollectorProxy $api) {
         $build->map(['GET', 'POST'], '/projects', [BuildController::class, 'projectsList']);
         $build->map(['GET', 'POST'], '/{path:.+}/pipelines', [BuildController::class, 'pipelines']);
         $build->map(['GET', 'POST'], '/{path:.+}/pipelines/{id:\d+}', [BuildController::class, 'pipelineDetail']);
+        $build->map(['POST'], '/{path:.+}/pipelines/{id:\d+}/resolve-tag', [BuildController::class, 'resolveTag']);
         $build->map(['GET', 'POST'], '/{path:.+}/pipelines/{id:\d+}/logs', [BuildController::class, 'pipelineLogs']);
         $build->map(['POST'], '/{path:.+}/pipelines/{id:\d+}/retry', [BuildController::class, 'retry']);
         $build->map(['POST'], '/{path:.+}/pipelines/{id:\d+}/cancel', [BuildController::class, 'cancel']);

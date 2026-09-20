@@ -5,12 +5,14 @@ export let currentBuildModes = PULL_PROVIDERS.slice();
 export let currentBuildAvailability = {};
 export let currentCpEnabled = false;
 export let currentStaleCleanupEnabled = false;
+export let currentBackfillEnabled = false;
 export let platforms = [];
 
 export function setBuildModes(v) { currentBuildModes = v; }
 export function setBuildAvailability(v) { currentBuildAvailability = v; }
 export function setCpEnabled(v) { currentCpEnabled = v; }
 export function setStaleCleanup(v) { currentStaleCleanupEnabled = v; }
+export function setBackfill(v) { currentBackfillEnabled = v; }
 export function setPlatforms(v) { platforms = v; }
 
 export function isPullProvider(bp) { return PULL_PROVIDERS.includes(bp); }
