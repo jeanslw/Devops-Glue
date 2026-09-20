@@ -285,6 +285,8 @@ class BuildController extends BaseController
         // ?per_page=N 透传给 provider（默认 20），供「拉取式记录」分页一次拉取更多
         $perPage = (int) ($request->getQueryParams()['per_page'] ?? 0);
         $data = $p->getPipelines($projectId, $perPage > 0 ? $perPage : 20);
+        // 「镜像 Tag」列：仅 harbor-scan 回写成功（writeback_status='success'）视为推送成功，投影到每行
+        $data = $this->attachPullTags($path, $data);
         $format = $request->getQueryParams()['format'] ?? 'raw';
 
         // Jenkins 风格列表格式（list 参数优先级更高）
@@ -935,6 +937,65 @@ class BuildController extends BaseController
             'harbor_repository' => $harbor,
             'all'            => $pipeline ? null : $entry,
         ], $request);
+    }
+
+    /**
+     * 拉取式记录「镜像 Tag」列的数据源投影。
+     *
+     * 仅当 ci_security_checks 中存在 check_type='harbor-scan' 且 writeback_status='success'
+     * 的记录时，才认为该 commit 的镜像 tag 已推送成功，并把对应 tag 关联到 pipeline 行上。
+     * 判断依据是「回写成功」（推送成功的审计事实），而非 ci_pipeline_artifacts（最终产物——
+     * 产物有记录并不代表推送成功，不能用产物倒推）。
+     */
+    private function attachPullTags(string $path, array $pipelines): array
+    {
+        if (empty($pipelines)) {
+            return $pipelines;
+        }
+        try {
+            // 同一项目可能以 job_name / current_path 别名落审计，一并纳入匹配，避免漏关联
+            $aliases = [$path];
+            foreach ($this->config->getJobGitMap() as $m) {
+                $job = $m['job_name'] ?? '';
+                $cp  = $m['current_path'] ?? '';
+                if (($job === $path || $cp === $path) && ($job !== '' || $cp !== '')) {
+                    foreach (['job_name', 'current_path'] as $f) {
+                        $v = $m[$f] ?? '';
+                        if ($v !== '' && $v !== $path && !in_array($v, $aliases, true)) {
+                            $aliases[] = $v;
+                        }
+                    }
+                }
+            }
+
+            $ph = implode(',', array_fill(0, count($aliases), '?'));
+            $stmt = $this->pdo->prepare(
+                "SELECT sha, tag FROM " . AppConfig::TABLE_SECURITY_CHECKS
+                . " WHERE check_type = 'harbor-scan' AND writeback_status = 'success'"
+                . " AND sha IS NOT NULL AND sha != '' AND project IN ({$ph})"
+            );
+            $stmt->execute($aliases);
+
+            $tagBySha = [];
+            foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $row) {
+                $sha = (string) ($row['sha'] ?? '');
+                if ($sha !== '' && ($row['tag'] ?? '') !== '') {
+                    $tagBySha[$sha] = $row['tag'];
+                }
+            }
+            if (!$tagBySha) {
+                return $pipelines;
+            }
+
+            foreach ($pipelines as $i => $p) {
+                $sha = (string) ($p['sha'] ?? '');
+                $pipelines[$i]['tag'] = $sha !== '' && isset($tagBySha[$sha]) ? $tagBySha[$sha] : '';
+            }
+            return $pipelines;
+        } catch (\Throwable $e) {
+            \App\Helper\Log::exception($e);
+            return $pipelines;
+        }
     }
 
     // ── pipeline → tag 映射持久化（SQLite） ──

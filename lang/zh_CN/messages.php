@@ -168,6 +168,7 @@ return [
     'pull.pipeline'        => '流水线',
     'pull.branch'          => '分支',
     'pull.commit'          => 'Commit',
+    'pull.tag'             => '镜像Tag',
     'pull.time'            => '时间',
     'pull.view'            => '查看',
     'pull.log'             => '日志',

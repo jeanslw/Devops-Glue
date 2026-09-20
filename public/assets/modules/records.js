@@ -133,6 +133,7 @@ export async function loadPullRecords(silent) {
                 + '<td>' + statusBadge(r.status) + '</td>'
                 + '<td>' + (ref ? '<code style="font-size:11px;">' + esc(ref) + '</code>' : '—') + '</td>'
                 + '<td>' + (sha ? '<code style="font-size:11px;word-break:break-all;">' + esc(sha) + '</code>' : '—') + '</td>'
+                + '<td>' + (r.tag ? '<code style="font-size:11px;">' + esc(r.tag) + '</code>' : '—') + '</td>'
                 + '<td>' + (time ? esc(time) : '—') + '</td>'
                 + '<td>' + actionsCell + '</td>'
                 + '</tr>';

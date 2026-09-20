@@ -168,6 +168,7 @@ return [
     'pull.pipeline'        => 'Pipeline',
     'pull.branch'          => 'Branch',
     'pull.commit'          => 'Commit',
+    'pull.tag'             => 'Image Tag',
     'pull.time'            => 'Time',
     'pull.view'            => 'View',
     'pull.log'             => 'Log',
