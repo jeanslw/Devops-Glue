@@ -1,6 +1,7 @@
 // assets/breadcrumb.js
 import { ROUTES } from './core/router.js';
 import { esc } from './core/utils.js';
+import { adminRootPath } from './core/base.js';
 
 function buildTrail(tab) {
     const trail = [];
@@ -21,7 +22,8 @@ export function renderBreadcrumb(tab) {
     const trail = buildTrail(tab);
     const parts = [];
 
-    parts.push(`<a href="/" class="bc-item bc-home">🏠 ${__.t('admin.home')}</a>`);
+    // 首页指向后台入口（adminRootPath：根域 -> /admin，子路径 -> /{prefix}/admin），避免 / 落到宣传页。
+    parts.push(`<a href="${adminRootPath()}" class="bc-item bc-home">🏠 ${__.t('admin.home')}</a>`);
 
     trail.forEach((node, i) => {
         const isLast = i === trail.length - 1;

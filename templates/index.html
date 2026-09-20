@@ -111,7 +111,7 @@
                 <option value="en" data-i18n="lang.en">English</option>
             </select>
         </span>
-        <a href="/admin"><span class="menu-icon">🔑</span> <span data-i18n="index.admin">登录</span></a>
+        <a href="/admin" data-dg-home><span class="menu-icon">🔑</span> <span data-i18n="index.admin">登录</span></a>
         <a href="#" onclick="location.href='/api/docs'"><span class="menu-icon">📖</span> <span data-i18n="index.docs">文档</span></a>
     </div>
 </nav>
@@ -121,7 +121,7 @@
     <div class="hero">
         <div class="hero-title">
             <h1 data-i18n="index.title">Devops-Glue</h1>
-            <a href="/admin" class="status-badge"><span class="status-dot"></span><span data-i18n="index.running">运行中</span></a>
+            <a href="/admin" class="status-badge" data-dg-home><span class="status-dot"></span><span data-i18n="index.running">运行中</span></a>
         </div>
         <p data-i18n="index.subtitle">Jenkins · Git · Harbor 一站式 DevOps 工具链集成平台</p>
     </div>
@@ -180,6 +180,14 @@
 </footer>
 
 <script src="/assets/i18n.js"></script>
+<script>/* 后台入口链接子路径兼容：与 assets/core/base.js 的 adminRootPath() 保持同公式。
+    根域 -> /admin；子路径部署 -> /{prefix}/admin。仅更新带 data-dg-home 的后台入口链接。 */
+(function(){
+    var p = location.pathname.replace(/\/+$/, '');
+    var m = p.match(/^(.*)\/admin$/);
+    var h = m ? (m[1] || '') + '/admin' : (p || '/') + '/';
+    document.querySelectorAll('[data-dg-home]').forEach(function(a){ a.setAttribute('href', h); });
+})();</script>
 <script>(function(){var l=new URLSearchParams(location.search).get('lang');if(l==='zh'||l==='zh_CN'||l==='zh-CN')l='zh-CN';else if(l==='en')l='en';else l=null;if(l)localStorage.setItem('dg_lang',l);__.init(l);})();</script>
 
 </body>
