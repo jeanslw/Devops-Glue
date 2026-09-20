@@ -64,6 +64,7 @@ $app->group('/api', function (RouteCollectorProxy $api) {
             $auth->map(['PUT'], '/job_git_map', [AdminController::class, 'jobGitMapUpdate']);
             $auth->map(['DELETE'], '/job_git_map', [AdminController::class, 'jobGitMapDelete']);
             $auth->map(['GET'], '/platform_versions', [AdminController::class, 'platformVersionsList']);
+            $auth->map(['GET'], '/platform_versions/probe', [AdminController::class, 'platformVersionsProbe']);
             $auth->map(['PUT'], '/platform_versions', [AdminController::class, 'platformVersionsUpdate']);
             $auth->map(['POST'], '/discover', [AdminController::class, 'discover']);
             $auth->map(['GET'], '/security_checks', [AdminController::class, 'securityChecksList']);

@@ -537,11 +537,10 @@ class AdminController extends BaseController
         }
         unset($info);
 
-        // Harbor 附加探测信息：具体版本号 + 机器人账户支持情况（供管理界面明确提示）
+        // Harbor 机器人账户（配置态，快速）；实际版本探测已拆到 /platform_versions/probe，
+        // 本接口保持毫秒级返回，避免外部探测拖慢整页。
         if (isset($versions['harbor'])) {
-            $versions['harbor']['detected_version'] = $this->harbor?->getHarborVersion();
-            $versions['harbor']['robot_support']    = $this->harbor?->getRobotAccountSupport() ?? 'unknown';
-            $versions['harbor']['robot_account']    = $this->config->isHarborRobotAccount();
+            $versions['harbor']['robot_account'] = $this->config->isHarborRobotAccount();
         }
 
         // Jenkins：只读检测版本（Jenkins 无独立 API 版本，直接展示服务器版本；未配置则不显示）
@@ -551,11 +550,38 @@ class AdminController extends BaseController
             'source'     => 'config',
             'configured' => $hasJenkins,
         ];
-        if ($hasJenkins) {
-            $versions['jenkins']['detected_version'] = $this->jenkins?->getVersion();
-        }
 
         return $this->output($response, ['versions' => $versions], $request);
+    }
+
+    /**
+     * GET /api/admin/platform_versions/probe — 实际探测 Harbor / Jenkins 版本（慢，独立端点）。
+     * 与列表接口分离：列表毫秒级返回配置态，探测结果由前端后台补齐，避免平台不可达时整页卡住。
+     */
+    public function platformVersionsProbe(Request $request, Response $response): Response
+    {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_PLATFORM_EDIT)) {
+            return $resp;
+        }
+
+        $result = ['harbor' => [], 'jenkins' => []];
+        try {
+            $result['harbor']['detected_version'] = $this->harbor?->getHarborVersion();
+            $result['harbor']['robot_support']    = $this->harbor?->getRobotAccountSupport() ?? 'unknown';
+        } catch (\Throwable $e) {
+            \App\Helper\Log::error('[版本探测] Harbor 连接失败', ['error' => $e->getMessage()]);
+        }
+
+        if (!empty($this->config->getJenkinsConfig()['url'])) {
+            try {
+                $result['jenkins']['detected_version'] = $this->jenkins?->getVersion();
+            } catch (\Throwable $e) {
+                \App\Helper\Log::error('[版本探测] Jenkins 连接失败', ['error' => $e->getMessage()]);
+            }
+        }
+
+        return $this->output($response, $result, $request);
     }
 
     /**
