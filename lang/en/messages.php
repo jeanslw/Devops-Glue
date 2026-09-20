@@ -706,11 +706,14 @@ return [
     'oplog.act_revoke_api_token' => 'Revoke API token',
     'oplog.act_delete_api_token' => 'Delete API token',
     'oplog.act_migrate_schema' => 'Migrate database',
+    'oplog.act_backup_database' => 'Backup database',
 
     // System info panel
     'sys.menu'            => 'System Settings',
-    'sys.tab_platform'    => '🔌 Platform Config',
-    'sys.tab_system_info' => '🖥️ System Info',
+    'sys.tab_platform'    => '🔌 Platform Management',
+    'sys.tab_system_info' => '🗄️ Data Management',
+    'sys.panel_system_info' => '🖥️ System Info',
+    'sys.panel_database'  => '🗄️ Database',
     'sys.driver'          => 'DB Driver',
     'sys.app_version'     => 'App Version',
     'sys.schema_version'  => 'Schema Version',
@@ -731,4 +734,9 @@ return [
     'sys.migrate_note'    => 'Creates missing tables and applies seed data (idempotent, safe).',
     'sys.migrated'        => 'Migration complete',
     'sys.migrate_failed'  => 'Migration failed',
+    'sys.backup_btn'      => '💾 Backup Database',
+    'sys.backup_confirm'  => 'Run database backup now? A zip backup file will be created in the data/backups directory (backup only, no restore).',
+    'sys.backup_done'     => 'Backup complete',
+    'sys.backup_failed'   => 'Backup failed',
+    'sys.backup_no_tables' => 'No application tables available to back up (database not initialized?)',
 ];

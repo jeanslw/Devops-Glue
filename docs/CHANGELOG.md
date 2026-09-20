@@ -1,11 +1,13 @@
 # Changelog
 
 ## v2.8.3 (2026-09-20)
-- **System Settings panel** — The single "System Info" menu becomes a "System Settings" dropdown group with two tabs: **Platform Config** and **System Info**. Platform Config shows a read-only connectivity status for Jenkins / GitLab / GitHub / Gitee / Gitea / Harbor (masked — only `✓ Configured` / `✗ Not configured`, no URLs, accounts or credentials are exposed) and hosts the "Enable stale tag cleanup" toggle (moved from Build Mode). System Info drops the "App Version" row, adds a PHP-version row, collapses the "Data Tables" list by default, and keeps the "Migrate Database" button inline (no modal). A new `GET /api/admin/platform_config` endpoint (gated by `ci.system`) returns only per-platform `configured` booleans.
-- **Build Mode UI** — Removed the "Select All" checkbox and made the two configuration cards span the full row; the label is unified to "Build Mode".
-- **Dark theme** — Added a topbar 🌙/☀️ theme toggle persisted to `localStorage`; the whole admin panel now has a dark theme, including corrected button / hint-bar / table colors on the Build Mode, Security Audit, Platform Versions, Build Records and System Settings pages.
-- **Operation-log init scripts** — `database/mysql_init.sql` and `database/sqlite_init.sql` now include the `ci_operation_logs` table plus its three indexes, matching the in-app `ensureTables()` DDL.
-- **Versioning** — `APP_VERSION` bumped to 2.8.3; OpenAPI `version` synced (CN/EN).
+- **System Settings panel** — The single "System Info" menu becomes a "System Settings" dropdown with two sub-pages: **Platform Config** and **System Info**. It hosts the "Enable stale tag cleanup" toggle (moved from Build Mode). Added a new `GET /api/admin/platform_config` endpoint.
+- **Data Management panel** — The "System Info" sub-page is upgraded to "Data Management", split into two cards: **System Info** and **Database**. Added a **Backup Database** button (super_admin only): supports sqlite / mysql, backup only, no restore.
+- **Build Mode page** — Removed the "Select All" checkbox and made the two config cards span the full row; the label is unified to "Build Mode".
+- **Dark theme** — Added a 🌙/☀️ theme toggle to the topbar; the whole admin panel now has a dark theme with color corrections.
+- **Operation log** — Added an "Operation Log" feature: every write operation is recorded into the log. Added the `ci_operation_logs` table with 3 indexes, aligned with the in-app `ensureTables()` DDL.
+- **Logging gating** — Fixed `APP_DEBUG` to act as the gate for logging output.
+- **Versioning** — `APP_VERSION` bumped to 2.8.3; OpenAPI `version` synced.
 
 ## v2.8.2 (2026-09-18)
 - **Gitea Actions as a third CI source** — Added the `gitea_ci` build provider backed by Gitea Actions (`GET /api/v1/repos/{owner}/{repo}/actions/runs`), with graceful degradation when the Actions API is unavailable on older Gitea. Auto-discovery now scans Gitea repos (`/api/v1/user/repos`) and emits `build_provider=gitea_ci` mappings.

@@ -10,7 +10,7 @@
     <!-- 后台主界面整体缩放 90%：用 zoom（真实重排布局）而非 transform:scale（会在四周留白、fixed 定位错位）。
          仅作用于 #app-page（主界面），登录页 #login-page 为兄弟节点、保持 100% 原样。
          如需改回原大小，把 0.9 改为 1 或删除本块即可。 -->
-    <style>#app-page{zoom:0.9;}</style>
+    <style>#app-page{zoom:0.95;}</style>
     <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('theme') || 'light');</script>
 </head>
 <body>
@@ -49,7 +49,12 @@
             </span>
             <a href="/"><span class="menu-icon">🏠</span> <span data-i18n="admin.home">首页</span></a>
             <a href="#" onclick="goToDocs()"><span class="menu-icon">📖</span> <span data-i18n="admin.api_docs">API 文档</span></a>
-            <a href="#" onclick="doLogout()" data-i18n="auth.logout">🚪 退出</a>
+            <span class="top-user-wrap" id="top-user-wrap">
+                <button type="button" id="top-user" onclick="toggleTopMenu()" title="账号与退出"><span id="top-user-name"></span><span class="top-user-caret">▾</span></button>
+                <div class="top-user-menu" id="top-user-menu">
+                    <a href="#" onclick="doLogout()">退出</a>
+                </div>
+            </span>
         </div>
     </div>
 
@@ -69,7 +74,7 @@
                 <span class="menu-icon">🛡️</span> <span data-i18n="admin.sidebar_security">安全审计</span>
             </div>
             <div class="menu-item" data-tab="versions" onclick="switchTab('versions')">
-                <span class="menu-icon">🔧</span> <span data-i18n="admin.sidebar_versions">对接版本</span>
+                <span class="menu-icon">🧩</span> <span data-i18n="admin.sidebar_versions">对接版本</span>
             </div>
             <div class="menu-div"></div>
             <div class="menu-item" data-tab="mode" onclick="switchTab('mode')">
@@ -141,10 +146,10 @@
                 </div>
                 <div class="submenu">
                     <div class="menu-item submenu-item" data-tab="platform-config" onclick="switchTab('platform-config')">
-                        <span data-i18n="sys.tab_platform">🔌 平台配置</span>
+                        <span data-i18n="sys.tab_platform">🔌 平台管理</span>
                     </div>
                     <div class="menu-item submenu-item" data-tab="system-info" onclick="switchTab('system-info')">
-                        <span data-i18n="sys.tab_system_info">🖥️ 系统信息</span>
+                        <span data-i18n="sys.tab_system_info">🗄️ 数据管理</span>
                     </div>
                 </div>
             </div>
@@ -152,7 +157,8 @@
 
         <!-- 内容 -->
         <div class="content">
-
+            <!-- 面包屑导航 -->
+            <nav class="breadcrumb" id="breadcrumb" aria-label="Breadcrumb"></nav>
             <!-- Toast -->
             <div class="toast" id="toast"></div>
 
@@ -296,23 +302,23 @@
                 </div>
             </div>
 
-            <!-- ═══ 映射管理 Tab ═══ -->
-            <div id="tab-mapping" style="display:none;">
+				<!-- ═══ 映射管理 Tab ═══ -->
+				<div id="tab-mapping" style="display:none;">
 
-                <!-- 工具栏 -->
-                <div class="toolbar" style="justify-content:space-between;">
-                    <h3 style="flex:1;" data-i18n="map.config">映射配置</h3>
-                    <div style="flex:2;display:flex;justify-content:center;">
-                        <div class="view-toggle" id="view-toggle">
-                            <button class="btn active" data-view="table" onclick="switchMapView('table')">📋 <span data-i18n="map.table_view">表格</span></button>
-                            <button class="btn" data-view="topology" onclick="switchMapView('topology')">🗺️ <span data-i18n="map.topology_view">拓扑图</span></button>
-                        </div>
-                    </div>
-                    <div style="flex:1;display:flex;gap:8px;justify-content:flex-end;">
-                        <button class="btn btn-pri" onclick="showForm()">＋ <span data-i18n="map.new">新增映射</span></button>
-                        <button class="btn btn-discover" onclick="doDiscover()">🔍 <span data-i18n="map.auto_discover">自动发现</span></button>
-                    </div>
-                </div>
+					<!-- 工具栏 -->
+					<div class="toolbar toolbar-map">
+						<h3 data-i18n="map.config">映射配置</h3>
+						<div class="toolbar-map-center">
+							<div class="view-toggle" id="view-toggle">
+								<button class="btn active" data-view="table" onclick="switchMapView('table')">📋 <span data-i18n="map.table_view">表格</span></button>
+								<button class="btn" data-view="topology" onclick="switchMapView('topology')">🗺️ <span data-i18n="map.topology_view">拓扑图</span></button>
+							</div>
+						</div>
+						<div class="toolbar-map-right">
+							<button class="btn btn-pri" onclick="showForm()">＋ <span data-i18n="map.new">新增映射</span></button>
+							<button class="btn btn-discover" onclick="doDiscover()">🔍 <span data-i18n="map.auto_discover">自动发现</span></button>
+						</div>
+					</div>
 
                 <!-- 表格视图 -->
                 <div id="table-view">
@@ -978,10 +984,11 @@
                 </div>
             </div>
 
-            <!-- ═══ 系统信息 Tab ═══ -->
+            <!-- ═══ 数据管理 Tab ═══ -->
             <div id="tab-system-info" style="display:none;">
-                <div class="toolbar"><h3 data-i18n="sys.tab_system_info">🖥️ 系统信息</h3></div>
+                <div class="toolbar"><h3 data-i18n="sys.tab_system_info">🗄️ 数据管理</h3></div>
                 <div class="monitor-card">
+                    <h4 data-i18n="sys.panel_system_info">🖥️ 系统信息</h4>
                     <div id="sys-loading" style="text-align:center;padding:40px;color:#9ca3af;" data-i18n="common.loading">加载中…</div>
                     <div id="sys-body" style="display:none;">
                         <table>
@@ -992,13 +999,18 @@
                                 <tr><td data-i18n="sys.php_version">PHP 版本</td><td id="sys-php-version">-</td></tr>
                             </tbody>
                         </table>
-                        <div style="margin-top:20px;display:flex;justify-content:flex-end;align-items:center;gap:8px;">
-                            <button id="sys-tables-toggle" class="btn" onclick="toggleSysTables()" data-i18n="sys.tables_toggle">📋 数据表</button>
-                            <button id="sys-migrate-btn" class="btn btn-pri" onclick="doMigrate()" data-i18n="sys.migrate_btn">🛠 迁移数据库</button>
-                            <span id="sys-migrate-status" class="mode-save-status"></span>
-                        </div>
-                        <div id="sys-tables" style="display:none;margin-top:16px;"></div>
                     </div>
+                </div>
+                <div class="monitor-card">
+                    <h4 data-i18n="sys.panel_database">🗄️ 数据库</h4>
+                    <div class="sys-actions">
+                        <button id="sys-tables-toggle" class="btn btn-pri" onclick="toggleSysTables()" data-i18n="sys.tables_toggle">📋 数据表</button>
+                        <button id="sys-migrate-btn" class="btn btn-pri" onclick="doMigrate()" data-i18n="sys.migrate_btn">🛠 迁移数据库</button>
+                        <button id="sys-backup-btn" class="btn btn-pri" onclick="doBackup()" data-i18n="sys.backup_btn">💾 备份数据库</button>
+                        <span id="sys-migrate-status" class="mode-save-status"></span>
+                        <span id="sys-backup-status" class="mode-save-status"></span>
+                    </div>
+                    <div id="sys-tables" style="display:none;margin-top:16px;"></div>
                 </div>
             </div>
 
@@ -1007,7 +1019,7 @@
 </div><!-- /app-page -->
 
 <script src="/assets/i18n.js"></script>
-<script src="/assets/admin.js"></script>
+<script type="module" src="/assets/admin.js"></script>
 
 </body>
 </html>

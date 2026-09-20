@@ -90,6 +90,7 @@ $app->group('/api', function (RouteCollectorProxy $api) {
             $auth->map(['GET'], '/platform_config', [AdminController::class, 'platformConfig']);
             $auth->map(['GET'], '/system_info', [AdminController::class, 'systemInfo']);
             $auth->map(['POST'], '/migrate', [AdminController::class, 'migrateSchema']);
+            $auth->map(['POST'], '/backup', [AdminController::class, 'backupDatabase']);
             $auth->map(['GET'], '/api_tokens/scopes', [AdminController::class, 'apiTokenScopes']);
             $auth->map(['GET'], '/api_tokens', [AdminController::class, 'apiTokenList']);
             $auth->map(['POST'], '/api_tokens', [AdminController::class, 'apiTokenCreate']);

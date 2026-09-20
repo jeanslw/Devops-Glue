@@ -1684,6 +1684,52 @@ class AdminController extends BaseController
         }
     }
 
+    /**
+     * POST /api/admin/backup — 手动执行数据库备份，仅备份、不提供恢复。
+     * 支持 sqlite / mysql 两种驱动，产物为 zip 归档，命名 devops-glue_<driver>_<datetime>.zip
+     * 权限：仅 super_admin（与迁移同级，属敏感运维操作）。
+     *
+     * 备份目录：Docker 内 BACKUP_DIR=/data/backups（compose 卷映射宿主 ./data/backups）；
+     * 非 Docker / 未设 BACKUP_DIR 时落仓库根 backups/。目录不存在时自动创建并滚动留存最近 10 份。
+     * 备份逻辑由 DataBackupService 提供（bin/ 不随镜像发布，Web 侧不依赖 CLI 工具），
+     * 完成后写入操作日志。
+     */
+    public function backupDatabase(Request $request, Response $response): Response
+    {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requireSuperAdmin($response)) {
+            return $resp;
+        }
+        try {
+            $service = new \App\Service\DataBackupService($this->pdo);
+            [$zipFile, $counts] = $service->backup(10);
+
+            $this->opLog()->record(
+                $this->currentUser,
+                'backup_database',
+                $zipFile,
+                ['driver' => $service->driver(), 'tables' => count($counts), 'rows' => array_sum($counts)],
+                $this->clientIp($request),
+                'success'
+            );
+
+            return $this->output($response, [
+                'success' => true,
+                'file'    => $zipFile,
+                'tables'  => count($counts),
+                'rows'    => array_sum($counts),
+            ], $request);
+        } catch (\Throwable $e) {
+            if ($this->currentUser !== null && $this->currentUser !== '') {
+                try {
+                    $this->opLog()->record($this->currentUser, 'backup_database', '', ['error' => $e->getMessage()], $this->clientIp($request), 'failure');
+                } catch (\Throwable $ignored) {
+                }
+            }
+            return $this->jsonError($response, $this->__('sys.backup_failed') . ': ' . $e->getMessage(), 500);
+        }
+    }
+
     // ────────────────────────── helpers ──────────────────────────
 
     /**
