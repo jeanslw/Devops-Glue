@@ -24,7 +24,7 @@ import {
 import {
     loadPullProjects, loadPullRecords, openPullLog, pullShowLog, closePullLog,
     loadPushRecords, startPullAutoRefresh, stopPullAutoRefresh,
-    applyBuildRecordsMenuVisibility, resolvePullTag,
+    applyBuildRecordsMenuVisibility, resolvePullTag, reparsePullTag,
     getPullPage, setPullPage, getPushPage, getPushTotalPages, setPushPage
 } from './modules/records.js';
 import {
@@ -219,7 +219,7 @@ Object.assign(window, {
     loadVersions, saveVersions,
     loadSettings, onBuildModesChange, onCustomPushToggle, onStaleTagCleanupToggle, onBackfillTagToggle, onTagLogKeywordChange,
     loadPullProjects, loadPullRecords, openPullLog, pullShowLog, closePullLog, loadPushRecords,
-    applyBuildRecordsMenuVisibility, resolvePullTag,
+    applyBuildRecordsMenuVisibility, resolvePullTag, reparsePullTag,
     loadUsers, toggleUserStatus, showUserForm, showUserEditForm, hideUserForm, submitUserForm, deleteUser, modifyUserPassword, closePasswordModal, submitPasswordChange, changePassword,
     loadRoleList, showRoleForm, hideRoleForm, submitRoleForm, deleteRole, togglePermGroup,
     loadPermList, deletePermission, registerPermission, loadImpliedRules, showImpliedForm, hideImpliedForm, submitImpliedForm, deleteImpliedRule,

@@ -38,6 +38,8 @@ Devops-Glue API is a Slim4-based unified API layer that provides a single manage
 
 | Devops-Glue API | Devops-Glue CD |
 |:---:|:---:|
+| v2.8.4 | v1.5.x |
+| v2.8.3 | v1.5.x |
 | v2.8.2 | v1.5.x |
 | v2.8.1 | v1.5.x |
 | v2.8.0 | v1.5.x |
@@ -302,6 +304,23 @@ The two are independent and can be enabled simultaneously (e.g. `jenkins + custo
 > | `custom_push` | User CI reports the **build result** (not a build trigger) | Inbound (CI → Devops-Glue) |
 >
 > The push-based flow uses a single endpoint: `report` (write the terminal build result + image tag, needs `build.report` scope).
+
+### Image-tag association, log fallback, and backfill
+
+The "Image Tag" column of pull records is determined in this order:
+
+1. **Primary source (Harbor scan-sync writeback)**: after the artifact is pushed to Harbor, the scan writeback success (`ci_security_checks` rows where `check_type='harbor-scan'` and `writeback_status='success'`) yields `sha→tag` directly.
+2. **Log fallback (log-derived tag)**: when the primary source misses, Devops-Glue fetches the build log and extracts the tag by the configured **log keyword** + this project's `harbor_repository` path (`repo:tag` or `-t/--tag`), **preferring the tag whose trailing number equals the current build number** (to avoid picking the previous build's tag). The result is cached in `ci_pipeline_build_log` (`source='log'`) so subsequent lists hit the cache without re-fetching logs.
+
+The related settings live on the **System Settings → Platform Config** page:
+
+- **Log keyword** (`tag_log_keyword`): the keyword used to identify a successful push and locate the tag, default `digest`; supports `|`-separated multiple keywords (e.g. `digest|pushed`), any hit counts as a push log; empty means no keyword filtering.
+- **Enable stale-tag cleanup** (`stale_tag_cleanup_enabled`): periodically removes tags from `ci_pipeline_artifacts` that no longer exist in Harbor (Harbor is the source of truth; an unreachable/unconfigured Harbor is skipped safely — never a wrong delete).
+- **Image-tag log backfill** (`backfill_tag_enabled`): periodically promotes log-derived tags into the canonical `ci_pipeline_artifacts` — **only after Harbor explicitly confirms the tag exists**, and only filling gaps where no tag exists yet; it never overwrites the authoritative scan-sync result. Off by default.
+
+Both cron jobs are driven by the container's supervisord sleep-loop (no system cron needed); their intervals are overridable via the root `.env` vars `TAG_CLEANUP_INTERVAL` (default 3600s) / `TAG_BACKFILL_INTERVAL` (default 1800s).
+
+> If a record's log-derived tag was parsed incorrectly (e.g. it picked up the previous build's tag), the **↻ Re-parse** button next to that tag force-re-parses it (skips the cache and re-extracts by the current build number).
 
 ### Enabling Custom_Push
 

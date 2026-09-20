@@ -975,6 +975,7 @@ class BuildController extends BaseController
             }
 
             $tagBySha = [];
+            $tagSourceBySha = [];
 
             // 主数据源：harbor-scan 回写成功（推送成功的审计事实）→ sha→tag
             $ph = implode(',', array_fill(0, count($aliases), '?'));
@@ -988,6 +989,7 @@ class BuildController extends BaseController
                 $sha = (string) ($row['sha'] ?? '');
                 if ($sha !== '' && ($row['tag'] ?? '') !== '') {
                     $tagBySha[$sha] = $row['tag'];
+                    $tagSourceBySha[$sha] = 'scan';
                 }
             }
 
@@ -1007,6 +1009,7 @@ class BuildController extends BaseController
                     $sha = (string) ($row['sha'] ?? '');
                     if ($sha !== '' && ($row['tag'] ?? '') !== '' && !isset($tagBySha[$sha])) {
                         $tagBySha[$sha] = $row['tag'];
+                        $tagSourceBySha[$sha] = 'log';
                     }
                 }
             }
@@ -1015,6 +1018,7 @@ class BuildController extends BaseController
                 $sha = (string) ($p['sha'] ?? '');
                 $tag = $sha !== '' && isset($tagBySha[$sha]) ? $tagBySha[$sha] : '';
                 $pipelines[$i]['tag'] = $tag;
+                $pipelines[$i]['tag_source'] = $sha !== '' && isset($tagBySha[$sha]) ? ($tagSourceBySha[$sha] ?? '') : '';
                 // 可日志兜底：未命中 tag + success + 映射配置了 harbor_repository
                 $pipelines[$i]['can_resolve_tag'] = $tag === ''
                     && (($p['status'] ?? '') === 'success')
@@ -1033,6 +1037,7 @@ class BuildController extends BaseController
      * 「镜像 Tag」日志兜底懒解析：对一条 status=success 且未命中 harbor-scan 回写的 pipeline，
      * 遍历其 jobs 日志，按可配置关键字 + 本项目 harbor 仓库路径命中后尽力提取 tag，
      * 并落库到 ci_pipeline_build_log（sha→tag 缓存），下次列表直接命中，不再重复拉日志。
+     * Body 可带 force=1 强制重解析：跳过缓存、覆盖旧 tag，用于修正历史解析错误。
      */
     public function resolveTag(Request $request, Response $response, array $args): Response
     {
@@ -1045,6 +1050,7 @@ class BuildController extends BaseController
         $pipelineId = (int) ($args['id'] ?? 0);
         $body       = $request->getParsedBody() ?? [];
         $sha        = trim((string) ($body['sha'] ?? ''));
+        $force      = (bool) ($body['force'] ?? false);
         if ($pipelineId <= 0) {
             return $this->jsonError($response, $this->__('build.resolve_tag_missing_id'), 400);
         }
@@ -1070,8 +1076,8 @@ class BuildController extends BaseController
             return $this->output($response, ['tag' => '', 'resolved' => false, 'reason' => 'no_repository'], $request);
         }
 
-        // 缓存命中：直接返回（含「已解析但无 tag」的空结果，避免重复拉日志）
-        if ($sha !== '') {
+        // 缓存命中：非强制时直接返回（含「已解析但无 tag」的空结果，避免重复拉日志）
+        if (!$force && $sha !== '') {
             try {
                 $c = $this->pdo->prepare("SELECT tag FROM " . AppConfig::TABLE_PIPELINE_BUILD_LOG . " WHERE sha = ?");
                 $c->execute([$sha]);
@@ -1095,7 +1101,7 @@ class BuildController extends BaseController
                     continue;
                 }
                 $trace = (string) $p->getJobTrace($projectId, $jobId);
-                $tag = $this->extractTagFromTrace($trace, $harborRepo, $keyword);
+                $tag = $this->extractTagFromTrace($trace, $harborRepo, $keyword, $pipelineId);
                 if ($tag !== '') {
                     break;
                 }
@@ -1125,9 +1131,9 @@ class BuildController extends BaseController
     /**
      * 从单条 job 日志中尽力提取镜像 tag。
      * 命中条件：日志包含推送成功关键字（可配置，默认 digest）且包含本项目 harbor 仓库路径。
-     * 提取优先级：`repo:tag` → `-t TAG` / `--tag TAG`。
+     * 提取优先级：`repo:tag` → `-t TAG` / `--tag TAG`；多条候选时优先「尾号 = 当前构建编号」。
      */
-    private function extractTagFromTrace(string $trace, string $harborRepo, string $keyword): string
+    private function extractTagFromTrace(string $trace, string $harborRepo, string $keyword, int $pipelineId = 0): string
     {
         $trace      = (string) $trace;
         $harborRepo = trim((string) $harborRepo);
@@ -1155,22 +1161,46 @@ class BuildController extends BaseController
         if (stripos($trace, $harborRepo) === false) {
             return '';
         }
+        $candidates = [];
         // `repo:tag`（如 mycode/runner-ci:v1.2.3）
         $quoted = preg_quote($harborRepo, '/');
-        if (preg_match('/' . $quoted . ':([^\s\'"\\\\]+)/i', $trace, $m)) {
-            $tag = $this->sanitizeTag($m[1]);
-            if ($tag !== '') {
-                return $tag;
+        if (preg_match_all('/' . $quoted . ':([^\s\'"\\\\]+)/i', $trace, $m)) {
+            foreach ($m[1] as $raw) {
+                $tag = $this->sanitizeTag($raw);
+                if ($tag !== '') {
+                    $candidates[] = $tag;
+                }
             }
         }
         // `-t TAG` / `--tag TAG`（值可能是 repo:tag 或裸 tag）
-        if (preg_match('/-(?:-tag\s+|-t\s+)([^\s]+)/i', $trace, $m)) {
-            $tag = $this->sanitizeTag($m[1]);
-            if ($tag !== '') {
-                return $tag;
+        if (preg_match_all('/-(?:-tag\s+|-t\s+)([^\s]+)/i', $trace, $m)) {
+            foreach ($m[1] as $raw) {
+                $tag = $this->sanitizeTag($raw);
+                if ($tag !== '') {
+                    $candidates[] = $tag;
+                }
             }
         }
-        return '';
+        return $this->pickTag($candidates, $pipelineId);
+    }
+
+    /**
+     * 从候选 tag 中选一个：优先「尾号数字 = 当前构建编号」的（如 v20260827-130 ↔ pipelineId=130），
+     * 避免日志里更早出现的上一条构建 tag（v20260827-129）被误采；无命中则取第一条。
+     */
+    private function pickTag(array $candidates, int $pipelineId): string
+    {
+        if (empty($candidates)) {
+            return '';
+        }
+        if ($pipelineId > 0) {
+            foreach ($candidates as $tag) {
+                if (preg_match('/(\d+)$/', $tag, $m) && (int) $m[1] === $pipelineId) {
+                    return $tag;
+                }
+            }
+        }
+        return $candidates[0];
     }
 
     /** 清洗 tag：去引号/尾随标点，`repo:tag` 取冒号后段。 */

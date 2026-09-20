@@ -183,6 +183,7 @@ return [
     'pull.log_load_failed' => 'Failed to load log',
     'pull.resolve_tag' => 'Resolve',
     'pull.resolve_tag_failed' => 'Failed to resolve tag',
+    'pull.reparse_tag' => 'Re-parse',
     'build.commit_status_missing_fields' => 'sha / state / context / description are all required',
     'build.commit_status_invalid_state'  => 'state must be: {states}',
     'build.commit_status_invalid_sha'    => 'sha must be a 7-64 hex string (valid commit SHA)',

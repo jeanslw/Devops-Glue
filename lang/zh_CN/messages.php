@@ -183,6 +183,7 @@ return [
     'pull.log_load_failed' => '日志加载失败',
     'pull.resolve_tag' => '解析',
     'pull.resolve_tag_failed' => '解析 Tag 失败',
+    'pull.reparse_tag' => '重新解析',
     'build.commit_status_missing_fields' => 'sha / state / context / description 均为必填',
     'build.commit_status_invalid_state'  => "state 必须为: {states}",
     'build.commit_status_invalid_sha'    => 'sha 必须为 7~64 位十六进制（合法 commit SHA）',
