@@ -52,6 +52,20 @@ class PipelineTagServiceTest extends TestCase
             id INTEGER PRIMARY KEY,
             tag TEXT
         )');
+        // 日志兜底缓存表（回填数据来源），含 canonical identity + repository 列
+        $this->pdo->exec('CREATE TABLE ' . AppConfig::TABLE_PIPELINE_BUILD_LOG . ' (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_key TEXT DEFAULT "",
+            provider TEXT DEFAULT "",
+            project_id TEXT DEFAULT "",
+            sha TEXT NOT NULL UNIQUE,
+            pipeline_id TEXT DEFAULT "",
+            tag TEXT DEFAULT "",
+            repository TEXT DEFAULT "",
+            source TEXT DEFAULT "log",
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )');
     }
 
     private function insertTag(string $project, int $pipelineIid, string $tag, ?string $harborRepo): void
@@ -59,6 +73,13 @@ class PipelineTagServiceTest extends TestCase
         $this->pdo->prepare(
             'INSERT INTO ' . AppConfig::TABLE_PIPELINE_ARTIFACTS . ' (provider, project_id, pipeline_iid, project_key, repository, tag) VALUES (?, ?, ?, ?, ?, ?)'
         )->execute(['jenkins', $project, $pipelineIid, $project, $harborRepo ?? '', $tag]);
+    }
+
+    private function insertBuildLog(string $provider, string $projectId, int $pipelineIid, string $tag, string $repo, string $sha): void
+    {
+        $this->pdo->prepare(
+            'INSERT INTO ' . AppConfig::TABLE_PIPELINE_BUILD_LOG . ' (project_key, provider, project_id, sha, pipeline_id, tag, repository, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+        )->execute([$projectId, $provider, $projectId, $sha, (string) $pipelineIid, $tag, $repo, 'log']);
     }
 
     private function countTags(): int
@@ -159,5 +180,70 @@ class PipelineTagServiceTest extends TestCase
         $this->assertSame(0, $this->countTags()); // ci 表清空了
         // cd 表未被触碰
         $this->assertSame(1, (int) $this->pdo->query('SELECT COUNT(*) FROM cd_registry_artifacts')->fetchColumn());
+    }
+
+    // ── backfillTagsFromBuildLog ──
+
+    public function testBackfillPromotesVerifiedTag(): void
+    {
+        $this->insertBuildLog('jenkins', 'java/registry', 99, 'v1.2.3', 'mycode/registry', 'sha-a');
+        $harbor = $this->makeHarbor(['mycode/registry' => ['v1.2.3', 'latest']]);
+
+        $stat = (new PipelineTagService($this->pdo, $harbor))->backfillTagsFromBuildLog();
+
+        $this->assertSame(1, $stat['promoted']);
+        $this->assertSame(1, $stat['checked']);
+        $this->assertSame(0, $stat['skipped']);
+        $row = $this->pdo->query('SELECT tag FROM ' . AppConfig::TABLE_PIPELINE_ARTIFACTS)->fetch();
+        $this->assertSame('v1.2.3', $row['tag']);
+    }
+
+    public function testBackfillSkipsTagNotInHarbor(): void
+    {
+        $this->insertBuildLog('jenkins', 'java/registry', 99, 'v9.9.9', 'mycode/registry', 'sha-b');
+        $harbor = $this->makeHarbor(['mycode/registry' => ['latest']]);
+
+        $stat = (new PipelineTagService($this->pdo, $harbor))->backfillTagsFromBuildLog();
+
+        $this->assertSame(0, $stat['promoted']);
+        $this->assertSame(1, $stat['checked']);
+        $this->assertSame(0, $this->countTags()); // Harbor 里没有，不回填
+    }
+
+    public function testBackfillSkipsExistingCanonicalTag(): void
+    {
+        $this->insertTag('java/registry', 99, 'v2.0.0', 'mycode/registry'); // canonical 已有
+        $this->insertBuildLog('jenkins', 'java/registry', 99, 'v1.2.3', 'mycode/registry', 'sha-c');
+        $harbor = $this->makeHarbor(['mycode/registry' => ['v1.2.3']]);
+
+        $stat = (new PipelineTagService($this->pdo, $harbor))->backfillTagsFromBuildLog();
+
+        $this->assertSame(0, $stat['promoted']);
+        $this->assertSame(1, $stat['skipped']);
+        $row = $this->pdo->query('SELECT tag FROM ' . AppConfig::TABLE_PIPELINE_ARTIFACTS)->fetch();
+        $this->assertSame('v2.0.0', $row['tag']); // 权威结果不被覆盖
+    }
+
+    public function testBackfillSkipsHarborUnreachable(): void
+    {
+        $this->insertBuildLog('jenkins', 'java/registry', 99, 'v1.2.3', 'mycode/registry', 'sha-d');
+        $harbor = $this->makeHarbor(['mycode/registry' => ['error' => 'harbor down']]);
+
+        $stat = (new PipelineTagService($this->pdo, $harbor))->backfillTagsFromBuildLog();
+
+        $this->assertSame(0, $stat['promoted']);
+        $this->assertSame(0, $stat['checked']);
+        $this->assertSame(1, $stat['unreachable']);
+        $this->assertSame(0, $this->countTags());
+    }
+
+    public function testBackfillNullHarborNoop(): void
+    {
+        $this->insertBuildLog('jenkins', 'java/registry', 99, 'v1.2.3', 'mycode/registry', 'sha-e');
+
+        $stat = (new PipelineTagService($this->pdo, null))->backfillTagsFromBuildLog();
+
+        $this->assertSame([0, 0, 0, 0, 0], array_values($stat));
+        $this->assertSame(0, $this->countTags());
     }
 }

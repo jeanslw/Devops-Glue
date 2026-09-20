@@ -2,7 +2,7 @@ import { authHeaders, handle401 } from '../core/api.js';
 import { esc } from '../core/utils.js';
 import { toast, confirmDialog } from '../core/toast.js';
 import { getRole } from '../core/auth.js';
-import { loadSettings } from './mode.js';
+import { applyTagSettings } from './mode.js';
 
 export async function loadSystemInfo() {
     const loading = document.getElementById('sys-loading');
@@ -101,11 +101,11 @@ export async function loadPlatformConfig() {
     loading.style.display = '';
     body.style.display = 'none';
     try {
-        await loadSettings();
         const res = await fetch('/api/admin/platform_config', { headers: authHeaders() });
         if (handle401(res)) return;
         const d = await res.json();
         if (!res.ok) { toast(d.message || 'load failed', false); loading.style.display = 'none'; return; }
+        applyTagSettings(d);
         const wrap = document.getElementById('pc-platforms');
         wrap.innerHTML = '';
         const platforms = d.platforms || {};

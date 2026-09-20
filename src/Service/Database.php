@@ -77,6 +77,7 @@ class Database
         return [
             \App\Config\AppConfig::TABLE_JOB_GIT_MAP,
             \App\Config\AppConfig::TABLE_PIPELINE_ARTIFACTS,
+            \App\Config\AppConfig::TABLE_PIPELINE_BUILD_LOG,
             \App\Config\AppConfig::TABLE_CUSTOM_BUILDS,
             \App\Config\AppConfig::TABLE_SECURITY_CHECKS,
             \App\Config\AppConfig::TABLE_ADMIN_USERS,
@@ -402,6 +403,24 @@ class Database
         } catch (\Exception $e) {
         }
 
+        // ci_pipeline_build_log：拉取式记录「镜像 Tag」日志兜底的懒解析缓存（sha → tag）。
+        // sha 内容寻址、全局唯一，故以 sha 为唯一键；project_key/pipeline_id 仅作溯源参考。
+        // provider/project_id/repository 记录 canonical identity + harbor 仓库，供回填 cron 直接把
+        // 日志推导的 tag 提升写入 ci_pipeline_artifacts（无需重跑 provider 解析）。
+        $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_PIPELINE_BUILD_LOG . " (
+            id {$PK},
+            project_key {$VARCHAR} DEFAULT '',
+            provider {$VARCHAR} DEFAULT '',
+            project_id {$VARCHAR} DEFAULT '',
+            sha {$VARCHAR} NOT NULL UNIQUE,
+            pipeline_id {$VARCHAR} DEFAULT '',
+            tag {$VARCHAR} DEFAULT '',
+            repository {$VARCHAR} DEFAULT '',
+            source {$VARCHAR} DEFAULT 'log',
+            created_at {$TS_TYPE} DEFAULT ({$NOW}),
+            updated_at {$TS_TYPE} DEFAULT ({$NOW})
+        ){$ENGINE}");
+
         // ci_security_checks（安全扫描审计记录）
         $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_SECURITY_CHECKS . " (
             id {$PK},
@@ -541,6 +560,11 @@ class Database
                 'tag'               => "{$VARCHAR} DEFAULT ''", // 关联 tag
                 'writeback_status'  => "{$VARCHAR} DEFAULT ''", // commit status 回写结果（success/failed/skipped，空=历史）
                 'writeback_message' => 'TEXT',
+            ],
+            \App\Config\AppConfig::TABLE_PIPELINE_BUILD_LOG => [
+                'provider'   => "{$VARCHAR} DEFAULT ''", // canonical identity (provider)，回填用
+                'project_id' => "{$VARCHAR} DEFAULT ''", // canonical identity (project_id)，回填用
+                'repository' => "{$VARCHAR} DEFAULT ''", // harbor 仓库，回填用
             ],
             \App\Config\AppConfig::TABLE_PERMISSIONS => [
                 'parent_key' => $isMySQL ? 'VARCHAR(128)' : 'TEXT', // 权限层级

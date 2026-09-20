@@ -19,12 +19,12 @@ import { loadSecurityChecks, secOnFilterChange, getSecPage, getSecTotalPages, se
 import { loadVersions, saveVersions } from './modules/versions.js';
 import {
     loadSettings, onBuildModesChange, onCustomPushToggle, onStaleTagCleanupToggle,
-    renderBuildModeCheckboxes
+    onBackfillTagToggle, onTagLogKeywordChange, renderBuildModeCheckboxes
 } from './modules/mode.js';
 import {
     loadPullProjects, loadPullRecords, openPullLog, pullShowLog, closePullLog,
     loadPushRecords, startPullAutoRefresh, stopPullAutoRefresh,
-    applyBuildRecordsMenuVisibility,
+    applyBuildRecordsMenuVisibility, resolvePullTag,
     getPullPage, setPullPage, getPushPage, getPushTotalPages, setPushPage
 } from './modules/records.js';
 import {
@@ -217,9 +217,9 @@ Object.assign(window, {
     loadTopology, renderTopology,
     loadSecurityChecks, secOnFilterChange, secSetPage, getSecPage, getSecTotalPages,
     loadVersions, saveVersions,
-    loadSettings, onBuildModesChange, onCustomPushToggle, onStaleTagCleanupToggle,
+    loadSettings, onBuildModesChange, onCustomPushToggle, onStaleTagCleanupToggle, onBackfillTagToggle, onTagLogKeywordChange,
     loadPullProjects, loadPullRecords, openPullLog, pullShowLog, closePullLog, loadPushRecords,
-    applyBuildRecordsMenuVisibility,
+    applyBuildRecordsMenuVisibility, resolvePullTag,
     loadUsers, toggleUserStatus, showUserForm, showUserEditForm, hideUserForm, submitUserForm, deleteUser, modifyUserPassword, closePasswordModal, submitPasswordChange, changePassword,
     loadRoleList, showRoleForm, hideRoleForm, submitRoleForm, deleteRole, togglePermGroup,
     loadPermList, deletePermission, registerPermission, loadImpliedRules, showImpliedForm, hideImpliedForm, submitImpliedForm, deleteImpliedRule,

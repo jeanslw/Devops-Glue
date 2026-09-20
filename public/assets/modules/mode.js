@@ -7,6 +7,7 @@ import {
     currentBuildAvailability, setBuildAvailability,
     currentCpEnabled, setCpEnabled,
     currentStaleCleanupEnabled, setStaleCleanup,
+    currentBackfillEnabled, setBackfill,
     pullProviderMeta
 } from '../core/state.js';
 
@@ -48,14 +49,12 @@ export async function loadSettings() {
         };
         const hasCustom = (data.custom_providers || []).length > 0;
         const cpEnabled = data.custom_push_enabled || false;
-        const staleCleanup = data.stale_tag_cleanup_enabled || false;
         const customNames = data.custom_providers || [];
         const source = data.source || 'env';
 
         setBuildModes(modes.slice());
         setBuildAvailability(availability);
         setCpEnabled(cpEnabled);
-        setStaleCleanup(staleCleanup);
 
         const srcLabel = source === 'database'
             ? '<span class="badge" style="background:#f0fdf4;color:#16a34a;font-size:11px;margin-left:6px;" title="' + __.t('js.mode_persisted') + '">✓ ' + __.t('js.mode_persisted') + '</span>'
@@ -63,8 +62,6 @@ export async function loadSettings() {
 
         renderBuildModeCheckboxes(availability, modes);
         if (cpToggle) cpToggle.checked = cpEnabled;
-        const staleToggle = document.getElementById('stale-tag-cleanup-toggle');
-        if (staleToggle) staleToggle.checked = staleCleanup;
 
         if (window.applyBuildRecordsMenuVisibility) window.applyBuildRecordsMenuVisibility(cpEnabled);
         configPanel.style.display = 'block';
@@ -170,7 +167,7 @@ export async function onBuildModesChange() {
         const res = await fetch('/api/admin/build_mode', {
             method: 'PUT',
             headers: Object.assign({'Content-Type':'application/json'}, authHeaders()),
-            body: JSON.stringify({modes: newModes, custom_push_enabled: currentCpEnabled, stale_tag_cleanup_enabled: currentStaleCleanupEnabled})
+            body: JSON.stringify({modes: newModes, custom_push_enabled: currentCpEnabled})
         });
         if (handle401(res)) { renderBuildModeCheckboxes(currentBuildAvailability, oldModes); return; }
         if (res.ok) {
@@ -206,7 +203,7 @@ export async function onCustomPushToggle() {
         const res = await fetch('/api/admin/build_mode', {
             method: 'PUT',
             headers: Object.assign({'Content-Type':'application/json'}, authHeaders()),
-            body: JSON.stringify({modes: currentBuildModes, custom_push_enabled: newEnabled, stale_tag_cleanup_enabled: currentStaleCleanupEnabled})
+            body: JSON.stringify({modes: currentBuildModes, custom_push_enabled: newEnabled})
         });
         if (handle401(res)) { cpToggle.checked = oldEnabled; return; }
         if (res.ok) {
@@ -239,10 +236,10 @@ export async function onStaleTagCleanupToggle() {
     const statusEl = document.getElementById('stale-tag-status');
     statusEl.style.display = 'none';
     try {
-        const res = await fetch('/api/admin/build_mode', {
+        const res = await fetch('/api/admin/platform_config', {
             method: 'PUT',
             headers: Object.assign({'Content-Type':'application/json'}, authHeaders()),
-            body: JSON.stringify({modes: currentBuildModes, custom_push_enabled: currentCpEnabled, stale_tag_cleanup_enabled: newEnabled})
+            body: JSON.stringify({stale_tag_cleanup_enabled: newEnabled})
         });
         if (handle401(res)) { staleToggle.checked = oldEnabled; return; }
         if (res.ok) {
@@ -258,4 +255,79 @@ export async function onStaleTagCleanupToggle() {
         toast(__.t('js.network_error') + ': ' + e.message, false);
         staleToggle.checked = oldEnabled;
     }
+}
+
+export async function onTagLogKeywordChange() {
+    const input = document.getElementById('tag-log-keyword');
+    const statusEl = document.getElementById('tag-log-keyword-status');
+    if (!input) return;
+    const kw = input.value.trim();
+    try {
+        const res = await fetch('/api/admin/platform_config', {
+            method: 'PUT',
+            headers: Object.assign({'Content-Type':'application/json'}, authHeaders()),
+            body: JSON.stringify({tag_log_keyword: kw})
+        });
+        if (handle401(res)) return;
+        if (res.ok) {
+            const data = await res.json();
+            input.value = data.tag_log_keyword || '';
+            if (statusEl) {
+                statusEl.style.display = 'inline';
+                setTimeout(() => statusEl.style.display = 'none', 2000);
+            }
+        } else {
+            const data = await res.json();
+            toast(data.message || __.t('js.save_failed'), false);
+        }
+    } catch(e) {
+        toast(__.t('js.network_error') + ': ' + e.message, false);
+    }
+}
+
+export async function onBackfillTagToggle() {
+    const backfillToggle = document.getElementById('backfill-tag-toggle');
+    const newEnabled = backfillToggle.checked;
+    const oldEnabled = currentBackfillEnabled;
+
+    if (!await confirmDialog({
+        title: __.t('common.confirm'),
+        message: newEnabled ? __.t('js.backfill_tag_enable_confirm') : __.t('js.backfill_tag_disable_confirm'),
+        note: __.t('js.backfill_tag_note')
+    })) { backfillToggle.checked = oldEnabled; return; }
+
+    const statusEl = document.getElementById('backfill-tag-status');
+    statusEl.style.display = 'none';
+    try {
+        const res = await fetch('/api/admin/platform_config', {
+            method: 'PUT',
+            headers: Object.assign({'Content-Type':'application/json'}, authHeaders()),
+            body: JSON.stringify({backfill_tag_enabled: newEnabled})
+        });
+        if (handle401(res)) { backfillToggle.checked = oldEnabled; return; }
+        if (res.ok) {
+            setBackfill(newEnabled);
+            statusEl.style.display = 'inline';
+            setTimeout(() => statusEl.style.display = 'none', 2000);
+        } else {
+            const data = await res.json();
+            toast(data.message || __.t('js.save_failed'), false);
+            backfillToggle.checked = oldEnabled;
+        }
+    } catch(e) {
+        toast(__.t('js.network_error') + ': ' + e.message, false);
+        backfillToggle.checked = oldEnabled;
+    }
+}
+
+// 平台管理页填充 tag 相关设置（清理 / 回填 / 日志关键字），并同步共享 state。
+export function applyTagSettings(data) {
+    const staleToggle = document.getElementById('stale-tag-cleanup-toggle');
+    const backfillToggle = document.getElementById('backfill-tag-toggle');
+    const kwInput = document.getElementById('tag-log-keyword');
+    if (staleToggle) staleToggle.checked = !!data.stale_tag_cleanup_enabled;
+    if (backfillToggle) backfillToggle.checked = !!data.backfill_tag_enabled;
+    if (kwInput) kwInput.value = data.tag_log_keyword || '';
+    setStaleCleanup(!!data.stale_tag_cleanup_enabled);
+    setBackfill(!!data.backfill_tag_enabled);
 }

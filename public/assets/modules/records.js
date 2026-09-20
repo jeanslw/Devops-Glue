@@ -133,7 +133,7 @@ export async function loadPullRecords(silent) {
                 + '<td>' + statusBadge(r.status) + '</td>'
                 + '<td>' + (ref ? '<code style="font-size:11px;">' + esc(ref) + '</code>' : '—') + '</td>'
                 + '<td>' + (sha ? '<code style="font-size:11px;word-break:break-all;">' + esc(sha) + '</code>' : '—') + '</td>'
-                + '<td>' + (r.tag ? '<code style="font-size:11px;">' + esc(r.tag) + '</code>' : '—') + '</td>'
+                + '<td id="pull-tag-' + i + '">' + (r.tag ? '<code style="font-size:11px;">' + esc(r.tag) + '</code>' : (r.can_resolve_tag ? '<button class="btn btn-sm" onclick="resolvePullTag(' + i + ')">🔍 ' + esc(__.t('pull.resolve_tag')) + '</button>' : '—')) + '</td>'
                 + '<td>' + (time ? esc(time) : '—') + '</td>'
                 + '<td>' + actionsCell + '</td>'
                 + '</tr>';
@@ -160,6 +160,32 @@ export async function loadPullRecords(silent) {
 
 export function getPullPage() { return pullPage; }
 export function setPullPage(p) { pullPage = p; loadPullRecords(true); }
+
+export async function resolvePullTag(idx) {
+    const r = pullRecordsCache[idx];
+    const cell = document.getElementById('pull-tag-' + idx);
+    if (!r || !cell) return;
+    const runId = r._runId || r.id || 0;
+    if (!runId) return;
+    cell.innerHTML = '<span style="color:#9ca3af;font-size:12px;">' + esc(__.t('common.loading')) + '</span>';
+    try {
+        const res = await fetch('/api/build/' + encodePath(currentPullPath) + '/pipelines/' + runId + '/resolve-tag', {
+            method: 'POST',
+            headers: Object.assign({'Content-Type':'application/json'}, authHeaders()),
+            body: JSON.stringify({ sha: r.sha || '' })
+        });
+        if (handle401(res)) return;
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        const tag = data.tag || '';
+        r.tag = tag;
+        r.can_resolve_tag = false;
+        cell.innerHTML = tag ? '<code style="font-size:11px;">' + esc(tag) + '</code>' : '—';
+    } catch (e) {
+        cell.innerHTML = '<button class="btn btn-sm" onclick="resolvePullTag(' + idx + ')">🔍 ' + esc(__.t('pull.resolve_tag')) + '</button>';
+        toast(__.t('pull.resolve_tag_failed') + ': ' + e.message, false);
+    }
+}
 
 export async function openPullLog(idx) {
     const r = pullRecordsCache[idx];

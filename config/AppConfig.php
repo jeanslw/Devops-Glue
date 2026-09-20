@@ -9,6 +9,7 @@ class AppConfig
     // ── 表名常量 ──
     public const TABLE_JOB_GIT_MAP       = 'ci_job_git_map';
     public const TABLE_PIPELINE_ARTIFACTS = 'ci_pipeline_artifacts';
+    public const TABLE_PIPELINE_BUILD_LOG = 'ci_pipeline_build_log'; // 拉取式记录「镜像 Tag」日志兜底的懒解析缓存（sha→tag）
     public const TABLE_CUSTOM_BUILDS     = 'ci_custom_builds';
     public const TABLE_SECURITY_CHECKS   = 'ci_security_checks';
     public const TABLE_ADMIN_USERS       = 'admin_users';
@@ -219,6 +220,17 @@ class AppConfig
      * 此常量仅作为默认值 / 占位，具体 name 以配置为准。
      */
     public const PROVIDER_CUSTOM_PUSH = 'custom_push';
+
+    // ── 构建记录「镜像 Tag」日志兜底 ──
+    // 推送成功关键字（日志兜底匹配用，用户可在「平台管理」页自定义）；默认 'digest'，
+    // 命中 docker push 成功输出的 `digest: sha256:... size: ...` 片段。
+    // 支持 `|` 分隔多个关键字，任一命中即视为推送成功片段。
+    public const SETTING_TAG_LOG_KEYWORD = 'tag_log_keyword';
+    public const DEFAULT_TAG_LOG_KEYWORD = 'digest';
+
+    // 镜像 Tag 日志回填开关：开启后回填 cron 会把日志推导的 tag（经 Harbor 校验存在）
+    // 提升写入 canonical ci_pipeline_artifacts。默认关闭（写入需显式授权）。
+    public const SETTING_BACKFILL_TAG_ENABLED = 'backfill_tag_enabled';
 
     // ── 缓存键前缀常量 ──
     public const CACHE_KEY_ADMIN_TOKEN_PREFIX = 'admin_token_';
@@ -923,6 +935,60 @@ class AppConfig
         $pdo = $this->getPdo();
         $sql = \App\Service\Database::sqlUpsert(self::TABLE_APP_SETTINGS, 'setting_key, value, updated_at', '?, ?, ' . \App\Service\Database::sqlNow());
         $pdo->prepare($sql)->execute(['stale_tag_cleanup_enabled', $enabled ? '1' : '0']);
+    }
+
+    /**
+     * 镜像 Tag 日志回填开关（backfill_tag_enabled）。
+     * 默认关闭：回填会向 ci_pipeline_artifacts 写入日志推导的 tag（经 Harbor 校验存在），
+     * 属写操作，需后台显式开启。存储于 ci_app_settings，value = '1'/'0'。
+     */
+    public function getBackfillTagEnabled(): bool
+    {
+        try {
+            $pdo = $this->getPdo();
+            $row = $pdo->query("SELECT value FROM " . self::TABLE_APP_SETTINGS . " WHERE setting_key = '" . self::SETTING_BACKFILL_TAG_ENABLED . "'")->fetch();
+            if ($row) {
+                return $row['value'] === '1';
+            }
+            $this->setBackfillTagEnabled(false);
+            return false;
+        } catch (\Exception $e) {
+            return false;
+        }
+    }
+
+    public function setBackfillTagEnabled(bool $enabled): void
+    {
+        $pdo = $this->getPdo();
+        $sql = \App\Service\Database::sqlUpsert(self::TABLE_APP_SETTINGS, 'setting_key, value, updated_at', '?, ?, ' . \App\Service\Database::sqlNow());
+        $pdo->prepare($sql)->execute([self::SETTING_BACKFILL_TAG_ENABLED, $enabled ? '1' : '0']);
+    }
+
+    /**
+     * 拉取式记录「镜像 Tag」日志兜底的推送成功关键字。
+     * 存储于 ci_app_settings 表，key = 'tag_log_keyword'；用户可在「配置模式」页自定义。
+     * 空串视为未配置 → 回退默认 'digest'。
+     */
+    public function getTagLogKeyword(): string
+    {
+        try {
+            $pdo = $this->getPdo();
+            $row = $pdo->query("SELECT value FROM " . self::TABLE_APP_SETTINGS . " WHERE setting_key = '" . self::SETTING_TAG_LOG_KEYWORD . "'")->fetch();
+            if ($row) {
+                $kw = trim((string) ($row['value'] ?? ''));
+                return $kw !== '' ? $kw : self::DEFAULT_TAG_LOG_KEYWORD;
+            }
+        } catch (\Exception $e) {
+            \App\Helper\Log::exception($e);
+        }
+        return self::DEFAULT_TAG_LOG_KEYWORD;
+    }
+
+    public function setTagLogKeyword(string $keyword): void
+    {
+        $pdo = $this->getPdo();
+        $sql = \App\Service\Database::sqlUpsert(self::TABLE_APP_SETTINGS, 'setting_key, value, updated_at', '?, ?, ' . \App\Service\Database::sqlNow());
+        $pdo->prepare($sql)->execute([self::SETTING_TAG_LOG_KEYWORD, trim($keyword)]);
     }
 
     // 私有：获取平台默认 API 版本
