@@ -7,3 +7,5 @@ parameters:
         - templates
         - lang
         - public
+    excludePaths:
+        - */node_modules/*

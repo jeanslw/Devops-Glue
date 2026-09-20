@@ -1720,7 +1720,7 @@ class AdminController extends BaseController
                 'rows'    => array_sum($counts),
             ], $request);
         } catch (\Throwable $e) {
-            if ($this->currentUser !== null && $this->currentUser !== '') {
+            if ($this->currentUser !== '') {
                 try {
                     $this->opLog()->record($this->currentUser, 'backup_database', '', ['error' => $e->getMessage()], $this->clientIp($request), 'failure');
                 } catch (\Throwable $ignored) {
