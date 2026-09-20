@@ -80,13 +80,37 @@ function doLogout() {
     sessionStorage.removeItem('admin_user');
     sessionStorage.removeItem('admin_is_root');
     sessionStorage.removeItem('admin_perms');
+    var mu = document.getElementById('top-user-menu');
+    if (mu) mu.style.display = 'none';
     document.getElementById('login-page').style.display = 'flex';
     document.getElementById('app-page').style.display = 'none';
 }
 
 // 刷新后恢复角色菜单可见性及用户名显示，并加载最新权限
+/** 顶栏右侧显示当前登录用户名（点击弹出退出菜单） */
+function setTopUser() {
+    var wrap = document.getElementById('top-user-wrap');
+    if (wrap) wrap.style.display = currentUserName ? 'inline-block' : 'none';
+    var nameEl = document.getElementById('top-user-name');
+    if (nameEl) nameEl.textContent = currentUserName || '';
+}
+
+/** 顶栏用户下拉展开/收起 */
+function toggleTopMenu() {
+    var m = document.getElementById('top-user-menu');
+    if (!m) return;
+    m.style.display = (m.style.display === 'block') ? 'none' : 'block';
+}
+// 点击 userNameWrap 之外处关闭用户下拉
+document.addEventListener('click', function(e) {
+    var wrap = document.getElementById('top-user-wrap');
+    if (!wrap || wrap.contains(e.target)) return;
+    var m = document.getElementById('top-user-menu');
+    if (m) m.style.display = 'none';
+});
 (async function initRoleMenu() {
     currentUserName = sessionStorage.getItem('admin_user') || '';
+    setTopUser();
     currentUserIsRoot = sessionStorage.getItem('admin_is_root') === 'true';
     if (currentUserName) {
         // 从后端拉取最新权限（sessionStorage 可能过期）
@@ -224,7 +248,8 @@ async function doLogin() {
             applySystemInfoMenuVisibility();
             document.getElementById('login-page').style.display = 'none';
             document.getElementById('app-page').style.display = 'block';
-            switchTab('monitor');
+            setTopUser();
+            restoreRoute();
             loadSettings();  // 初始化构建模式状态（currentBuildModes 等）
         } else {
             errEl.textContent = data.message || __.t('js.login_failed');
@@ -254,7 +279,7 @@ function toggleSidebar() {
     if (ov) ov.classList.toggle('show', open);
 }
 
-function switchTab(name) {
+function doSwitch(name) {
     stopPullAutoRefresh();
     document.querySelectorAll('.sidebar .menu-item').forEach(el => el.classList.remove('active'));
     var mi = document.querySelector('.menu-item[data-tab="' + name + '"]');
@@ -294,6 +319,22 @@ function switchTab(name) {
     var sb = document.querySelector('.sidebar');
     if (sb && sb.classList.contains('open')) toggleSidebar();
 }
+
+/* ═══════════ hash 路由（刷新保留落点 / 浏览器前进后退 / 链接形如 #/system-info）═══════════ */
+function navigate(name) {
+    var target = '#/' + name;
+    if (location.hash === target) { doSwitch(name); }   // hash 未变：直接渲染
+    else { location.hash = target; }                    // 变化：触发 hashchange → doSwitch
+}
+// 兼容存量 onclick="switchTab('x')"，统一走 navigate
+function switchTab(name) { navigate(name); }
+// 从 hash 解析当前页签（无/非法 → 默认 monitor）
+function resolveTab() {
+    var name = (location.hash || '').replace(/^#\//, '');
+    return name || 'monitor';
+}
+function restoreRoute() { doSwitch(resolveTab()); }
+window.addEventListener('hashchange', function() { doSwitch(resolveTab()); });
 
 function toggleUserMenu() {
     var group = document.getElementById('menu-group-users');
@@ -3015,7 +3056,7 @@ function renderOplogPagination(data) {
     pager.style.display = 'flex';
 }
 
-// ═══════════ 系统信息 ═══════════
+// ═══════════ 数据管理（系统信息 + 数据库）═══════════
 async function loadSystemInfo() {
     const loading = document.getElementById('sys-loading');
     const body = document.getElementById('sys-body');
@@ -3046,6 +3087,8 @@ async function loadSystemInfo() {
         });
         const btn = document.getElementById('sys-migrate-btn');
         if (btn) btn.style.display = (currentUserRole === 'super_admin') ? '' : 'none';
+        const bbtn = document.getElementById('sys-backup-btn');
+        if (bbtn) bbtn.style.display = (currentUserRole === 'super_admin') ? '' : 'none';
         loading.style.display = 'none';
         body.style.display = 'block';
     } catch(e) {
@@ -3077,6 +3120,35 @@ async function doMigrate() {
             st.textContent = '❌ ' + (d.message || __.t('sys.migrate_failed'));
             st.style.color = '#dc2626';
             toast(d.message || __.t('sys.migrate_failed'), false);
+        }
+    } catch(e) {
+        st.textContent = '❌ ' + e.message;
+        st.style.color = '#dc2626';
+        toast(__.t('js.network_error') + ': ' + e.message, false);
+    }
+}
+
+async function doBackup() {
+    if (!await confirmDialog({
+        title: __.t('common.confirm'),
+        message: __.t('sys.backup_confirm'),
+        confirmText: __.t('sys.backup_btn')
+    })) return;
+    const st = document.getElementById('sys-backup-status');
+    st.textContent = '⏳ …';
+    st.style.color = '#6b7280';
+    try {
+        const res = await fetch('/api/admin/backup', { method: 'POST', headers: authHeaders() });
+        if (handle401(res)) return;
+        const d = await res.json();
+        if (res.ok) {
+            st.textContent = '✅ ' + __.t('sys.backup_done') + ' · ' + d.file;
+            st.style.color = '#16a34a';
+            toast(__.t('sys.backup_done') + ' · ' + d.file, true);
+        } else {
+            st.textContent = '❌ ' + (d.message || __.t('sys.backup_failed'));
+            st.style.color = '#dc2626';
+            toast(d.message || __.t('sys.backup_failed'), false);
         }
     } catch(e) {
         st.textContent = '❌ ' + e.message;
@@ -3199,7 +3271,8 @@ document.addEventListener('i18n-changed', function() {
 if (token) {
     document.getElementById('login-page').style.display = 'none';
     document.getElementById('app-page').style.display = 'block';
-    switchTab('monitor');
+    setTopUser();
+    restoreRoute();
     loadSettings();  // 刷新恢复会话时同样初始化构建模式状态
 } else {
     document.getElementById('login-page').style.display = 'flex';

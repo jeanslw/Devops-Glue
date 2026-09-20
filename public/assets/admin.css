@@ -15,6 +15,33 @@
         .topbar .top-right a { color:#fff; text-decoration:none; }
         .topbar .top-right a:hover { opacity:1; }
 
+        /* ── 顶栏用户下拉（点击用户名弹出退出）── */
+        .top-user-wrap { position:relative; display:none; align-items:center; }
+        .top-user-wrap button#top-user {
+            background:none; border:none; cursor:pointer;
+            font-size:13px; font-weight:600; color:#fff; opacity:.9;
+            font-family:inherit; display:inline-flex; align-items:center; gap:4px; padding:0;
+        }
+        .top-user-wrap button#top-user:hover { opacity:1; }
+        .top-user-caret { font-size:10px; }
+        .top-user-menu {
+            display:none; position:absolute; right:0; top:150%; min-width:96px;
+            background:#fff; color:#111827; border:1px solid #e8eaf0; border-radius:8px;
+            box-shadow:0 6px 20px rgba(0,0,0,.14); z-index:300; padding:3px;
+        }
+        #top-user-menu a {
+            display:block; padding:6px 16px; font-size:12.5px; color:#dc2626;
+            border-radius:6px; text-decoration:none; white-space:nowrap; text-align:center; line-height:1.5;
+        }
+        #top-user-menu a:hover { background:#fdeaea; color:#b91c1c; }
+        [data-theme="dark"] .top-user-menu { background:#1e293b; border-color:#334155; color:#e5e7eb; }
+        [data-theme="dark"] #top-user-menu a { color:#f87171; }
+        [data-theme="dark"] #top-user-menu a:hover { background:#26334a; }
+
+        /* ── 数据管理「数据库」操作按钮行（默认：桌面横向、允许换行）── */
+        .sys-actions { display:flex; justify-content:flex-end; align-items:center; gap:8px; flex-wrap:wrap; }
+        .sys-actions .btn { white-space:nowrap; }
+
         /* ── 主体：sidebar + content ── */
         .layout { display:flex; min-height:calc(100vh - 52px); }
 
@@ -123,7 +150,68 @@
             margin-bottom:16px; flex-wrap:wrap; gap:10px;
         }
         .toolbar h3 { font-size:18px; }
+		/* ── 映射管理工具栏：强制横排，不换行 ── */
+		.toolbar-map {
+			display:flex;
+			justify-content:space-between;
+			align-items:center;
+			flex-wrap:nowrap;
+			gap:8px;
+			margin-bottom:16px;
+		}
+		.toolbar-map h3 {
+			flex:0 0 auto;
+			font-size:15px;
+			white-space:nowrap;
+			margin:0;
+		}
+		.toolbar-map-center {
+			flex:1 1 auto;
+			display:flex;
+			justify-content:center;
+			min-width:0;
+		}
+		.toolbar-map-right {
+			flex:0 0 auto;
+			display:flex;
+			gap:6px;
+			justify-content:flex-end;
+		}
+		.toolbar-map .btn {
+			padding:6px 10px;
+			font-size:12px;
+		}
 
+		/* 小屏：保留按钮文字，压缩字号与内边距，允许换行但保持成组 */
+		@media (max-width:480px) {
+			.toolbar-map {
+				gap:6px;
+				flex-wrap:wrap;          /* 一行放不下时整组换行，而不是压没文字 */
+			}
+			.toolbar-map h3 {
+				font-size:14px;
+				flex:0 0 100%;           /* 标题独占一行，避免和按钮挤 */
+				margin-bottom:2px;
+			}
+			.toolbar-map-center {
+				flex:1 1 auto;
+				justify-content:flex-start;
+			}
+			.toolbar-map-right {
+				flex:0 0 auto;
+				margin-left:auto;        /* 右侧按钮靠右 */
+			}
+			.toolbar-map .btn {
+				padding:6px 10px;
+				font-size:12px;
+				white-space:nowrap;      /* 文字不折行 */
+			}
+			.toolbar-map .view-toggle .btn {
+				padding:6px 10px;
+			}
+		}
+
+		/* 深色模式下映射工具栏保持与其它按钮一致（无需额外改色，沿用 .btn 深色规则） */
         .btn {
             display:inline-flex; align-items:center; justify-content:center; gap:4px;
             padding:8px 18px; border-radius:8px;
@@ -553,17 +641,21 @@
             .form-grid { grid-template-columns:1fr; }
             .topo-flow { grid-template-columns:1fr; gap:8px; }
             .topo-arrow { transform:rotate(90deg); justify-self:center; padding:4px 0; }
-            /* 窄屏表格改为横向滚动（按内容自然宽度），避免多列被挤压变形 */
-            table { display:block; overflow-x:auto; }
-            table td { white-space:nowrap; }
+            /* 窄屏：宽表格交给外层滚动容器（如 .table-wrap / #table-wrap 自身已 overflow-x:auto）
+               横向滚动；不再对 table 用 display:block——那会把 tr/td 脱离表格布局、逐字段竖排 */
+            table th, table td { white-space:nowrap; }
             /* 例外：Token 管理的「接口权限 scope」列允许换行——全选时 scope 很多，
                nowrap 会让内容溢出 td 画到后面列上混在一起 */
             table td.scope-cell { white-space:normal; }
+            .table-wrap table, #table-wrap table { min-width:720px; }
             /* 窄屏顶栏：单行不换行；隐藏 logo 旁「管理后台」文字，只留 logo；左对齐避免 space-between 把 ☰ 甩到中间 */
             .topbar { height:52px; padding:8px 12px; flex-wrap:nowrap; gap:8px; justify-content:flex-start; }
             .topbar .logo { flex-shrink:0; }
             .topbar .logo span[data-i18n] { display:none; }
             .topbar .top-right { margin-left:auto; flex-wrap:nowrap; justify-content:flex-end; gap:10px; }
+            /* 小屏：数据管理三个操作按钮不换行，等宽铺满一行 */
+            .sys-actions { flex-wrap:nowrap; width:100%; }
+            .sys-actions .btn { flex:1 1 0; min-width:0; justify-content:center; padding:8px 4px; font-size:12.5px; }
         }
         @media (max-width:480px) {
             .stats-row { display:grid; grid-template-columns:1fr 1fr; gap:8px; }

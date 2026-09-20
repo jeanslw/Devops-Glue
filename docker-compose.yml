@@ -24,12 +24,14 @@ services:
       # 与应用业务日志 app-*.log 分开；若无需在宿主机留存，可删除此行。
       - ./logs/php_log:/data/logs/php_log
       # 运行时数据持久化到宿主机（分类挂载，互不覆盖）：
-      #   /data/db    — SQLite（DB_PATH=/data/db/data.db）。MySQL 模式几乎不用此目录。
-      #   /data/cache — OIDC 私钥 + GitLab ID 缓存。不挂载则重建容器会换 kid/JWKS，下游 SSO 全挂。
+      #   /data/db       — SQLite（DB_PATH=/data/db/data.db）。MySQL 模式几乎不用此目录。
+      #   /data/cache    — OIDC 私钥 + GitLab ID 缓存。不挂载则重建容器会换 kid/JWKS，下游 SSO 全挂。
+      #   /data/backups  — 手动「备份数据库」生成的 zip 备份（devops-glue_<driver>_<datetime>.zip）。
       # 存量 sqlite：若旧容器层里已有 /data/db/data.db，先 docker cp 到宿主机 ./data/db/ 再 up，
       # 否则空目录挂载会挡住旧文件（看起来像「库丢了」）。
       - ./data/db:/data/db
       - ./data/cache:/data/cache
+      - ./data/backups:/data/backups
     ports:
       - "8080:80"
       # HTTPS：想启用去掉注释，并在 nginx.conf 放开 443 listen 段、证书放 config/certs/

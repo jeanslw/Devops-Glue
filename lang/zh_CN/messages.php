@@ -704,11 +704,14 @@ return [
     'oplog.act_revoke_api_token' => '撤销 API Token',
     'oplog.act_delete_api_token' => '删除 API Token',
     'oplog.act_migrate_schema' => '迁移数据库',
+    'oplog.act_backup_database' => '备份数据库',
 
     // 系统信息面板
     'sys.menu'            => '系统设置',
-    'sys.tab_platform'    => '🔌 平台配置',
-    'sys.tab_system_info' => '🖥️ 系统信息',
+    'sys.tab_platform'    => '🔌 平台管理',
+    'sys.tab_system_info' => '🗄️ 数据管理',
+    'sys.panel_system_info' => '🖥️ 系统信息',
+    'sys.panel_database'  => '🗄️ 数据库',
     'sys.driver'          => '数据库驱动',
     'sys.app_version'     => '代码版本',
     'sys.schema_version'  => 'Schema 版本',
@@ -729,5 +732,10 @@ return [
     'sys.migrate_note'    => '将创建缺失的数据表并应用种子数据（幂等，安全）。',
     'sys.migrated'        => '迁移完成',
     'sys.migrate_failed'  => '迁移失败',
+    'sys.backup_btn'      => '💾 备份数据库',
+    'sys.backup_confirm'  => '确定要执行数据库备份吗？将生成 zip 备份文件并保存到 data/backups 目录（仅备份，不提供恢复）。',
+    'sys.backup_done'     => '备份完成',
+    'sys.backup_failed'   => '备份失败',
+    'sys.backup_no_tables' => '没有任何应用表可备份（数据库未初始化？）',
 ];
 
