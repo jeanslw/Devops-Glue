@@ -6,5 +6,5 @@ export function adminRootPath() {
     const p = location.pathname.replace(/\/+$/, '');
     const m = p.match(/^(.*)\/admin$/);
     if (m) return (m[1] || '') + '/admin'; // 后台页 -> /admin 或 /{prefix}/admin
-    return (p || '/') + '/';               // 宣传页/根 -> / 或 /{prefix}/
+    return (p || '') + '/';                // 宣传页/根 -> / 或 /{prefix}/（p 已去尾斜杠，根时 p='' -> /）
 }
