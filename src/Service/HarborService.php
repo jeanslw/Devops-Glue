@@ -113,6 +113,10 @@ class HarborService
             '/api/systeminfo',      // Harbor v1.x
         ];
 
+        // 收集所有候选失败原因，供最终聚合告警使用
+        $failures = [];
+        $baseUri  = (string) $this->client->getConfig('base_uri');
+
         foreach ($paths as $path) {
             $clients = [
                 'anonymous'     => $this->makeAnonymousClient(),
@@ -123,7 +127,12 @@ class HarborService
                     $res = $client->get($path, ['http_errors' => false]);
                     $code = $res->getStatusCode();
                     if ($code < 200 || $code >= 300) {
-                        continue; // 404/401/5xx → 下一个客户端或端点
+                        // 404/401/5xx 不算“连不上”，只是该候选端点不匹配——记录后继续尝试下一候选
+                        $failures[] = ['path' => $path, 'kind' => $kind, 'http_code' => $code];
+                        $this->logger?->debug('Harbor systeminfo 候选端点未命中（HTTP ' . $code . '），继续尝试下一候选', [
+                            'path' => $path, 'kind' => $kind, 'http_code' => $code,
+                        ]);
+                        continue;
                     }
                     $data = json_decode((string) $res->getBody(), true);
                     $version = $this->normalizeHarborVersion((string) ($data['harbor_version'] ?? ''));
@@ -134,12 +143,24 @@ class HarborService
                         return $version;
                     }
                 } catch (\Throwable $e) {
-                    $this->logger?->debug('Harbor systeminfo 探测失败', [
+                    // 连接级失败：服务未启动 / 端口不通 / DNS 解析失败等
+                    $failures[] = ['path' => $path, 'kind' => $kind, 'error' => $e->getMessage()];
+                    $this->logger?->debug('Harbor systeminfo 候选端点不可达，继续尝试下一候选', [
                         'path' => $path, 'kind' => $kind, 'error' => $e->getMessage(),
                     ]);
                 }
             }
         }
+
+        // 所有候选（v2.0 + v1，各 匿名/带认证）均未还原出版本号：聚合一条明确告警，
+        // 避免运维只看到单条 "path=/api/systeminfo" 而误判为“地址/路径不对”。
+        $base = rtrim($baseUri, '/');
+        $this->logger?->warning(
+            'Harbor 版本探测失败：/api/v2.0/systeminfo 与 /api/systeminfo 候选均不可用。'
+            . "若原因含 \"Failed to connect / Couldn't connect\"，请确认 Harbor 服务已启动、"
+            . '且 HARBOR_BASE_URL(' . $base . ') 的主机与端口可达（80 端口可省略）。',
+            ['base_url' => $base, 'attempts' => $failures]
+        );
         return null;
     }
 

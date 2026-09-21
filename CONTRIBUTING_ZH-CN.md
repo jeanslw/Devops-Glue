@@ -43,7 +43,7 @@
 - 确保已安装 **PHP 8.1+** 和 **Composer**。
 - Fork 本仓库，并将你的 Fork 克隆到本地。
 - 在项目根目录运行 `composer install` 安装依赖。
-- 复制 `.env.example` 为 `.env`，并根据本地环境修改配置（数据库等）。
+- 复制 `config/app.env.example` 为 `config/app.env`，并根据本地环境修改配置（数据库等）。
 - 使用 `php -S 0.0.0.0:8080 -t public/` 启动内置服务器进行开发测试。
 - （可选）如需测试 CD 组件，请参考 `Devops_CD` 仓库的文档。
 
@@ -53,7 +53,7 @@
 - **文档**：你的贡献必须包含或更新相关文档。这包括：
     - 在 `README.md` 或 `docs/` 下更新使用说明。
     - 如果是新的 API 接口，请更新 Swagger/OpenAPI 文档。
-    - 如果引入了新的配置项，请更新 `.env.example` 和管理员手册。
+    - 如果引入了新的配置项，请更新 `app.env.example` 和管理员手册。
 
 ### 4. 提交代码（Commit Message）
 

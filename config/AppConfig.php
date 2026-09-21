@@ -653,7 +653,7 @@ class AppConfig
     }
 
     /**
-     * 根管理员用户名（从 .env ADMIN_USER 读取，默认 'admin'）
+     * 根管理员用户名（从 app.env ADMIN_USER 读取，默认 'admin'）
      * 这是唯一的根账号标识，所有权限判断都从这里取，不散落写死
      */
     public function getRootAdminUser(): string
@@ -664,7 +664,7 @@ class AppConfig
     }
 
     /**
-     * 管理后台登录凭证（从 .env 读取）
+     * 管理后台登录凭证（从 app.env 读取）
      */
     public function getAdminCredentials(): array
     {
@@ -676,7 +676,7 @@ class AppConfig
 
     /**
      * LDAP 身份源配置。
-     * 仅在 settings.php 的 ldap.enabled=true 时启用；密码源、DN 模板、过滤等均从 .env 读取。
+     * 仅在 settings.php 的 ldap.enabled=true 时启用；密码源、DN 模板、过滤等均从 app.env 读取。
      */
     public function getLdapConfig(): array
     {
@@ -780,7 +780,7 @@ class AppConfig
     /**
      * 获取启用的构建 provider 集合（主 API）。
      * 逻辑：DB ci_app_settings.build_mode → 解析为集合返回。若 DB 无记录（首次运行），
-     * 从 .env BUILD_MODE 取种子值写入 DB 后返回。此后 DB 为唯一真相来源，.env 不再参与运行时决策。
+     * 从 app.env BUILD_MODE 取种子值写入 DB 后返回。此后 DB 为唯一真相来源，app.env 不再参与运行时决策。
      *
      * 旧格式（jenkins / gitlab_ci / both 单值）惰性映射到新格式（both → jenkins,gitlab_ci），
      * 并在读取时自愈回写为规范逗号串。
@@ -799,7 +799,7 @@ class AppConfig
                 }
                 return $modes;
             }
-            // DB 无记录 → 首次运行，以 .env 为种子写入 DB
+            // DB 无记录 → 首次运行，以 app.env 为种子写入 DB
             $modes = self::parseBuildModes($_ENV['BUILD_MODE'] ?? self::BUILD_MODE_BOTH);
             $this->persistBuildModes($modes);
             return $modes;

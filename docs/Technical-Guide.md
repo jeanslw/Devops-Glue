@@ -43,7 +43,7 @@
                               ▼
 ┌────────────────────────────────────────────────────────────────────┐
 │  public/index.php (Entry Point)                                    │
-│  ├─ Dotenv three-layer loading (.env→.env.{ENV}→.env.local)        │
+│  ├─ Dotenv three-layer loading (app.env→.env.{ENV}→app.env.local)        │
 │  ├─ Static file serving                                            │
 │  ├─ Database::init() auto-create tables + seed data                │
 │  └─ Slim 4 App + DI container assembly                             │
@@ -120,9 +120,9 @@
 
 ```
 Loading order (later overrides earlier):
-1. config/.env          ← Base config (gitignored, contains real passwords)
-2. config/.env.{ENV}    ← Environment override (committed to Git, no passwords)
-3. config/.env.local    ← Local override (gitignored, personal tweaks)
+1. config/app.env          ← Base config (gitignored, contains real passwords)
+2. config/app.env.{ENV}    ← Environment override (committed to Git, no passwords)
+3. config/app.env.local    ← Local override (gitignored, personal tweaks)
 
 Override rules:
 - Layer 1 uses createImmutable().load() (safe load, won't overwrite existing env vars)
@@ -133,15 +133,15 @@ Override rules:
 
 | APP_ENV | Files Loaded | Notes |
 |---|---|---|
-| production | `.env` only | Default behavior, no `.env.production` needed |
-| staging | `.env` → `.env.staging` → `.env.local` | `.env.staging` usually only has `APP_DEBUG=true` |
-| development | `.env` → `.env.development` → `.env.local` | Same as above |
+| production | `app.env` only | Default behavior, no `app.env.production` needed |
+| staging | `app.env` → `app.env.staging` → `app.env.local` | `app.env.staging` usually only has `APP_DEBUG=true` |
+| development | `app.env` → `app.env.development` → `app.env.local` | Same as above |
 
 ### 3.2 Runtime Configuration Persistence
 
 | Config Item | Storage Location | Priority |
 |---|---|---|
-| `build_mode` | `ci_app_settings` table | DB > `.env` (fallback) |
+| `build_mode` | `ci_app_settings` table | DB > `app.env` (fallback) |
 | `job_git_map` | `ci_job_git_map` table | DB only source |
 | `platform_versions` | `ci_platform_versions` table | DB > JSON > defaults |
 | Admin Token | `cache` table (24h TTL) | DB only source |
@@ -240,7 +240,7 @@ Controller → AppConfig::getXxxConfig()
 | `role` | TEXT DEFAULT 'admin' | admin / super_admin |
 | `updated_at` | DATETIME/TEXT | Update time |
 
-**Initialization:** `seedAdmin()` creates initial user from `.env` `ADMIN_USER`/`ADMIN_PASSWORD` when `admin_users` table is empty.
+**Initialization:** `seedAdmin()` creates initial user from `app.env` `ADMIN_USER`/`ADMIN_PASSWORD` when `admin_users` table is empty.
 
 #### ci_security_checks (Security Scan Audit)
 
@@ -584,8 +584,8 @@ If only `ref` is present without other parameters, auto-convert to `{branches: r
 ```
 1. Read ci_app_settings WHERE setting_key='build_mode'
 2. Has value → parse comma-separated set (legacy `both` → jenkins,gitlab_ci), return, source='database'
-3. No value → read .env BUILD_MODE, seed to DB → return, source='env'
-4. DB exception → fall back to .env, source='env'
+3. No value → read app.env BUILD_MODE, seed to DB → return, source='env'
+4. DB exception → fall back to app.env, source='env'
 ```
 
 **Write Validation (frontend & backend consistent):**
@@ -612,11 +612,11 @@ If only `ref` is present without other parameters, auto-convert to `{branches: r
 
 **Verification Priority:**
 1. Query `admin_users` table, `password_verify()` to check bcrypt hash
-2. `.env` fallback only in two cases: (a) DB totally inaccessible (disaster recovery); (b) DB accessible but `admin_users` is empty (first deployment). Otherwise the `.env` password is never accepted; recover a forgotten password via an offline patch — contact the author to obtain it.
+2. `app.env` fallback only in two cases: (a) DB totally inaccessible (disaster recovery); (b) DB accessible but `admin_users` is empty (first deployment). Otherwise the `app.env` password is never accepted; recover a forgotten password via an offline patch — contact the author to obtain it.
 3. Auth success → generate 64-char hex token → write to `cache` table (`admin_token_{token}`, 24h TTL)
 4. Pre-load user permissions to request attribute via `TokenService::loadPermissions()`
 
-> **Note:** This `.env` fallback only applies to the Devops-Glue API global admin login flow. To create a CD-specific account, create the account in the admin backend and assign CD permissions first, then write it into the CD service's own `.env` if that service supports it.
+> **Note:** This `app.env` fallback only applies to the Devops-Glue API global admin login flow. To create a CD-specific account, create the account in the admin backend and assign CD permissions first, then write it into the CD service's own `app.env` if that service supports it.
 
 #### 5.9.2 Token Verification (AuthMiddleware + TokenService)
 
@@ -628,7 +628,7 @@ If only `ref` is present without other parameters, auto-convert to `{branches: r
 2. Call TokenService::validate() to verify token in cache table (key=admin_token_{token}, expires_at > now)
 3. Call TokenService::loadPermissions() to query role permissions
 4. Write currentUser, currentRole, userPermissions to request attribute
-5. If DB unavailable AND .env ADMIN_PASSWORD empty → allow (first-start no-password scenario)
+5. If DB unavailable AND app.env ADMIN_PASSWORD empty → allow (first-start no-password scenario)
 6. If DB unavailable AND admin_users table empty → allow
 7. Otherwise → 401
 ```
@@ -639,7 +639,7 @@ If only `ref` is present without other parameters, auto-convert to `{branches: r
 
 **Swagger UI (`/api/docs`) and OpenAPI JSON (`/api/openapi.json`):**
 - Uses routes.php closure `$checkAuth`, independent of `AuthMiddleware`
-- If `.env` `ADMIN_PASSWORD` is empty → allow directly
+- If `app.env` `ADMIN_PASSWORD` is empty → allow directly
 - Otherwise verify token (supports Bearer or Query String `?token=`)
 
 #### 5.9.4 Build/Git/Harbor Endpoint Authentication (new in v2.4.3)
@@ -901,10 +901,10 @@ Next API call:
 
 | Symptom | Possible Cause | Diagnosis |
 |---|---|---|
-| Startup error: `DB_DRIVER must be sqlite or mysql` | `.env` not configured or incorrect | `echo $DB_DRIVER`, verify value |
+| Startup error: `DB_DRIVER must be sqlite or mysql` | `app.env` not configured or incorrect | `echo $DB_DRIVER`, verify value |
 | SQLite: `unable to open database` | Directory lacks write permission | `chmod 777 config/data/` |
 | MySQL: `Access denied` | Wrong password or insufficient user privileges | `mysql -u root -p` to verify |
-| Table not found error | `DB_AUTO_MIGRATE=false` and tables not manually created | Check `.env` `DB_AUTO_MIGRATE` value |
+| Table not found error | `DB_AUTO_MIGRATE=false` and tables not manually created | Check `app.env` `DB_AUTO_MIGRATE` value |
 | `admin_users` has data but login fails | Password hash mismatch with in-memory state | Change password via admin panel, or delete table row for `seedAdmin` to recreate |
 
 ### 7.2 External Service Connectivity
@@ -938,7 +938,7 @@ Next API call:
 
 | Symptom | Possible Cause | Diagnosis |
 |---|---|---|
-| Login always 401 | Password mismatch between `admin_users` and `.env` | Reset via offline patch — contact the author to obtain it |
+| Login always 401 | Password mismatch between `admin_users` and `app.env` | Reset via offline patch — contact the author to obtain it |
 | Token suddenly invalid | Service restart, password changed, or 24h expired | Re-login |
 | Swagger UI inaccessible | Not logged in | Access `/api/docs` will auto-redirect to login page |
 

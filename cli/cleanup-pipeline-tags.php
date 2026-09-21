@@ -40,18 +40,18 @@ function envVal(string $key, string $default = ''): string
     return $v === false ? $default : (string)$v;
 }
 
-// ── 1. 加载环境变量（顺序与 Bootstrap 一致：.env → .env.{APP_ENV} → .env.local）──
+// ── 1. 加载环境变量（顺序与 Bootstrap 一致：app.env → app.env.{APP_ENV} → app.env.local）──
 $baseDir = __DIR__ . '/../config';
-Dotenv\Dotenv::createImmutable($baseDir)->load();
+Dotenv\Dotenv::createImmutable($baseDir, 'app.env')->load();
 
 $appEnv = envVal('APP_ENV', 'production');
-$envFile = $baseDir . '/.env.' . $appEnv;
+$envFile = $baseDir . '/app.env.' . $appEnv;
 if (file_exists($envFile)) {
-    Dotenv\Dotenv::createUnsafeImmutable($baseDir, '.env.' . $appEnv)->load();
+    Dotenv\Dotenv::createUnsafeImmutable($baseDir, 'app.env.' . $appEnv)->load();
 }
-$localFile = $baseDir . '/.env.local';
+$localFile = $baseDir . '/app.env.local';
 if (file_exists($localFile)) {
-    Dotenv\Dotenv::createUnsafeImmutable($baseDir, '.env.local')->load();
+    Dotenv\Dotenv::createUnsafeImmutable($baseDir, 'app.env.local')->load();
 }
 
 // ── 2. 连接数据库（逻辑与 config/container.php 一致）──

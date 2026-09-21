@@ -1,7 +1,7 @@
 # Environment variables
-config/.env
-.env.local
-.env.*.local
+config/app.env
+app.env.local
+app.env.*.local
 *.docx
 *.db
 

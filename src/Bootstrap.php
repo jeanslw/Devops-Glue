@@ -21,23 +21,23 @@ class Bootstrap
     public static function createApp(): \Slim\App
     {
         // ── 环境变量：三层加载（顺序固定，后者覆盖前者）──
-        // 1. 基础配置 .env（gitignored，放真实密码/密钥）
-        //    用 Immutable：OS 真实环境变量优先，.env 只补缺省
-        $dotenv = Dotenv::createImmutable(__DIR__ . '/../config');
+        // 1. 基础配置 app.env（gitignored，放真实密码/密钥）
+        //    用 Immutable：OS 真实环境变量优先，app.env 只补缺省
+        $dotenv = Dotenv::createImmutable(__DIR__ . '/../config', 'app.env');
         $dotenv->load();
 
-        // 2. 环境特定覆盖 .env.{APP_ENV}（.env.production / .env.staging，可选提交）
-        //    任何 APP_ENV 都尝试加载并覆盖 .env；文件不存在则跳过
+        // 2. 环境特定覆盖 app.env.{APP_ENV}（app.env.production / app.env.staging，可选提交）
+        //    任何 APP_ENV 都尝试加载并覆盖 app.env；文件不存在则跳过
         $appEnv = $_ENV['APP_ENV'] ?? 'production';
-        $envFile = __DIR__ . '/../config/.env.' . $appEnv;
+        $envFile = __DIR__ . '/../config/app.env.' . $appEnv;
         if (file_exists($envFile)) {
-            Dotenv::createUnsafeImmutable(__DIR__ . '/../config', '.env.' . $appEnv)->load();
+            Dotenv::createUnsafeImmutable(__DIR__ . '/../config', 'app.env.' . $appEnv)->load();
         }
 
-        // 3. 本地覆盖 .env.local（gitignored，开发者个人配置），优先级最高
-        $localFile = __DIR__ . '/../config/.env.local';
+        // 3. 本地覆盖 app.env.local（gitignored，开发者个人配置），优先级最高
+        $localFile = __DIR__ . '/../config/app.env.local';
         if (file_exists($localFile)) {
-            Dotenv::createUnsafeImmutable(__DIR__ . '/../config', '.env.local')->load();
+            Dotenv::createUnsafeImmutable(__DIR__ . '/../config', 'app.env.local')->load();
         }
 
         // 初始化 SQLite（自动建表 + JSON 迁移）

@@ -51,7 +51,7 @@ Key features:
 If Glue has no private key when first issuing an `id_token`, it **auto-generates RSA-2048** and persists it to `OIDC_KEY_FILE` (`chmod 0600` after writing).
 Bare metal defaults to `config/data/oidc_rsa.pem`; **the Docker image ENV is `/data/cache/oidc_rsa.pem`** (compose mounts `./data/cache`, so the key survives rebuilds). If an existing key still lives at `/app/config/data/oidc_rsa.pem` inside the container, copy it to `./data/cache/oidc_rsa.pem` on the host before recreating, or `kid`/JWKS will change and every downstream SSO client will break.
 
-In production, strongly prefer **pinning the key explicitly** so that `kid` and JWKS stay stable across restarts / multiple instances. Configure in `config/.env`:
+In production, strongly prefer **pinning the key explicitly** so that `kid` and JWKS stay stable across restarts / multiple instances. Configure in `config/app.env`:
 
 ```ini
 # Glue's external address as the OIDC issuer. Empty = derived at runtime from request scheme+host+port.
@@ -75,7 +75,7 @@ OIDC_ISSUER=https://glue.example.com
 ### 2.2 Register clients
 
 Register one client per system in `oauth_clients` in `config/settings.php` (`client_id` + `secret` + an exactly-matching `redirect_uri`).
-`redirect_uri` is injected via env as well (see `GRAFANA_OAUTH_REDIRECT_URI` / `JENKINS_OIDC_REDIRECT_URI` in `config/.env.example`), so environment-specific callback URLs never get hardcoded into git:
+`redirect_uri` is injected via env as well (see `GRAFANA_OAUTH_REDIRECT_URI` / `JENKINS_OIDC_REDIRECT_URI` in `config/app.env.example`), so environment-specific callback URLs never get hardcoded into git:
 
 ```php
 'oauth_clients' => [
