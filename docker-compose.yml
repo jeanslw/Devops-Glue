@@ -24,11 +24,9 @@ services:
       # 与应用业务日志 app-*.log 分开；若无需在宿主机留存，可删除此行。
       - ./logs/php_log:/data/logs/php_log
       # 运行时数据持久化到宿主机（分类挂载，互不覆盖）：
-      #   /data/db       — SQLite（DB_PATH=/data/db/data.db）。MySQL 模式几乎不用此目录。
-      #   /data/cache    — OIDC 私钥 + GitLab ID 缓存。不挂载则重建容器会换 kid/JWKS，下游 SSO 全挂。
+      #   /data/db       — SQLite（DB_PATH=/data/db/data.db）。
+      #   /data/cache    — OIDC 私钥 + GitLab ID 缓存。
       #   /data/backups  — 手动「备份数据库」生成的 zip 备份（devops-glue_<driver>_<datetime>.zip）。
-      # 存量 sqlite：若旧容器层里已有 /data/db/data.db，先 docker cp 到宿主机 ./data/db/ 再 up，
-      # 否则空目录挂载会挡住旧文件（看起来像「库丢了」）。
       - ./data/db:/data/db
       - ./data/cache:/data/cache
       - ./data/backups:/data/backups
@@ -38,8 +36,8 @@ services:
       # HTTPS: to enable, uncomment, un-comment the 443 listen block in nginx.conf, and put certs in config/certs/
       #- "8443:443"
     restart: unless-stopped
-    # 健康检查（容器无 curl，/bin/sh 是 dash 不支持 /dev/tcp，用 PHP fsockopen）：
-    #   1) nginx 在容器内 80 端口可接受 TCP 连接（整条 HTTP 链路入口存活）；
+    # 健康检查：
+    #   1) nginx 在容器内 80 端口可接受 TCP 连接；
     #   2) php-fpm unix socket 存在（fpm 进程存活且监听就绪）。
     healthcheck:
       test: ["CMD-SHELL", "php -r 'exit(@fsockopen(\"127.0.0.1\", 80) ? 0 : 1);' && test -S /run/php/php-fpm.sock"]
@@ -49,7 +47,6 @@ services:
 
   # 启动前环境变量预检（一次性容器，复用 mysql 镜像不增加额外下载）：
   # 必填口令缺失时输出中英双语指引并以非零码退出，mysql / devops-glue 因依赖关系不会启动。
-  # 不用 ${VAR:?} 插值守卫——那种报错带 compose 固定英文前缀（required variable ... is missing），无法定制。
   env-check:
     image: mysql:8.4
     entrypoint: ["sh", "-c"]
@@ -96,42 +93,21 @@ services:
         condition: service_completed_successfully
     environment:
       TZ: ${TZ:-Asia/Shanghai}
-      # root 与业务账号分离：CI/CD 应用以 MYSQL_USER 业务账号连库，不要用 root。
-      # 口令非空由 env-check 预检保证（留空时中英双语报错并中止，mysql 不会启动）。
+      # root 与业务账号分离：CI/CD 应用以 MYSQL_USER 业务账号连库，不要用 root。。
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASS:-}
       MYSQL_DATABASE: ${DB_NAME:-devops_glue}
       MYSQL_USER: ${DB_USER:-devops}
       MYSQL_PASSWORD: ${DB_PASS:-}
     volumes:
       - mysql-data:/var/lib/mysql
-    # 首启自动执行手工建表脚本（仅数据卷为空时执行一次；脚本均为幂等 IF NOT EXISTS）。
-      # 遵循“建表只走 SQL 脚本、应用内不建表”的约定。
+      # 首启自动执行手工建表脚本（仅数据卷为空时执行一次；脚本均为幂等 IF NOT EXISTS）。
       - ./database/mysql_init.sql:/docker-entrypoint-initdb.d/01-ci.sql:ro
       # 联合部署 CD 时取消下一行注释（要求 Devops_CD 与本仓库为同级目录）：
       # - ../Devops_CD/database/init_mysql.sql:/docker-entrypoint-initdb.d/02-cd.sql:ro
-      #
-      # ⚠️ 存量 mysql-data 卷升级注意：MYSQL_ROOT_PASSWORD / MYSQL_USER / MYSQL_PASSWORD
-      #    仅在数据卷首次初始化时生效，旧卷不会自动创建业务账号、root 密码也不变。
-      #    升级时请用旧 root 口令手工执行（将下方口令替换为你在根 .env DB_PASS 中设置的值）：
-      #      CREATE USER IF NOT EXISTS 'devops'@'%' IDENTIFIED BY '<你设置的 DB_PASS 强口令>';
-      #      GRANT ALL PRIVILEGES ON devops_glue.* TO 'devops'@'%';
-      #      FLUSH PRIVILEGES;
-      #    或备份后删除 mysql-data 卷重新初始化（脚本会自动建全部表）。
     restart: unless-stopped
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
-    # ⚠️ mysql:8.4（8.4.11-1.el9）镜像内并无官方 healthcheck.sh（实测
-    #   "exec: healthcheck.sh: executable file not found in $PATH"），官方脚本方案不可用。
-    # 改用镜像内置 mysql 客户端做真实认证连接检查：
-    #   - MYSQL_PWD 走环境变量，避免密码出现在命令行（规避 insecure warning）；
-    #   - -h127.0.0.1 强制 TCP 真连接；
-    #   - SELECT 1 需真实认证通过（避开 mysqladmin ping 对 Access denied 仍返回 0 的缺陷）。
-    #   ⚠️ 若旧 mysql-data 卷的 root 口令与当前 MYSQL_ROOT_PASSWORD 不符，此检查会永久失败
-    #      （表现为容器 unhealthy + "dependency failed to start"）——那是卷的问题，不是检查的问题。
-    # start_period 仅首启生效（首次失败不计数）：覆盖「临时 server → initdb.d → 正式 server」
-    # 的首启初始化。实测本机初始化在数秒内完成，60s 已留足余量；
-    # 稳态故障发现速度由 interval×retries=50s 决定，与 start_period 无关。
     healthcheck:
-      test: ["CMD-SHELL", "MYSQL_PWD=\"$$MYSQL_ROOT_PASSWORD\" mysql -h127.0.0.1 -uroot --silent -e 'SELECT 1'"]
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$$MYSQL_PASSWORD\" mysql -h127.0.0.1 -u\"$$MYSQL_USER\" --silent -e 'SELECT 1'"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -144,8 +120,7 @@ services:
 # 镜像 Dockerfile 已内置 CMD（uvicorn 0.0.0.0:8081）与 HEALTHCHECK，无需在此重复。
 # 单机单独部署 CD 时仍用 Devops_CD 仓库自带的 .env + docker compose up。
 # ⚠️ 启用前必须先在根 .env 填写 SECRET_KEY（openssl rand -base64 32）：
-#    下方 environment 的 ${SECRET_KEY:?} 会在留空时直接拒绝启动，
-#    防止 CD 用公开占位密钥加密 SSH 口令/私钥。
+#    下方 environment 的 ${SECRET_KEY:?} 会在留空时直接拒绝启动
 #
 #  devops-cd:
 #    build:
