@@ -399,7 +399,7 @@ class AppConfig
     private function getPdo(): \PDO
     {
         if ($this->pdo === null) {
-            throw new \RuntimeException('AppConfig requires an injected PDO instance; do not use Database::getPdo() directly.');
+            throw new \RuntimeException('AppConfig requires an injected PDO instance.');
         }
         return $this->pdo;
     }

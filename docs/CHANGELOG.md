@@ -15,7 +15,6 @@
 - **Harbor version-probe diagnostics** — `HarborService` emits a debug log line per probed version candidate and an aggregated warning when all probes fail, making an unreachable or wrongly-credentialed Harbor far easier to spot in container logs.
 
 ## v2.8.3 (2026-09-20)
-## v2.8.3 (2026-09-20)
 - **System Settings panel** — The single "System Info" menu becomes a "System Settings" dropdown with two sub-pages: **Platform Config** and **System Info**. It hosts the "Enable stale tag cleanup" toggle (moved from Build Mode). Added a new `GET /api/admin/platform_config` endpoint.
 - **Data Management panel** — The "System Info" sub-page is upgraded to "Data Management", split into two cards: **System Info** and **Database**. Added a **Backup Database** button (super_admin only): supports sqlite / mysql, backup only, no restore.
 - **Build Mode page** — Removed the "Select All" checkbox and made the two config cards span the full row; the label is unified to "Build Mode".
