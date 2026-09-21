@@ -180,13 +180,16 @@
 </footer>
 
 <script src="/assets/i18n.js"></script>
-<script>/* 后台入口链接子路径兼容：与 assets/core/base.js 的 adminRootPath() 保持同公式。
-    根域 -> /admin；子路径部署 -> /{prefix}/admin。仅更新带 data-dg-home 的后台入口链接。 */
+<script>/* 后台入口链接子路径兼容：与 assets/core/base.js 的 adminRootPath() 语义保持一致。
+    data-dg-home 元素均为「进入后台」入口，应始终指向后台 admin 页：
+    根域(/) -> /admin；子路径(/prefix/) -> /prefix/admin；已在 /admin 内则保持不变。
+    修复：原先非 admin 分支退化为 (p||'/')+'/'，根路径下会生成 '//'（协议相对 URL，
+    空主机 -> about:blank#blocked），导致登录链接点击后跳到浏览器拦截页。 */
 (function(){
-    var p = location.pathname.replace(/\/+$/, '');
-    var m = p.match(/^(.*)\/admin$/);
-    var h = m ? (m[1] || '') + '/admin' : (p || '/') + '/';
-    document.querySelectorAll('[data-dg-home]').forEach(function(a){ a.setAttribute('href', h); });
+    var p = location.pathname.replace(/\/+$/, '').replace(/\/admin$/, '');
+    // p：根 -> ''，子路径 -> /prefix，/admin 页 -> ''，/prefix/admin 页 -> /prefix
+    var target = (p || '') + '/admin';   // 根域 -> /admin；子路径 /prefix -> /prefix/admin
+    document.querySelectorAll('[data-dg-home]').forEach(function(a){ a.setAttribute('href', target); });
 })();</script>
 <script>(function(){var l=new URLSearchParams(location.search).get('lang');if(l==='zh'||l==='zh_CN'||l==='zh-CN')l='zh-CN';else if(l==='en')l='en';else l=null;if(l)localStorage.setItem('dg_lang',l);__.init(l);})();</script>
 
