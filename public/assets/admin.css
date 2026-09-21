@@ -81,7 +81,7 @@
         }
 
         /* ── 内容区 ── */
-        .content { flex:1; padding:24px; overflow-y:auto; }
+        .content { flex:1; padding:24px; overflow-y:auto; scrollbar-gutter:stable; }
 
         /* ── 服务监测卡片 ── */
         .monitor-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px; }

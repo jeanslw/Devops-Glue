@@ -23,8 +23,8 @@ export const ROUTES = {
   'api-tokens':     { title: 'api_token.menu', icon: '🔑', parent: null },
   'operation-logs': { title: 'oplog.menu', icon: '📝', parent: null },
 
-  'platform-config': { title: 'sys.tab_platform', icon: '🔌', parent: 'settings-group' },
-  'system-info':     { title: 'sys.tab_system_info', icon: '🗄️', parent: 'settings-group' },
+  'platform-config': { title: 'sys.tab_platform', parent: 'settings-group' },
+  'system-info':     { title: 'sys.tab_system_info', parent: 'settings-group' },
   'settings-group':  { title: 'sys.menu', icon: '⚙️', parent: null },
 };
 

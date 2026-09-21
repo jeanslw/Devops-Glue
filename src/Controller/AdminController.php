@@ -1791,6 +1791,24 @@ class AdminController extends BaseController
         }
     }
 
+    /**
+     * GET /api/admin/backups — 列出已生成的数据库备份文件（供「数据管理」面板渲染）。
+     * 权限：仅 super_admin（与备份同级）。
+     */
+    public function listBackups(Request $request, Response $response): Response
+    {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requireSuperAdmin($response)) {
+            return $resp;
+        }
+        try {
+            $service = new \App\Service\DataBackupService($this->pdo);
+            return $this->output($response, ['files' => $service->listBackups()], $request);
+        } catch (\Throwable $e) {
+            return $this->jsonError($response, $this->__('sys.backup_failed') . ': ' . $e->getMessage(), 500);
+        }
+    }
+
     // ────────────────────────── helpers ──────────────────────────
 
     /**
