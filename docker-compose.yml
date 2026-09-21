@@ -106,7 +106,7 @@ services:
       # - ../Devops_CD/database/init_mysql.sql:/docker-entrypoint-initdb.d/02-cd.sql:ro
     restart: unless-stopped
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
-    healthcheck:。
+    healthcheck:
       test: ["CMD-SHELL", "MYSQL_PWD=\"$$MYSQL_PASSWORD\" mysql -h127.0.0.1 -u\"$$MYSQL_USER\" --silent -e 'SELECT 1'"]
       interval: 5s
       timeout: 5s
