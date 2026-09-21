@@ -32,11 +32,11 @@ export function renderBreadcrumb(tab) {
         // 点击会落到 doSwitch('<分组>') 导致所有 tab 隐藏 -> 空白页，因此一律渲染为静态文本。
         const isGroup = /-group$/.test(node.key);
         if (isLast) {
-            parts.push(`<span class="bc-item bc-current">${node.icon || ''} ${esc(label)}</span>`);
+            parts.push(`<span class="bc-item bc-current">${node.icon ? node.icon + ' ' : ''}${esc(label)}</span>`);
         } else if (isGroup) {
-            parts.push(`<span class="bc-item">${node.icon || ''} ${esc(label)}</span>`);
+            parts.push(`<span class="bc-item">${node.icon ? node.icon + ' ' : ''}${esc(label)}</span>`);
         } else {
-            parts.push(`<a href="#/${node.key}" class="bc-item">${node.icon || ''} ${esc(label)}</a>`);
+            parts.push(`<a href="#/${node.key}" class="bc-item">${node.icon ? node.icon + ' ' : ''}${esc(label)}</a>`);
         }
     });
 

@@ -44,7 +44,7 @@ import {
     submitApiTokenForm, copyApiToken, revokeApiToken, deleteApiToken
 } from './modules/apiTokens.js';
 import { loadOperationLogs, resetOperationLogs } from './modules/oplog.js';
-import { loadSystemInfo, doMigrate, doBackup, loadPlatformConfig, toggleSysTables } from './modules/system.js';
+import { loadSystemInfo, doMigrate, doBackup, loadPlatformConfig, toggleSysTables, toggleSysBackups } from './modules/system.js';
 
 const LOGIN_API = '/api/admin/login';
 
@@ -225,7 +225,7 @@ Object.assign(window, {
     loadPermList, deletePermission, registerPermission, loadImpliedRules, showImpliedForm, hideImpliedForm, submitImpliedForm, deleteImpliedRule,
     loadApiTokens, showApiTokenForm, hideApiTokenForm, submitApiTokenForm, copyApiToken, revokeApiToken, deleteApiToken,
     loadOperationLogs, resetOperationLogs,
-    loadSystemInfo, doMigrate, doBackup, loadPlatformConfig, toggleSysTables,
+    loadSystemInfo, doMigrate, doBackup, loadPlatformConfig, toggleSysTables, toggleSysBackups,
     // 分页 / 视图
     getMapView, getMapPage, setMapPage, getMapTotalPages, setMapTotalPages,
     getTopoPage, setTopoPage, getTopoTotalPages,

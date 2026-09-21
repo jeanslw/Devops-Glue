@@ -238,4 +238,21 @@ class DataBackupService
 
         return [basename($zipFile), $counts];
     }
+
+    /** 列出备份目录下已生成的 zip 备份文件（按时间倒序），供「数据管理」面板渲染 */
+    public function listBackups(): array
+    {
+        $dir   = $this->backupDir();
+        $files = glob($dir . '/devops-glue_*.zip') ?: [];
+        $out   = [];
+        foreach ($files as $f) {
+            $out[] = [
+                'name'  => basename($f),
+                'size'  => (int) @filesize($f),
+                'mtime' => (int) @filemtime($f),
+            ];
+        }
+        usort($out, fn($a, $b) => $b['mtime'] <=> $a['mtime']);
+        return $out;
+    }
 }
