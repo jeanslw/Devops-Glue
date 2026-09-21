@@ -50,36 +50,9 @@ return [
         return new ResponseFactory();
     },
 
-    // PDO 数据库连接（根据环境变量直接构造，不再依赖 Database::getPdo 单例）
+    // PDO 数据库连接：统一走 Database::getPdo()（内部 createPdo()+bootstrap()，只初始化一次）。
     \PDO::class => function () {
-        $driver = strtolower($_ENV['DB_DRIVER'] ?? 'sqlite');
-        if (!in_array($driver, ['sqlite', 'mysql'])) {
-            throw new \RuntimeException('DB_DRIVER must be sqlite or mysql');
-        }
-        if ($driver === 'mysql') {
-            $host = $_ENV['DB_HOST'] ?? '127.0.0.1';
-            $port = $_ENV['DB_PORT'] ?? '3306';
-            $db   = $_ENV['DB_NAME'] ?? 'devops_glue';
-            $user = $_ENV['DB_USER'] ?? 'root';
-            $pass = $_ENV['DB_PASS'] ?? '';
-            $charset = $_ENV['DB_CHARSET'] ?? 'utf8mb4';
-            $dsn = "mysql:host={$host};port={$port};dbname={$db};charset={$charset}";
-            $pdo = new \PDO($dsn, $user, $pass, [\PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES {$charset}", \PDO::ATTR_EMULATE_PREPARES => false]);
-        } else {
-            $path = $_ENV['DB_PATH'] ?? __DIR__ . '/data/data.db';
-            $dir = dirname($path);
-            if (!is_dir($dir)) @mkdir($dir, 0777, true);
-            $pdo = new \PDO('sqlite:' . $path);
-            try { $pdo->exec('PRAGMA journal_mode=WAL'); } catch (\Throwable $e) { }
-            try { $pdo->exec('PRAGMA foreign_keys=ON'); } catch (\Throwable $e) { }
-        }
-        $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
-        $pdo->setAttribute(\PDO::ATTR_DEFAULT_FETCH_MODE, \PDO::FETCH_ASSOC);
-
-        // 建表（可选）+ 种子数据（RBAC + 管理员账号）。绕过 Database::getPdo() 单例后在此显式补上。
-        \App\Service\Database::bootstrap($pdo);
-
-        return $pdo;
+        return \App\Service\Database::getPdo();
     },
 
     // 全局配置

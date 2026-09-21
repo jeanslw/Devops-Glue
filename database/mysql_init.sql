@@ -183,6 +183,21 @@ CREATE TABLE IF NOT EXISTS `api_tokens` (
     `created_at` DATETIME DEFAULT (NOW())
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- ── 14. ci_pipeline_build_log（拉取式记录「镜像 Tag」日志兜底的懒解析缓存 sha→tag）──
+CREATE TABLE IF NOT EXISTS `ci_pipeline_build_log` (
+    `id`          INT AUTO_INCREMENT PRIMARY KEY,
+    `project_key` VARCHAR(255) DEFAULT '',
+    `provider`    VARCHAR(255) DEFAULT '',
+    `project_id`  VARCHAR(255) DEFAULT '',
+    `sha`         VARCHAR(255) NOT NULL UNIQUE,
+    `pipeline_id` VARCHAR(255) DEFAULT '',
+    `tag`         VARCHAR(255) DEFAULT '',
+    `repository`  VARCHAR(255) DEFAULT '',
+    `source`      VARCHAR(255) DEFAULT 'log',
+    `created_at`  DATETIME DEFAULT (NOW()),
+    `updated_at`  DATETIME DEFAULT (NOW())
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- ── 索引 ──
 -- 新库一次性建全（无存量数据，不保留迁移逻辑），直接建索引
 CREATE INDEX `idx_job_git_map_current_path` ON `ci_job_git_map` (`current_path`(255));

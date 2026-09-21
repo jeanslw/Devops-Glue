@@ -19,7 +19,7 @@
  *
  * 退出码：0 = 完成（含「开关未开启 / Harbor 未配置 / 不可达而安全跳过」）；1 = 致命错误（库连不上/表缺失/异常）。
  */
-require __DIR__ . '/../vendor/autoload.php';
+require __DIR__ . '/bootstrap.php';
 
 use App\Config\AppConfig;
 use App\Service\Database;
@@ -27,67 +27,11 @@ use App\Service\HarborService;
 use App\Service\PipelineTagService;
 use GuzzleHttp\Client;
 
-/**
- * 读取配置：优先 $_ENV（phpdotenv 填充），其次真实环境变量 getenv()。
- * 避免 variables_order 不含 E 时 shell 传入的环境变量丢失。
- */
-function envVal(string $key, string $default = ''): string
-{
-    if (isset($_ENV[$key]) && $_ENV[$key] !== '') {
-        return (string)$_ENV[$key];
-    }
-    $v = getenv($key);
-    return $v === false ? $default : (string)$v;
-}
-
-// ── 1. 加载环境变量（顺序与 Bootstrap 一致：app.env → app.env.{APP_ENV} → app.env.local）──
-$baseDir = __DIR__ . '/../config';
-Dotenv\Dotenv::createImmutable($baseDir, 'app.env')->load();
-
-$appEnv = envVal('APP_ENV', 'production');
-$envFile = $baseDir . '/app.env.' . $appEnv;
-if (file_exists($envFile)) {
-    Dotenv\Dotenv::createUnsafeImmutable($baseDir, 'app.env.' . $appEnv)->load();
-}
-$localFile = $baseDir . '/app.env.local';
-if (file_exists($localFile)) {
-    Dotenv\Dotenv::createUnsafeImmutable($baseDir, 'app.env.local')->load();
-}
-
-// ── 2. 连接数据库（逻辑与 config/container.php 一致）──
-$driver = strtolower(envVal('DB_DRIVER', 'sqlite'));
-// 关键：让 Database::sqlNow()/sqlUpsert() 按实际驱动生成正确 SQL（否则 MySQL 下会误用 sqlite 的 datetime()）
-Database::init(['driver' => $driver]);
+// ── 1. 初始化数据库（Database::getPdo() 内部 createPdo()+bootstrap()，建表+种子+自检，只跑一次）──
 try {
-    if ($driver === 'mysql') {
-        $dsn = 'mysql:host=' . envVal('DB_HOST', '127.0.0.1')
-            . ';port=' . envVal('DB_PORT', '3306')
-            . ';dbname=' . envVal('DB_NAME', 'devops_glue')
-            . ';charset=' . envVal('DB_CHARSET', 'utf8mb4');
-        $pdo = new \PDO($dsn, envVal('DB_USER', 'root'), envVal('DB_PASS'), [
-            \PDO::MYSQL_ATTR_INIT_COMMAND => 'SET NAMES ' . envVal('DB_CHARSET', 'utf8mb4'),
-        ]);
-    } else {
-        $path = envVal('DB_PATH', $baseDir . '/data/data.db');
-        $dir = dirname($path);
-        if (!is_dir($dir)) {
-            @mkdir($dir, 0777, true);
-        }
-        $pdo = new \PDO('sqlite:' . $path);
-        $pdo->exec('PRAGMA journal_mode=WAL');
-    }
-    $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
-    $pdo->setAttribute(\PDO::ATTR_DEFAULT_FETCH_MODE, \PDO::FETCH_ASSOC);
+    $pdo = Database::getPdo();
 } catch (\Throwable $e) {
-    fwrite(STDERR, "错误：数据库连接失败（driver={$driver}）: {$e->getMessage()}\n");
-    exit(1);
-}
-
-// ── 3. 校验表存在（避免连错库误操作）──
-try {
-    $pdo->query('SELECT 1 FROM ' . AppConfig::TABLE_PIPELINE_ARTIFACTS . ' LIMIT 1');
-} catch (\Throwable $e) {
-    fwrite(STDERR, "错误：{$driver} 库缺少 " . AppConfig::TABLE_PIPELINE_ARTIFACTS . " 表（未初始化？）。\n");
+    fwrite(STDERR, "错误：数据库初始化失败: {$e->getMessage()}\n");
     exit(1);
 }
 

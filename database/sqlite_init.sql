@@ -179,6 +179,21 @@ CREATE TABLE IF NOT EXISTS api_tokens (
     created_at TEXT DEFAULT (datetime('now','localtime'))
 );
 
+-- ── 14. ci_pipeline_build_log（拉取式记录「镜像 Tag」日志兜底的懒解析缓存 sha→tag）──
+CREATE TABLE IF NOT EXISTS ci_pipeline_build_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_key TEXT DEFAULT '',
+    provider    TEXT DEFAULT '',
+    project_id  TEXT DEFAULT '',
+    sha         TEXT NOT NULL UNIQUE,
+    pipeline_id TEXT DEFAULT '',
+    tag         TEXT DEFAULT '',
+    repository  TEXT DEFAULT '',
+    source      TEXT DEFAULT 'log',
+    created_at  TEXT DEFAULT (datetime('now','localtime')),
+    updated_at  TEXT DEFAULT (datetime('now','localtime'))
+);
+
 -- ── 索引 ──
 CREATE INDEX IF NOT EXISTS idx_pipeline_artifacts_project_key ON ci_pipeline_artifacts(project_key);
 CREATE INDEX IF NOT EXISTS idx_pipeline_artifacts_created    ON ci_pipeline_artifacts(created_at);

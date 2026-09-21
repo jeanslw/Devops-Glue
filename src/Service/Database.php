@@ -20,10 +20,10 @@ class Database
     }
 
     /**
-     * 数据库引导入口：建表（可选）+ 种子数据。
+     * 数据库引导入口：建表（可选）+ 种子数据 + 自检，幂等。
      *
-     * Slim4 DI 容器直接 new PDO，绕过了 Database::getPdo() 单例，
-     * 因此由容器在创建 PDO 后调用此方法，确保 RBAC 与管理员的种子数据一定写入。
+     * 职责边界：只管「初始化」，不管连接（连接由 createPdo() 负责）。
+     * 想一次拿齐「连接 + 初始化」用 getPdo()；只有需拆分二者的场景（如 restore 分阶段）才单独调本方法。
      */
     public static function bootstrap(\PDO $pdo): void
     {
@@ -31,18 +31,24 @@ class Database
         if (empty(self::$config)) {
             self::init();
         }
+        $needMark = false;
         if (self::$config['auto_migrate'] ?? true) {
             // 仅在 schema/种子版本与当前代码版本不一致时执行建表 + 种子，
             // 避免每个请求都重复跑 ensureTables/seedRbac 的写库操作。
             if (!self::isSchemaCurrent()) {
                 self::ensureTables(); // 建表 + RBAC 种子 + 索引 + JSON 迁移
-                self::markSchemaCurrent();
+                $needMark = true;
             }
         } else {
             self::seedRbac(); // 手动建库脚本模式：表已存在，仍补种子数据
         }
         self::seedAdmin();
         self::verifySeed();
+        // 自检通过后才标记 schema 当前（与 migrateNow() 一致）：若自检抛异常，版本号保持旧值，
+        // 下次引导会重新走 ensureTables() 自愈，而非「版本已标记当前但种子其实坏了」的假象。
+        if ($needMark) {
+            self::markSchemaCurrent();
+        }
     }
 
     /** 判断 schema/种子是否已应用到当前代码版本（首次启动或版本升级时返回 false） */
@@ -120,54 +126,79 @@ class Database
         ];
     }
 
-    /** 手动触发迁移：建缺失表 + 种子 + 标记 schema 当前（后台「迁移数据库」按钮，super_admin 专用）。 */
+    /** 手动触发迁移：建缺失表 + RBAC/管理员种子 + 自检 + 标记 schema 当前（后台「迁移数据库」按钮，super_admin 专用）。 */
     public static function migrateNow(): array
     {
-        self::ensureTables();
-        self::markSchemaCurrent();
+        self::ensureTables();      // 建表 + RBAC 种子 + 索引 + JSON 迁移
+        self::seedAdmin();          // 补管理员种子（与 bootstrap() 一致，缺管理员时自愈）
+        self::verifySeed();         // 自检种子不变量，缺失直接抛异常，不标记当前
+        self::markSchemaCurrent();  // 自检通过后才标记当前版本
         return self::schemaStatus();
+    }
+
+    /** 读取配置：优先 $_ENV（phpdotenv 填充），其次真实环境变量 getenv()，避免 variables_order 不含 E 时 shell 环境丢失。 */
+    private static function envValue(string $key, string $default = ''): string
+    {
+        if (isset($_ENV[$key]) && $_ENV[$key] !== '') {
+            return (string)$_ENV[$key];
+        }
+        $v = getenv($key);
+        return $v === false ? $default : (string)$v;
     }
 
     private static function defaultConfig(): array
     {
-        $driver = strtolower($_ENV['DB_DRIVER'] ?? '');
-        if (!in_array($driver, ['sqlite', 'mysql'])) {
+        $driver = strtolower(self::envValue('DB_DRIVER'));
+        if (!in_array($driver, ['sqlite', 'mysql'], true)) {
             throw new \RuntimeException('DB_DRIVER 必须设为 sqlite 或 mysql，当前: ' . ($driver ?: '未设置'));
         }
         return [
             'driver'       => $driver,
-            'path'         => $_ENV['DB_PATH'] ?? __DIR__ . '/../../config/data/data.db',
-            'host'         => $_ENV['DB_HOST'] ?? '127.0.0.1',
-            'port'         => $_ENV['DB_PORT'] ?? '3306',
-            'database'     => $_ENV['DB_NAME'] ?? 'devops_glue',
-            'username'     => $_ENV['DB_USER'] ?? 'root',
-            'password'     => $_ENV['DB_PASS'] ?? '',
-            'charset'      => 'utf8mb4',
-            'auto_migrate' => !in_array(strtolower(trim($_ENV['DB_AUTO_MIGRATE'] ?? 'true')), ['0', 'false', 'no', 'off', ''], true),
+            'path'         => self::envValue('DB_PATH', __DIR__ . '/../../config/data/data.db'),
+            'host'         => self::envValue('DB_HOST', '127.0.0.1'),
+            'port'         => self::envValue('DB_PORT', '3306'),
+            'database'     => self::envValue('DB_NAME', 'devops_glue'),
+            'username'     => self::envValue('DB_USER', 'root'),
+            'password'     => self::envValue('DB_PASS'),
+            'charset'      => self::envValue('DB_CHARSET', 'utf8mb4'),
+            'auto_migrate' => !in_array(strtolower(trim(self::envValue('DB_AUTO_MIGRATE', 'true'))), ['0', 'false', 'no', 'off', ''], true),
         ];
     }
 
     // ── PDO 连接 ──
 
+    /**
+     * 创建数据库连接（公共入口）：按 self::$config 选择驱动并统一设置 PDO 属性。
+     * Web（config/container.php）与 CLI（cli/*.php）共用，消除手写 DSN 重复，
+     * 以及 mysql 漏 ATTR_EMULATE_PREPARES / sqlite 漏 foreign_keys 的漂移。
+     */
+    public static function createPdo(): \PDO
+    {
+        if (empty(self::$config)) {
+            self::init();
+        }
+
+        $pdo = (self::$driver === 'mysql') ? self::connectMysql() : self::connectSqlite();
+
+        $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $pdo->setAttribute(\PDO::ATTR_DEFAULT_FETCH_MODE, \PDO::FETCH_ASSOC);
+        return $pdo;
+    }
+
+    /**
+     * 返回「已初始化」的连接：内部 createPdo() + bootstrap()，并保证整个进程只执行一次。
+     * 业务代码要一个可直接用的库连接时统一走这里，不必感知连接与初始化的分离。
+     */
     public static function getPdo(): \PDO
     {
         if (self::$pdo === null) {
-            if (empty(self::$config)) {
-                self::init();
+            try {
+                self::$pdo = self::createPdo();
+                self::bootstrap(self::$pdo);
+            } catch (\Throwable $e) {
+                self::$pdo = null; // 引导失败不缓存半成品，下次调用重新引导
+                throw $e;
             }
-
-            if (self::$driver === 'mysql') {
-                self::$pdo = self::connectMysql();
-            } else {
-                self::$pdo = self::connectSqlite();
-            }
-
-            self::$pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
-            self::$pdo->setAttribute(\PDO::ATTR_DEFAULT_FETCH_MODE, \PDO::FETCH_ASSOC);
-            if (self::$config['auto_migrate'] ?? true) {
-                self::ensureTables();
-            }
-            self::seedAdmin();
         }
         return self::$pdo;
     }
@@ -183,6 +214,7 @@ class Database
         $pdo = new \PDO('sqlite:' . $path);
         $pdo->exec('PRAGMA journal_mode=WAL');
         $pdo->exec('PRAGMA foreign_keys=ON');
+        $pdo->exec('PRAGMA busy_timeout=5000');
         return $pdo;
     }
 
