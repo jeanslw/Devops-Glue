@@ -43,7 +43,7 @@ If you plan to implement a major feature or refactor, please **discuss it in an 
 - Ensure you have **PHP 8.1+** and **Composer** installed.
 - Fork this repository and clone your fork locally.
 - Run `composer install` in the project root to install dependencies.
-- Copy `.env.example` to `.env` and modify the configuration (database, etc.) according to your local environment.
+- Copy `config/app.env.example` to `config/app.env` and modify the configuration (database, etc.) according to your local environment.
 - Use `php -S 0.0.0.0:8080 -t public/` to start the built-in server for development and testing.
 - (Optional) If you need to test the CD component, refer to the `Devops_CD` repository documentation.
 
@@ -53,7 +53,7 @@ If you plan to implement a major feature or refactor, please **discuss it in an 
 - **Documentation**: Your contribution must include or update relevant documentation. This includes:
     - Updating usage instructions in `README.md` or under `docs/`.
     - If it's a new API endpoint, update the Swagger/OpenAPI documentation.
-    - If new configuration items are introduced, update `.env.example` and the administrator manual.
+    - If new configuration items are introduced, update `app.env.example` and the administrator manual.
 
 ### 4. Commit Message
 

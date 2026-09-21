@@ -101,8 +101,8 @@ cd Devops-Glue
 composer install
 
 # 3. 配置环境
-cp config/.env.example config/.env
-# 编辑 config/.env 填入实际凭证
+cp config/app.env.example config/app.env
+# 编辑 config/app.env 填入实际凭证
 
 # 4. 启动（PHP 内置服务器或 Docker）
 php -S 0.0.0.0:8080 -t public/
@@ -113,7 +113,7 @@ docker compose up -d --build
 curl http://localhost:8080/api/health
 ```
 
-访问 `http://localhost:8080/admin` 进入管理面板（账号密码见 `.env`）。
+访问 `http://localhost:8080/admin` 进入管理面板（账号密码见 `config/app.env`）。
 
 访问 `http://localhost:8080/api/docs` 查看交互式 API 文档（Swagger UI）。
 </details>
@@ -155,7 +155,7 @@ curl http://localhost:8080/api/health
 ## 项目结构
 
 ```
-config/         # 服务端配置（.env、DI 容器、路由、设置）
+config/         # 服务端配置（app.env、DI 容器、路由、设置）
 database/       # MySQL 和 SQLite 初始化脚本
 docker-compose.yml # Docker Compose（PHP + MySQL 8.4）
 public/         # Web 根目录（index.php、静态资源）

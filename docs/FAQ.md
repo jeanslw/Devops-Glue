@@ -25,13 +25,13 @@
 ### Q: How do I get started quickly?
 
 ```bash
-cp config/.env.example config/.env
-# Edit .env — at minimum, configure one Git platform URL and Token
+cp config/app.env.example config/app.env
+# Edit app.env — at minimum, configure one Git platform URL and Token
 composer install --no-dev
 php -S 0.0.0.0:8080 -t public/
 ```
 
-Open `http://localhost:8080` in your browser. Default credentials come from `ADMIN_USER` / `ADMIN_PASSWORD` in `.env`.
+Open `http://localhost:8080` in your browser. Default credentials come from `ADMIN_USER` / `ADMIN_PASSWORD` in `app.env`.
 
 ### Q: How to deploy with Docker?
 
@@ -40,7 +40,7 @@ Open `http://localhost:8080` in your browser. Default credentials come from `ADM
 ```bash
 docker build -t devops-glue .
 docker run -d -p 8080:8080 \
-  -v $(pwd)/config/.env:/var/www/html/config/.env \
+  -v $(pwd)/config/app.env:/var/www/html/config/app.env \
   devops-glue
 ```
 
@@ -57,7 +57,7 @@ There are three deployment modes for the CI (devops-glue) and CD (devops-cd) ser
 docker compose up -d
 ```
 
-This launches CI, CD, and MySQL in one go. Both services connect to `devops-mysql` via Docker's internal DNS. The CD service's `.env` should set `DB_HOST=devops-mysql`.
+This launches CI, CD, and MySQL in one go. Both services connect to `devops-mysql` via Docker's internal DNS. The CD service's `app.env` should set `DB_HOST=devops-mysql`.
 
 **2. Same host — separate `docker-compose.yml` files**
 
@@ -77,7 +77,7 @@ docker compose up -d
 docker compose up -d
 ```
 
-The CD service's `.env` should set `DB_HOST=devops-mysql` (Docker DNS resolves across the shared network).
+The CD service's `app.env` should set `DB_HOST=devops-mysql` (Docker DNS resolves across the shared network).
 
 **3. Separate hosts**
 
@@ -89,7 +89,7 @@ When CI and CD run on different machines, MySQL must be accessible from outside 
     ports:
       - "3306:3306"
   ```
-- CD host: in its `.env`, point to the CI host:
+- CD host: in its `app.env`, point to the CI host:
   ```env
   DB_HOST=<CI_HOST_IP>
   DB_PORT=3306
@@ -107,24 +107,24 @@ You need to configure mapping relationships in the admin panel (`/admin`). After
 
 ## Configuration & Startup
 
-### Q: What does "three-layer .env loading" mean?
+### Q: What does "three-layer app.env loading" mean?
 
 Loading order (later overrides earlier):
-1. `config/.env` — Base config (gitignored, contains real passwords)
-2. `config/.env.{APP_ENV}` — Environment override (e.g., `.env.production`)
-3. `config/.env.local` — Local override (gitignored, personal tweaks)
+1. `config/app.env` — Base config (gitignored, contains real passwords)
+2. `config/app.env.{APP_ENV}` — Environment override (e.g., `app.env.production`)
+3. `config/app.env.local` — Local override (gitignored, personal tweaks)
 
-`APP_ENV=production` only loads `.env`; `.env.production` is not needed.
+`APP_ENV=production` only loads `app.env`; `app.env.production` is not needed.
 
-### Q: Why don't .env changes take effect?
+### Q: Why don't app.env changes take effect?
 
 - Some config (e.g., `build_mode`, mapping data) is persisted to the database on first boot, and the DB takes precedence thereafter
-- Runtime configuration can be modified in the admin panel instead of editing `.env`
-- If you must reload from `.env`, delete the corresponding row in `ci_app_settings` and restart
+- Runtime configuration can be modified in the admin panel instead of editing `app.env`
+- If you must reload from `app.env`, delete the corresponding row in `ci_app_settings` and restart
 
 ### Q: Error: "DB_DRIVER must be sqlite or mysql"?
 
-`DB_DRIVER` in `.env` is missing or misspelled. Make sure the value is exactly `sqlite` or `mysql`.
+`DB_DRIVER` in `app.env` is missing or misspelled. Make sure the value is exactly `sqlite` or `mysql`.
 
 ### Q: SQLite error: "unable to open database"?
 
@@ -137,7 +137,7 @@ If an old container stored the DB in the writable layer and you are adding the `
 
 ### Q: How to switch from SQLite to MySQL?
 
-1. Update `.env` with `DB_DRIVER=mysql` and MySQL connection details
+1. Update `app.env` with `DB_DRIVER=mysql` and MySQL connection details
 2. If you have existing SQLite data, manual migration is needed (no automatic migration between drivers)
 3. Tables are auto-created in MySQL on first boot (`DB_AUTO_MIGRATE=true`)
 
@@ -277,11 +277,11 @@ No. `api_version` is metadata only; it does not affect actual API routing (route
 
 ### Q: What are the default credentials?
 
-`.env` values for `ADMIN_USER` / `ADMIN_PASSWORD`. The user is created automatically on first boot and written to the `admin_users` table; thereafter the DB takes precedence.
+`app.env` values for `ADMIN_USER` / `ADMIN_PASSWORD`. The user is created automatically on first boot and written to the `admin_users` table; thereafter the DB takes precedence.
 
 ### Q: Login always returns 401?
 
-The password in `.env` and the password in `admin_users` table are out of sync.
+The password in `app.env` and the password in `admin_users` table are out of sync.
 
 **Solution:**
 - Reset via an offline patch — contact the author to obtain it
@@ -424,7 +424,7 @@ After that, the new permission appears in Role Edit screens and you can assign i
 
 ### Q: Can't access Swagger UI (/api/docs)?
 
-The docs page requires authentication. Visiting `/api/docs` auto-redirects to the login page. If `ADMIN_PASSWORD` in `.env` is empty, access is granted directly.
+The docs page requires authentication. Visiting `/api/docs` auto-redirects to the login page. If `ADMIN_PASSWORD` in `app.env` is empty, access is granted directly.
 
 ---
 
@@ -544,7 +544,7 @@ GitLab, GitHub, Gitee, Gitea, with support for custom extensions.
 
 ### Q: How to integrate a self-hosted GitLab/Gitea?
 
-Configure the platform's `BASE_URL` and `TOKEN` in `.env`:
+Configure the platform's `BASE_URL` and `TOKEN` in `app.env`:
 
 ```ini
 GITLAB_BASE_URL=https://gitlab.yourcompany.com

@@ -17,7 +17,7 @@
 
 ## 1. Application Settings
 
-After installation and login (default address `http://localhost:8080/admin`), the first step is **connection configuration** — letting the system reach your Jenkins, Git platforms, and Harbor. These credentials are usually stored in the `config/.env` file (filled in by whoever deployed it). This section explains what each item means and the key points.
+After installation and login (default address `http://localhost:8080/admin`), the first step is **connection configuration** — letting the system reach your Jenkins, Git platforms, and Harbor. These credentials are usually stored in the `config/app.env` file (filled in by whoever deployed it). This section explains what each item means and the key points.
 
 ### 1.1 Jenkins (CI build source)
 
@@ -303,7 +303,7 @@ Besides built-in accounts, the system supports logging in with enterprise **LDAP
 Once LDAP is enabled, the login check order is: **local account → LDAP → config fallback**. That is:
 1. The local `admin_users` table is checked first;
 2. If the local check fails / no such account, LDAP is checked next;
-3. Only in extreme cases (e.g. the DB is unreachable) does it fall back to the `.env` fallback account.
+3. Only in extreme cases (e.g. the DB is unreachable) does it fall back to the `app.env` fallback account.
 
 ### 8.2 Prerequisites
 

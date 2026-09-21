@@ -103,8 +103,8 @@ cd Devops-Glue
 composer install
 
 # 3. Configure environment
-cp config/.env.example config/.env
-# Edit config/.env with your actual credentials
+cp config/app.env.example config/app.env
+# Edit config/app.env with your actual credentials
 
 # 4. Start (PHP built-in server or Docker)
 php -S 0.0.0.0:8080 -t public/
@@ -115,7 +115,7 @@ docker compose up -d --build
 curl http://localhost:8080/api/health
 ```
 
-Visit `http://localhost:8080/admin` for the admin panel (credentials in `.env`).
+Visit `http://localhost:8080/admin` for the admin panel (credentials in `config/app.env`).
 
 Visit `http://localhost:8080/api/docs` for interactive API docs (Swagger UI).
 </details>
@@ -157,7 +157,7 @@ See [docs/ADMIN_MANUAL.md](docs/ADMIN_MANUAL.md) for full environment variable r
 ## Project Structure
 
 ```
-config/         # Server config (.env, DI container, routes, settings)
+config/         # Server config (app.env, DI container, routes, settings)
 database/       # MySQL & SQLite init scripts
 docker-compose.yml # Docker Compose (PHP + MySQL 8.4)
 public/         # Web root (index.php, static assets)

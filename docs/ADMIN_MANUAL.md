@@ -82,10 +82,10 @@ composer install
 ## 4. Configure Environment Variables
 
 ```bash
-cp config/.env.example config/.env
+cp config/app.env.example config/app.env
 ```
 
-Edit `config/.env` and fill in at least the following key items:
+Edit `config/app.env` and fill in at least the following key items:
 
 - **CI system**: `JENKINS_BASE_URL` / `JENKINS_USER` / `JENKINS_TOKEN`
 - **Git platform**: `GITLAB_BASE_URL` / `GITLAB_TOKEN` (plus `GITHUB_*` / `GITEE_*` / `GITEA_*` as needed)
@@ -102,7 +102,7 @@ See [Appendix A](#appendix-a-environment-variables-reference) for the full list 
 
 Two databases are supported, selected by `DB_DRIVER`:
 
-- `DB_DRIVER=mysql`: Docker Compose auto-starts MySQL 8.4 and creates the database. MariaDB 10.4+ is also fully supported. Fill in `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASS` / `DB_ROOT_PASS` in the root `.env`. `DB_PASS` and `DB_ROOT_PASS` **have no defaults — when either is empty the `env-check` preflight container prints bilingual (Chinese/English) guidance and aborts startup (the mysql container never runs)**: the root account is separated from the application account (`MYSQL_USER`, `devops` by default), and the application connects as the application account. These passwords take effect only on first initialization of the mysql volume; upgrading with an existing volume requires creating the account manually (see the SQL in `docker-compose.yml` comments) or rebuilding the volume after backup.
+- `DB_DRIVER=mysql`: Docker Compose auto-starts MySQL 8.4 and creates the database. MariaDB 10.4+ is also fully supported. Fill in `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASS` / `DB_ROOT_PASS` in the root `app.env`. `DB_PASS` and `DB_ROOT_PASS` **have no defaults — when either is empty the `env-check` preflight container prints bilingual (Chinese/English) guidance and aborts startup (the mysql container never runs)**: the root account is separated from the application account (`MYSQL_USER`, `devops` by default), and the application connects as the application account. These passwords take effect only on first initialization of the mysql volume; upgrading with an existing volume requires creating the account manually (see the SQL in `docker-compose.yml` comments) or rebuilding the volume after backup.
 - `DB_DRIVER=sqlite`: Data file at `config/data/data.db`, no extra database service required. MySQL/MariaDB is recommended for production.
 
 `DB_AUTO_MIGRATE` controls table creation:
@@ -136,20 +136,20 @@ On first boot the system automatically performs the following initialization:
 
 1. **Create tables**: creates all tables (permissions, roles, mapping, users, API tokens, etc.) when `DB_AUTO_MIGRATE=true`.
 2. **Seed data**: writes built-in permissions, implied rules, and the system role `super_admin`.
-3. **Root admin account**: reads `ADMIN_USER` (default `admin`) and `ADMIN_PASSWORD` from `.env` and creates a `super_admin` account with full permissions.
+3. **Root admin account**: reads `ADMIN_USER` (default `admin`) and `ADMIN_PASSWORD` from `app.env` and creates a `super_admin` account with full permissions.
 4. **Build mode seed value**: reads `BUILD_MODE` (default `jenkins,gitlab_ci,gitea_ci`; the legacy value `both` is mapped to `jenkins,gitlab_ci`).
 
-> When `ADMIN_PASSWORD` is not set, it is treated as first-time initialization and no admin account is created; set the password in `.env` before logging in.
+> When `ADMIN_PASSWORD` is not set, it is treated as first-time initialization and no admin account is created; set the password in `app.env` before logging in.
 
 ---
 
 ## 8. Log In to the Admin Panel
 
-Open `http://localhost:8080/admin` and log in with `ADMIN_USER` / `ADMIN_PASSWORD` from `.env`.
+Open `http://localhost:8080/admin` and log in with `ADMIN_USER` / `ADMIN_PASSWORD` from `app.env`.
 
 - Switch the UI language (Chinese / English) at the top right.
 - Change your password under "User Management → Change Password".
-- Admin authentication is validated against the database first; the `.env` password only serves as a fallback when the database is totally inaccessible (disaster recovery) or the `admin_users` table is empty (first deployment). For a forgotten password, use an offline patch — contact the author to obtain it.
+- Admin authentication is validated against the database first; the `app.env` password only serves as a fallback when the database is totally inaccessible (disaster recovery) or the `admin_users` table is empty (first deployment). For a forgotten password, use an offline patch — contact the author to obtain it.
 
 The admin panel sidebar contains the following modules:
 
@@ -168,7 +168,7 @@ The admin panel sidebar contains the following modules:
 
 ### 8.1 External LDAP / AD Logins (Optional)
 
-Besides built-in accounts, the system can validate logins against a corporate LDAP / Active Directory server (since v2.6.3). When enabled, the login order is: **local `admin_users` → LDAP → `.env` fallback**.
+Besides built-in accounts, the system can validate logins against a corporate LDAP / Active Directory server (since v2.6.3). When enabled, the login order is: **local `admin_users` → LDAP → `app.env` fallback**.
 
 - **Prerequisite**: PHP must have the `ldap` extension enabled (`extension=ldap` in `php.ini`). If it is missing, the LDAP provider is skipped automatically and local account logins keep working unchanged.
 - **Two connection modes (pick one)**:
@@ -176,7 +176,7 @@ Besides built-in accounts, the system can validate logins against a corporate LD
   - *Direct bind mode*: set `LDAP_USER_DN_PATTERN`, e.g. `uid=%s,ou=users,dc=example,dc=com`. No directory search is performed — the DN is built from the pattern and validated directly. Best for well-structured directory layouts.
 - **Transport security (pick one)**: `LDAP_USE_TLS=true` upgrades the plaintext connection to TLS (STARTTLS) after connecting on the default port 389; `LDAP_USES_LDAPS=true` connects over `ldaps://` instead (typically port 636).
   - ⚠️ **LDAPS with a self-signed certificate**: the PHP OpenLDAP client defaults to `TLS_REQCERT=demand`, requiring the server certificate to verify against a trusted CA. Containers / bare-metal setups ship **without any CA trust configuration**, so LDAPS against a self-signed certificate fails the TLS handshake (reported as `ldap_connect_failed`, easily misdiagnosed as a network problem). Pick one fix:
-    1. Inject the CA cert path into the runtime environment: `LDAPTLS_CACERT=/path/to/ca.pem` (for Docker, mount the ca.pem into the container and set `LDAPTLS_CACERT` in `config/.env` — php-fpm runs with `clear_env=no` so it is passed through);
+    1. Inject the CA cert path into the runtime environment: `LDAPTLS_CACERT=/path/to/ca.pem` (for Docker, mount the ca.pem into the container and set `LDAPTLS_CACERT` in `config/app.env` — php-fpm runs with `clear_env=no` so it is passed through);
     2. Or add `TLS_CACERT /path/to/ca.pem` to `/etc/ldap/ldap.conf` inside the container (persist it by bind-mounting the file).
     Setting `LDAPTLS_REQCERT=never` skips verification for ad-hoc internal testing but removes man-in-the-middle protection — forbidden in production.
 - **Accounts must be pre-bound**: LDAP only proves *who you are*. To sign in, the username you type must already be mapped to your LDAP DN in the `user_identities` table (`provider_type='ldap'`, `provider_uid` = the user DN). Otherwise login is rejected with `auth.ldap_not_bound` — accounts are **never auto-created**. Binding example:
@@ -191,7 +191,7 @@ VALUES ('zhangsan', 'ldap', 'uid=zhangsan,ou=users,dc=example,dc=com', 'zhangsan
 ```
 
   Authorization (role, allowed systems, email, etc.) always follows the matching `admin_users` row — LDAP is only the identity source. After a successful LDAP login the stored email and latest LDAP attributes are refreshed automatically; an account disabled in the admin panel (`status=0`) cannot sign in through LDAP either.
-- **Failure semantics**: a failed bind (wrong password / unknown user) is reported as a generic credentials error. If the LDAP server itself is unreachable (connection failure, missing extension, …), login falls through to the `.env` fallback, exactly like the disaster-recovery path — the system stays usable.
+- **Failure semantics**: a failed bind (wrong password / unknown user) is reported as a generic credentials error. If the LDAP server itself is unreachable (connection failure, missing extension, …), login falls through to the `app.env` fallback, exactly like the disaster-recovery path — the system stays usable.
 - **Security**: usernames are escaped before being interpolated into `LDAP_USER_FILTER` / `LDAP_USER_DN_PATTERN`, so it is safe to embed user input in these templates.
 
 Environment variables: see [Appendix A](#appendix-a-environment-variables-reference).
@@ -202,7 +202,7 @@ Environment variables: see [Appendix A](#appendix-a-environment-variables-refere
 
 Devops-Glue integrates CI in two complementary ways, so **theoretically all CI systems are supported**: built-in pull-based (Jenkins and GitLab CI) and push-based Custom_Push (any CI script can report build results).
 
-**Jenkins** — fill in `.env`:
+**Jenkins** — fill in `app.env`:
 
 ```ini
 JENKINS_BASE_URL=http://your-jenkins:8080
@@ -218,7 +218,7 @@ After configuration, verify the connection on the "Monitor" page.
 
 ## 10. Connect Git Platforms
 
-Fill in each platform's `BASE_URL` and `TOKEN` in `.env` as needed:
+Fill in each platform's `BASE_URL` and `TOKEN` in `app.env` as needed:
 
 ```ini
 GITLAB_BASE_URL=http://your-gitlab
@@ -243,7 +243,7 @@ DEFAULT_GIT_PLATFORM=gitlab   # Fallback when URL cannot be auto-detected
 
 ## 11. Connect Harbor
 
-Fill in `.env`:
+Fill in `app.env`:
 
 ```ini
 HARBOR_BASE_URL=http://your-harbor
@@ -275,7 +275,7 @@ On the "Build Mode" page, select the enabled CI sources with checkboxes (multi-s
 - `gitlab_ci`: GitLab CI
 - `gitea_ci`: Gitea Actions
 
-The stored value is a comma-separated set in the database (e.g. `jenkins,gitlab_ci,gitea_ci`). `BUILD_MODE` in `.env` is only a first-boot seed; afterwards the admin panel is authoritative. The legacy single value `both` is mapped to `jenkins,gitlab_ci` on read.
+The stored value is a comma-separated set in the database (e.g. `jenkins,gitlab_ci,gitea_ci`). `BUILD_MODE` in `app.env` is only a first-boot seed; afterwards the admin panel is authoritative. The legacy single value `both` is mapped to `jenkins,gitlab_ci` on read.
 
 ### Gitea Actions prerequisites
 
@@ -318,7 +318,7 @@ The related settings live on the **System Settings → Platform Config** page:
 - **Enable stale-tag cleanup** (`stale_tag_cleanup_enabled`): periodically removes tags from `ci_pipeline_artifacts` that no longer exist in Harbor (Harbor is the source of truth; an unreachable/unconfigured Harbor is skipped safely — never a wrong delete).
 - **Image-tag log backfill** (`backfill_tag_enabled`): periodically promotes log-derived tags into the canonical `ci_pipeline_artifacts` — **only after Harbor explicitly confirms the tag exists**, and only filling gaps where no tag exists yet; it never overwrites the authoritative scan-sync result. Off by default.
 
-Both cron jobs are driven by the container's supervisord sleep-loop (no system cron needed); their intervals are overridable via the root `.env` vars `TAG_CLEANUP_INTERVAL` (default 3600s) / `TAG_BACKFILL_INTERVAL` (default 1800s).
+Both cron jobs are driven by the container's supervisord sleep-loop (no system cron needed); their intervals are overridable via the root `app.env` vars `TAG_CLEANUP_INTERVAL` (default 3600s) / `TAG_BACKFILL_INTERVAL` (default 1800s).
 
 > If a record's log-derived tag was parsed incorrectly (e.g. it picked up the previous build's tag), the **↻ Re-parse** button next to that tag force-re-parses it (skips the cache and re-extracts by the current build number).
 
@@ -699,7 +699,7 @@ Go to "API Management" (requires the relevant permission) and choose the require
 
 ## 16. Connect Devops-Glue CD
 
-To let the companion [Devops-Glue CD](https://gitee.com/jeanslw/devops_cd) call this system correctly, configure the connection to this system in Devops-Glue CD's `.env`. Choose **one** authentication method:
+To let the companion [Devops-Glue CD](https://gitee.com/jeanslw/devops_cd) call this system correctly, configure the connection to this system in Devops-Glue CD's `app.env`. Choose **one** authentication method:
 
 **Recommended — API token** (create one for the CD service in "API Management"; grant the read / write / report scopes it needs):
 
@@ -739,7 +739,7 @@ After completing the above steps in order, verify the system is usable:
 
 ## Appendix A: Environment Variables Reference
 
-Copy `config/.env.example` to `config/.env` and fill in your actual credentials.
+Copy `config/app.env.example` to `config/app.env` and fill in your actual credentials.
 
 ```ini
 # ============ CI Systems ============
@@ -776,13 +776,13 @@ ADMIN_PASSWORD=               # Created on first boot; DB takes precedence after
 
 # Note:
 #   - For super_admin login, the system first validates against the admin_users DB record.
-#   - The system falls back to .env ADMIN_USER/ADMIN_PASSWORD only when the DB is totally inaccessible (disaster recovery) or the admin_users table is empty (first deployment).
+#   - The system falls back to app.env ADMIN_USER/ADMIN_PASSWORD only when the DB is totally inaccessible (disaster recovery) or the admin_users table is empty (first deployment).
 #   - This ADMIN_USER/ADMIN_PASSWORD pair is only used by the Devops-Glue API global admin fallback logic.
-#   - To create a CD-specific account, create the account in the admin backend, assign Devops-Glue CD permissions, and then write it into the Devops-Glue CD's own .env if that service supports it.
+#   - To create a CD-specific account, create the account in the admin backend, assign Devops-Glue CD permissions, and then write it into the Devops-Glue CD's own app.env if that service supports it.
 
 # ============ LDAP external identity source (optional) ============
 # Requires the PHP ldap extension (php.ini: extension=ldap); local logins are unaffected when disabled.
-# Login order: local admin_users → LDAP (must be pre-bound in user_identities) → .env fallback
+# Login order: local admin_users → LDAP (must be pre-bound in user_identities) → app.env fallback
 LDAP_ENABLED=false
 LDAP_HOST=ldap.example.com
 LDAP_PORT=389
@@ -796,7 +796,7 @@ LDAP_USER_FILTER=(uid=%s)      # %s is replaced with the login username
 LDAP_ATTRS=uid,cn,mail,dn      # attributes read back after login (comma-separated); mail refreshes the stored email
 LDAP_USER_DN_PATTERN=          # when non-empty, direct-bind mode is used, e.g. uid=%s,ou=users,dc=example,dc=com
 LDAP_NETWORK_TIMEOUT=5
-# LDAPS with a self-signed cert (pass-through vars read directly by the OpenLDAP client, not the app; for Docker set them in config/.env):
+# LDAPS with a self-signed cert (pass-through vars read directly by the OpenLDAP client, not the app; for Docker set them in config/app.env):
 LDAPTLS_CACERT=/path/to/ca.pem
 LDAPTLS_REQCERT=never          # internal testing only, skip cert verification; forbidden in production
 
@@ -841,11 +841,11 @@ Edit `config/settings.php`:
 
 The system supports environment separation via `APP_ENV` (production / staging / development):
 
-- `.env`: Base config (contains real passwords, gitignored)
-- `.env.staging`: Staging overrides (e.g. `APP_DEBUG=true`)
-- `.env.local`: Local overrides (gitignored, personal tweaks)
+- `app.env`: Base config (contains real passwords, gitignored)
+- `app.env.staging`: Staging overrides (e.g. `APP_DEBUG=true`)
+- `app.env.local`: Local overrides (gitignored, personal tweaks)
 
-Loading priority: `.env.local` > `.env.{APP_ENV}` > `.env`
+Loading priority: `app.env.local` > `app.env.{APP_ENV}` > `app.env`
 
 Default `APP_ENV=production` does not require additional files. See `docs/Technical-Guide.md` (English) or `docs/技术文档.md` (Chinese) for details.
 
@@ -900,7 +900,7 @@ class BitbucketService implements GitProviderInterface
 
 No further source changes needed. The system automatically discovers and registers custom providers on startup.
 
-> **Note:** Custom platforms do not support independent `.env` variables (e.g. `BITBUCKET_TOKEN`). Tokens must be written into `settings.php` or extend `AppConfig` yourself.
+> **Note:** Custom platforms do not support independent `app.env` variables (e.g. `BITBUCKET_TOKEN`). Tokens must be written into `settings.php` or extend `AppConfig` yourself.
 
 ### 4. Adding Built-in Platforms
 
@@ -910,7 +910,7 @@ To add a built-in platform (GitLab/Gitee/GitHub/Gitea style), modify:
 - `config/container.php` (ProviderRegistry registration)
 - `config/AppConfig.php` (`getXxxConfig` + `getDefaultApiVersion` + `getGitPlatformsConfig`)
 - `config/settings.php` + `settings.example.php` (config sections)
-- `config/.env.example` (environment variable declarations)
+- `config/app.env.example` (environment variable declarations)
 
 ---
 

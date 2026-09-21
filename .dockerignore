@@ -4,9 +4,9 @@
 .workflow
 .laragon
 .idea
-config/.env
+config/app.env
 .env
-.env.local
+app.env.local
 .editorconfig
 vendor/
 Dockerfile
@@ -29,6 +29,6 @@ bin/
 .codebuddy/
 .trae/
 # 环境覆盖文件统一由宿主机挂载/提交仓库提供，不进镜像
-config/.env.staging
+config/app.env.staging
 # HTTPS 证书/私钥（含 privkey.pem）只走宿主机挂载，绝不进镜像
 config/certs/
