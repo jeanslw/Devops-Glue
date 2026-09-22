@@ -54,18 +54,18 @@ DevOps-Glue API is a Slim 4–based integration platform designed to enhance Dev
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                      CODE PUSH                              │
+│                        CODE PUSH                            │
 │  GitLab / Gitee / GitHub / Gitea  →  Webhook Trigger        │
 └──────────────────────────┬──────────────────────────────────┘
                            ↓
 ┌─────────────────────────────────────────────────────────────┐
-│                     CI LAYER: Devops-Glue API (PHP)         │
+│                  CI LAYER：Devops-Glue API (PHP)            │
 │                                                             │
-│  ┌──────────────┐  ┌──────────────┐   ┌──────────────┐      │
-│  │   Jenkins    │  │  GitLab CI   │   │   Custom CI  │      │
-│  │ BuildProvider│  │ BuildProvider│   │ BuildProvider│      │
-│  └──────┬───────┘  └──────┬───────┘   └──────┬───────┘      │
-│         └─────────────────┼──────────────────┘              │
+│  ┌──────────────┐  ┌──────────────┐   ┌──────────────┐      │  ┌───────────────┐
+│  │   Jenkins    │  │  GitLab CI   │   │   Gitea CI   │      │  │  Custom Push  │ ← User CI
+│  │ BuildProvider│  │ BuildProvider│   │ BuildProvider│      │  │ (custom_push) │  (pusher)
+│  └──────┬───────┘  └──────┬───────┘   └──────┬───────┘      │  └───────┬───────┘
+│         └─────────────────┼──────────────────┼──────────────<──────────┼          
 │                           ↓                                 │
 │              Build → Docker Image → Harbor Registry         │
 │                           ↓                                 │
@@ -73,19 +73,19 @@ DevOps-Glue API is a Slim 4–based integration platform designed to enhance Dev
 └──────────────────────────┬──────────────────────────────────┘
                            ↓
 ┌─────────────────────────────────────────────────────────────┐
-│                     CD LAYER: cd_service (Python)           │
+│                  CD LAYER：cd_service (Python)              │
 │                                                             │
 │   Select Project + Tag  ──→  Deploy Execution               │
 │                                                             │
 │   ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│   │  SSH Script  │  │Docker Compose│  │  Kubernetes  │      │
+│   │ SSH Script   │  │Docker Compose│  │  Kubernetes  │      │
 │   │  Ansible     │  │  SFTP + up   │  │ kubectl/Helm │      │
 │   │              │  │              │  │ ArgoCD/FluxCD│      │
 │   └──────────────┘  └──────────────┘  └──────────────┘      │
 │                           ↓                                 │
 │              cd_deploy_logs (Deployment Records)            │
 │                           ↓                                 │
-│              DingTalk / WeCom Webhook Notifications         │
+│            DingTalk / WeCom Webhook Notifications           │
 └─────────────────────────────────────────────────────────────┘
 ```
 </details>
@@ -138,7 +138,7 @@ See [docs/ADMIN_MANUAL.md](docs/ADMIN_MANUAL.md) for full environment variable r
 
 | Document | Language | Description |
 |----------|----------|-------------|
-| [API Reference](docs/API_Documents.md) | EN | API endpoints, request/response formats, quick tests |
+| [API Reference](docs/API_Reference.md) | EN | API endpoints, request/response formats, quick tests |
 | [ARCHITECTURE](docs/ARCHITECTURE.md) | EN | Overall data flow, component relationships, deployment pattern matrix|
 | [Admin Manual](docs/ADMIN_MANUAL.md) | EN | Environment variables, mapping config, custom Git platform |
 | [User Manual](docs/USER_MANUAL.md) | EN | User Guide|

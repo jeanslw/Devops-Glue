@@ -252,6 +252,53 @@ class Database
         return self::$driver;
     }
 
+    // ── 分布式锁（基于 ci_cache 的租约锁，用于定时任务单实例化）──
+
+    /**
+     * 尝试获取分布式锁（租约）：成功返回持有者 token（非空字符串），失败返回 null。
+     *
+     * 跨实例共享：锁以 ci_cache 的 cache_key 为主键，MySQL 多实例 / SQLite 共享单文件下均生效，
+     * 使「单 worker 容器 + DB 锁」的定时任务拆分在多实例部署下仍保证同一时刻只有一个实例执行。
+     * 抢占协议：
+     *   1) 先删除「已过期」的租约（expires_at <= 当前时间，即持有者异常退出 / 任务超时未续约）；
+     *   2) 再用普通 INSERT 写入自己的租约——唯一键冲突说明存在有效锁，返回 null。
+     *      （不能用 sqlUpsert/REPLACE：那会在冲突时删除旧行再插入，等于「偷锁」，破坏互斥。）
+     *   value 存持有者 token（host:pid:随机），供 releaseLock 精确释放，避免误删他者已接管的锁。
+     * ttl 由调用方按单轮任务耗时给出；任务超时后锁自动过期，下个调度周期可被接管，无死锁。
+     */
+    public static function tryAcquireLock(string $name, int $ttlSeconds = 600): ?string
+    {
+        try {
+            $pdo   = self::getPdo();
+            $key   = 'lock:' . $name;
+            $now   = time();
+            $token = gethostname() . ':' . getmypid() . ':' . bin2hex(random_bytes(4));
+            $pdo->prepare("DELETE FROM " . \App\Config\AppConfig::TABLE_CACHE . " WHERE cache_key = ? AND expires_at <= ?")
+                ->execute([$key, $now]);
+            $pdo->prepare("INSERT INTO " . \App\Config\AppConfig::TABLE_CACHE . " (cache_key, value, expires_at) VALUES (?, ?, ?)")
+                ->execute([$key, $token, $now + $ttlSeconds]);
+            return $token;
+        } catch (\Throwable $e) {
+            // 唯一键冲突（已有有效锁）或库异常：安全降级为「不抢锁」。
+            return null;
+        }
+    }
+
+    /**
+     * 释放锁：仅当锁仍由本 token 持有时删除（防止任务超时被接管后误删他者的锁）。
+     * 释放失败不致命——锁会在 ttl 到期后自动过期。
+     */
+    public static function releaseLock(string $name, string $token): void
+    {
+        try {
+            $pdo = self::getPdo();
+            $pdo->prepare("DELETE FROM " . \App\Config\AppConfig::TABLE_CACHE . " WHERE cache_key = ? AND value = ?")
+                ->execute(['lock:' . $name, $token]);
+        } catch (\Throwable $e) {
+            // 忽略：锁自动过期兜底
+        }
+    }
+
     // ── SQL helper（屏蔽 SQLite/MySQL 语法差异）──
 
     /** INSERT OR REPLACE / REPLACE INTO */

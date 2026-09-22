@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.8.5 (2026-09-22)
+- **Distributed-deployment support (timer split)** — The stateless web layer is now separated from the scheduled timer jobs so it can scale out safely. `supervisord.conf` keeps only nginx + php-fpm; a new `supervisord-worker.conf` runs just `tag-cleanup` / `tag-backfill`, and docker-compose gains a `devops-glue-worker` service that reuses the same `devops-glue:latest` image (same entrypoint, only a different supervisor config bind-mounted onto the same path; no port).
+- **Distributed timer lock** — `Database::tryAcquireLock()` / `releaseLock()` add a lease lock backed by the `cache` table (`cache_key` PK), so the timers run at most once across multiple worker replicas (MySQL multi-instance or a shared SQLite file). Acquisition deletes expired leases then does a plain `INSERT` (a PK conflict means the lock is held → exit 0 "skip"); release is token-scoped so a timeout-takeover can't delete the new holder's lease; the lease auto-expires via TTL (600s) so a crashed holder can't deadlock the schedule. Both `cli/cleanup-pipeline-tags.php` and `cli/backfill-pipeline-tags.php` acquire/release the lock around the work phase.
+- **Documentation** — Architecture docs (CN/EN) document the single-image/two-role container split and the distributed timer lock.
+- **Versioning** — `APP_VERSION` bumped to 2.8.5; OpenAPI `version` synced (CN/EN).
+
 ## v2.8.4 (2026-09-20)
 - **Image Tag column for pull records** — Pull-type build records (jobs list / pipelines) gain an "Image Tag" column, projected from the harbor-scan writeback success onto `ci_pipeline_artifacts`.
 - **Log-derived tag fallback** — When the canonical artifact tag has not been written back yet, the build log is lazily parsed to derive the image tag using configurable keywords (multi-keyword, `|`-separated). The result is cached in `ci_pipeline_build_log` (`source='log'`) together with the canonical identity (`provider` / `project_id`) and Harbor `repository`, so it can be promoted later without re-resolving the provider.

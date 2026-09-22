@@ -727,7 +727,7 @@ The system uses a role-based access control (RBAC) model with **all tables store
 | POST | `/api/admin/api_tokens/{id}/revoke` | Revoke a token (soft delete, disable and keep the record) | super_admin |
 | DELETE | `/api/admin/api_tokens/{id}` | Delete a token (hard delete) | super_admin |
 
-> API tokens are sent via the standard `Authorization: Bearer <token>` header, independent of RBAC, and carry scopes directly; `/api/admin/*` admin endpoints are always fail-closed (403) for API tokens. See [API_Documents.md](API_Documents.md), "API Token Management".
+> API tokens are sent via the standard `Authorization: Bearer <token>` header, independent of RBAC, and carry scopes directly; `/api/admin/*` admin endpoints are always fail-closed (403) for API tokens. See [API_Reference.md](API_Reference.md), "API Token Management".
 
 **Implied-relation expansion logic** (`expandPermissions()`):
 ```php

@@ -45,6 +45,36 @@ services:
       mysql:
         condition: service_healthy
 
+  # ──────────────────────────────────────
+  # 定时任务 worker —— 与 Web 容器分离（分布式部署：web 层可水平扩展，定时任务单实例化）
+  # ──────────────────────────────────────
+  # 复用 devops-glue 镜像，不跑 nginx/php-fpm、不映射端口；只跑 tag 清理/回填两个 sleep-loop CLI。
+  # 多实例部署时即使误起多份，CLI 内部的数据库租约锁（ci_cache）也保证同一时刻只有一个实例执行。
+  # 默认启用：单机部署下与旧版行为一致（定时任务仍会跑，只是从 Web 容器挪到本容器）。
+  devops-glue-worker:
+    image: devops-glue:latest
+    container_name: devops-glue-worker
+    env_file:
+      - .env
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - ./config/app.env:/app/config/app.env:ro
+      - ./config/docker/supervisord-worker.conf:/etc/supervisor/conf.d/supervisord.conf:ro
+      - ./logs/ci-platform:/data/logs/ci-platform
+      - ./logs/php_log:/data/logs/php_log
+      # 运行时数据与 Web 容器共享（分类挂载，互不覆盖）：
+      #   /data/db       — SQLite（DB_PATH=/data/db/data.db），worker 与 Web 共用同一库文件。
+      #   /data/cache    — OIDC 私钥 + GitLab ID 缓存。
+      #   /data/backups  — 手动「备份数据库」生成的 zip 备份。
+      - ./data/db:/data/db
+      - ./data/cache:/data/cache
+      - ./data/backups:/data/backups
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+
   # 启动前环境变量预检（一次性容器，复用 mysql 镜像不增加额外下载）：
   # 必填口令缺失时输出中英双语指引并以非零码退出，mysql / devops-glue 因依赖关系不会启动。
   env-check:

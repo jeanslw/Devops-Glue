@@ -38,6 +38,7 @@ Devops-Glue API is a Slim4-based unified API layer that provides a single manage
 
 | Devops-Glue API | Devops-Glue CD |
 |:---:|:---:|
+| v2.8.5 | v1.5.x |
 | v2.8.4 | v1.5.x |
 | v2.8.3 | v1.5.x |
 | v2.8.2 | v1.5.x |
@@ -318,7 +319,7 @@ The related settings live on the **System Settings → Platform Config** page:
 - **Enable stale-tag cleanup** (`stale_tag_cleanup_enabled`): periodically removes tags from `ci_pipeline_artifacts` that no longer exist in Harbor (Harbor is the source of truth; an unreachable/unconfigured Harbor is skipped safely — never a wrong delete).
 - **Image-tag log backfill** (`backfill_tag_enabled`): periodically promotes log-derived tags into the canonical `ci_pipeline_artifacts` — **only after Harbor explicitly confirms the tag exists**, and only filling gaps where no tag exists yet; it never overwrites the authoritative scan-sync result. Off by default.
 
-Both cron jobs are driven by the container's supervisord sleep-loop (no system cron needed); their intervals are overridable via the root `app.env` vars `TAG_CLEANUP_INTERVAL` (default 3600s) / `TAG_BACKFILL_INTERVAL` (default 1800s).
+Both cron jobs are driven by the container's supervisord sleep-loop (no system cron needed); their intervals are overridable via the root `app.env` vars `TAG_CLEANUP_INTERVAL` (default 3600s) / `TAG_BACKFILL_INTERVAL` (default 1800s). **On bare metal** (no supervisord), schedule the two CLIs with system cron instead — see the "Bare-metal Deployment" section in the architecture doc.
 
 > If a record's log-derived tag was parsed incorrectly (e.g. it picked up the previous build's tag), the **↻ Re-parse** button next to that tag force-re-parses it (skips the cache and re-extracts by the current build number).
 
