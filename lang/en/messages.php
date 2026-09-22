@@ -537,6 +537,7 @@ return [
     'role.perm_ci_build-records_pull' => 'Pull Records',
     'role.perm_ci_build-records_push' => 'Push Records',
     'role.perm_ci_operation-logs'     => 'Operation Logs',
+    'role.perm_ci_settings'           => 'System Settings',
     'role.perm_ci_platform-config'    => 'Platform Management',
     'role.perm_ci_system'             => 'Data Management',
     'role.perm_cd_build-manage'       => 'Build Management',
