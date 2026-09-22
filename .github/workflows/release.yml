@@ -24,7 +24,7 @@ jobs:
       - name: Detect prerelease
         id: prerelease_check
         run: |
-          if [[ "${{ github.ref_name }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-(alpha|beta|rc|dev|preview)$ ]]; then
+          if [[ "${{ github.ref_name }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-(alpha|beta|rc|dev|preview|distributed)$ ]]; then
             echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
           else
             echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
@@ -53,7 +53,7 @@ jobs:
                   if m:
                       if found:
                           break
-                      if m.group(1) == ver.lstrip("v"):
+                      if m.group(1) == ver.lstrip("v").split("-")[0]:
                           found = True
                           continue
                   if found:
