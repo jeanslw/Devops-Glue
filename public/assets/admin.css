@@ -83,6 +83,10 @@
         /* ── 内容区 ── */
         .content { flex:1; padding:24px; overflow-y:auto; scrollbar-gutter:stable; }
 
+        /* ── 数据管理：数据表 / 备份文件折叠面板 ── */
+        .sys-panels { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px; align-items:start; }
+        .sys-panel { min-width:0; border:1px solid #e5e7eb; border-radius:8px; overflow:hidden; }
+
         /* ── 服务监测卡片 ── */
         .monitor-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px; }
         .monitor-card {
@@ -610,6 +614,7 @@
 
         @media (max-width:900px) {
             .mode-cards { grid-template-columns:1fr; }
+            .sys-panels { grid-template-columns:1fr; }
             #mode-display { min-height:220px; }
             /* 拉取式/推送式两卡片改为上下堆叠，分界线转为水平 */
             .mf-row { flex-direction:column; align-items:center; }

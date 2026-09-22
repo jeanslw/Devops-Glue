@@ -1037,8 +1037,8 @@
                         <span id="sys-migrate-status" class="mode-save-status"></span>
                         <span id="sys-backup-status" class="mode-save-status"></span>
                     </div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;align-items:start;">
-                        <div style="min-width:0;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
+                    <div class="sys-panels">
+                        <div class="sys-panel">
                             <div style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:10px 12px;font-weight:600;font-size:13px;background:#f9fafb;user-select:none;" onclick="toggleSysTables()">
                                 <span data-i18n="sys.tables_toggle">📋 数据表</span>
                                 <span id="sys-tables-count" style="color:#6b7280;font-weight:400;"></span>
@@ -1046,7 +1046,7 @@
                             </div>
                             <div id="sys-tables" style="display:none;padding:10px 12px;"></div>
                         </div>
-                        <div id="sys-backups" style="display:none;min-width:0;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;"></div>
+                        <div id="sys-backups" class="sys-panel" style="display:none;"></div>
                     </div>
                 </div>
             </div>

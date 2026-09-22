@@ -118,11 +118,15 @@ export async function loadBackups() {
             const dt = new Date(f.mtime * 1000);
             const t = dt.getFullYear() + '/' + String(dt.getMonth() + 1).padStart(2, '0') + '/' + String(dt.getDate()).padStart(2, '0')
                 + ' ' + String(dt.getHours()).padStart(2, '0') + ':' + String(dt.getMinutes()).padStart(2, '0') + ':' + String(dt.getSeconds()).padStart(2, '0');
-            return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px;border-bottom:1px solid #f3f4f6;">'
+            return '<div style="padding:6px 0;border-bottom:1px solid #f3f4f6;">'
+                + '<div style="display:flex;align-items:center;gap:6px;">'
                 + '<span>🗜️</span>'
-                + '<span style="word-break:break-all;">' + esc(f.name) + '</span>'
-                + '<span style="margin-left:auto;color:#6b7280;white-space:nowrap;">' + formatSize(f.size) + '</span>'
-                + '<span style="color:#9ca3af;white-space:nowrap;">' + esc(t) + '</span>'
+                + '<span style="overflow-wrap:anywhere;min-width:0;font-size:13px;">' + esc(f.name) + '</span>'
+                + '</div>'
+                + '<div style="display:flex;gap:8px;color:#9ca3af;font-size:11px;margin-top:3px;padding-left:20px;">'
+                + '<span style="white-space:nowrap;">' + formatSize(f.size) + '</span>'
+                + '<span style="white-space:nowrap;">' + esc(t) + '</span>'
+                + '</div>'
                 + '</div>';
         }).join('');
         el.innerHTML = '<div style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:10px 12px;font-weight:600;font-size:13px;background:#f9fafb;user-select:none;" onclick="toggleSysBackups()">'
