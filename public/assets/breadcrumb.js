@@ -23,7 +23,7 @@ export function renderBreadcrumb(tab) {
     const parts = [];
 
     // 首页指向后台入口（adminRootPath：根域 -> /admin，子路径 -> /{prefix}/admin），避免 / 落到宣传页。
-    parts.push(`<a href="${adminRootPath()}" class="bc-item bc-home">🏠 ${__.t('admin.home')}</a>`);
+    parts.push(`<a href="${adminRootPath()}" class="bc-item bc-home">🏠 ${__.t('admin.console')}</a>`);
 
     trail.forEach((node, i) => {
         const isLast = i === trail.length - 1;

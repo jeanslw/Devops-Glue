@@ -264,6 +264,7 @@ return [
     'admin.account_placeholder' => '账号',
     'admin.password_placeholder' => '密码',
     'admin.home'            => '首页',
+    'admin.console'         => '控制台',
     'admin.api_docs'        => 'API 文档',
     'admin.sidebar_monitor' => '监测概览',
     'admin.sidebar_mapping' => '映射管理',
