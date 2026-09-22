@@ -7,6 +7,7 @@ class Database
     private static ?\PDO $pdo = null;
     private static string $driver = 'sqlite';
     private static array $config = [];
+    private static bool $bootstrapped = false;
 
     /** ci_app_settings 中记录「已应用的 schema/种子版本」的 key */
     private const SCHEMA_VERSION_KEY = 'schema_version';
@@ -27,6 +28,12 @@ class Database
      */
     public static function bootstrap(\PDO $pdo): void
     {
+        // 进程内幂等守卫：显式重复调用（容器 + 业务代码、CLI 分阶段等）直接短路，
+        // 避免重复跑 seedAdmin/verifySeed 的写库与校验开销。
+        // 仅「全部成功」后才置位；中途抛异常（如 verifySeed 失败）保持 false，下次调用可重试自愈。
+        if (self::$bootstrapped) {
+            return;
+        }
         self::$pdo = $pdo;
         if (empty(self::$config)) {
             self::init();
@@ -49,6 +56,7 @@ class Database
         if ($needMark) {
             self::markSchemaCurrent();
         }
+        self::$bootstrapped = true;
     }
 
     /** 判断 schema/种子是否已应用到当前代码版本（首次启动或版本升级时返回 false） */
@@ -188,6 +196,9 @@ class Database
     /**
      * 返回「已初始化」的连接：内部 createPdo() + bootstrap()，并保证整个进程只执行一次。
      * 业务代码要一个可直接用的库连接时统一走这里，不必感知连接与初始化的分离。
+     *
+     * 进程内单库约束：连接与驱动由 init() 的静态配置决定，缓存不区分连接参数。
+     * 同一进程切换不同库（测试 / CLI 多库）须先 reset()，否则仍返回首次连接。
      */
     public static function getPdo(): \PDO
     {
@@ -233,6 +244,7 @@ class Database
     public static function reset(): void
     {
         self::$pdo = null;
+        self::$bootstrapped = false;
     }
 
     public static function driver(): string
@@ -716,6 +728,7 @@ class Database
             try {
                 $permStmt->execute([$key, $desc, $parent]);
             } catch (\Exception $e) {
+                \App\Helper\Log::error('seedRbac 权限写入失败', ['perm_key' => $key, 'error' => $e->getMessage()]);
             }
         }
 
@@ -727,6 +740,7 @@ class Database
                 try {
                     $ruleStmt->execute([$src, $tgt]);
                 } catch (\Exception $e) {
+                    \App\Helper\Log::error('seedRbac 隐含规则写入失败', ['source' => $src, 'target' => $tgt, 'error' => $e->getMessage()]);
                 }
             }
         }
@@ -752,6 +766,7 @@ class Database
                     $updateRoleStmt->execute([$roleDesc, $isSystem, (int)$roleId]);
                 }
             } catch (\Exception $e) {
+                \App\Helper\Log::error('seedRbac 角色写入失败', ['role' => $roleName, 'error' => $e->getMessage()]);
             }
         }
 
@@ -763,12 +778,14 @@ class Database
             try {
                 $delRpStmt->execute([$roleName]);
             } catch (\Exception $e) {
+                \App\Helper\Log::error('seedRbac 角色权限清理失败', ['role' => $roleName, 'error' => $e->getMessage()]);
             }
             $permKeys = ($perms === '*') ? $allPermKeys : $perms;
             foreach ($permKeys as $permKey) {
                 try {
                     $rpStmt->execute([$roleName, $permKey]);
                 } catch (\Exception $e) {
+                    \App\Helper\Log::error('seedRbac 角色权限写入失败', ['role' => $roleName, 'perm_key' => $permKey, 'error' => $e->getMessage()]);
                 }
             }
         }

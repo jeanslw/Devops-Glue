@@ -11,11 +11,11 @@
 ┌─────────────────────────────────────────────────────────────┐
 │                  CI LAYER：Devops-Glue API (PHP)            │
 │                                                             │
-│  ┌──────────────┐  ┌──────────────┐   ┌──────────────┐      │
-│  │   Jenkins    │  │  GitLab CI   │   │   Custom CI  │      │
-│  │ BuildProvider│  │ BuildProvider│   │ BuildProvider│      │
-│  └──────┬───────┘  └──────┬───────┘   └──────┬───────┘      │
-│         └─────────────────┼─────────────────┘               │
+│  ┌──────────────┐  ┌──────────────┐   ┌──────────────┐      │  ┌───────────────┐
+│  │   Jenkins    │  │  GitLab CI   │   │   Gitea CI   │      │  │  Custom Push  │
+│  │ BuildProvider│  │ BuildProvider│   │ BuildProvider│      │  │               │
+│  └──────┬───────┘  └──────┬───────┘   └──────┬───────┘      │  └───────┬───────┘
+│         └─────────────────┼──────────────────┼──────────────<──────────┼          
 │                           ↓                                 │
 │              Build → Docker Image → Harbor Registry         │
 │                           ↓                                 │
@@ -41,24 +41,24 @@
 
 ## Component Relationships
 ```
-┌──────────────────────────────────────┐
-│Shared Database (SQLite/MySQL/MariaDB)│
-│                                      │
-│  ci_job_git_map   ← CI read-only     │
+┌────────────────────────────────────────────────────────────┐
+│Shared Database (SQLite/MySQL/MariaDB)                      │
+│                                                            │
+│  ci_job_git_map   ← CI read-only                           │
 │  ci_pipeline_artifacts ← canonical CI artifact facts       │
-│  ci_custom_builds ← Custom_Push write│
-│  cd_servers       ← CD maintains     │
-│  cd_deploy_logs   ← CD writes        │
-│  cd_bots          ← CD maintains     │
-│  admin_users      ← Shared           │
-└──────────────┬───────────────────────┘
-			   │
-		┌──────┴──────┐
-		↓             ↓
-	┌────────┐   ┌────────┐
-	│ PHP CI │   │PythonCD│
-	│:8080   │   │:8081   │
-	└────────┘   └────────┘
+│  ci_custom_builds ← Custom_Push write                      │
+│  cd_servers       ← CD maintains                           │
+│  cd_deploy_logs   ← CD writes                              │
+│  cd_bots          ← CD maintains                           │
+│  admin_users      ← Shared                                 │
+└────────────────────────────┬───────────────────────────────┘
+			                 │
+		              ┌──────┴──────┐
+		              ↓             ↓
+				┌────────┐      ┌────────┐
+				│ PHP CI │      │PythonCD│
+				│:8080   │      │:8081   │
+				└────────┘      └────────┘
 ```
 
 > **Database Selection**: PHP CI and CD Service must use the same database instance.
