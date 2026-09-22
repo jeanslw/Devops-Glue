@@ -59,6 +59,8 @@ class AppConfig
     public const PERM_CI_OPERATION_LOGS   = 'ci.operation-logs';
     // 系统信息（DB schema 状态面板，一级菜单，仅 super_admin 可触发迁移）
     public const PERM_CI_SYSTEM           = 'ci.system';
+    // 平台管理（平台接入状态 + 平台级 tag 设置，系统设置二级菜单）
+    public const PERM_CI_PLATFORM_CONFIG  = 'ci.platform-config';
     // CD 权限（对应 CD 系统侧边栏菜单）
     public const PERM_CD_BUILD   = 'cd.build-manage';
     public const PERM_CD_DEPLOY  = 'cd.deploy-manage';
@@ -94,7 +96,8 @@ class AppConfig
         self::PERM_CI_BUILD_RECORDS_PULL => ['name' => 'Pull Records', 'parent' => self::PERM_CI_BUILD_RECORDS],
         self::PERM_CI_BUILD_RECORDS_PUSH => ['name' => 'Push Records', 'parent' => self::PERM_CI_BUILD_RECORDS],
         self::PERM_CI_OPERATION_LOGS     => ['name' => 'Operation Logs', 'parent' => null],
-        self::PERM_CI_SYSTEM             => ['name' => 'System Info', 'parent' => null],
+        self::PERM_CI_PLATFORM_CONFIG    => ['name' => 'Platform Management', 'parent' => null],
+        self::PERM_CI_SYSTEM             => ['name' => 'Data Management', 'parent' => null],
         // CD 一级菜单（8 个）
         self::PERM_CD_BUILD              => ['name' => 'Build Management', 'parent' => null],
         self::PERM_CD_DEPLOY             => ['name' => 'Deploy Management', 'parent' => null],

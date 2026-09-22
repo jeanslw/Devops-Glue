@@ -83,8 +83,14 @@ function applyOperationLogMenuVisibility() {
     if (item) item.style.display = hasPermission('ci.operation-logs') ? '' : 'none';
 }
 function applySystemInfoMenuVisibility() {
-    const item = document.getElementById('menu-group-settings');
-    if (item) item.style.display = hasPermission('ci.system') ? '' : 'none';
+    const group = document.getElementById('menu-group-settings');
+    const platformItem = document.querySelector('#menu-group-settings .submenu .menu-item[data-tab="platform-config"]');
+    const systemItem = document.querySelector('#menu-group-settings .submenu .menu-item[data-tab="system-info"]');
+    const platformOk = hasPermission('ci.platform-config');
+    const systemOk = hasPermission('ci.system');
+    if (platformItem) platformItem.style.display = platformOk ? '' : 'none';
+    if (systemItem) systemItem.style.display = systemOk ? '' : 'none';
+    if (group) group.style.display = (platformOk || systemOk) ? '' : 'none';
 }
 
 function applyAllMenuVisibility() {
