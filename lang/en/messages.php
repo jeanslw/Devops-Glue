@@ -264,6 +264,7 @@ return [
     'admin.account_placeholder' => 'Username',
     'admin.password_placeholder' => 'Password',
     'admin.home'            => 'Home',
+    'admin.console'         => 'Console',
     'admin.api_docs'        => 'API Docs',
     'admin.sidebar_monitor' => 'Monitoring Overview',
     'admin.sidebar_mapping' => 'Mapping Config',
