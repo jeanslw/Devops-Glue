@@ -12,8 +12,8 @@
 │                  CI LAYER：Devops-Glue API (PHP)            │
 │                                                             │
 │  ┌──────────────┐  ┌──────────────┐   ┌──────────────┐      │  ┌───────────────┐
-│  │   Jenkins    │  │  GitLab CI   │   │   Gitea CI   │      │  │  Custom Push  │
-│  │ BuildProvider│  │ BuildProvider│   │ BuildProvider│      │  │               │
+│  │   Jenkins    │  │  GitLab CI   │   │   Gitea CI   │      │  │  Custom Push  │ ← User CI
+│  │ BuildProvider│  │ BuildProvider│   │ BuildProvider│      │  │ (custom_push) │  (pusher)
 │  └──────┬───────┘  └──────┬───────┘   └──────┬───────┘      │  └───────┬───────┘
 │         └─────────────────┼──────────────────┼──────────────<──────────┼          
 │                           ↓                                 │
@@ -64,6 +64,60 @@
 > **Database Selection**: PHP CI and CD Service must use the same database instance.
 > - **SQLite**: Zero-configuration, suitable for single-host development/testing. For container deployments, mount the `config/data/` directory as a shared volume so both processes can access the same `.db` file.
 > - **MySQL 8.0+ / MariaDB 10.4+**: Recommended for production. Supports concurrent reads and writes, no shared volume required.
+
+## Deployment Topology (Distributed)
+
+The CI web layer is **stateless** — token auth (no `$_SESSION`), all state in the shared DB — so it can scale out horizontally. The only single-instance part is the scheduled timer jobs (`tag-cleanup` / `tag-backfill`), moved into a dedicated worker container.
+
+### Single image, two roles
+
+The `devops-glue:latest` image carries everything (nginx + php-fpm + supervisor + app code + CLI scripts). The same image runs as two roles, distinguished only by which supervisor config is bind-mounted onto `/etc/supervisor/conf.d/supervisord.conf`:
+
+| Service | Mounted supervisor config | Programs it runs | Port |
+|---|---|---|---|
+| `devops-glue` (web) | `supervisord.conf` | nginx + php-fpm | 8080 |
+| `devops-glue-worker` (worker) | `supervisord-worker.conf` | tag-cleanup + tag-backfill | — |
+
+Both run the same entrypoint (`db-init` retry → `exec supervisord`) and share the same DB (`data/db` for SQLite, or the MySQL instance), each under its own supervisor process — so scaling the web layer never duplicates the timers.
+
+### Distributed timer lock
+
+To guarantee at-most-one timer run even if several worker replicas are started, both CLI scripts take a **lease lock in `cache`** (`Database::tryAcquireLock` / `releaseLock`) before doing work:
+
+- Key is `cache_key = 'lock:tag-cleanup'` / `'lock:tag-backfill'`, shared across instances (MySQL multi-instance, or a shared SQLite file).
+- Acquisition deletes expired leases, then `INSERT`s its own — a PK conflict means another instance holds a valid lease → exit 0 ("skip").
+- The lease auto-expires after its TTL (600s), so a crashed holder can't deadlock the schedule; release is token-scoped so a timeout-takeover can't delete the new holder's lock.
+
+```
+                 devops-glue × N  (nginx + php-fpm, stateless)   ← scale out
+                          │
+                          ▼   shared DB (MySQL / SQLite)
+        devops-glue-worker × 1  (tag-cleanup + tag-backfill, DB lock)
+```
+
+> **SQLite**: still a single file — mount one shared `data/db` volume; the lock serializes via the same file's WAL busy-timeout. For true multi-instance concurrency, use MySQL.
+
+### Bare-metal Deployment
+
+Without Docker/supervisord, deployment has two parts:
+
+- **Web layer**: regular nginx + php-fpm (stateless, horizontally scalable). Point `nginx` `root` at the project's `public/` (the single entry point `index.php`), `try_files`-rewrite to `index.php` for Slim routing, and fastcgi-forward PHP requests to php-fpm. The repo's `config/docker/nginx.conf` is a ready-made template — just replace the container path `/app` with your deploy path.
+- **Timer jobs**: in containers the worker's supervisord sleep-loop drives them; on bare metal, schedule the two CLIs from system cron (or a systemd timer):
+
+```cron
+# hourly: clean up stale tags (matches TAG_CLEANUP_INTERVAL, default 3600s)
+0 * * * * www-data php /opt/devops-glue/cli/cleanup-pipeline-tags.php >> /var/log/devops-glue/tag-cleanup.log 2>&1
+# every 30 min: backfill log-derived tags (matches TAG_BACKFILL_INTERVAL, default 1800s)
+*/30 * * * * www-data php /opt/devops-glue/cli/backfill-pipeline-tags.php >> /var/log/devops-glue/tag-backfill.log 2>&1
+```
+
+Notes:
+
+- **Switches default off**: both jobs are gated by `stale_tag_cleanup_enabled` / `backfill_tag_enabled` (default off); enable them on the platform-config page first, otherwise the CLI prints "skip" and exits 0.
+- **Run user**: use the same user as the web process (php-fpm, e.g. `www-data`); otherwise root running first creates a root-owned SQLite file and the web side fails to write.
+- **env loading**: the CLI auto-loads `config/app.env` via `cli/bootstrap.php` (paths relative to `__DIR__`, no cwd dependence), so no `cd` is needed in crontab.
+- **Distributed lock safety**: the CLI has a built-in `cache`-table lease lock, so even misconfigured duplicate crons (or mixing with a container worker) run at most one instance at a time; losing the lock just exits 0.
+- **Log dir**: the redirected log directory must be writable by the run user.
 
 ## CI Build Modes: Pull-based vs Push-based
 
