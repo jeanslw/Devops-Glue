@@ -1653,12 +1653,12 @@ class AdminController extends BaseController
 
     /**
      * GET /api/admin/platform_config — 各平台接入配置状态（只返回「已配置」布尔，绝不下发 URL/账号/凭证）
-     * 权限：ci.system
+     * 权限：ci.platform-config
      */
     public function platformConfig(Request $request, Response $response): Response
     {
         $this->initAuthFromRequest($request);
-        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_SYSTEM)) {
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_PLATFORM_CONFIG)) {
             return $resp;
         }
         try {
@@ -1682,7 +1682,7 @@ class AdminController extends BaseController
                     'gitea'       => ['configured' => $git($gitea)],
                     'harbor'      => ['configured' => !empty($harbor['url']) && !empty($harbor['password'])],
                 ],
-                // 平台级 tag 设置（清理/回填/日志关键字），仅存于 ci_app_settings，由 ci.system 控制
+                // 平台级 tag 设置（清理/回填/日志关键字），仅存于 ci_app_settings，由 ci.platform-config 控制
                 'stale_tag_cleanup_enabled' => $c->getStaleTagCleanupEnabled(),
                 'backfill_tag_enabled'      => $c->getBackfillTagEnabled(),
                 'tag_log_keyword'           => $c->getTagLogKeyword(),
@@ -1694,13 +1694,13 @@ class AdminController extends BaseController
 
     /**
      * PUT /api/admin/platform_config — 更新平台级 tag 设置（清理开关 / 回填开关 / 日志关键字）
-     * 权限：ci.system（平台管理）。这些设置与「构建模式」无关，故从 build_mode 移出。
+     * 权限：ci.platform-config（平台管理）。这些设置与「构建模式」无关，故从 build_mode 移出。
      * 仅更新请求体显式携带的键，避免互相覆盖。
      */
     public function updatePlatformConfig(Request $request, Response $response): Response
     {
         $this->initAuthFromRequest($request);
-        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_SYSTEM)) {
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_PLATFORM_CONFIG)) {
             return $resp;
         }
         $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
