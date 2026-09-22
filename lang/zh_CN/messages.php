@@ -535,6 +535,7 @@ return [
     'role.perm_ci_build-records_pull' => '拉取式记录',
     'role.perm_ci_build-records_push' => '自定义推送记录',
     'role.perm_ci_operation-logs'     => '操作日志',
+    'role.perm_ci_settings'           => '系统设置',
     'role.perm_ci_platform-config'    => '平台管理',
     'role.perm_ci_system'             => '数据管理',
     'role.perm_cd_build-manage'       => '构建管理',

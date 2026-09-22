@@ -57,9 +57,11 @@ class AppConfig
     public const PERM_CI_BUILD_RECORDS_PUSH = 'ci.build-records.push';
     // 操作日志（后台审计，一级菜单）
     public const PERM_CI_OPERATION_LOGS   = 'ci.operation-logs';
-    // 系统信息（DB schema 状态面板，一级菜单，仅 super_admin 可触发迁移）
+    // 系统设置（一级父权限：平台管理 + 数据管理两个子权限，对应「系统设置」菜单分组）
+    public const PERM_CI_SETTINGS         = 'ci.settings';
+    // 数据管理（DB schema 状态面板，系统设置子菜单，仅 super_admin 可触发迁移）
     public const PERM_CI_SYSTEM           = 'ci.system';
-    // 平台管理（平台接入状态 + 平台级 tag 设置，系统设置二级菜单）
+    // 平台管理（平台接入状态 + 平台级 tag 设置，系统设置子菜单）
     public const PERM_CI_PLATFORM_CONFIG  = 'ci.platform-config';
     // CD 权限（对应 CD 系统侧边栏菜单）
     public const PERM_CD_BUILD   = 'cd.build-manage';
@@ -96,8 +98,9 @@ class AppConfig
         self::PERM_CI_BUILD_RECORDS_PULL => ['name' => 'Pull Records', 'parent' => self::PERM_CI_BUILD_RECORDS],
         self::PERM_CI_BUILD_RECORDS_PUSH => ['name' => 'Push Records', 'parent' => self::PERM_CI_BUILD_RECORDS],
         self::PERM_CI_OPERATION_LOGS     => ['name' => 'Operation Logs', 'parent' => null],
-        self::PERM_CI_PLATFORM_CONFIG    => ['name' => 'Platform Management', 'parent' => null],
-        self::PERM_CI_SYSTEM             => ['name' => 'Data Management', 'parent' => null],
+        self::PERM_CI_SETTINGS           => ['name' => 'System Settings', 'parent' => null],
+        self::PERM_CI_PLATFORM_CONFIG    => ['name' => 'Platform Management', 'parent' => self::PERM_CI_SETTINGS],
+        self::PERM_CI_SYSTEM             => ['name' => 'Data Management', 'parent' => self::PERM_CI_SETTINGS],
         // CD 一级菜单（8 个）
         self::PERM_CD_BUILD              => ['name' => 'Build Management', 'parent' => null],
         self::PERM_CD_DEPLOY             => ['name' => 'Deploy Management', 'parent' => null],
@@ -156,6 +159,9 @@ class AppConfig
         // 构建记录：选了二级（拉取式/推送式）自动显示一级菜单
         self::PERM_CI_BUILD_RECORDS_PULL => [self::PERM_CI_BUILD_RECORDS],
         self::PERM_CI_BUILD_RECORDS_PUSH => [self::PERM_CI_BUILD_RECORDS],
+        // 系统设置：选了二级（平台管理/数据管理）自动显示一级菜单
+        self::PERM_CI_PLATFORM_CONFIG => [self::PERM_CI_SETTINGS],
+        self::PERM_CI_SYSTEM          => [self::PERM_CI_SETTINGS],
     ];
 
     /** 默认角色种子数据：super_admin 内置全权限（'*'），viewer 内置只读（CI + CD 两侧的纯读视图 key）。
