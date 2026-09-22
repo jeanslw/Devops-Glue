@@ -232,6 +232,9 @@ class AdminController extends BaseController
         $token = bin2hex($randomBytes);
         // 持久化 token，24h 过期
         try {
+            // 谁创建谁清理：登录时顺带清扫已过期的 admin_token 残留，避免 cache 表越存越多
+            $this->pdo->prepare("DELETE FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key LIKE ? AND expires_at <= ?")
+                ->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . '%', time()]);
             $sql = \App\Service\Database::sqlUpsert(AppConfig::TABLE_CACHE, 'cache_key, value, expires_at', '?, ?, ?');
             $this->pdo->prepare($sql)->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . $token, $user . '|' . $loginRole, time() + AppConfig::TTL_TOKEN]);
         } catch (\Exception $e) {
