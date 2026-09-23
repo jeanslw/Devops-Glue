@@ -1,49 +1,69 @@
+# ──────────────────────────────────────
+# Web 服务公共配置（YAML 锚点 &web-common）：供 devops-glue / devops-glue-web-2 / 后续副本复用，
+# 新增副本只需一个 service 段 + `<<: *web-common` 一行继承全部公共项，避免复制 N 份。
+# 运行时数据（/data/db、/data/cache、/data/backups）与日志挂同一宿主机路径 → 单机多副本天然共享；
+# 跨主机（swarm/k8s）需改用共享存储，或把 OIDC 私钥放到 .env 的 OIDC_RSA_PRIVATE_KEY（见 app.env.example）。
+# ──────────────────────────────────────
+x-web-common: &web-common
+  image: devops-glue:latest
+  env_file:
+    - .env
+  environment:
+    # 容器 OS + PHP date.timezone 共用；未设时默认上海。改根目录 .env 的 TZ 即可。
+    TZ: ${TZ:-Asia/Shanghai}
+  volumes:
+    - ./config/app.env:/app/config/app.env:ro
+    - ./config/docker/nginx.conf:/etc/nginx/sites-available/default:ro
+    - ./config/docker/php-fpm.conf:/usr/local/etc/php-fpm.d/zz-custom.conf:ro
+    - ./config/docker/supervisord.conf:/etc/supervisor/conf.d/supervisord.conf:ro
+    # HTTPS 证书（想启用去掉注释；私钥只走挂载，不进镜像）
+    # HTTPS certs (uncomment to enable; private key is mounted, never baked into the image)
+    #- ./config/certs:/etc/nginx/certs:ro
+    #- ./config/data:/app/config/data
+    - ./logs/ci-platform:/data/logs/ci-platform
+    # PHP 引擎层原生错误日志（php-error.log，fpm error_log + catch_workers_output）。
+    # 与应用业务日志 app-*.log 分开；若无需在宿主机留存，可删除此行。
+    - ./logs/php_log:/data/logs/php_log
+    # 运行时数据持久化到宿主机（分类挂载，互不覆盖）：
+    #   /data/db       — SQLite（DB_PATH=/data/db/data.db）。
+    #   /data/cache    — OIDC 私钥 + GitLab ID 缓存。
+    #   /data/backups  — 手动「备份数据库」生成的 zip 备份（devops-glue_<driver>_<datetime>.zip）。
+    - ./data/db:/data/db
+    - ./data/cache:/data/cache
+    - ./data/backups:/data/backups
+  restart: unless-stopped
+  # 健康检查：
+  #   1) nginx 在容器内 80 端口可接受 TCP 连接；
+  #   2) php-fpm unix socket 存在（fpm 进程存活且监听就绪）。
+  healthcheck:
+    test: ["CMD-SHELL", "php -r 'exit(@fsockopen(\"127.0.0.1\", 80) ? 0 : 1);' && test -S /run/php/php-fpm.sock"]
+  depends_on:
+    mysql:
+      condition: service_healthy
+
 services:
   devops-glue:
+    <<: *web-common
     build:
       context: .
       dockerfile: Dockerfile
-    image: devops-glue:latest
     container_name: devops-glue
-    env_file:
-      - .env
-    environment:
-      # 容器 OS + PHP date.timezone 共用；未设时默认上海。改根目录 .env 的 TZ 即可。
-      TZ: ${TZ:-Asia/Shanghai}
-    volumes:
-      - ./config/app.env:/app/config/app.env:ro
-      - ./config/docker/nginx.conf:/etc/nginx/sites-available/default:ro
-      - ./config/docker/php-fpm.conf:/usr/local/etc/php-fpm.d/zz-custom.conf:ro
-      - ./config/docker/supervisord.conf:/etc/supervisor/conf.d/supervisord.conf:ro
-      # HTTPS 证书（想启用去掉注释；私钥只走挂载，不进镜像）
-      # HTTPS certs (uncomment to enable; private key is mounted, never baked into the image)
-      #- ./config/certs:/etc/nginx/certs:ro
-      #- ./config/data:/app/config/data
-      - ./logs/ci-platform:/data/logs/ci-platform
-      # PHP 引擎层原生错误日志（php-error.log，fpm error_log + catch_workers_output）。
-      # 与应用业务日志 app-*.log 分开；若无需在宿主机留存，可删除此行。
-      - ./logs/php_log:/data/logs/php_log
-      # 运行时数据持久化到宿主机（分类挂载，互不覆盖）：
-      #   /data/db       — SQLite（DB_PATH=/data/db/data.db）。
-      #   /data/cache    — OIDC 私钥 + GitLab ID 缓存。
-      #   /data/backups  — 手动「备份数据库」生成的 zip 备份（devops-glue_<driver>_<datetime>.zip）。
-      - ./data/db:/data/db
-      - ./data/cache:/data/cache
-      - ./data/backups:/data/backups
     ports:
       - "8080:80"
       # HTTPS：想启用去掉注释，并在 nginx.conf 放开 443 listen 段、证书放 config/certs/
       # HTTPS: to enable, uncomment, un-comment the 443 listen block in nginx.conf, and put certs in config/certs/
       #- "8443:443"
-    restart: unless-stopped
-    # 健康检查：
-    #   1) nginx 在容器内 80 端口可接受 TCP 连接；
-    #   2) php-fpm unix socket 存在（fpm 进程存活且监听就绪）。
-    healthcheck:
-      test: ["CMD-SHELL", "php -r 'exit(@fsockopen(\"127.0.0.1\", 80) ? 0 : 1);' && test -S /run/php/php-fpm.sock"]
-    depends_on:
-      mysql:
-        condition: service_healthy
+
+  # ──────────────────────────────────────
+  # Web 副本 #2（横向扩展模板）—— 默认注释。启用步骤：
+  #   1) 注释掉上方 devops-glue 的 `ports: "8080:80"`（web 改为仅内部 80，由 front-nginx 统一入口）；
+  #   2) 取消本段注释；
+  #   3) 取消下方 front-nginx 段注释，并在 config/docker/nginx-lb.conf 的 upstream 里放开对应 server 行。
+  # 再扩更多副本：复制本段改名（web-3…），同样 `<<: *web-common` 继承 + 加一行 upstream。
+  # 数据卷已共享（见 x-web-common 顶部注释）；本副本无需宿主端口、无需 build。
+  # devops-glue-web-2:
+  #   <<: *web-common
+  #   container_name: devops-glue-web-2
 
   # ──────────────────────────────────────
   # 定时任务 worker —— 与 Web 容器分离（分布式部署：web 层可水平扩展，定时任务单实例化）
@@ -74,6 +94,26 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+
+  # ──────────────────────────────────────
+  # 前端负载均衡（多 web 副本统一入口）—— 默认注释。单实例部署不需要，devops-glue 直接映射 8080。
+  # 启用步骤（配合 web 副本扩展）：
+  #   1) 注释 devops-glue 的 `ports: "8080:80"` 行；
+  #   2) 取消本段注释；
+  #   3) 在 config/docker/nginx-lb.conf 的 upstream 里放开对应 server 行。
+  # ⚠️ 反向代理会改写客户端 IP：需在根 .env 设 TRUSTED_PROXY_HOPS=1，
+  #    否则登录失败锁桶 / 审计日志会记成 LB 内网 IP（而非真实客户端 IP）。
+  # front-nginx:
+  #   image: nginx:1.22-alpine
+  #   container_name: devops-glue-lb
+  #   volumes:
+  #     - ./config/docker/nginx-lb.conf:/etc/nginx/conf.d/default.conf:ro
+  #   ports:
+  #     - "8080:80"
+  #   restart: unless-stopped
+  #   depends_on:
+  #     - devops-glue
+  #     # - devops-glue-web-2
 
   # 启动前环境变量预检（一次性容器，复用 mysql 镜像不增加额外下载）：
   # 必填口令缺失时输出中英双语指引并以非零码退出，mysql / devops-glue 因依赖关系不会启动。
