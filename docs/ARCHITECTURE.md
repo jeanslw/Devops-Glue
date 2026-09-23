@@ -97,6 +97,16 @@ To guarantee at-most-one timer run even if several worker replicas are started, 
 
 > **SQLite**: still a single file — mount one shared `data/db` volume; the lock serializes via the same file's WAL busy-timeout. For true multi-instance concurrency, use MySQL.
 
+### Scaling out the web layer (docker-compose + K8s reference)
+
+The compose file shares the web config through a YAML anchor so replicas don't duplicate it:
+
+- **`x-web-common: &web-common`** holds everything common to a web replica (image, `env_file`, `TZ`, all volume mounts, restart policy, healthcheck, `depends_on: mysql`). A new replica is one service block plus a single `<<: *web-common` merge line — the commented `devops-glue-web-2` is a ready-made template.
+- **`front-nginx`** (commented by default) is the optional front load balancer — `config/docker/nginx-lb.conf` defines a round-robin `upstream` over `devops-glue:80` (add one `server` line per replica), passes `X-Forwarded-*` / `Upgrade` headers, and sets `proxy_buffering off`. Single-instance deployments skip it: `devops-glue` maps `8080:80` directly.
+- **No sticky session needed**: auth is token-based (no `$_SESSION`), so any replica can serve any request. Behind the LB, set `TRUSTED_PROXY_HOPS=1` — otherwise the app sees the LB's IP instead of the client (login lockout / audit logs).
+
+A **Kubernetes reference manifest** (`config/k8s/devops-glue.yaml`) mirrors this topology — a web `Deployment` (`replicas: 3`), a single worker, a `front-nginx` `LoadBalancer` entry, an `app.env` `Secret`, plus optional in-cluster MySQL (`StatefulSet`) and a RWX PVC for backups/SQLite. In K8s the OIDC signing key must be injected as a fixed `OIDC_RSA_PRIVATE_KEY` (a multi-line Secret), otherwise each replica auto-generates a different key and SSO breaks.
+
 ### Bare-metal Deployment
 
 Without Docker/supervisord, deployment has two parts:
