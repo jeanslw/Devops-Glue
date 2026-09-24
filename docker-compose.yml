@@ -117,6 +117,8 @@ services:
 
   # 启动前环境变量预检（一次性容器，复用 mysql 镜像不增加额外下载）：
   # 必填口令缺失时输出中英双语指引并以非零码退出，mysql / devops-glue 因依赖关系不会启动。
+  # ⚠️ `docker compose up -d` 是分离模式，env-check 的双语指引被藏进容器日志，终端只显示 exit 1。
+  #   想直接看原因，先跑 `docker compose run --rm env-check` 预检；若 up 已失败，用 `docker compose logs env-check` 回看提示。
   env-check:
     image: mysql:8.4
     entrypoint: ["sh", "-c"]
