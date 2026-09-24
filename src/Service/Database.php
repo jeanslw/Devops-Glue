@@ -761,7 +761,17 @@ class Database
                 $findRoleStmt->execute([$roleName]);
                 $roleId = $findRoleStmt->fetchColumn();
                 if ($roleId === false) {
-                    $insertRoleStmt->execute([$roleName, $roleDesc, $isSystem]);
+                    try {
+                        $insertRoleStmt->execute([$roleName, $roleDesc, $isSystem]);
+                    } catch (\Exception $e) {
+                        // 并发下另一进程可能已插入同名角色（roles.name UNIQUE）：回退为 UPDATE，保留其 id。
+                        $findRoleStmt->execute([$roleName]);
+                        $roleId = $findRoleStmt->fetchColumn();
+                        if ($roleId === false) {
+                            throw $e; // 并非「被并发插入」场景，交给外层记录真实错误
+                        }
+                        $updateRoleStmt->execute([$roleDesc, $isSystem, (int)$roleId]);
+                    }
                 } else {
                     $updateRoleStmt->execute([$roleDesc, $isSystem, (int)$roleId]);
                 }
@@ -773,7 +783,14 @@ class Database
         // 种子数据：角色↔权限（只同步系统角色，不碰自定义角色）
         $allPermKeys = array_keys(\App\Config\AppConfig::DEFAULT_PERMISSIONS);
         $delRpStmt = $pdo->prepare("DELETE FROM " . \App\Config\AppConfig::TABLE_ROLE_PERMISSIONS . " WHERE role_id = (SELECT id FROM " . \App\Config\AppConfig::TABLE_ROLES . " WHERE name = ?)");
-        $rpStmt = $pdo->prepare("INSERT INTO " . \App\Config\AppConfig::TABLE_ROLE_PERMISSIONS . " (role_id, perm_key) VALUES ((SELECT id FROM " . \App\Config\AppConfig::TABLE_ROLES . " WHERE name = ?), ?)");
+        // INSERT 用 IGNORE 而非裸 INSERT：分布式部署下 web / worker 容器启动时并发跑 seedRbac，
+        // 两个进程都先 DELETE 再 INSERT 同一批 (role_id, perm_key)，裸 INSERT 会撞 role_permissions
+        // 联合主键报 1062 Duplicate entry。IGNORE 让后到者静默跳过，各进程结果收敛一致。
+        $rpStmt = $pdo->prepare(self::sqlInsertIgnore(
+            \App\Config\AppConfig::TABLE_ROLE_PERMISSIONS,
+            'role_id, perm_key',
+            '(SELECT id FROM ' . \App\Config\AppConfig::TABLE_ROLES . ' WHERE name = ?), ?'
+        ));
         foreach (\App\Config\AppConfig::DEFAULT_ROLES as $roleName => $perms) {
             try {
                 $delRpStmt->execute([$roleName]);
