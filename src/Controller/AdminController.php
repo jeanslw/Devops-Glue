@@ -1777,7 +1777,7 @@ class AdminController extends BaseController
                 } catch (\Throwable $ignored) {
                 }
             }
-            return $this->jsonError($response, $this->__('build.tag_cleanup_failed') . ': ' . $e->getMessage(), 500);
+            return $this->jsonError($response, $this->__('build.stale_tag_cleanup_failed') . ': ' . $e->getMessage(), 500);
         }
     }
 
