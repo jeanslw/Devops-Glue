@@ -27,6 +27,15 @@ $app->get('/admin', function ($request, $response) {
     return $response->withHeader('Content-Type', 'text/html; charset=utf-8');
 });
 
+// 找回密码页（无 CLI 环境超管兜底；公开页面，实际鉴权在 POST /api/admin/recover）
+$app->get('/recover', function ($request, $response) {
+    $htmlFile = __DIR__ . '/../templates/recover.html';
+    $response->getBody()->write(file_exists($htmlFile)
+        ? file_get_contents($htmlFile)
+        : '<h1>Page Not Found / 页面丢失</h1>');
+    return $response->withHeader('Content-Type', 'text/html; charset=utf-8');
+});
+
 $app->group('/api', function (RouteCollectorProxy $api) {
 
     // 健康检查（需要鉴权）：/api/health 返回详细检查信息，受 AuthMiddleware 保护
@@ -55,6 +64,8 @@ $app->group('/api', function (RouteCollectorProxy $api) {
         // 公开路由（不需要鉴权）
         $admin->map(['POST'], '/login', [AdminController::class, 'login']);
         $admin->map(['POST'], '/logout', [AdminController::class, 'logout']);
+        // 找回密码（无 CLI 环境超管兜底；公开路由，鉴权靠 ADMIN_RECOVERY_TOKEN）
+        $admin->map(['POST'], '/recover', [AdminController::class, 'recoverPassword']);
 
         // 需要鉴权的路由
         $admin->group('', function (RouteCollectorProxy $auth) {

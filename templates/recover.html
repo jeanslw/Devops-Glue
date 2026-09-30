@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>找回密码 / Password Recovery — DevOps Glue</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+         background: #0f172a; font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; }
+  .card { width: 100%; max-width: 400px; background: #1e293b; border-radius: 12px;
+          padding: 28px 30px; box-shadow: 0 8px 30px rgba(0,0,0,.4); color: #e2e8f0; }
+  h1 { margin: 0 0 4px; font-size: 20px; }
+  .sub { margin: 0 0 20px; font-size: 13px; color: #94a3b8; line-height: 1.6; }
+  label { display: block; margin: 14px 0 6px; font-size: 13px; color: #cbd5e1; }
+  input { width: 100%; padding: 10px 12px; border: 1px solid #334155; border-radius: 8px;
+          background: #0f172a; color: #e2e8f0; font-size: 14px; outline: none; }
+  input:focus { border-color: #38bdf8; }
+  button { width: 100%; margin-top: 20px; padding: 11px; border: 0; border-radius: 8px;
+           background: #0ea5e9; color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; }
+  button:hover { background: #0284c7; }
+  .msg { margin-top: 16px; font-size: 13px; line-height: 1.6; display: none; }
+  .msg.ok { display: block; color: #4ade80; }
+  .msg.err { display: block; color: #f87171; }
+  .hint { margin-top: 20px; font-size: 12px; color: #64748b; line-height: 1.6; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>找回密码 / Password Recovery</h1>
+  <p class="sub">仅 super_admin 可用。需输入部署时设置的恢复令牌（ADMIN_RECOVERY_TOKEN）。<br>
+  <span lang="en">For super_admin only. Enter the recovery token set at deploy time.</span></p>
+
+  <form id="f">
+    <label>恢复令牌 / Recovery Token</label>
+    <input type="password" id="token" autocomplete="off" required>
+
+    <label>要重置的账号 / Username <span style="color:#64748b">(可选 / optional)</span></label>
+    <input type="text" id="username" autocomplete="off" placeholder="admin">
+
+    <label>新密码 / New Password（至少 8 位 / min 8 chars）</label>
+    <input type="password" id="new_password" minlength="8" required>
+
+    <label>确认新密码 / Confirm</label>
+    <input type="password" id="confirm" minlength="8" required>
+
+    <button type="submit">重置密码 / Reset</button>
+  </form>
+
+  <div id="msg" class="msg"></div>
+
+  <p class="hint">令牌与密码不会出现在 URL 或日志中；恢复令牌请在部署时用
+  <code>openssl rand -hex 32</code> 生成并离线保存，勿写入 git 仓库。</p>
+</div>
+<script>
+  const f = document.getElementById('f');
+  const msg = document.getElementById('msg');
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const token = document.getElementById('token').value.trim();
+    const username = document.getElementById('username').value.trim();
+    const np = document.getElementById('new_password').value;
+    const cf = document.getElementById('confirm').value;
+    const show = (cls, text) => { msg.className = 'msg ' + cls; msg.textContent = text; };
+    if (np !== cf) { show('err', '两次密码不一致 / Passwords do not match'); return; }
+    if (np.length < 8) { show('err', '新密码至少 8 位 / New password must be at least 8 characters'); return; }
+    try {
+      const res = await fetch('/api/admin/recover', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, username, new_password: np })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
+        show('ok', '密码已重置，请返回登录 / Password reset, please login.');
+        f.reset();
+      } else {
+        show('err', data.message || ('重置失败 / Reset failed (' + res.status + ')'));
+      }
+    } catch (err) {
+      show('err', '请求失败 / Request failed: ' + err);
+    }
+  });
+</script>
+</body>
+</html>

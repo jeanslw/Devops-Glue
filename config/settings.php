@@ -121,6 +121,8 @@ return [
     'admin' => [
         'user'     => env('ADMIN_USER', 'admin'),
         'password' => env('ADMIN_PASSWORD', ''),
+        // 超管找回密码恢复令牌（无 CLI 环境 /recover 通道专用；留空 = 关闭该通道）
+        'recovery_token' => env('ADMIN_RECOVERY_TOKEN', ''),
     ],
 
     // ==================== LDAP 外部身份源登录 ====================

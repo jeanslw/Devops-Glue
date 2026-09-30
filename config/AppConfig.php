@@ -684,6 +684,15 @@ class AppConfig
     }
 
     /**
+     * 超管找回密码恢复令牌（从 app.env ADMIN_RECOVERY_TOKEN 读取，默认空 = 通道关闭）。
+     * 仅供「虚拟主机无 CLI」的 /recover 通道使用；令牌是高熵随机串，恒时比较。
+     */
+    public function getAdminRecoveryToken(): string
+    {
+        return (string)($this->config['admin']['recovery_token'] ?? '');
+    }
+
+    /**
      * LDAP 身份源配置。
      * 仅在 settings.php 的 ldap.enabled=true 时启用；密码源、DN 模板、过滤等均从 app.env 读取。
      */
