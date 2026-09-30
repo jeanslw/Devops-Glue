@@ -36,8 +36,7 @@ final class EnvFileLoader
         $configDir = rtrim($configDir, '/\\');
 
         // 1. 记录 OS 真实环境变量快照（此刻尚未被任何 .env 写入）
-        $osEnv = getenv();
-        $osEnv = is_array($osEnv) ? $osEnv : [];
+        $osEnv = getenv() ?: [];
 
         // 2. 基础配置 app.env：Immutable —— OS 环境变量优先，app.env 只补缺省
         $configKeys = self::fileKeys($configDir . '/app.env');
@@ -89,13 +88,7 @@ final class EnvFileLoader
         if ($content === false) {
             return [];
         }
-        $keys = [];
-        foreach (array_keys(Dotenv::parse($content)) as $key) {
-            if (is_string($key)) {
-                $keys[] = $key;
-            }
-        }
-        return $keys;
+        return array_keys(Dotenv::parse($content));
     }
 
     /**
