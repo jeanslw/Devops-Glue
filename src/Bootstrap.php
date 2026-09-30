@@ -3,13 +3,12 @@
 namespace App;
 
 use DI\ContainerBuilder;
-use Dotenv\Dotenv;
 use Slim\Factory\AppFactory;
 use Psr\Http\Message\ResponseFactoryInterface;
 
 /**
  * 应用引导类
- * 负责：环境变量加载、SQLite 初始化、DI 容器构建、Slim App 创建
+ * 负责：环境变量加载、数据库初始化、DI 容器构建、Slim App 创建
  * 将 index.php 中的 bootstrap 逻辑抽离，便于测试与维护
  */
 class Bootstrap
@@ -20,27 +19,11 @@ class Bootstrap
      */
     public static function createApp(): \Slim\App
     {
-        // ── 环境变量：三层加载（顺序固定，后者覆盖前者）──
-        // 1. 基础配置 app.env（gitignored，放真实密码/密钥）
-        //    用 Immutable：OS 真实环境变量优先，app.env 只补缺省
-        $dotenv = Dotenv::createImmutable(__DIR__ . '/../config', 'app.env');
-        $dotenv->load();
+        // ── 环境变量：三层加载（优先级 app.env.local > 真实环境变量 > app.env.{APP_ENV} > app.env）──
+        // 唯一实现在 App\Support\EnvFileLoader（覆盖层必须用 Mutable，否则覆盖无效，详见该类注释）
+        \App\Support\EnvFileLoader::load(__DIR__ . '/../config');
 
-        // 2. 环境特定覆盖 app.env.{APP_ENV}（app.env.production / app.env.staging，可选提交）
-        //    任何 APP_ENV 都尝试加载并覆盖 app.env；文件不存在则跳过
-        $appEnv = $_ENV['APP_ENV'] ?? 'production';
-        $envFile = __DIR__ . '/../config/app.env.' . $appEnv;
-        if (file_exists($envFile)) {
-            Dotenv::createUnsafeImmutable(__DIR__ . '/../config', 'app.env.' . $appEnv)->load();
-        }
-
-        // 3. 本地覆盖 app.env.local（gitignored，开发者个人配置），优先级最高
-        $localFile = __DIR__ . '/../config/app.env.local';
-        if (file_exists($localFile)) {
-            Dotenv::createUnsafeImmutable(__DIR__ . '/../config', 'app.env.local')->load();
-        }
-
-        // 初始化 SQLite（自动建表 + JSON 迁移）
+        // 初始化数据库（自动建表 + JSON 迁移，SQLite / MySQL 均可）
         \App\Service\Database::init();
 
         $containerBuilder = new ContainerBuilder();

@@ -12,23 +12,8 @@ require __DIR__ . '/../vendor/autoload.php';
  */
 function envVal(string $key, string $default = ''): string
 {
-    if (isset($_ENV[$key]) && $_ENV[$key] !== '') {
-        return (string)$_ENV[$key];
-    }
-    $v = getenv($key);
-    return $v === false ? $default : (string)$v;
+    return App\Support\EnvFileLoader::envVal($key, $default);
 }
 
-// 加载环境变量（顺序与 Bootstrap 一致：app.env → app.env.{APP_ENV} → app.env.local）
-$baseDir = __DIR__ . '/../config';
-Dotenv\Dotenv::createImmutable($baseDir, 'app.env')->load();
-
-$appEnv = envVal('APP_ENV', 'production');
-$envFile = $baseDir . '/app.env.' . $appEnv;
-if (file_exists($envFile)) {
-    Dotenv\Dotenv::createUnsafeImmutable($baseDir, 'app.env.' . $appEnv)->load();
-}
-$localFile = $baseDir . '/app.env.local';
-if (file_exists($localFile)) {
-    Dotenv\Dotenv::createUnsafeImmutable($baseDir, 'app.env.local')->load();
-}
+// 加载环境变量（三层覆盖，与 Bootstrap 同一实现）
+App\Support\EnvFileLoader::load(__DIR__ . '/../config');
