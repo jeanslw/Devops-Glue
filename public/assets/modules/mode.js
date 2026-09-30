@@ -244,6 +244,7 @@ export async function onStaleTagCleanupToggle() {
         if (handle401(res)) { staleToggle.checked = oldEnabled; return; }
         if (res.ok) {
             setStaleCleanup(newEnabled);
+            syncTagRunButtons();
             statusEl.style.display = 'inline';
             setTimeout(() => statusEl.style.display = 'none', 2000);
         } else {
@@ -255,6 +256,118 @@ export async function onStaleTagCleanupToggle() {
         toast(__.t('js.network_error') + ': ' + e.message, false);
         staleToggle.checked = oldEnabled;
     }
+}
+
+/**
+ * 手动立即执行 tag 任务（清理 / 回填）的通用前端动作。
+ * 共享：开关状态已在卡片渲染时同步，按钮 disabled 反映可执行性；
+ * 执行前二次确认 → 禁用按钮 + 「执行中…」→ 成功后按结果填充状态文本。
+ * opts: {btnId, statusId, url, confirmKey, noteKey, runningKey, labelKey, buildMessage, refreshAfter}
+ */
+async function runTagJob(opts) {
+    const btn = document.getElementById(opts.btnId);
+    const statusEl = document.getElementById(opts.statusId);
+    if (!btn || btn.disabled) return;
+
+    if (!await confirmDialog({
+        title: __.t('common.confirm'),
+        message: __.t(opts.confirmKey),
+        note: __.t(opts.noteKey)
+    })) return;
+
+    btn.disabled = true;
+    btn.textContent = __.t(opts.runningKey);
+    if (statusEl) { statusEl.style.color = '#6b7280'; statusEl.style.display = 'inline'; statusEl.textContent = __.t(opts.runningKey); }
+
+    try {
+        const res = await fetch(opts.url, {
+            method: 'POST',
+            headers: Object.assign({'Content-Type':'application/json'}, authHeaders())
+        });
+        if (handle401(res)) return;
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+            if (statusEl) {
+                statusEl.style.color = '#16a34a';
+                statusEl.textContent = opts.buildMessage(data);
+            }
+            toast(opts.buildMessage(data));
+            if (opts.refreshAfter) opts.refreshAfter();
+        } else {
+            // 开关未开启 / Harbor 未配置（409）等：错误文本就地展示，保持按钮可再点
+            if (statusEl) {
+                statusEl.style.color = '#dc2626';
+                statusEl.textContent = data.message || __.t('js.save_failed');
+            }
+            toast(data.message || __.t('js.save_failed'), false);
+        }
+    } catch(e) {
+        if (statusEl) { statusEl.style.color = '#dc2626'; statusEl.style.display = 'inline'; statusEl.textContent = __.t('js.network_error') + ': ' + e.message; }
+        toast(__.t('js.network_error') + ': ' + e.message, false);
+    } finally {
+        // 结果文本保留在按钮右侧；按钮禁用状态交回开关状态决定（幂等，可重复执行）
+        btn.textContent = __.t(opts.labelKey);
+        syncTagRunButtons();
+    }
+}
+
+/** 后端统计字段缺失/非数字时回退为 0（与全站 `|| 默认值` 风格保持一致，不使用 ??) */
+function num(v) {
+    const n = Number(v);
+    return isFinite(n) ? n : 0;
+}
+
+/** 「立即清理一次」：POST /api/admin/tag_cleanup */
+export async function runStaleTagCleanup() {
+    await runTagJob({
+        btnId: 'stale-tag-run-btn',
+        statusId: 'stale-tag-run-status',
+        url: '/api/admin/tag_cleanup',
+        confirmKey: 'build.stale_tag_cleanup_run_confirm',
+        noteKey: 'build.stale_tag_cleanup_run_note',
+        runningKey: 'build.stale_tag_cleanup_running',
+        labelKey: 'build.stale_tag_cleanup_run_btn',
+        buildMessage: (d) => __.t('build.stale_tag_cleanup_done', {
+            checked: num(d.checked), deleted: num(d.deleted),
+            unreachable: num(d.unreachable), unverifiable: num(d.unverifiable)
+        })
+    });
+}
+
+/** 「立即回填一次」：POST /api/admin/tag_backfill */
+export async function runTagBackfill() {
+    await runTagJob({
+        btnId: 'backfill-tag-run-btn',
+        statusId: 'backfill-tag-run-status',
+        url: '/api/admin/tag_backfill',
+        confirmKey: 'build.tag_backfill_run_confirm',
+        noteKey: 'build.tag_backfill_run_note',
+        runningKey: 'build.tag_backfill_running',
+        labelKey: 'build.tag_backfill_run_btn',
+        buildMessage: (d) => __.t('build.tag_backfill_done', {
+            checked: num(d.checked), promoted: num(d.promoted), skipped: num(d.skipped),
+            unreachable: num(d.unreachable), unverifiable: num(d.unverifiable)
+        })
+    });
+}
+
+/**
+ * 同步「立即清理一次 / 立即回填一次」两个按钮的可用性：
+ * 仅当对应开关已开启时才允许手动执行（与后端 409 校验一致），
+ * 关闭时按钮置灰并给出 title 提示，避免用户点了才被拒绝。
+ */
+export function syncTagRunButtons() {
+    const map = [
+        ['stale-tag-run-btn',    currentStaleCleanupEnabled, 'build.tag_cleanup_disabled'],
+        ['backfill-tag-run-btn', currentBackfillEnabled, 'build.tag_backfill_disabled'],
+    ];
+    map.forEach(([id, enabled, disabledKey]) => {
+        const btn = document.getElementById(id);
+        if (!btn) return;
+        btn.disabled = !enabled;
+        if (enabled) btn.removeAttribute('title');
+        else btn.setAttribute('title', __.t(disabledKey));
+    });
 }
 
 export async function onTagLogKeywordChange() {
@@ -307,6 +420,7 @@ export async function onBackfillTagToggle() {
         if (handle401(res)) { backfillToggle.checked = oldEnabled; return; }
         if (res.ok) {
             setBackfill(newEnabled);
+            syncTagRunButtons();
             statusEl.style.display = 'inline';
             setTimeout(() => statusEl.style.display = 'none', 2000);
         } else {
@@ -330,4 +444,5 @@ export function applyTagSettings(data) {
     if (kwInput) kwInput.value = data.tag_log_keyword || '';
     setStaleCleanup(!!data.stale_tag_cleanup_enabled);
     setBackfill(!!data.backfill_tag_enabled);
+    syncTagRunButtons();
 }

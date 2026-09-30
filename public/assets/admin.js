@@ -19,7 +19,8 @@ import { loadSecurityChecks, secOnFilterChange, getSecPage, getSecTotalPages, se
 import { loadVersions, saveVersions } from './modules/versions.js';
 import {
     loadSettings, onBuildModesChange, onCustomPushToggle, onStaleTagCleanupToggle,
-    onBackfillTagToggle, onTagLogKeywordChange, renderBuildModeCheckboxes
+    onBackfillTagToggle, onTagLogKeywordChange, renderBuildModeCheckboxes,
+    runStaleTagCleanup, runTagBackfill
 } from './modules/mode.js';
 import {
     loadPullProjects, loadPullRecords, openPullLog, pullShowLog, closePullLog,
@@ -224,6 +225,7 @@ Object.assign(window, {
     loadSecurityChecks, secOnFilterChange, secSetPage, getSecPage, getSecTotalPages,
     loadVersions, saveVersions,
     loadSettings, onBuildModesChange, onCustomPushToggle, onStaleTagCleanupToggle, onBackfillTagToggle, onTagLogKeywordChange,
+    runStaleTagCleanup, runTagBackfill,
     loadPullProjects, loadPullRecords, openPullLog, pullShowLog, closePullLog, loadPushRecords,
     applyBuildRecordsMenuVisibility, resolvePullTag, reparsePullTag,
     loadUsers, toggleUserStatus, showUserForm, showUserEditForm, hideUserForm, submitUserForm, deleteUser, modifyUserPassword, closePasswordModal, submitPasswordChange, changePassword,

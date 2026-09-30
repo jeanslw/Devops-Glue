@@ -981,6 +981,11 @@
                                     <li data-i18n="build.stale_cleanup_note_on">启用：将以 Harbor 为准，删除系统中已不存在的 tag 记录，Harbor 库的 tag 不会删除。</li>
                                     <li data-i18n="build.stale_cleanup_note_off">关闭：停止清理，系统中可能有 tag 实际不存在的情况。</li>
                                 </ul>
+                                <div class="mode-card-actions">
+                                    <button id="stale-tag-run-btn" class="btn btn-pri" onclick="runStaleTagCleanup()" disabled
+                                            data-i18n="build.stale_tag_cleanup_run_btn">▶ 立即清理一次</button>
+                                    <span id="stale-tag-run-status" class="mode-save-status"></span>
+                                </div>
                             </div>
                             <div class="mode-card">
                                 <div class="mode-card-hd switch-row">
@@ -994,6 +999,11 @@
                                     <li data-i18n="build.backfill_note_on">启用：回填 cron 将把日志推导的 tag（经 Harbor 校验存在）补写进产物 tag 记录，仅补缺失项，不覆盖扫描结果。</li>
                                     <li data-i18n="build.backfill_note_off">关闭：仅懒加载展示，不回写产物 tag 记录。</li>
                                 </ul>
+                                <div class="mode-card-actions">
+                                    <button id="backfill-tag-run-btn" class="btn btn-pri" onclick="runTagBackfill()" disabled
+                                            data-i18n="build.tag_backfill_run_btn">▶ 立即回填一次</button>
+                                    <span id="backfill-tag-run-status" class="mode-save-status"></span>
+                                </div>
                             </div>
                             <div class="mode-card">
                                 <div class="mode-card-hd">

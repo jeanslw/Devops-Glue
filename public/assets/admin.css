@@ -525,6 +525,14 @@
         .pc-tag-cards { grid-template-columns:repeat(3, 1fr); }
         .pc-tag-cards .mode-card-toggle { flex:0 0 auto; }
         .pc-tag-cards .mode-save-status { margin-left:0; }
+        /* 手动立即执行（清理 / 回填）：按钮贴卡片底部，执行结果就地显示在按钮右侧 */
+        .pc-tag-cards .mode-card-actions {
+            display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+            margin-top:auto; padding-top:12px; border-top:1px dashed #e5e7eb;
+        }
+        .pc-tag-cards .mode-card-actions .btn { padding:7px 12px; font-size:12.5px; }
+        .pc-tag-cards .mode-card-actions .mode-save-status { margin-left:0; line-height:1.5; }
+        .pc-tag-cards .mode-card-actions .btn:disabled { opacity:.5; cursor:not-allowed; }
         .mode-card {
             display:flex; flex-direction:column; gap:12px;
             border:1px solid #e5e7eb; border-radius:14px;
@@ -780,6 +788,7 @@
     background:linear-gradient(180deg,#1e293b,#16213a);
 }
 [data-theme="dark"] .mode-card:hover { border-color:#6366f1; box-shadow:0 4px 14px rgba(79,70,229,.2); }
+[data-theme="dark"] .mode-card-actions { border-top-color:#334155; }
 [data-theme="dark"] #build-mode-value { background:#334155; color:#e5e7eb; }
 
 [data-theme="dark"] .mf-node.git { background:#334155; border-color:#475569; }

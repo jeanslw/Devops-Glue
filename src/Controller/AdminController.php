@@ -1730,6 +1730,92 @@ class AdminController extends BaseController
     }
 
     /**
+     * 手动触发 tag 定时任务的前置校验（开关 + Harbor），与两个 CLI 脚本的安全不变量保持一致。
+     * 返回 null 表示可执行；否则返回应直接下发的错误响应。
+     * 权限由调用方先行校验（ci.platform-config）。
+     */
+    private function guardTagJob(Response $response, bool $enabled, string $disabledKey): ?Response
+    {
+        if (!$enabled) {
+            return $this->jsonError($response, $disabledKey, 409);
+        }
+        $harbor = $this->config->getHarborConfig();
+        if (empty($harbor['url']) || $this->harbor === null) {
+            return $this->jsonError($response, 'build.harbor_unconfigured', 409);
+        }
+        return null;
+    }
+
+    /**
+     * POST /api/admin/tag_cleanup — 后台手动立即执行一次「清理过期 tag」
+     *（等价于跑一遍 cli/cleanup-pipeline-tags.php，供无 cron / 无 CLI 的部署主动触发）。
+     * 权限：ci.platform-config（与「启用清理过期 tag 记录」开关同权限）。
+     * 安全不变量与 CLI 完全一致：开关未开启 → 409；Harbor 未配置 → 409；
+     * Harbor 不可达 / harbor_repository 或 tag 为空的行一律跳过，绝不误删。幂等，可重复执行。
+     */
+    public function runTagCleanup(Request $request, Response $response): Response
+    {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_PLATFORM_CONFIG)) {
+            return $resp;
+        }
+        if ($resp = $this->guardTagJob($response, $this->config->getStaleTagCleanupEnabled(), 'build.tag_cleanup_disabled')) {
+            return $resp;
+        }
+        // 手动触发属长任务（逐仓库探测 Harbor），尽力解除 PHP 脚本时限；
+        // 部分共享主机禁用该函数，故抑制告警（失败时仍受 php.ini max_execution_time 约束）。
+        @set_time_limit(0);
+        try {
+            $service = new \App\Service\PipelineTagService($this->pdo, $this->harbor);
+            $stat    = $service->cleanupStaleTags();
+            $this->opLog()->record($this->currentUser, 'cleanup_pipeline_tags', '', $stat, $this->clientIp($request), 'success');
+            return $this->output($response, $stat + ['success' => true], $request);
+        } catch (\Throwable $e) {
+            if ($this->currentUser !== '') {
+                try {
+                    $this->opLog()->record($this->currentUser, 'cleanup_pipeline_tags', '', ['error' => $e->getMessage()], $this->clientIp($request), 'failure');
+                } catch (\Throwable $ignored) {
+                }
+            }
+            return $this->jsonError($response, $this->__('build.tag_cleanup_failed') . ': ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * POST /api/admin/tag_backfill — 后台手动立即执行一次「镜像 Tag 日志回填」
+     *（等价于跑一遍 cli/backfill-pipeline-tags.php，供无 cron / 无 CLI 的部署主动触发）。
+     * 权限：ci.platform-config（与「启用镜像 Tag 日志回填」开关同权限）。
+     * 安全不变量与 CLI 完全一致：开关未开启 → 409；Harbor 未配置 → 409；
+     * 仅当 Harbor 明确确认该 tag 存在、且该 (provider,project_id,pipeline_iid) 尚无 canonical tag 时才写入，
+     * 绝不覆盖 scan-sync 的权威结果。幂等，可重复执行。
+     */
+    public function runTagBackfill(Request $request, Response $response): Response
+    {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_PLATFORM_CONFIG)) {
+            return $resp;
+        }
+        if ($resp = $this->guardTagJob($response, $this->config->getBackfillTagEnabled(), 'build.tag_backfill_disabled')) {
+            return $resp;
+        }
+        @set_time_limit(0);
+        try {
+            $service = new \App\Service\PipelineTagService($this->pdo, $this->harbor);
+            $stat    = $service->backfillTagsFromBuildLog();
+            $this->opLog()->record($this->currentUser, 'backfill_pipeline_tags', '', $stat, $this->clientIp($request), 'success');
+            return $this->output($response, $stat + ['success' => true], $request);
+        } catch (\Throwable $e) {
+            if ($this->currentUser !== '') {
+                try {
+                    $this->opLog()->record($this->currentUser, 'backfill_pipeline_tags', '', ['error' => $e->getMessage()], $this->clientIp($request), 'failure');
+                } catch (\Throwable $ignored) {
+                }
+            }
+            return $this->jsonError($response, $this->__('build.tag_backfill_failed') . ': ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
      * POST /api/admin/migrate — 手动触发数据库迁移（建缺失表 + 种子 + 标记 schema 当前）
      * 权限：仅 super_admin（DDL 敏感操作）
      */

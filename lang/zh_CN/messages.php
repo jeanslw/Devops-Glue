@@ -150,6 +150,21 @@ return [
     'build.backfill_note_on'      => '启用：回填 cron 将把日志推导的 tag（经 Harbor 校验存在）补写进产物 tag 记录，仅补缺失项，不覆盖扫描结果。',
     'build.backfill_note_off'     => '关闭：仅懒加载展示，不回写产物 tag 记录。',
     'build.resolve_tag_missing_id' => '缺少 pipeline id 参数',
+    'build.stale_tag_cleanup_run_btn' => '▶ 立即清理一次',
+    'build.stale_tag_cleanup_run_confirm' => '确定要立即手动执行一次过期 tag 清理吗？',
+    'build.stale_tag_cleanup_run_note' => '将以 Harbor 为准删除系统中已不存在的 tag 记录；Harbor 不可达、未配置仓库或 tag 为空的行一律跳过，Harbor 上的 tag 不会被删除。可重复执行。',
+    'build.stale_tag_cleanup_running' => '清理中…',
+    'build.stale_tag_cleanup_done' => '清理完成：校验 {checked} 条 tag，删除 {deleted} 条过期记录；跳过 {unreachable} 条（Harbor 不可达）、{unverifiable} 条（信息不全）。',
+    'build.stale_tag_cleanup_failed' => '清理过期 tag 失败',
+    'build.tag_backfill_run_btn' => '▶ 立即回填一次',
+    'build.tag_backfill_run_confirm' => '确定要立即手动执行一次镜像 Tag 日志回填吗？',
+    'build.tag_backfill_run_note' => '仅当 Harbor 明确确认该 tag 存在、且该产物记录尚无 tag 时才补写，不覆盖扫描回写结果；需「启用镜像 Tag 日志回填」开关已开启。可重复执行。',
+    'build.tag_backfill_running' => '回填中…',
+    'build.tag_backfill_done' => '回填完成：校验 {checked} 条候选，回填 {promoted} 条；跳过 {skipped} 条（已有 tag）、{unreachable} 条（Harbor 不可达）、{unverifiable} 条（信息不全）。',
+    'build.tag_backfill_failed' => '镜像 Tag 日志回填失败',
+    'build.tag_cleanup_disabled' => '「启用清理过期 tag 记录」未开启，无法手动执行',
+    'build.tag_backfill_disabled' => '「启用镜像 Tag 日志回填」未开启，无法手动执行',
+    'build.harbor_unconfigured' => 'Harbor 未配置（缺少 url 或客户端不可用），已安全跳过',
 
     // ── push 记录（Custom_Push 构建记录） ──
     'push.job_name'        => 'job_name',
@@ -721,6 +736,8 @@ return [
     'oplog.act_delete_api_token' => '删除 API Token',
     'oplog.act_migrate_schema' => '迁移数据库',
     'oplog.act_backup_database' => '备份数据库',
+    'oplog.act_cleanup_pipeline_tags' => '清理过期 tag',
+    'oplog.act_backfill_pipeline_tags' => '回填镜像 tag',
 
     // 系统信息面板
     'sys.menu'            => '系统设置',

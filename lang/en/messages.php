@@ -150,6 +150,21 @@ return [
     'build.backfill_note_on'      => 'On: the backfill cron writes log-derived tags (verified to exist in Harbor) into the artifact tag records, filling gaps only and never overwriting scan results.',
     'build.backfill_note_off'     => 'Off: lazy display only; artifact tag records are not backfilled.',
     'build.resolve_tag_missing_id' => 'Missing pipeline id',
+    'build.stale_tag_cleanup_run_btn' => '▶ Clean up now',
+    'build.stale_tag_cleanup_run_confirm' => 'Run stale tag cleanup now?',
+    'build.stale_tag_cleanup_run_note' => 'Rows whose tags no longer exist in Harbor are removed. Rows with an unreachable Harbor, a missing repository or an empty tag are skipped, and Harbor tags are never deleted. Safe to repeat.',
+    'build.stale_tag_cleanup_running' => 'Cleaning…',
+    'build.stale_tag_cleanup_done' => 'Cleanup done: {checked} tags checked, {deleted} stale records deleted; skipped {unreachable} (Harbor unreachable), {unverifiable} (incomplete info).',
+    'build.stale_tag_cleanup_failed' => 'Stale tag cleanup failed',
+    'build.tag_backfill_run_btn' => '▶ Backfill now',
+    'build.tag_backfill_run_confirm' => 'Run image tag log backfill now?',
+    'build.tag_backfill_run_note' => 'A log-derived tag is written only when Harbor explicitly confirms it exists and the artifact row still has no tag; scan writeback results are never overwritten. Requires the image tag log backfill switch to be on. Safe to repeat.',
+    'build.tag_backfill_running' => 'Backfilling…',
+    'build.tag_backfill_done' => 'Backfill done: {checked} candidates checked, {promoted} rows backfilled; skipped {skipped} (tag already present), {unreachable} (Harbor unreachable), {unverifiable} (incomplete info).',
+    'build.tag_backfill_failed' => 'Image tag log backfill failed',
+    'build.tag_cleanup_disabled' => 'Stale tag cleanup is disabled; enable it before running manually',
+    'build.tag_backfill_disabled' => 'Image tag log backfill is disabled; enable it before running manually',
+    'build.harbor_unconfigured' => 'Harbor is not configured (missing url or client unavailable); safely skipped',
 
     // ── Push records (Custom_Push build records) ──
     'push.job_name'        => 'job_name',
@@ -723,6 +738,8 @@ return [
     'oplog.act_delete_api_token' => 'Delete API token',
     'oplog.act_migrate_schema' => 'Migrate database',
     'oplog.act_backup_database' => 'Backup database',
+    'oplog.act_cleanup_pipeline_tags' => 'Clean up stale tags',
+    'oplog.act_backfill_pipeline_tags' => 'Backfill image tags',
 
     // System info panel
     'sys.menu'            => 'System Settings',
