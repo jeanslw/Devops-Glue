@@ -1,53 +1,59 @@
-# Environment variables
-config/app.env
+# ============================================================================
+# release/vhost-2.8.6 —— 虚拟主机（共享主机 / 无命令行）发行分支
+# ----------------------------------------------------------------------------
+# 本分支的产物是「可直接上传」的整包，因此忽略策略与 main 不同：
+#   1. 内置生产依赖 vendor/   —— 虚拟主机没有命令行，无法 composer install，故不再忽略；
+#   2. 随包发布 config/app.env —— 已针对虚拟主机改好，故不再忽略；
+#   3. 测试 / 静态分析 / CI / IDE 等「上传无关」文件一律不纳入版本控制。
+# ============================================================================
+
+# ---------- 本地环境覆盖（只留本地，绝不入库） ----------
 app.env.local
 app.env.*.local
-*.docx
-*.db
 
-#test
-.claude/
-.codebuddy
-.trae/
+# ---------- 发布无关：测试 / 静态分析 / CI ----------
+/tests/
+/phpunit.xml
+/phpstan.neon.dist
+/phpcs.xml.dist
+/.github/
+/.phpunit.cache/
+*.cache
 public/test_*
-.phpunit.cache
-vendor/
-backups/
+public/phpunit_report.html
 tests/report.py
 tests/smoke_api_tokens
-public/node_modules
-public/eslint.config.mjs
-public/package.json
-public/package-lock.json
-
-# tests: smoke_test.php tests/Unit 
 tests/smoke_api_tokens.php
 
-# IDE
+# ---------- 开发工具（AI 助手 / IDE） ----------
+.claude/
+.codebuddy/
+.trae/
 .vscode/
 .idea/
 .editorconfig
 .laragon
-bin/*
 
-# OS
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
+# ---------- 运行时数据 / 日志 / 备份（部署后由服务器生成，绝不入库） ----------
+config/data/
+/data/
+/backups/
 /logs/
-
-# Cache
+*.log
+*.db
+*.docx
+config/gitlab_id_cache.php
 /tmp/
 /cache/
-*.cache
-config/gitlab_id_cache.php
 
-#backup && database
-config/data/
-# Docker 挂载的宿主机运行时数据（OIDC 私钥 /data/cache、SQLite /data/db 等），绝不提交
-/data/
-backups/
+# ---------- 前端构建产物 / 命令行脚本（虚拟主机无 CLI） ----------
+public/node_modules
+public/eslint.config.mjs
+public/package.json
+public/package-lock.json
+bin/*
 
+# ---------- 其它 ----------
+.DS_Store
+Thumbs.db
 .github/copilot-instructions.md
