@@ -43,7 +43,7 @@
                               ▼
 ┌────────────────────────────────────────────────────────────────────┐
 │  public/index.php (Entry Point)                                    │
-│  ├─ Dotenv three-layer loading (app.env→.env.{ENV}→app.env.local)        │
+│  ├─ EnvFileLoader 3-layer load (app.env → app.env.{ENV} → app.env.local) │
 │  ├─ Static file serving                                            │
 │  ├─ Database::init() auto-create tables + seed data                │
 │  └─ Slim 4 App + DI container assembly                             │
@@ -119,14 +119,26 @@
 ### 3.1 Environment Variable Loading (Three-Layer Override)
 
 ```
-Loading order (later overrides earlier):
+File loading order (later overrides earlier):
 1. config/app.env          ← Base config (gitignored, contains real passwords)
 2. config/app.env.{ENV}    ← Environment override (committed to Git, no passwords)
 3. config/app.env.local    ← Local override (gitignored, personal tweaks)
 
+Effective priority (high → low):
+app.env.local > real environment variables (OS-injected) > app.env.{ENV} > app.env
+
 Override rules:
-- Layer 1 uses createImmutable().load() (safe load, won't overwrite existing env vars)
-- Layers 2/3 use createUnsafeImmutable().load() (allows overwrite)
+- Layer 1 app.env uses createImmutable().load() (safe load: an existing variable is never written,
+  so real env vars injected by Docker env_file / shell export / Apache SetEnv win)
+- Layers 2/3 app.env.{ENV} / app.env.local use createUnsafeMutable().load()
+  ⚠️ Never use createUnsafeImmutable(): phpdotenv's Immutable means "do not write if the variable
+    already exists" (RepositoryBuilder::make() → ImmutableWriter), not "allow overwrite"; every key
+    already defined in app.env is silently dropped — the symptom is "editing app.env.local does nothing"
+- When app.env.local exists, the keys it defines are final (they even beat real environment variables)
+- After the override layers, real environment variables are written back from a getenv() snapshot:
+  ImmutableWriter only inspects $_ENV / $_SERVER, so with variables_order lacking E/S (or values set
+  via putenv()) OS-injected variables would otherwise be shadowed by app.env
+- Single implementation: src/Support/EnvFileLoader.php (shared by Bootstrap and the bin/cli scripts)
 ```
 
 **Practical usage:**

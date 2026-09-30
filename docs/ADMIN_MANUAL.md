@@ -321,6 +321,10 @@ The related settings live on the **System Settings → Platform Config** page:
 
 Both cron jobs are driven by the container's supervisord sleep-loop (no system cron needed); their intervals are overridable via the root `app.env` vars `TAG_CLEANUP_INTERVAL` (default 3600s) / `TAG_BACKFILL_INTERVAL` (default 1800s). **On bare metal** (no supervisord), schedule the two CLIs with system cron instead — see the "Bare-metal Deployment" section in the architecture doc.
 
+Both cards also expose **▶ Clean up now** / **▶ Backfill now** buttons so you can run either job immediately without waiting for the next cycle (handy on deployments without cron or CLI access). They call `POST /api/admin/tag_cleanup` / `POST /api/admin/tag_backfill`, which use the exact same `PipelineTagService` path and safety invariants as the CLIs: the run is refused when the matching switch is off or Harbor is unconfigured (the button is greyed out too), and rows with an unreachable Harbor or incomplete info are always skipped. The run is idempotent and repeatable; the stats are shown inline and recorded in the operation log (`cleanup_pipeline_tags` / `backfill_pipeline_tags`).
+
+> **Runtime note:** the manual run is a **synchronous long task** (Harbor is probed repository by repository) and the code does its best with `set_time_limit(0)`. If your host (shared hosting / FastCGI) caps a single request in php.ini or at the gateway, the request may be cut short; simply click again in batches — the job is idempotent, so repeats never delete or write wrongly.
+
 > If a record's log-derived tag was parsed incorrectly (e.g. it picked up the previous build's tag), the **↻ Re-parse** button next to that tag force-re-parses it (skips the cache and re-extracts by the current build number).
 
 ### Enabling Custom_Push
@@ -846,7 +850,7 @@ The system supports environment separation via `APP_ENV` (production / staging /
 - `app.env.staging`: Staging overrides (e.g. `APP_DEBUG=true`)
 - `app.env.local`: Local overrides (gitignored, personal tweaks)
 
-Loading priority: `app.env.local` > `app.env.{APP_ENV}` > `app.env`
+Loading priority: `app.env.local` > real environment variables (Docker `env_file` / shell export / `SetEnv` / panel env vars) > `app.env.{APP_ENV}` > `app.env`; when `app.env.local` exists the keys it defines are final. The loading logic lives in `src/Support/EnvFileLoader.php`.
 
 Default `APP_ENV=production` does not require additional files. See `docs/Technical-Guide.md` (English) or `docs/技术文档.md` (Chinese) for details.
 

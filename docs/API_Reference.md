@@ -319,6 +319,8 @@ Token expires in 24 hours. `super_admin` role returns `"*"` for permissions.
 | `/api/admin/platform_config` | GET | Platform access status (masked — only returns each platform's `configured` boolean, never URL/account/credential; requires `ci.system`) |
 | `/api/admin/system_info` | GET | Database schema status (driver / schema version / is_current / PHP version / core table presence; requires `ci.system`) |
 | `/api/admin/migrate` | POST | Manually trigger database migration (create missing tables + seed permissions + mark schema current; super_admin only) |
+| `/api/admin/tag_cleanup` | POST | Run stale tag cleanup once, on demand (equivalent to `cli/cleanup-pipeline-tags.php`; returns 409 and skips safely when the switch is off or Harbor is unconfigured; requires `ci.platform-config`) |
+| `/api/admin/tag_backfill` | POST | Run image tag log backfill once, on demand (equivalent to `cli/backfill-pipeline-tags.php`; same guards, fills missing tags only and never overwrites scan results; requires `ci.platform-config`) |
 | `/api/admin/operation_logs` | GET | Operation audit log (filter by `?username=&action=&result=&operator_type=&date_from=&date_to=&page=&per_page=`; requires `ci.operation-logs`) |
 | `/api/admin/users` | GET | User list (admin sees all; non-admin cannot see admin users) |
 | `/api/admin/users` | POST | Create user (body: `username`, `password`, `role`, `systems`) |

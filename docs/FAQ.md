@@ -109,18 +109,33 @@ You need to configure mapping relationships in the admin panel (`/admin`). After
 
 ### Q: What does "three-layer app.env loading" mean?
 
-Loading order (later overrides earlier):
+File loading order (later overrides earlier):
 1. `config/app.env` — Base config (gitignored, contains real passwords)
-2. `config/app.env.{APP_ENV}` — Environment override (e.g., `app.env.production`)
+2. `config/app.env.{APP_ENV}` — Environment override (e.g., `app.env.production` / `app.env.staging`)
 3. `config/app.env.local` — Local override (gitignored, personal tweaks)
 
-`APP_ENV=production` only loads `app.env`; `app.env.production` is not needed.
+Effective priority: `app.env.local` > real environment variables (Docker `env_file` / shell export / `SetEnv` / panel env vars) > `app.env.{APP_ENV}` > `app.env`.
+
+- When `app.env.local` exists, the keys it defines are final (they even beat real environment variables);
+- `APP_ENV=production` only loads `app.env`; `app.env.production` is not needed;
+- The override logic lives in `src/Support/EnvFileLoader.php` (shared by Bootstrap and the bin/cli scripts), so loading behaviour only has to change in one place.
 
 ### Q: Why don't app.env changes take effect?
 
+- The same key is shadowed by a higher-priority source: `config/app.env.local`, `config/app.env.{APP_ENV}` and real environment variables (Docker `env_file`, Apache `SetEnv`, panel env vars) all outrank `app.env`
+- The reverse trap (before 2.8.6): a key written in `app.env.local` but already defined in `app.env` did **not** take effect — the override layers wrongly used `Dotenv::createUnsafeImmutable()`, and phpdotenv's Immutable means "do not write if the variable already exists". Fixed by switching to `createUnsafeMutable()`
 - Some config (e.g., `build_mode`, mapping data) is persisted to the database on first boot, and the DB takes precedence thereafter
 - Runtime configuration can be modified in the admin panel instead of editing `app.env`
 - If you must reload from `app.env`, delete the corresponding row in `ci_app_settings` and restart
+
+### Q: Docker deployment: why don't changes to HARBOR_* in `config/app.env` take effect?
+
+Root `app.env` is the Docker Compose shared variable file; `env_file` injects it into the container as **real environment variables**, and the app gives OS env vars priority (layer 1 of `src/Support/EnvFileLoader.php` uses `Dotenv::createImmutable`), which **overrides same-name keys in `config/app.env`**. Therefore:
+
+- Under Docker, `HARBOR_BASE_URL` / `HARBOR_USER` / `HARBOR_PASSWORD` / `SECRET_KEY` / `CI_API_TOKEN` / `DB_*` always follow the **root `app.env`**; same-name entries in `config/app.env` are silently overridden;
+- Exception: if `config/app.env.local` exists inside the project, the keys it defines win over everything — **including the real environment variables injected by `env_file`** (that file is gitignored and normally absent from the image);
+- Placeholder values left unchanged in root `app.env` (e.g. `HARBOR_BASE_URL=http://YOUR_HARBOR_URL`) take effect too — if Harbor calls hit `YOUR_HARBOR_URL`, check whether root `app.env` was updated;
+- Bare-metal deployments have no `env_file` injection, so editing `config/app.env` is enough.
 
 ### Q: Error: "DB_DRIVER must be sqlite or mysql"?
 

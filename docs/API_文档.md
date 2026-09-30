@@ -320,6 +320,8 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 | `/api/admin/platform_config` | GET | 平台接入状态（脱敏，仅返回各平台 `configured` 布尔，不返回 URL/账号/凭证；需 `ci.system`） |
 | `/api/admin/system_info` | GET | 数据库 schema 状态（驱动 / schema 版本 / 是否当前 / PHP 版本 / 核心表存在性；需 `ci.system`） |
 | `/api/admin/migrate` | POST | 手动触发数据库迁移（补建缺失表 + 种子权限 + 标记 schema 当前；仅 super_admin） |
+| `/api/admin/tag_cleanup` | POST | 手动立即执行一次过期 tag 清理（等价 `cli/cleanup-pipeline-tags.php`；对应开关未开启或 Harbor 未配置时返回 409 安全跳过；需 `ci.platform-config`） |
+| `/api/admin/tag_backfill` | POST | 手动立即执行一次镜像 Tag 日志回填（等价 `cli/backfill-pipeline-tags.php`；同上，仅补缺失 tag 不覆盖扫描结果；需 `ci.platform-config`） |
 | `/api/admin/operation_logs` | GET | 操作审计日志（支持 `?username=&action=&result=&operator_type=&date_from=&date_to=&page=&per_page=` 筛选；需 `ci.operation-logs`） |
 | `/api/admin/users` | GET | 用户列表（admin 可见全部；非 admin 看不到 admin 用户） |
 | `/api/admin/users` | POST | 创建用户（body: `username`、`password`、`role`、`systems`） |
