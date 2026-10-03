@@ -170,7 +170,7 @@ class AppConfig
         self::ROLE_SUPER_ADMIN => '*',
         self::ROLE_VIEWER      => [
             // CI 侧只读：用户列表 + 权限列表。
-            // 刻意不含 ci.manage——它除了 gate 安全扫描/看板外，还是 isAdminRole() 的判定源（=管理员标记），非纯读。
+            // 刻意不含 ci.manage——它除了 gate 安全扫描外，还是 isAdminRole() 的判定源（=管理员标记），非纯读。
             self::PERM_CI_USERS_LIST,        // CI 用户列表
             self::PERM_CI_PERMISSIONS_LIST,  // CI 权限列表
             self::PERM_CI_BUILD_RECORDS,      // 构建记录一级菜单
