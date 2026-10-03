@@ -29,9 +29,7 @@ use App\Controller\HarborController;
 use App\Controller\AdminController;
 use App\Controller\RbacController;
 use App\Controller\BuildController;
-use App\Controller\DashboardController;
 use App\Controller\OAuthController;
-use App\Service\DashboardService;
 use App\Service\OAuthService;
 use App\Service\OidcService;
 
@@ -515,23 +513,6 @@ return [
         return new HarborController(
             $c->get(I18nService::class),
             $c->get(HarborService::class)
-        );
-    },
-
-    // ---------- Dashboard 模块（监控看板只读 API，Grafana 消费）----------
-
-    DashboardService::class => function (\Psr\Container\ContainerInterface $c) {
-        return new DashboardService(
-            $c->get(\PDO::class),
-            $c->get(BuildProviderRegistry::class),
-            $c->get(MappingManager::class)
-        );
-    },
-
-    DashboardController::class => function (\Psr\Container\ContainerInterface $c) {
-        return new DashboardController(
-            $c->get(I18nService::class),
-            $c->get(DashboardService::class)
         );
     },
 
