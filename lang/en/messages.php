@@ -678,9 +678,7 @@ return [
     'api.scope.build_read'      => 'Build read',
     'api.scope.build_write'     => 'Build write (trigger/retry/cancel)',
     'api.scope.build_report'    => 'Build report (scan-sync/commit-status/report)',
-    'api.scope.dashboard'       => 'Dashboard (read-only)',
     'api.scope.rbac_user_write' => 'RBAC user write (create/update/delete users)',
-    'dashboard.query_failed'    => 'Dashboard query failed',
 
     // ── OAuth2 Provider ──
     'oauth.login_title'      => 'Sign in to Devops-Glue',

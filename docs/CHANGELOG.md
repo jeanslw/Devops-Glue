@@ -1,7 +1,6 @@
 # Changelog
 
 ## v2.8.7 (2026-10-03)
-- **Fix: dashboard / auth data-source bugs against the CD schema** — `GET /api/dashboard/deployment` no longer selects the dropped `deploy_id` column (the new CD schema drops it, so the dashboard 500'd); the trends aggregation now counts CD terminal states `ok` / `failed` instead of the legacy `success` string (successful deploys were all miscounted as failed); the `to` date upper bound is now inclusive (`<= ... 23:59:59`) so the last second of the day is no longer dropped.
 - **Fix: `isRoot` case-sensitivity on the DB login path** — the DB login path now lowercases the username before comparing to the root admin (matching the LDAP path), so a root account whose stored username differs in case is no longer misreported as non-root.
 - **Versioning** — `APP_VERSION` bumped to 2.8.7; OpenAPI `version` synced (CN/EN).
 
@@ -92,7 +91,7 @@
 - **Session token never in URLs** — The docs entry points (home menu, admin SPA, `goToDocs`) now navigate to `/api/docs` without appending `?token=`; the standalone `/api/docs/login` route, `MainController::docsLogin()` and `templates/swagger-auth.html` were removed. `/api/docs` (a pure UI shell with no business data) is now served lightly, while `/api/openapi.json` and Try-it-out stay server-side authenticated. When unauthenticated, the page shows an embedded login form in place (URL unchanged) and, after a successful login, writes the shared sessionStorage keys and initializes Swagger UI in the same page. Legacy tokens in the URL / hash are still honored but only injected into the `Authorization` header.
 - **Front-end output escaping** — Version strings on the monitor page, role names, permission labels and `js()` output are now escaped via `esc()` / HTML entities, closing the remaining DOM-injection gaps.
 - **Login rate limiting on OAuth** — `/oauth/authorize` now enforces the same IP + username failure limit as `/api/admin/login` (5 attempts / 15 minutes, HTTP 429 while locked), so the OAuth page can no longer be used to brute-force admin credentials; `X-Forwarded-For` is trusted only for loopback clients to prevent spoofing.
-- **Documentation** — README and Admin Manual version titles bumped to v2.7.1; the Admin Manual gains section 8.1 (external LDAP / AD logins) plus the LDAP block in Appendix A — LDAP shipped since v2.6.3 but was never covered in the manual; the API documents filled their gaps (public `/.well-known/*` endpoints, `/api/admin/custom_builds`, the user password / status endpoints, and the RBAC and Dashboard modules); a Chinese / English Documentation Contributor Guide was added and linked from both READMEs.
+- **Documentation** — README and Admin Manual version titles bumped to v2.7.1; the Admin Manual gains section 8.1 (external LDAP / AD logins) plus the LDAP block in Appendix A — LDAP shipped since v2.6.3 but was never covered in the manual; the API documents filled their gaps (public `/.well-known/*` endpoints, `/api/admin/custom_builds`, the user password / status endpoints, and the RBAC module); a Chinese / English Documentation Contributor Guide was added and linked from both READMEs.
 - **Versioning** — `APP_VERSION` bumped to 2.7.1.
 
 ## v2.7.0 (2026-08-31)

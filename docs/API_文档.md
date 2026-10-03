@@ -366,19 +366,6 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 
 ---
 
-## Dashboard 模块 (`/api/dashboard`)
-
-> **只读监控端点**：供 Grafana Infinity 等数据源消费。接受任意有效 Bearer Token（登录态或 API Token），但需持有 `ci.manage` 权限（与映射查看同级）。返回平铺 JSON 条目；`cd_*` 表缺失时相关字段优雅降级，不影响其它字段。
-
-| 接口 | 方法 | 说明 |
-|---|---|---|
-| `/api/dashboard/mapping` | GET | 映射条目列表（喂 Table / Stat 面板） |
-| `/api/dashboard/deployment` | GET | 部署记录条目（喂 Table / Stat 面板） |
-| `/api/dashboard/build` | GET | 构建记录条目 |
-| `/api/dashboard/trends` | GET | 趋势数据 |
-
----
-
 ## API Token 管理（服务账号 / 第三方调用）
 
 > 供 CD 系统服务账号（Jenkins / GitLab CI 脚本）或第三方系统调用。API Token **独立于 RBAC 权限体系**，直接携带接口权限清单（scope），不关联任何用户或角色。

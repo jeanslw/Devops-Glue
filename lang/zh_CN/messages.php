@@ -676,9 +676,7 @@ return [
     'api.scope.build_read'      => '构建查询',
     'api.scope.build_write'     => '构建执行（触发/重试/取消）',
     'api.scope.build_report'    => '构建回写（scan-sync/commit-status/report）',
-    'api.scope.dashboard'       => '监控看板（只读）',
     'api.scope.rbac_user_write' => 'RBAC 用户写（建号/改号/删号）',
-    'dashboard.query_failed'    => '看板查询失败',
 
     // ── OAuth2 Provider ──
     'oauth.login_title'      => '登录 Devops-Glue',

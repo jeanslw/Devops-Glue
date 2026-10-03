@@ -7,7 +7,6 @@ use App\Controller\HarborController;
 use App\Controller\AdminController;
 use App\Controller\RbacController;
 use App\Controller\BuildController;
-use App\Controller\DashboardController;
 use App\Controller\OAuthController;
 use App\Middleware\AuthMiddleware;
 
@@ -137,14 +136,6 @@ $app->group('/api', function (RouteCollectorProxy $api) {
         $build->map(['POST'], '/{path:.+}/report', [BuildController::class, 'report']);
         $build->map(['GET', 'POST'], '/{path:.+}/tag', [BuildController::class, 'tagQuery']);
         $build->map(['GET', 'POST'], '/{path:.+}/tags', [BuildController::class, 'tagsList']);
-    })->add(AuthMiddleware::class);
-
-    // 监控看板只读端点（Grafana Infinity 数据源消费，复用 RBAC）
-    $api->group('/dashboard', function (RouteCollectorProxy $dash) {
-        $dash->get('/mapping',    [DashboardController::class, 'mapping']);
-        $dash->get('/deployment', [DashboardController::class, 'deployment']);
-        $dash->get('/build',      [DashboardController::class, 'build']);
-        $dash->get('/trends',     [DashboardController::class, 'trends']);
     })->add(AuthMiddleware::class);
 
     $api->group('/git', function (RouteCollectorProxy $git) {

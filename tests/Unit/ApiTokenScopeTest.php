@@ -15,9 +15,9 @@ use PHPUnit\Framework\TestCase;
  */
 class ApiTokenScopeTest extends TestCase
 {
-    public function testApiScopesCatalogHasNineScopes(): void
+    public function testApiScopesCatalogHasEightScopes(): void
     {
-        $this->assertCount(9, AppConfig::API_SCOPES);
+        $this->assertCount(8, AppConfig::API_SCOPES);
         $expected = [
             AppConfig::API_SCOPE_MAIN,
             AppConfig::API_SCOPE_GIT,
@@ -25,7 +25,6 @@ class ApiTokenScopeTest extends TestCase
             AppConfig::API_SCOPE_HARBOR_SCAN,
             AppConfig::API_SCOPE_BUILD_READ,
             AppConfig::API_SCOPE_BUILD_WRITE,
-            AppConfig::API_SCOPE_DASHBOARD,
             AppConfig::API_SCOPE_BUILD_REPORT,
             AppConfig::API_SCOPE_RBAC_USER_WRITE,
         ];

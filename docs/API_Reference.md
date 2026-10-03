@@ -365,19 +365,6 @@ Token expires in 24 hours. `super_admin` role returns `"*"` for permissions.
 
 ---
 
-## Dashboard Module (`/api/dashboard`)
-
-> **Read-only monitoring endpoints**: designed to be consumed by data sources such as Grafana Infinity. Any valid Bearer token works (session or API token), but the caller must hold the `ci.manage` permission (same level as viewing mappings). Responses are flat JSON rows; when the `cd_*` tables are missing the related fields degrade gracefully without affecting the rest.
-
-| Endpoint | Method | Description |
-|---|---|---|
-| `/api/dashboard/mapping` | GET | Mapping rows (for Table / Stat panels) |
-| `/api/dashboard/deployment` | GET | Deployment record rows (for Table / Stat panels) |
-| `/api/dashboard/build` | GET | Build record rows |
-| `/api/dashboard/trends` | GET | Trend data |
-
----
-
 ## API Token Management (Service Accounts / Third-Party)
 
 > For CD system service accounts (Jenkins / GitLab CI scripts) or third-party systems. API tokens are **independent of the RBAC permission system** — they carry an endpoint permission list (scope) directly and are not tied to any user or role.

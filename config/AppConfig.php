@@ -170,7 +170,7 @@ class AppConfig
         self::ROLE_SUPER_ADMIN => '*',
         self::ROLE_VIEWER      => [
             // CI 侧只读：用户列表 + 权限列表。
-            // 刻意不含 ci.manage——它除了 gate 安全扫描/看板外，还是 isAdminRole() 的判定源（=管理员标记），非纯读。
+            // 刻意不含 ci.manage——它除了 gate 安全扫描外，还是 isAdminRole() 的判定源（=管理员标记），非纯读。
             self::PERM_CI_USERS_LIST,        // CI 用户列表
             self::PERM_CI_PERMISSIONS_LIST,  // CI 权限列表
             self::PERM_CI_BUILD_RECORDS,      // 构建记录一级菜单
@@ -265,7 +265,6 @@ class AppConfig
     public const API_SCOPE_HARBOR_SCAN  = 'harbor.scan';
     public const API_SCOPE_BUILD_READ   = 'build.read';
     public const API_SCOPE_BUILD_WRITE  = 'build.write';
-    public const API_SCOPE_DASHBOARD    = 'dashboard.read';
     public const API_SCOPE_BUILD_REPORT = 'build.report';
     public const API_SCOPE_RBAC_USER_WRITE = 'rbac.user.write';
 
@@ -277,7 +276,6 @@ class AppConfig
         self::API_SCOPE_HARBOR_SCAN  => 'api.scope.harbor_scan',
         self::API_SCOPE_BUILD_READ   => 'api.scope.build_read',
         self::API_SCOPE_BUILD_WRITE  => 'api.scope.build_write',
-        self::API_SCOPE_DASHBOARD    => 'api.scope.dashboard',
         self::API_SCOPE_BUILD_REPORT => 'api.scope.build_report',
         self::API_SCOPE_RBAC_USER_WRITE => 'api.scope.rbac_user_write',
     ];
@@ -292,8 +290,6 @@ class AppConfig
         self::API_SCOPE_BUILD_WRITE  => [self::PERM_CI_TRIGGER],
         self::API_SCOPE_BUILD_REPORT => [self::PERM_CI_TRIGGER],
         self::API_SCOPE_HARBOR_SCAN  => [self::PERM_CI_TRIGGER],
-        // dashboard.read → ci.manage：DashboardController 内 requirePermission(ci.manage) 二次校验
-        self::API_SCOPE_DASHBOARD    => [self::PERM_CI_MANAGE],
         // build.read → ci.build-records.pull：构建记录只读端点（pipelines/logs 等）在 Controller 内二次校验，
         // 保证持有 build.read scope 的 CD 服务账号 token 读取拉取式记录时不被 403。
         self::API_SCOPE_BUILD_READ   => [self::PERM_CI_BUILD_RECORDS_PULL],
@@ -311,7 +307,6 @@ class AppConfig
         self::API_SCOPE_HARBOR_SCAN  => ['harbor.scan'],
         self::API_SCOPE_BUILD_READ   => ['build.read'],
         self::API_SCOPE_BUILD_WRITE  => ['trigger', 'retry', 'cancel'],
-        self::API_SCOPE_DASHBOARD    => ['dashboard'],
         self::API_SCOPE_BUILD_REPORT => ['scan-sync', 'commit-status', 'report'],
         self::API_SCOPE_RBAC_USER_WRITE => ['rbac.users', 'rbac.roles'],
     ];
@@ -356,9 +351,6 @@ class AppConfig
         // MAIN：只读
         if (preg_match('#^/api/main($|/)#', $path)) {
             return self::API_SCOPE_MAIN;
-        }
-        if (preg_match('#^/api/dashboard($|/)#', $path)) {
-            return self::API_SCOPE_DASHBOARD;
         }
 
         // GIT：只读
