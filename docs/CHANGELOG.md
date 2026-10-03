@@ -138,7 +138,6 @@
 
 ## v2.6.1 (2026-08-23)
 - **OAuth2 Provider** — Added an authorization-code OAuth2 Provider (`/oauth/authorize` + `/oauth/token` + `/oauth/userinfo`), enabling Grafana single sign-on with Glue accounts.
-- **Relationship dashboard read-only API** — Added read-only dashboard endpoints serving CI→CD chain data to Grafana panels; OAuth userinfo enhanced with additional user attributes.
 - **Account management enhancements** — super_admin can now edit their own profile; `admin_users` gains an `email` field.
 - **Expired tag cleanup** — Added expired-tag cleanup (admin toggle + read-time cleanup + scheduled CLI), unified writable directories to 755.
 - **Mapping key normalization** — custom_push record keys normalized to `job_name`, avoiding `project` fragmentation.
