@@ -37,7 +37,7 @@ class DashboardServiceTest extends TestCase
     {
         if ($skipTable !== 'cd_deploy_logs') {
             $this->pdo->exec('CREATE TABLE cd_deploy_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, deploy_id INTEGER DEFAULT 0, project TEXT, tag TEXT,
+                id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT, tag TEXT,
                 image TEXT, deploy_type TEXT, target TEXT, status TEXT, output TEXT,
                 triggered_by TEXT DEFAULT "", deploy_note TEXT DEFAULT "", duration_ms INTEGER DEFAULT 0,
                 stage_times TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP)');
@@ -89,17 +89,17 @@ class DashboardServiceTest extends TestCase
     public function testGetDeploymentDataOnlyExposesCdDeployLogsFields(): void
     {
         $svc = $this->makeService();
-        $this->pdo->exec("INSERT INTO cd_deploy_logs (deploy_id, project, tag, image, deploy_type, target, status, triggered_by, created_at) VALUES
-            (1, 'myapp-backend', 'v1.0', 'harbor/mycode/backend:v1.0', 'k8s', 'prod', 'success', 'admin', '2026-08-22 11:00:00')");
+        $this->pdo->exec("INSERT INTO cd_deploy_logs (project, tag, image, deploy_type, target, status, triggered_by, created_at) VALUES
+            ('myapp-backend', 'v1.0', 'harbor/mycode/backend:v1.0', 'k8s', 'prod', 'ok', 'admin', '2026-08-22 11:00:00')");
 
         $rows = $svc->getDeploymentData();
 
         $this->assertCount(1, $rows);
         $this->assertSame(
-            ['id', 'deploy_id', 'project', 'tag', 'image', 'deploy_type', 'target', 'status', 'triggered_by', 'created_at'],
+            ['id', 'project', 'tag', 'image', 'deploy_type', 'target', 'status', 'triggered_by', 'created_at'],
             array_keys($rows[0])
         );
-        $this->assertSame('success', $rows[0]['status']);
+        $this->assertSame('ok', $rows[0]['status']);
     }
 
     public function testGetDeploymentDataReturnsEmptyWhenTableMissing(): void
@@ -143,9 +143,9 @@ class DashboardServiceTest extends TestCase
         $this->pdo->exec("INSERT INTO " . AppConfig::TABLE_PIPELINE_ARTIFACTS . "
             (provider, project_id, pipeline_iid, project_key, repository, tag, status, created_at) VALUES
             ('jenkins', 'myapp-backend', 100, 'myapp-backend', 'mycode/backend', 'v1.0', 'success', '2026-08-22 10:00:00')");
-        $this->pdo->exec("INSERT INTO cd_deploy_logs (deploy_id, project, tag, image, deploy_type, target, status, triggered_by, created_at) VALUES
-            (1, 'myapp-backend', 'v1.0', 'harbor/mycode/backend:v1.0', 'k8s', 'prod', 'success', 'admin', '2026-08-22 11:00:00'),
-            (2, 'myapp-backend', 'v1.0', 'harbor/mycode/backend:v1.0', 'k8s', 'prod', 'failed', 'admin', '2026-08-22 12:00:00')");
+        $this->pdo->exec("INSERT INTO cd_deploy_logs (project, tag, image, deploy_type, target, status, triggered_by, created_at) VALUES
+            ('myapp-backend', 'v1.0', 'harbor/mycode/backend:v1.0', 'k8s', 'prod', 'ok', 'admin', '2026-08-22 11:00:00'),
+            ('myapp-backend', 'v1.0', 'harbor/mycode/backend:v1.0', 'k8s', 'prod', 'failed', 'admin', '2026-08-22 12:00:00')");
 
         $trends = $svc->getTrends('2026-08-22', '2026-08-23');
 

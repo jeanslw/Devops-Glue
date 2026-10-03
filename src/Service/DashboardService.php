@@ -14,7 +14,7 @@ use App\Service\Build\BuildProviderRegistry;
  *  - /api/dashboard/build       → ci_custom_builds（custom_push 构建）+ jenkins/gitlab 实时流水线
  *
  * 事实依据（字段名以真实建表脚本为准，禁止臆造）：
- *  - cd_deploy_logs（Devops_CD database/init_mysql.sql）：id, deploy_id, project, tag, image,
+ *  - cd_deploy_logs（Devops_CD database/init_mysql.sql）：id, project, tag, image,
  *    deploy_type, target, status, output, triggered_by, deploy_note, duration_ms, stage_times, created_at。
  *    其中 deploy_note/duration_ms/stage_times 是 v1.3.1 迁移后补列，output/stage_times 为大文本/JSON，
  *    本服务只取「基础建表即有」的标量列，避免旧版 CD 缺列导致 SQL 报错。
@@ -87,7 +87,6 @@ class DashboardService
 
         $sql = "SELECT
                 dl.id,
-                dl.deploy_id,
                 dl.project,
                 dl.tag,
                 dl.image,
@@ -135,7 +134,7 @@ class DashboardService
         $tags = $this->pdo->query(
             "SELECT {$dayT} AS day, COUNT(*) AS cnt
              FROM {$t}
-             WHERE created_at >= '{$from}' AND created_at < '{$to} 23:59:59'
+             WHERE created_at >= '{$from}' AND created_at <= '{$to} 23:59:59'
              GROUP BY {$dayT} ORDER BY day"
         )->fetchAll();
 
@@ -146,10 +145,10 @@ class DashboardService
             $deploys = $this->pdo->query(
                 "SELECT {$dayD} AS day,
                         COUNT(*) AS total,
-                        SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS success,
-                        SUM(CASE WHEN status <> 'success' THEN 1 ELSE 0 END) AS failed
+                        SUM(CASE WHEN status = 'ok' THEN 1 ELSE 0 END) AS success,
+                        SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed
                  FROM {$dl}
-                 WHERE created_at >= '{$from}' AND created_at < '{$to} 23:59:59'
+                 WHERE created_at >= '{$from}' AND created_at <= '{$to} 23:59:59'
                  GROUP BY {$dayD} ORDER BY day"
             )->fetchAll();
         }

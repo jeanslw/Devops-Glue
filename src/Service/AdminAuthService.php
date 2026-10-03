@@ -51,7 +51,7 @@ class AdminAuthService
                     'user'    => $username,
                     'role'    => $dbUser['role'],
                     'email'   => (string)($dbUser['email'] ?? ''),
-                    'isRoot'  => $username === $rootUser,
+                    'isRoot'  => strtolower($username) === $rootUser,
                 ];
             }
         }

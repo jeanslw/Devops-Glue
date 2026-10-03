@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.8.7 (2026-10-03)
+- **Fix: dashboard / auth data-source bugs against the CD schema** — `GET /api/dashboard/deployment` no longer selects the dropped `deploy_id` column (the new CD schema drops it, so the dashboard 500'd); the trends aggregation now counts CD terminal states `ok` / `failed` instead of the legacy `success` string (successful deploys were all miscounted as failed); the `to` date upper bound is now inclusive (`<= ... 23:59:59`) so the last second of the day is no longer dropped.
+- **Fix: `isRoot` case-sensitivity on the DB login path** — the DB login path now lowercases the username before comparing to the root admin (matching the LDAP path), so a root account whose stored username differs in case is no longer misreported as non-root.
+- **Versioning** — `APP_VERSION` bumped to 2.8.7; OpenAPI `version` synced (CN/EN).
+
 ## v2.8.6 (2026-09-23)
 - **Fix: `app.env.local` / `app.env.{APP_ENV}` overrides had no effect** — The override layers used `Dotenv::createUnsafeImmutable()`, but phpdotenv's Immutable means "do not write if the variable already exists" (`RepositoryBuilder::make()` → `ImmutableWriter`), so every key already defined in `config/app.env` (`DB_DRIVER` / `HARBOR_*` / `APP_DEBUG`, ...) was silently dropped — the symptom being "editing `config/app.env.local` does nothing". The override layers now use `createUnsafeMutable()`, and the new `src/Support/EnvFileLoader.php` collapses the five duplicated loader blocks (Bootstrap + bin/cli scripts) into a single implementation. Effective priority: `app.env.local` > real environment variables (Docker `env_file` / shell / `SetEnv`) > `app.env.{APP_ENV}` > `app.env`; when `app.env.local` exists, the keys it defines are final. Real environment variables are written back from a `getenv()` snapshot after the override layers, which also fixes OS-injected variables being shadowed by `app.env` when `variables_order` lacks `E`/`S` (or when values come from `putenv()`).
 
