@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.8.7-distributed (2026-10-03)
+- **Remove Grafana monitoring-dashboard read-only API** — the four `/api/dashboard/*` endpoints, the `dashboard.read` API-token scope, `DashboardService` / `DashboardController`, and their docs/tests are removed. The OAuth2/OIDC Provider (Grafana as one of the SSO clients) is kept.
+- **Distributed deployment (ported from v2.8.5-distributed)** — scheduled timers move to a dedicated `devops-glue-worker` container (`supervisord-worker.conf`), guarded by a `cache`-table lease lock (`Database::tryAcquireLock` / `releaseLock`) so they run at most once across replicas; docker-compose gains a shared `x-web-common` anchor, a web-replica template and a front-nginx LB (`nginx-lb.conf`); a Kubernetes reference manifest is added under `config/k8s/`.
+
 ## v2.8.7 (2026-10-03)
 - **Fix: `isRoot` case-sensitivity on the DB login path** — the DB login path now lowercases the username before comparing to the root admin (matching the LDAP path), so a root account whose stored username differs in case is no longer misreported as non-root.
 - **Versioning** — `APP_VERSION` bumped to 2.8.7; OpenAPI `version` synced (CN/EN).
