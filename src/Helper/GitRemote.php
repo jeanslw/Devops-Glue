@@ -105,4 +105,17 @@ class GitRemote
 
         return ($host !== '' && $path !== '') ? $host . '/' . $path : $path;
     }
+
+    /**
+     * 抹掉 Git remote URL 里的 userinfo（用户名/密码），供日志与异常消息使用。
+     *
+     *   https://user:pass@host/repo → https://***@host/repo
+     *   http://token@host/repo      → http://***@host/repo
+     *
+     * scp 形式 git@host:path 的 `git` 是用户名而非凭据，无 `://`，不会命中，原样返回。
+     */
+    public static function maskCredentials(string $url): string
+    {
+        return (string) preg_replace('#^([a-z][a-z0-9+.-]*://)[^/@]+@#i', '$1***@', $url);
+    }
 }

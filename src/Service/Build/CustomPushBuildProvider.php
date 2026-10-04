@@ -253,9 +253,23 @@ class CustomPushBuildProvider implements BuildProviderInterface
         ) {
             return false;
         }
-        // IPv4-mapped（::ffff:127.0.0.1 等）→ 按内嵌 IPv4 再校验
-        if (str_starts_with($n, '::ffff:')) {
-            return $this->isSafeIp(substr($n, 7));
+        // 过渡机制内嵌 IPv4：解包后按 IPv4 复检，防止回环/云元数据藏在 NAT64/6to4/映射地址下。
+        $bin = @inet_pton($ip);
+        if ($bin !== false && strlen($bin) === 16) {
+            $embedded = null;
+            if (substr($bin, 0, 12) === "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff") {
+                // IPv4-mapped（::ffff:a.b.c.d）→ 末 4 字节按 IPv4 复检
+                $embedded = substr($bin, 12, 4);
+            } elseif (substr($bin, 0, 4) === "\x00\x64\xff\x9b") {
+                // NAT64（64:ff9b::/96、64:ff9b:1::/48）→ 末 4 字节内嵌 IPv4 复检
+                $embedded = substr($bin, 12, 4);
+            } elseif (substr($bin, 0, 2) === "\x20\x02") {
+                // 6to4（2002::/16）→ 第 2-5 字节内嵌 IPv4 复检
+                $embedded = substr($bin, 2, 4);
+            }
+            if ($embedded !== null) {
+                return $this->isSafeIp(long2ip(unpack('N', $embedded)[1]));
+            }
         }
         return true; // 公网 IPv6 或 fc00::/7 唯一本地（等价私网）放行
     }

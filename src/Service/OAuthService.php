@@ -175,9 +175,51 @@ class OAuthService
                 return null;
             }
             $data = json_decode($row['value'], true);
-            return is_array($data) ? $data : null;
+            if (!is_array($data)) {
+                return null;
+            }
+            // 回查账号状态与当前角色：停用/删除立即失效，降权即时生效，不再随签发冻结 1 小时。
+            if (!$this->refreshAccount($data)) {
+                return null;
+            }
+            return $data;
         } catch (\Throwable $e) {
             return null;
+        }
+    }
+
+    /**
+     * 回查访问令牌对应用户的账号状态与当前角色。
+     *
+     * - 查无此行（已删除）或 status=0（已停用）→ false，令牌立即失效；
+     * - 否则用 admin_users 的当前 role 覆盖缓存里冻结的旧角色（降权即时生效）。
+     * - 旧库缺 status 列 / 查询异常 → true 放行（沿用缓存原值），回查故障不能锁死 SSO。
+     */
+    private function refreshAccount(array &$data): bool
+    {
+        $user = (string)($data['user'] ?? '');
+        if ($user === '') {
+            return false;
+        }
+        try {
+            $stmt = $this->pdo->prepare(
+                "SELECT status, role FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE username = ?"
+            );
+            $stmt->execute([$user]);
+            $acc = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if ($acc === false) {
+                return false;
+            }
+            $status = $acc['status'] ?? null;
+            if ($status !== null && (int)$status === 0) {
+                return false;
+            }
+            if (!empty($acc['role'])) {
+                $data['role'] = $acc['role'];
+            }
+            return true;
+        } catch (\Throwable $e) {
+            return true;
         }
     }
 }
