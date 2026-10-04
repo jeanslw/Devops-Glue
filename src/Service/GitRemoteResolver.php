@@ -152,7 +152,7 @@ class GitRemoteResolver
             return ['platform' => $this->registry->detect($url), 'method' => 'exact'];
         } catch (ApiException $e) {
             $this->logger?->warning('Git 平台检测失败，回退默认平台', [
-                'url'              => $url,
+                'url'              => \App\Helper\GitRemote::maskCredentials($url),
                 'default_platform' => $this->defaultPlatform,
                 'error'            => $e->getMessage(),
             ]);

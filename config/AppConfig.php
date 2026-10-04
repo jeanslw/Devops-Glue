@@ -293,6 +293,12 @@ class AppConfig
         // build.read → ci.build-records.pull：构建记录只读端点（pipelines/logs 等）在 Controller 内二次校验，
         // 保证持有 build.read scope 的 CD 服务账号 token 读取拉取式记录时不被 403。
         self::API_SCOPE_BUILD_READ   => [self::PERM_CI_BUILD_RECORDS_PULL],
+        // 只读 scope 也按「CI 读权限」注入：main/git/harbor.read 对应的列表/查询端点现都在 Controller 内
+        // requirePermission(ci.build-records.pull)，token 命中这些 scope 时须注入，否则会 403。
+        // main 另注入 ci.discover（gitDiscovery 端点）；该权限只 gate 发现视图，不构成写权限提权。
+        self::API_SCOPE_MAIN         => [self::PERM_CI_BUILD_RECORDS_PULL, self::PERM_CI_DISCOVER],
+        self::API_SCOPE_GIT          => [self::PERM_CI_BUILD_RECORDS_PULL],
+        self::API_SCOPE_HARBOR_READ  => [self::PERM_CI_BUILD_RECORDS_PULL],
     ];
 
     /**

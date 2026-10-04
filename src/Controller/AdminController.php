@@ -1916,7 +1916,8 @@ class AdminController extends BaseController
      */
     private function expandPermissions(array $perms): array
     {
-        $result = $perms;
+        $result = [];
+        $queue  = array_values($perms);
         try {
             $pdo = $this->pdo;
             // 一次性把所有 source_key 的目标拉出来，避免 N+1
@@ -1929,11 +1930,17 @@ class AdminController extends BaseController
             // DB 不可用时回退到常量（避免硬故障）
             $implied = AppConfig::IMPLIED_PERMISSIONS;
         }
-        foreach ($perms as $pk) {
+        // 队列展开到不动点：链式规则（A→B、B→C）也必须把 C 补进来，否则只选 A 会永久丢 C。
+        while ($queue) {
+            $pk = array_shift($queue);
+            if (in_array($pk, $result, true)) {
+                continue;
+            }
+            $result[] = $pk;
             if (isset($implied[$pk])) {
                 foreach ($implied[$pk] as $child) {
-                    if (!in_array($child, $result, true)) {
-                        $result[] = $child;
+                    if (!in_array($child, $result, true) && !in_array($child, $queue, true)) {
+                        $queue[] = $child;
                     }
                 }
             }
