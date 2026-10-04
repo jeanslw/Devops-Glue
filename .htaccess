@@ -1,0 +1,35 @@
+# ============================================================================
+# 项目根 .htaccess —— 虚拟主机兜底入口
+# 仅在「虚拟主机的站点根目录 = 项目根」时生效。
+# ----------------------------------------------------------------------------
+# 两种上传方式：
+#   1)（推荐）把站点根指向 public/：本文件位于站点根之上，不会被读取，可忽略。
+#   2) 整包上传进 public_html 之类、站点根就是项目根：本文件负责
+#        a) 拒绝公网直接访问 src/ config/ vendor/ 等源码、配置与数据目录；
+#        b) 把所有请求转发到 public/ 下的应用入口 public/index.php。
+# 依赖 Apache mod_rewrite（且虚拟主机需允许 AllowOverride）。
+# ============================================================================
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # ---- 安全：禁止直接访问源码 / 配置 / 依赖 / 数据 / 文档目录 ----
+    RewriteRule ^(src|config|vendor|cli|bin|database|tests|lang|templates|docs|backups|logs)(/|$) - [F,L]
+
+    # ---- 安全：禁止直接访问根目录下的敏感 / 发布无关文件 ----
+    RewriteRule ^(composer\.(json|lock)|Dockerfile|docker-compose\.yml|\.dockerignore|\.gitattributes|\.gitignore)$ - [F,L]
+    RewriteRule \.(md|dist|neon|xml|example|env|lock|sql|neon)$ - [F,L]
+
+    # ---- 入口转发：非 public/ 的请求全部交给 public/ ----
+    RewriteRule ^$ public/index.php [L]
+    RewriteCond %{REQUEST_URI} !^/public/
+    RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>
+
+# 关闭目录列表
+Options -Indexes
+
+# 拒绝访问以点开头的隐藏文件（如 .env、.gitignore）
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>

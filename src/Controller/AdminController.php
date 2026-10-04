@@ -345,6 +345,73 @@ class AdminController extends BaseController
         }
     }
 
+    /**
+     * POST /api/admin/recover — 超管找回密码（虚拟主机「无 CLI」环境的 web 兜底）。
+     *
+     * 公开路由、不挂 AuthMiddleware：超管已忘记密码无法登录，只能走这条通道。
+     * 安全性完全依赖部署时设置的 ADMIN_RECOVERY_TOKEN（app.env / app.env.local）：
+     *   1. 令牌为空 → 通道关闭，一律 403；
+     *   2. 令牌不匹配 → 403（hash_equals 恒定时间比较，防时序侧信道）；
+     *   3. 令牌匹配 → 重设 super_admin 密码，并踢掉该账号所有已登录 token。
+     * 唯一 super_admin 免填 username；存在多个时须显式指定，避免误重置。
+     */
+    public function recoverPassword(Request $request, Response $response): Response
+    {
+        $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
+        $token    = (string)($body['token'] ?? '');
+        $newPass  = (string)($body['new_password'] ?? '');
+        $username = strtolower(trim((string)($body['username'] ?? '')));
+
+        $recoveryToken = $this->config->getAdminRecoveryToken();
+        if ($recoveryToken === '') {
+            return $this->jsonError($response, 'auth.recovery_disabled', 403);
+        }
+        if ($token === '' || !\hash_equals($recoveryToken, $token)) {
+            $this->opLog()->record('system', 'admin_recovery', '', ['reason' => 'token_mismatch'], $this->clientIp($request), 'failure');
+            return $this->jsonError($response, 'auth.recovery_token_wrong', 403);
+        }
+        if (strlen($newPass) < 8) {
+            return $this->jsonError($response, 'auth.new_password_short', 400);
+        }
+
+        try {
+            // 找出 super_admin 账号：唯一时免填 username；多个时须显式指定
+            $stmt = $this->pdo->prepare("SELECT username FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE role = ? ORDER BY username");
+            $stmt->execute([AppConfig::ROLE_SUPER_ADMIN]);
+            $supers = $stmt->fetchAll(\PDO::FETCH_COLUMN);
+
+            if ($supers === []) {
+                return $this->jsonError($response, 'auth.recovery_no_superadmin', 409);
+            }
+            if ($username !== '') {
+                if (!in_array($username, $supers, true)) {
+                    return $this->jsonError($response, 'auth.recovery_target_not_superadmin', 403);
+                }
+            } else {
+                if (count($supers) > 1) {
+                    return $this->jsonError($response, 'auth.recovery_ambiguous', 409);
+                }
+                $username = $supers[0];
+            }
+
+            $hash = password_hash($newPass, PASSWORD_BCRYPT);
+            $this->adminUserRepository->updatePassword($username, $hash);
+
+            // 重置后踢掉该账号所有已登录 token（旧密码会话一并失效）
+            try {
+                $this->pdo->prepare("DELETE FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key LIKE ? AND value LIKE ?")
+                    ->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . '%', $username . '|%']);
+            } catch (\Exception $e) {
+                \App\Helper\Log::exception($e);
+            }
+
+            $this->opLog()->record($username, 'admin_recovery', $username, [], $this->clientIp($request), 'success');
+            return $this->output($response, ['success' => true, 'message' => $this->__('auth.recovery_success')], $request);
+        } catch (\Exception $e) {
+            return $this->jsonError($response, $this->__('build.modify_failed') . ': ' . $e->getMessage(), 500);
+        }
+    }
+
     // ────────────────────────── CRUD ──────────────────────────
 
     /**
