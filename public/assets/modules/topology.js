@@ -1,5 +1,5 @@
 import { authHeaders, handle401 } from '../core/api.js';
-import { esc, truncateUrl } from '../core/utils.js';
+import { esc, safeUrl, truncateUrl } from '../core/utils.js';
 import { platforms } from '../core/state.js';
 
 const MAP_LIST_API = '/api/main/map/list';
@@ -77,13 +77,13 @@ export function renderTopology() {
 
         const gitUrl = p.git_remote || '';
         const gitDisplay = gitUrl
-            ? `<a href="${esc(gitUrl)}" target="_blank" title="${esc(gitUrl)}">${esc(truncateUrl(gitUrl))}</a>`
+            ? `<a href="${safeUrl(gitUrl)}" target="_blank" title="${esc(gitUrl)}">${esc(truncateUrl(gitUrl))}</a>`
             : '<span class="topo-empty-field">' + __.t('js.topo_not_configured') + '</span>';
 
         const harbor = p.harbor_repository || '';
         const harborUrl = topoPlatformUrls.harbor_url || '';
         const harborDisplay = harbor
-            ? `<a href="${esc(harborUrl + '/harbor')}" target="_blank" title="${esc(__.t('js.topo_open_harbor'))}">${esc(harbor)}</a>`
+            ? `<a href="${safeUrl(harborUrl + '/harbor')}" target="_blank" title="${esc(__.t('js.topo_open_harbor'))}">${esc(harbor)}</a>`
             : '<span class="topo-empty-field">' + __.t('js.topo_not_linked') + '</span>';
 
         const build = p.build_provider || 'jenkins';
@@ -99,7 +99,7 @@ export function renderTopology() {
             ? '/' + projectPath.split('/').map(s => 'job/' + encodeURIComponent(s)).join('/') + '/'
             : '';
         const buildDisplay = buildUrl
-            ? `<a href="${esc(buildUrl + jenkinsPath)}" target="_blank" title="${esc(__.t('js.topo_open_jenkins'))}">${esc(p.project || p.current_path || __.t('js.topo_unnamed'))}</a>`
+            ? `<a href="${safeUrl(buildUrl + jenkinsPath)}" target="_blank" title="${esc(__.t('js.topo_open_jenkins'))}">${esc(p.project || p.current_path || __.t('js.topo_unnamed'))}</a>`
             : `<span class="node-main">${esc(p.project || p.current_path || __.t('js.topo_unnamed'))}</span>`;
         const platformCls = platform !== '—' && platforms.includes(platform) ? 'badge-' + platform : 'badge-default';
         const buildBadgeCls = build === 'gitlab_ci' ? 'badge-gitlab' : build === 'gitea_ci' ? 'badge-gitea' : build === 'custom_push' ? 'badge-cus' : 'badge-default';

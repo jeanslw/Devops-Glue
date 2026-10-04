@@ -3,6 +3,7 @@
 namespace App\Service\Git;
 
 use App\Exceptions\ApiException;
+use App\Helper\GitRemote;
 use App\Service\Logger;
 
 class ProviderRegistry
@@ -44,12 +45,12 @@ class ProviderRegistry
         foreach ($this->providers as $name => $def) {
             try {
                 if (($def['matcher'])($url)) {
-                    $this->logger?->debug("Git 平台检测: {$url} → {$name}");
+                    $this->logger?->debug("Git 平台检测: " . GitRemote::maskCredentials($url) . " → {$name}");
                     return $name;
                 }
             } catch (\Throwable $e) {
                 $this->logger?->warning("平台 {$name} 的匹配器抛出异常", [
-                    'url'   => $url,
+                    'url'   => GitRemote::maskCredentials($url),
                     'error' => $e->getMessage(),
                 ]);
             }
@@ -58,7 +59,7 @@ class ProviderRegistry
         $supported = $this->getRegisteredNames();
         $names = implode(', ', $supported);
         throw new ApiException(
-            "无法识别 Git 平台: {$url}，当前支持: {$names}。" .
+            "无法识别 Git 平台: " . GitRemote::maskCredentials($url) . "，当前支持: {$names}。" .
             "如需添加自定义平台，请在 config/settings.php 的 git.custom_providers 中配置。",
             400
         );

@@ -20,12 +20,22 @@ class HarborController extends BaseController
 
     public function getProjectsList(Request $request, Response $response, array $args): Response
     {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_BUILD_RECORDS_PULL)) {
+            return $resp;
+        }
+
         $result = $this->harbor->getProjects();
         return $this->handleResult($response, $result, $request);
     }
 
     public function getRepositoriesList(Request $request, Response $response, array $args): Response
     {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_BUILD_RECORDS_PULL)) {
+            return $resp;
+        }
+
         $project = $args['project'] ?? '';
         $result = $this->harbor->getRepositories($project);
         return $this->handleResult($response, $result, $request);
@@ -33,6 +43,11 @@ class HarborController extends BaseController
 
     public function getTagsList(Request $request, Response $response, array $args): Response
     {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_BUILD_RECORDS_PULL)) {
+            return $resp;
+        }
+
         $project    = $args['project'] ?? '';
         $repository = $args['repository'] ?? '';
         $result = $this->harbor->getTags($project, $repository);
@@ -64,6 +79,11 @@ class HarborController extends BaseController
 
     public function getScanReport(Request $request, Response $response, array $args): Response
     {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_BUILD_RECORDS_PULL)) {
+            return $resp;
+        }
+
         $project    = $args['project'] ?? '';
         $repository = $args['repository'] ?? '';
         $tag        = $args['tag'] ?? '';

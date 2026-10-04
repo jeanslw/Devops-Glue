@@ -36,6 +36,11 @@ class MainController extends BaseController
      */
     public function jobsList(Request $request, Response $response): Response
     {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_BUILD_RECORDS_PULL)) {
+            return $resp;
+        }
+
         $modes = $this->config->getBuildModes();
         if (!in_array(AppConfig::PROVIDER_JENKINS, $modes, true)) {
             return $this->output($response, $this->mapping->activeJobNames(), $request);
@@ -63,6 +68,11 @@ class MainController extends BaseController
      */
     public function mapList(Request $request, Response $response): Response
     {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_BUILD_RECORDS_PULL)) {
+            return $resp;
+        }
+
         $buildModes = $this->config->getBuildModes();
         $cacheKey = AppConfig::CACHE_KEY_MAP_LIST_PREFIX . implode(',', $buildModes);
 
@@ -145,6 +155,11 @@ class MainController extends BaseController
      */
     public function gitPlatforms(Request $request, Response $response): Response
     {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_BUILD_RECORDS_PULL)) {
+            return $resp;
+        }
+
         $harborRaw = $this->config->getHarborConfig()['url'] ?? '';
         $data = [
             'git_platforms' => $this->config->getGitPlatformsConfig(),
@@ -160,6 +175,11 @@ class MainController extends BaseController
      */
     public function gitDiscovery(Request $request, Response $response): Response
     {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_DISCOVER)) {
+            return $resp;
+        }
+
         $usedPlatforms = $this->mapping->usedGitPlatforms();
 
         $configured = [];

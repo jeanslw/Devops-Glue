@@ -49,7 +49,7 @@ class HarborService
     /**
      * 判断当前 Harbor 是否支持机器人账户调用 REST API。
      *
-     * Harbor 演进历史（已据官方文档/发布说明核实，非猜测）：
+     * Harbor 演进历史（据官方文档/发布说明）：
      *  - v1.x ~ v2.1.x：机器人账户令牌为 JWT（legacy），仅可用于 Docker/Helm CLI，不能调用 REST API。
      *  - v2.2.0 起：机器人账户改为 secret，可用 Basic Auth 调用 REST API。
      * 版本边界为 v2.2.0。

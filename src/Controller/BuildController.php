@@ -99,6 +99,11 @@ class BuildController extends BaseController
     /** GET /api/build/projects — 活跃映射 + 每项目最新 tag（供 CD 列表/部署解析；不过滤 build_mode）。CI 管理页的 Job 列表请用 jobsList。 */
     public function projectsList(Request $request, Response $response): Response
     {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_BUILD_RECORDS_PULL)) {
+            return $resp;
+        }
+
         $maps = array_values(array_filter(
             $this->config->getJobGitMap(),
             fn($m) => ($m['status'] ?? AppConfig::STATUS_ACTIVE) === AppConfig::STATUS_ACTIVE
@@ -161,6 +166,11 @@ class BuildController extends BaseController
     /** GET /api/build/{path}/tags — 项目 tag 列表（分页），keys = job_name + current_path */
     public function tagsList(Request $request, Response $response, array $args): Response
     {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_BUILD_RECORDS_PULL)) {
+            return $resp;
+        }
+
         $path     = $args['path'] ?? '';
         $page     = max(1, (int) ($request->getQueryParams()['page'] ?? 1));
         $pageSize = (int) ($request->getQueryParams()['page_size'] ?? 50);
@@ -235,6 +245,11 @@ class BuildController extends BaseController
 
     public function configMode(Request $request, Response $response): Response
     {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_BUILD_RECORDS_PULL)) {
+            return $resp;
+        }
+
         $hasJenkins = $this->registry->isRegistered(AppConfig::PROVIDER_JENKINS);
         $hasGitlab  = $this->registry->isRegistered(AppConfig::PROVIDER_GITLAB_CI);
         $hasGitea   = $this->registry->isRegistered(AppConfig::PROVIDER_GITEA_CI);
@@ -520,6 +535,11 @@ class BuildController extends BaseController
     /** GET /api/build/{path}/variables — raw: 参数名数组, json/xml: 完整元数据 */
     public function variables(Request $request, Response $response, array $args): Response
     {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_BUILD_RECORDS_PULL)) {
+            return $resp;
+        }
+
         $path = $args['path'] ?? '';
         [$provider, $projectId] = $this->resolve($path);
 
@@ -548,6 +568,11 @@ class BuildController extends BaseController
     /** GET /api/build/{path}/branches — raw: 分支名数组, json/xml: 完整元数据 */
     public function branches(Request $request, Response $response, array $args): Response
     {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_BUILD_RECORDS_PULL)) {
+            return $resp;
+        }
+
         $path = $args['path'] ?? '';
         [$provider, $projectId] = $this->resolve($path);
 
@@ -885,6 +910,11 @@ class BuildController extends BaseController
     /** GET /api/build/{path}/tag?pipeline=10 — 查 pipeline 对应的 tag */
     public function tagQuery(Request $request, Response $response, array $args): Response
     {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_BUILD_RECORDS_PULL)) {
+            return $resp;
+        }
+
         $path     = $args['path'] ?? '';
         $pipeline = $request->getQueryParams()['pipeline'] ?? '';
 

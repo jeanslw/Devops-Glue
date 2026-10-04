@@ -9,7 +9,7 @@ namespace App\Service\Build;
  * 归一后的词汇（终态 + 中间态）：
  *   success / failed / unstable / canceled / running / pending / manual / skipped / unknown
  *
- * 映射原则：只做「等价状态合并」，不虚构中间态；未收录的值小写透传，空串归一为 unknown。
+ * 映射原则：只做「等价状态合并」（各来源原生状态归并到现有词汇，不额外造状态）；未收录的值小写透传，空串归一为 unknown。
  *  - Jenkins UNSTABLE 保留为独立 unstable（构建成功但告警/测试失败，非干净成功，≠ failed）。
  *  - GitLab manual 保留为独立 manual（等待人工触发，≠ pending）；scheduled/created/
  *    waiting_for_resource/preparing 归入 pending（等待执行）。
