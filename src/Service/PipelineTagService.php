@@ -203,7 +203,7 @@ class PipelineTagService
                 continue; // Harbor 中不存在该 tag，不回填
             }
 
-            // 回填写入 canonical（Harbor 已确认存在）
+            // 回填写入 canonical
             try {
                 $res = $artifactSvc->record($identity, $projectKey, $tag, $repo, '');
                 if ($res['written']) {

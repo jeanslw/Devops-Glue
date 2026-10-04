@@ -289,7 +289,7 @@ class OAuthController extends BaseController
             return ['email' => $email, 'verified' => true];
         }
         // 用户未配置邮箱时退回 username@devops-glue.local 占位（Grafana 按 email 匹配用户，不能为空）。
-        // 该占位域是系统虚构、OP 无法验证，故 email_verified/verified 必须为 false，不得撒谎为已验证。
+        // 该占位域是系统生成的占位值，OP 无法验证，故 email_verified/verified 必须为 false。
         return ['email' => $username . '@devops-glue.local', 'verified' => false];
     }
 
