@@ -12,6 +12,7 @@ use App\Service\AutoDiscover;
 use App\Service\HarborService;
 use App\Service\I18nService;
 use App\Service\JenkinsService;
+use App\Service\DeployLogRepository;
 use App\Service\OperationLogRepository;
 use App\Service\TokenService;
 use App\Helper\ClientIp;
@@ -28,6 +29,7 @@ class AdminController extends BaseController
     private ?HarborService $harbor;
     private ?JenkinsService $jenkins = null;
     private ?OperationLogRepository $operationLog = null;
+    private ?DeployLogRepository $deployLog = null;
 
     public function __construct(
         I18nService $i18n,
@@ -60,6 +62,15 @@ class AdminController extends BaseController
             $this->operationLog = new OperationLogRepository($this->pdo);
         }
         return $this->operationLog;
+    }
+
+    /** 部署日志仓储（懒加载，只读 CD 部署记录审计视图） */
+    private function deployLog(): DeployLogRepository
+    {
+        if ($this->deployLog === null) {
+            $this->deployLog = new DeployLogRepository($this->pdo);
+        }
+        return $this->deployLog;
     }
 
     /** POST /api/admin/discover — 自动扫描并保存未入库的项目 */
@@ -1628,6 +1639,35 @@ class AdminController extends BaseController
 
         try {
             return $this->output($response, $this->opLog()->list($filters, $page, $perPage), $request);
+        } catch (\Exception $e) {
+            return $this->jsonError($response, $this->__('build.query_failed') . ': ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * GET /api/admin/deploy_logs — CD 部署记录审计列表（分页 + 筛选，只读）
+     * 权限：ci.deploy-logs
+     */
+    public function deployLogList(Request $request, Response $response): Response
+    {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_DEPLOY_LOGS)) {
+            return $resp;
+        }
+
+        $params  = $request->getQueryParams();
+        $filters = [
+            'project'     => trim($params['project'] ?? ''),
+            'status'      => trim($params['status'] ?? ''),
+            'deploy_type' => trim($params['deploy_type'] ?? ''),
+            'date_from'   => trim($params['date_from'] ?? ''),
+            'date_to'     => trim($params['date_to'] ?? ''),
+        ];
+        $page    = max(1, (int)($params['page'] ?? 1));
+        $perPage = max(1, min(100, (int)($params['per_page'] ?? 20)));
+
+        try {
+            return $this->output($response, $this->deployLog()->list($filters, $page, $perPage), $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.query_failed') . ': ' . $e->getMessage(), 500);
         }

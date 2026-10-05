@@ -3,7 +3,7 @@ namespace App\Config;
 
 class AppConfig
 {
-    public const APP_VERSION = '2.8.7';
+    public const APP_VERSION = '2.8.8';
 
 
     // ── 表名常量 ──
@@ -23,6 +23,7 @@ class AppConfig
     public const TABLE_API_TOKENS        = 'api_tokens';
     public const TABLE_USER_IDENTITIES   = 'user_identities'; // 身份源关联表（v2.6.3 引入，支持 ldap/local 等多登录方式）
     public const TABLE_OPERATION_LOGS    = 'ci_operation_logs'; // 后台操作审计日志
+    public const TABLE_CD_DEPLOY_LOG_VIEW = 'v_glue_deploy_logs'; // CD 部署记录契约视图（只读审计）
 
     // ── 角色常量 ──
     public const ROLE_SUPER_ADMIN = 'super_admin';
@@ -55,8 +56,12 @@ class AppConfig
     public const PERM_CI_BUILD_RECORDS      = 'ci.build-records';
     public const PERM_CI_BUILD_RECORDS_PULL = 'ci.build-records.pull';
     public const PERM_CI_BUILD_RECORDS_PUSH = 'ci.build-records.push';
-    // 操作日志（后台审计，一级菜单）
+    // 日志中心（一级父菜单：操作日志 + 部署日志两个只读子菜单）
+    public const PERM_CI_LOGS             = 'ci.logs';
+    // 操作日志（后台审计，日志中心子菜单）
     public const PERM_CI_OPERATION_LOGS   = 'ci.operation-logs';
+    // 部署日志（只读 CD 部署记录审计视图，日志中心子菜单）
+    public const PERM_CI_DEPLOY_LOGS      = 'ci.deploy-logs';
     // 系统设置（一级父权限：平台管理 + 数据管理两个子权限，对应「系统设置」菜单分组）
     public const PERM_CI_SETTINGS         = 'ci.settings';
     // 数据管理（DB schema 状态面板，系统设置子菜单，仅 super_admin 可触发迁移）
@@ -97,7 +102,9 @@ class AppConfig
         self::PERM_CI_BUILD_RECORDS      => ['name' => 'Build Records', 'parent' => null],
         self::PERM_CI_BUILD_RECORDS_PULL => ['name' => 'Pull Records', 'parent' => self::PERM_CI_BUILD_RECORDS],
         self::PERM_CI_BUILD_RECORDS_PUSH => ['name' => 'Push Records', 'parent' => self::PERM_CI_BUILD_RECORDS],
-        self::PERM_CI_OPERATION_LOGS     => ['name' => 'Operation Logs', 'parent' => null],
+        self::PERM_CI_LOGS               => ['name' => 'Log Center', 'parent' => null],
+        self::PERM_CI_OPERATION_LOGS     => ['name' => 'Operation Logs', 'parent' => self::PERM_CI_LOGS],
+        self::PERM_CI_DEPLOY_LOGS        => ['name' => 'Deploy Logs', 'parent' => self::PERM_CI_LOGS],
         self::PERM_CI_SETTINGS           => ['name' => 'System Settings', 'parent' => null],
         self::PERM_CI_PLATFORM_CONFIG    => ['name' => 'Platform Management', 'parent' => self::PERM_CI_SETTINGS],
         self::PERM_CI_SYSTEM             => ['name' => 'Data Management', 'parent' => self::PERM_CI_SETTINGS],
@@ -159,6 +166,9 @@ class AppConfig
         // 构建记录：选了二级（拉取式/推送式）自动显示一级菜单
         self::PERM_CI_BUILD_RECORDS_PULL => [self::PERM_CI_BUILD_RECORDS],
         self::PERM_CI_BUILD_RECORDS_PUSH => [self::PERM_CI_BUILD_RECORDS],
+        // 日志中心：选了二级（操作日志/部署日志）自动显示一级菜单
+        self::PERM_CI_OPERATION_LOGS => [self::PERM_CI_LOGS],
+        self::PERM_CI_DEPLOY_LOGS    => [self::PERM_CI_LOGS],
         // 系统设置：选了二级（平台管理/数据管理）自动显示一级菜单
         self::PERM_CI_PLATFORM_CONFIG => [self::PERM_CI_SETTINGS],
         self::PERM_CI_SYSTEM          => [self::PERM_CI_SETTINGS],
@@ -176,7 +186,9 @@ class AppConfig
             self::PERM_CI_BUILD_RECORDS,      // 构建记录一级菜单
             self::PERM_CI_BUILD_RECORDS_PULL, // 拉取式记录（只读）
             self::PERM_CI_BUILD_RECORDS_PUSH, // 自定义推送记录（只读）
+            self::PERM_CI_LOGS,              // 日志中心一级菜单
             self::PERM_CI_OPERATION_LOGS,    // 操作日志（只读）
+            self::PERM_CI_DEPLOY_LOGS,       // 部署日志（只读）
             // CD 侧只读。刻意不含 cd.image-registry——它在 CD 同时 gate 删除 tag 等写操作。
             self::PERM_CD_BUILD,            // CI 构建结果
             self::PERM_CD_HISTORY,          // 部署记录

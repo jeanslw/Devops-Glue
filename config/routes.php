@@ -87,6 +87,7 @@ $app->group('/api', function (RouteCollectorProxy $api) {
             $auth->map(['DELETE'], '/implied_rules', [AdminController::class, 'impliedRuleDelete']);
             $auth->map(['GET'], '/me/permissions', [AdminController::class, 'mePermissions']);
             $auth->map(['GET'], '/operation_logs', [AdminController::class, 'operationLogList']);
+            $auth->map(['GET'], '/deploy_logs', [AdminController::class, 'deployLogList']);
             $auth->map(['GET'], '/platform_config', [AdminController::class, 'platformConfig']);
             $auth->map(['PUT'], '/platform_config', [AdminController::class, 'updatePlatformConfig']);
             // 手动触发 tag 定时任务（与开关同权限 ci.platform-config，后端仍校验开关必须先开启）

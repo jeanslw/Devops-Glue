@@ -135,8 +135,20 @@
             <div class="menu-item" id="menu-api-tokens" data-tab="api-tokens" onclick="switchTab('api-tokens')" style="display:none;">
                 <span class="menu-icon">🔑</span> <span data-i18n="api_token.menu">API 管理</span>
             </div>
-            <div class="menu-item" id="menu-operation-logs" data-tab="operation-logs" onclick="switchTab('operation-logs')" style="display:none;">
-                <span class="menu-icon">📝</span> <span data-i18n="oplog.menu">操作日志</span>
+            <div class="menu-group" id="menu-group-logs" style="display:none;">
+                <div class="menu-item menu-group-title" onclick="toggleLogMenu()">
+                    <span class="menu-icon">📝</span>
+                    <span data-i18n="log.center">日志中心</span>
+                    <span class="menu-arrow">▼</span>
+                </div>
+                <div class="submenu">
+                    <div class="menu-item submenu-item" data-tab="operation-logs" onclick="switchTab('operation-logs')">
+                        <span class="menu-icon">📝</span> <span data-i18n="oplog.menu">操作日志</span>
+                    </div>
+                    <div class="menu-item submenu-item" data-tab="deploy-logs" onclick="switchTab('deploy-logs')">
+                        <span class="menu-icon">🚀</span> <span data-i18n="deploylog.menu">部署日志</span>
+                    </div>
+                </div>
             </div>
             <div class="menu-group" id="menu-group-settings" style="display:none;">
                 <div class="menu-item menu-group-title" onclick="toggleSettingsMenu()">
@@ -957,6 +969,83 @@
                     </div>
                     <div id="oplog-empty" style="display:none;text-align:center;padding:40px;color:#9ca3af;" data-i18n="oplog.empty">暂无操作记录</div>
                     <div id="oplog-pagination" style="display:none;justify-content:center;align-items:center;gap:8px;padding:14px;"></div>
+                </div>
+            </div>
+
+            <div id="tab-deploy-logs" style="display:none;">
+                <div class="toolbar">
+                    <h3 data-i18n="deploylog.menu">🚀 部署日志</h3>
+                </div>
+
+                <!-- 筛选栏 -->
+                <div class="card" style="margin-bottom:12px;">
+                    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;">
+                        <div>
+                            <label data-i18n="deploylog.project">项目</label>
+                            <input type="text" id="deploylog-project" data-i18n-placeholder="deploylog.project_placeholder" placeholder="模糊搜索项目名" style="width:180px;">
+                        </div>
+                        <div>
+                            <label data-i18n="deploylog.status">状态</label>
+                            <select id="deploylog-status" style="width:120px;">
+                                <option value="" data-i18n="deploylog.status_all">全部</option>
+                                <option value="pending" data-i18n="deploylog.status_pending">待执行</option>
+                                <option value="running" data-i18n="deploylog.status_running">部署中</option>
+                                <option value="ok" data-i18n="deploylog.status_ok">成功</option>
+                                <option value="failed" data-i18n="deploylog.status_failed">失败</option>
+                                <option value="terminated" data-i18n="deploylog.status_terminated">已终止</option>
+                                <option value="interrupted" data-i18n="deploylog.status_interrupted">已中断</option>
+                                <option value="partial" data-i18n="deploylog.status_partial">部分成功</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label data-i18n="deploylog.deploy_type">部署类型</label>
+                            <select id="deploylog-deploy-type" style="width:120px;">
+                                <option value="" data-i18n="deploylog.type_all">全部</option>
+                                <option value="ssh" data-i18n="deploylog.type_ssh">SSH</option>
+                                <option value="docker" data-i18n="deploylog.type_docker">Docker</option>
+                                <option value="k8s" data-i18n="deploylog.type_k8s">K8S</option>
+                                <option value="kubernetes" data-i18n="deploylog.type_kubernetes">Kubernetes</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label data-i18n="deploylog.date_from">起始日期</label>
+                            <input type="date" id="deploylog-date-from" style="width:150px;">
+                        </div>
+                        <div>
+                            <label data-i18n="deploylog.date_to">结束日期</label>
+                            <input type="date" id="deploylog-date-to" style="width:150px;">
+                        </div>
+                        <div>
+                            <button class="btn btn-pri" onclick="loadDeployLogs(1)" data-i18n="deploylog.search">查询</button>
+                            <button class="btn" onclick="resetDeployLogs()" data-i18n="deploylog.reset">重置</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 列表 -->
+                <div class="card" style="overflow-x:auto;">
+                    <div id="deploylog-unavailable" style="display:none;text-align:center;padding:40px;color:#9ca3af;" data-i18n="deploylog.unavailable">CD 模块未启用或部署数据不可用</div>
+                    <div id="deploylog-loading" style="text-align:center;padding:40px;color:#9ca3af;" data-i18n="common.loading">加载中…</div>
+                    <div id="deploylog-table-wrap" style="display:none;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th data-i18n="deploylog.time">时间</th>
+                                    <th data-i18n="deploylog.project">项目</th>
+                                    <th data-i18n="deploylog.tag">Tag</th>
+                                    <th data-i18n="deploylog.image">镜像</th>
+                                    <th data-i18n="deploylog.deploy_type">类型</th>
+                                    <th data-i18n="deploylog.target">目标</th>
+                                    <th data-i18n="deploylog.status">状态</th>
+                                    <th data-i18n="deploylog.triggered_by">触发人</th>
+                                    <th data-i18n="deploylog.note">备注</th>
+                                </tr>
+                            </thead>
+                            <tbody id="deploylog-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div id="deploylog-empty" style="display:none;text-align:center;padding:40px;color:#9ca3af;" data-i18n="deploylog.empty">暂无部署记录</div>
+                    <div id="deploylog-pagination" style="display:none;justify-content:center;align-items:center;gap:8px;padding:14px;"></div>
                 </div>
             </div>
 

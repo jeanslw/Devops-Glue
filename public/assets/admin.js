@@ -45,6 +45,7 @@ import {
     submitApiTokenForm, copyApiToken, revokeApiToken, deleteApiToken
 } from './modules/apiTokens.js';
 import { loadOperationLogs, resetOperationLogs } from './modules/oplog.js';
+import { loadDeployLogs, resetDeployLogs } from './modules/deploylog.js';
 import { loadSystemInfo, doMigrate, doBackup, loadPlatformConfig, toggleSysTables, toggleSysBackups } from './modules/system.js';
 
 const LOGIN_API = '/api/admin/login';
@@ -80,8 +81,13 @@ function applyApiTokenMenuVisibility() {
     if (item) item.style.display = (getRole() === 'super_admin') ? '' : 'none';
 }
 function applyOperationLogMenuVisibility() {
-    const item = document.getElementById('menu-operation-logs');
-    if (item) item.style.display = hasPermission('ci.operation-logs') ? '' : 'none';
+    const group = document.getElementById('menu-group-logs');
+    const opItem = document.querySelector('#menu-group-logs .submenu .menu-item[data-tab="operation-logs"]');
+    const depItem = document.querySelector('#menu-group-logs .submenu .menu-item[data-tab="deploy-logs"]');
+    if (opItem) opItem.style.display = hasPermission('ci.operation-logs') ? '' : 'none';
+    if (depItem) depItem.style.display = hasPermission('ci.deploy-logs') ? '' : 'none';
+    const showGroup = hasPermission('ci.operation-logs') || hasPermission('ci.deploy-logs');
+    if (group) group.style.display = showGroup ? '' : 'none';
 }
 function applySystemInfoMenuVisibility() {
     const group = document.getElementById('menu-group-settings');
@@ -145,9 +151,10 @@ function toggleSidebar() {
 function toggleUserMenu() { document.getElementById('menu-group-users')?.classList.toggle('expanded'); }
 function togglePermMenu() { document.getElementById('menu-group-perms')?.classList.toggle('expanded'); }
 function toggleBuildRecordsMenu() { document.getElementById('menu-group-build-records')?.classList.toggle('expanded'); }
+function toggleLogMenu() { document.getElementById('menu-group-logs')?.classList.toggle('expanded'); }
 function toggleSettingsMenu() { document.getElementById('menu-group-settings')?.classList.toggle('expanded'); }
 
-const TAB_LIST = ['monitor','mapping','security','versions','mode','pull-records','push-records','users','roles','password','perm-list','perm-register','implied-rules','api-tokens','operation-logs','platform-config','system-info'];
+const TAB_LIST = ['monitor','mapping','security','versions','mode','pull-records','push-records','users','roles','password','perm-list','perm-register','implied-rules','api-tokens','operation-logs','deploy-logs','platform-config','system-info'];
 
 function doSwitch(name) {
     stopPullAutoRefresh();
@@ -178,6 +185,7 @@ function doSwitch(name) {
     if (name === 'implied-rules') loadImpliedRules();
     if (name === 'api-tokens') loadApiTokens();
     if (name === 'operation-logs') loadOperationLogs(1);
+    if (name === 'deploy-logs') loadDeployLogs(1);
     if (name === 'platform-config') loadPlatformConfig();
     if (name === 'system-info') loadSystemInfo();
 
@@ -218,7 +226,7 @@ document.addEventListener('i18n-changed', function() {
 // ═══════════ 全局挂载（inline onclick 兼容）═══════════
 Object.assign(window, {
     doLogin, doLogout, goToDocs, toggleSidebar, toggleTopMenu, toggleTheme,
-    toggleUserMenu, togglePermMenu, toggleBuildRecordsMenu, toggleSettingsMenu,
+    toggleUserMenu, togglePermMenu, toggleBuildRecordsMenu, toggleSettingsMenu, toggleLogMenu,
     switchTab, resolveConfirm, toast, confirmDialog,
     loadMaps, onFilterChange, switchMapView, showForm, hideForm, submitForm, editMap, activateMap, deleteMap, doDiscover, copyPipelineIds,
     loadTopology, renderTopology,
@@ -232,7 +240,7 @@ Object.assign(window, {
     loadRoleList, showRoleForm, hideRoleForm, submitRoleForm, deleteRole, togglePermGroup,
     loadPermList, deletePermission, registerPermission, loadImpliedRules, showImpliedForm, hideImpliedForm, submitImpliedForm, deleteImpliedRule,
     loadApiTokens, showApiTokenForm, hideApiTokenForm, submitApiTokenForm, copyApiToken, revokeApiToken, deleteApiToken,
-    loadOperationLogs, resetOperationLogs,
+    loadOperationLogs, resetOperationLogs, loadDeployLogs, resetDeployLogs,
     loadSystemInfo, doMigrate, doBackup, loadPlatformConfig, toggleSysTables, toggleSysBackups,
     // 分页 / 视图
     getMapView, getMapPage, setMapPage, getMapTotalPages, setMapTotalPages,
