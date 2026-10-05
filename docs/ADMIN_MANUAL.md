@@ -38,6 +38,9 @@ Devops-Glue API is a Slim4-based unified API layer that provides a single manage
 
 | Devops-Glue API | Devops-Glue CD |
 |:---:|:---:|
+| v2.8.8 | v1.5.6 |
+| v2.8.7 | v1.5.x |
+| v2.8.6 | v1.5.x |
 | v2.8.5 | v1.5.x |
 | v2.8.4 | v1.5.x |
 | v2.8.3 | v1.5.x |

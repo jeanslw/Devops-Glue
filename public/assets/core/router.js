@@ -21,7 +21,9 @@ export const ROUTES = {
   'build-group':  { title: 'admin.sidebar_build_records', icon: '📊', parent: null },
 
   'api-tokens':     { title: 'api_token.menu', icon: '🔑', parent: null },
-  'operation-logs': { title: 'oplog.menu', icon: '📝', parent: null },
+  'operation-logs': { title: 'oplog.menu', icon: '📝', parent: 'logs-group' },
+  'deploy-logs':    { title: 'deploylog.menu', icon: '🚀', parent: 'logs-group' },
+  'logs-group':     { title: 'log.center', icon: '📝', parent: null },
 
   'platform-config': { title: 'sys.tab_platform', parent: 'settings-group' },
   'system-info':     { title: 'sys.tab_system_info', parent: 'settings-group' },

@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.8.8 (2026-10-05)
+- **Deploy logs in the admin "Log Center"** — the standalone "Operation Logs" menu becomes a "Log Center" group with two read-only sub-items: **Operation Logs** and **Deploy Logs**. The new Deploy Logs list shows CD deployment records for auditing (time, project, tag, image, deploy type, target, status, triggered by, note) — no detail view, no large `output`/`stage_times` columns. It reads the CD-owned `v_glue_deploy_logs` contract view only (never `cd_deploy_logs` directly), defaults to the last 30 days, supports filtering by project / status / deploy type / date, and degrades gracefully to a placeholder when the view is missing or CD is disabled.
+- **Permissions** — new `ci.logs` (Log Center parent) and `ci.deploy-logs` (Deploy Logs read-only) permissions, seeded into `DEFAULT_PERMISSIONS` / `IMPLIED_PERMISSIONS` (child→parent) / the `viewer` role so they show up in role management; `ci.operation-logs` is re-parented under `ci.logs`. `GET /api/admin/deploy_logs` is gated by `ci.deploy-logs`.
+- **Versioning** — `APP_VERSION` bumped to 2.8.8; OpenAPI `version` synced (CN/EN).
+
 ## v2.8.7 (2026-10-03)
 - **Fix: `isRoot` case-sensitivity on the DB login path** — the DB login path now lowercases the username before comparing to the root admin (matching the LDAP path), so a root account whose stored username differs in case is no longer misreported as non-root.
 - **Versioning** — `APP_VERSION` bumped to 2.8.7; OpenAPI `version` synced (CN/EN).
