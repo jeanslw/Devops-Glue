@@ -7,19 +7,27 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Config\AppConfig;
 use App\Service\AdminAuthService;
 use App\Service\AdminUserRepository;
+use App\Service\ApiAccessLogRepository;
 use App\Service\ApiTokenService;
+use App\Service\AppSettingRepository;
 use App\Service\AutoDiscover;
 use App\Service\HarborService;
 use App\Service\I18nService;
 use App\Service\JenkinsService;
 use App\Service\DeployLogRepository;
+use App\Service\MappingManager;
 use App\Service\OperationLogRepository;
+use App\Service\PlatformVersionRepository;
+use App\Service\Settings;
 use App\Service\TokenService;
 use App\Helper\ClientIp;
 
 class AdminController extends BaseController
 {
-    private AppConfig $config;
+    private Settings $config;
+    private MappingManager $mapping;
+    private AppSettingRepository $appSettings;
+    private PlatformVersionRepository $platformVersions;
     private \PDO $pdo;
     private ?AutoDiscover $autoDiscover;
     private ?TokenService $tokenService = null;
@@ -30,10 +38,14 @@ class AdminController extends BaseController
     private ?JenkinsService $jenkins = null;
     private ?OperationLogRepository $operationLog = null;
     private ?DeployLogRepository $deployLog = null;
+    private ?ApiAccessLogRepository $apiAccessLog = null;
 
     public function __construct(
         I18nService $i18n,
-        AppConfig $config,
+        Settings $config,
+        MappingManager $mapping,
+        AppSettingRepository $appSettings,
+        PlatformVersionRepository $platformVersions,
         \PDO $pdo,
         AdminAuthService $adminAuthService,
         AdminUserRepository $adminUserRepository,
@@ -45,6 +57,9 @@ class AdminController extends BaseController
     ) {
         parent::__construct($i18n);
         $this->config             = $config;
+        $this->mapping            = $mapping;
+        $this->appSettings        = $appSettings;
+        $this->platformVersions   = $platformVersions;
         $this->pdo                = $pdo;
         $this->autoDiscover       = $autoDiscover;
         $this->tokenService       = $tokenService;
@@ -71,6 +86,15 @@ class AdminController extends BaseController
             $this->deployLog = new DeployLogRepository($this->pdo);
         }
         return $this->deployLog;
+    }
+
+    /** API token 调用日志仓储（懒加载） */
+    private function apiAccessLogRepo(): ApiAccessLogRepository
+    {
+        if ($this->apiAccessLog === null) {
+            $this->apiAccessLog = new ApiAccessLogRepository($this->pdo);
+        }
+        return $this->apiAccessLog;
     }
 
     /** POST /api/admin/discover — 自动扫描并保存未入库的项目 */
@@ -378,7 +402,7 @@ class AdminController extends BaseController
         $page    = max(1, (int)($params['page'] ?? 1));
         $perPage = max(1, min(100, (int)($params['per_page'] ?? 20)));
 
-        $allMaps = $this->config->getJobGitMap();
+        $allMaps = $this->mapping->allMaps();
         $gitPlatforms = $this->config->getGitPlatformsConfig();
         $platformNames = array_map(fn($p) => $p['name'], $gitPlatforms);
 
@@ -439,7 +463,7 @@ class AdminController extends BaseController
             return $this->jsonError($response, 'map.job_name_required', 400);
         }
 
-        $maps = $this->config->getJobGitMap();
+        $maps = $this->mapping->allMaps();
 
         foreach ($maps as $item) {
             if (($item['job_name'] ?? '') === $jobName) {
@@ -449,7 +473,7 @@ class AdminController extends BaseController
 
         $entry = $this->buildEntry($body);
         $maps[] = $entry;
-        $this->config->saveJobGitMap($maps);
+        $this->mapping->saveMaps($maps);
         $this->invalidateTopologyCache();
 
         $this->opLog()->record($this->currentUser, 'create_mapping', $jobName, [], $this->clientIp($request), 'success');
@@ -473,7 +497,7 @@ class AdminController extends BaseController
             return $this->jsonError($response, 'map.original_name_required', 400);
         }
 
-        $maps = $this->config->getJobGitMap();
+        $maps = $this->mapping->allMaps();
         $found = false;
         $updatedEntry = null;
         foreach ($maps as $i => $item) {
@@ -489,7 +513,7 @@ class AdminController extends BaseController
             return $this->jsonError($response, $this->__('map.not_found', ['{name}' => $oldName]), 404);
         }
 
-        $this->config->saveJobGitMap($maps);
+        $this->mapping->saveMaps($maps);
         $this->invalidateTopologyCache();
         $this->opLog()->record($this->currentUser, 'update_mapping', $oldName, ['job_name' => $updatedEntry['job_name'] ?? $oldName], $this->clientIp($request), 'success');
         return $this->output($response, ['success' => true, 'entry' => $updatedEntry], $request);
@@ -510,7 +534,7 @@ class AdminController extends BaseController
             return $this->jsonError($response, 'map.job_name_required_param', 400);
         }
 
-        $maps = $this->config->getJobGitMap();
+        $maps = $this->mapping->allMaps();
         $found = false;
         foreach ($maps as $item) {
             if (($item['job_name'] ?? '') === $jobName) {
@@ -523,7 +547,7 @@ class AdminController extends BaseController
             return $this->jsonError($response, $this->__('map.not_found', ['{name}' => $jobName]), 404);
         }
 
-        $this->config->deleteJobGitMap($jobName);
+        $this->mapping->deleteMap($jobName);
         $this->invalidateTopologyCache();
         $this->opLog()->record($this->currentUser, 'delete_mapping', $jobName, [], $this->clientIp($request), 'success');
         return $this->output($response, ['success' => true], $request);
@@ -619,7 +643,7 @@ class AdminController extends BaseController
             return $this->output($response, ['success' => true, 'changed' => false, 'versions' => $this->config->getPlatformApiVersions()], $request);
         }
 
-        $this->config->savePlatformApiVersions($versions);
+        $this->platformVersions->saveAll($versions);
         $this->opLog()->record($this->currentUser, 'update_platform_version', '', ['versions' => $versions], $this->clientIp($request), 'success');
         return $this->output($response, ['success' => true, 'changed' => true, 'versions' => $this->config->getPlatformApiVersions()], $request);
     }
@@ -635,7 +659,7 @@ class AdminController extends BaseController
         if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_MODE_EDIT)) {
             return $resp;
         }
-        $modes = $this->config->getBuildModes();
+        $modes = $this->appSettings->getBuildModes();
 
         // 检查实际可用性（由配置决定，不是模式）
         $jenkinsCfg = $this->config->getJenkinsConfig();
@@ -648,13 +672,13 @@ class AdminController extends BaseController
         $hasGiteaCi = $hasGitea && !empty($giteaCfg['base_url']) && !empty($giteaCfg['token']);
 
         return $this->output($response, [
-            'mode'          => $this->config->getBuildMode(), // 兼容：join 串
+            'mode'          => $this->appSettings->getBuildMode(), // 兼容：join 串
             'modes'         => $modes,
-            'source'        => $this->config->getBuildModeSource(),
+            'source'        => $this->appSettings->getBuildModeSource(),
             'has_jenkins'   => $hasJenkins,
             'has_gitlab_ci' => $hasGitlabCi,
             'has_gitea_ci'  => $hasGiteaCi,
-            'custom_push_enabled' => $this->config->getCustomPushEnabled(),
+            'custom_push_enabled' => $this->appSettings->getCustomPushEnabled(),
             'custom_providers' => array_column($this->config->getCustomBuildProviders(), 'name'),
         ], $request);
     }
@@ -709,13 +733,13 @@ class AdminController extends BaseController
         }
 
         try {
-            $this->config->setBuildModes($modes);
-            $this->config->setCustomPushEnabled($cpEnabled);
+            $this->appSettings->setBuildModes($modes);
+            $this->appSettings->setCustomPushEnabled($cpEnabled);
 
             // 将不在启用集合中的拉取式 provider 的 active 记录降为 pending
             $removed = array_values(array_diff(AppConfig::BUILTIN_PULL_PROVIDERS, $modes));
             if (!empty($removed)) {
-                $maps = $this->config->getJobGitMap();
+                $maps = $this->mapping->allMaps();
                 $changed = false;
                 foreach ($maps as &$m) {
                     $bp = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
@@ -725,14 +749,14 @@ class AdminController extends BaseController
                     }
                 }
                 if ($changed) {
-                    $this->config->saveJobGitMap($maps);
+                    $this->mapping->saveMaps($maps);
                     $this->invalidateTopologyCache();
                 }
             }
 
             // custom_push 关闭时，将 custom_push 的 active 记录降为 pending
             if (!$cpEnabled) {
-                $maps = $this->config->getJobGitMap();
+                $maps = $this->mapping->allMaps();
                 $changed = false;
                 foreach ($maps as &$m) {
                     if (
@@ -744,7 +768,7 @@ class AdminController extends BaseController
                     }
                 }
                 if ($changed) {
-                    $this->config->saveJobGitMap($maps);
+                    $this->mapping->saveMaps($maps);
                     $this->invalidateTopologyCache();
                 }
             }
@@ -1673,6 +1697,43 @@ class AdminController extends BaseController
         }
     }
 
+    /**
+     * GET /api/admin/api_access_logs — API token 调用审计列表（分页 + 筛选，只读）
+     * 权限：ci.api-logs。只返回 token 展示名等审计字段，绝无 token 原文/hash/body/query。
+     */
+    public function apiAccessLogList(Request $request, Response $response): Response
+    {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_API_LOGS)) {
+            return $resp;
+        }
+
+        $params  = $request->getQueryParams();
+        // result/method 白名单过滤，非法值直接忽略（仓储按精确匹配，避免无意义条件）
+        $result  = trim((string)($params['result'] ?? ''));
+        $method  = strtoupper(trim((string)($params['method'] ?? '')));
+        $filters = [
+            'result'     => in_array($result, ['success', 'failure', 'denied'], true) ? $result : '',
+            'method'     => in_array($method, ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], true) ? $method : '',
+            'token_name' => trim((string)($params['token_name'] ?? '')),
+            'route'      => trim((string)($params['route'] ?? '')),
+            'date_from'  => trim((string)($params['date_from'] ?? '')),
+            'date_to'    => trim((string)($params['date_to'] ?? '')),
+        ];
+        $page    = max(1, (int)($params['page'] ?? 1));
+        $perPage = max(1, min(100, (int)($params['per_page'] ?? 20)));
+
+        try {
+            return $this->output(
+                $response,
+                $this->apiAccessLogRepo()->list($filters, $page, $perPage),
+                $request
+            );
+        } catch (\Exception $e) {
+            return $this->jsonError($response, $this->__('build.query_failed') . ': ' . $e->getMessage(), 500);
+        }
+    }
+
     // ────────────────────────── 系统信息 ──────────────────────────
 
     /**
@@ -1726,9 +1787,13 @@ class AdminController extends BaseController
                     'harbor'      => ['configured' => !empty($harbor['url']) && !empty($harbor['password'])],
                 ],
                 // 平台级 tag 设置（清理/回填/日志关键字），仅存于 ci_app_settings，由 ci.platform-config 控制
-                'stale_tag_cleanup_enabled' => $c->getStaleTagCleanupEnabled(),
-                'backfill_tag_enabled'      => $c->getBackfillTagEnabled(),
-                'tag_log_keyword'           => $c->getTagLogKeyword(),
+                'stale_tag_cleanup_enabled' => $this->appSettings->getStaleTagCleanupEnabled(),
+                'backfill_tag_enabled'      => $this->appSettings->getBackfillTagEnabled(),
+                'tag_log_keyword'           => $this->appSettings->getTagLogKeyword(),
+                // API 调用审计日志设置（写入级别 / 保留天数 / 清理开关）
+                'api_access_log_level'           => $this->appSettings->getApiAccessLogLevel(),
+                'api_access_log_retain_days'     => $this->appSettings->getApiAccessLogRetainDays(),
+                'api_access_log_cleanup_enabled' => $this->appSettings->getApiAccessLogCleanupEnabled(),
             ], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.query_failed') . ': ' . $e->getMessage(), 500);
@@ -1750,22 +1815,36 @@ class AdminController extends BaseController
 
         try {
             if (array_key_exists('stale_tag_cleanup_enabled', $body)) {
-                $this->config->setStaleTagCleanupEnabled(!empty($body['stale_tag_cleanup_enabled']));
+                $this->appSettings->setStaleTagCleanupEnabled(!empty($body['stale_tag_cleanup_enabled']));
             }
             if (array_key_exists('backfill_tag_enabled', $body)) {
-                $this->config->setBackfillTagEnabled(!empty($body['backfill_tag_enabled']));
+                $this->appSettings->setBackfillTagEnabled(!empty($body['backfill_tag_enabled']));
             }
             if (array_key_exists('tag_log_keyword', $body)) {
-                $this->config->setTagLogKeyword(trim((string) ($body['tag_log_keyword'] ?? '')));
+                $this->appSettings->setTagLogKeyword(trim((string) ($body['tag_log_keyword'] ?? '')));
             }
+            if (array_key_exists('api_access_log_level', $body)) {
+                $this->appSettings->setApiAccessLogLevel((string)($body['api_access_log_level'] ?? ''));
+            }
+            if (array_key_exists('api_access_log_retain_days', $body)) {
+                $this->appSettings->setApiAccessLogRetainDays((int)($body['api_access_log_retain_days'] ?? 0));
+            }
+            if (array_key_exists('api_access_log_cleanup_enabled', $body)) {
+                $this->appSettings->setApiAccessLogCleanupEnabled(!empty($body['api_access_log_cleanup_enabled']));
+            }
+        } catch (\InvalidArgumentException $e) {
+            return $this->jsonError($response, $e->getMessage(), 400);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.query_failed') . ': ' . $e->getMessage(), 500);
         }
 
         return $this->output($response, [
-            'stale_tag_cleanup_enabled' => $this->config->getStaleTagCleanupEnabled(),
-            'backfill_tag_enabled'      => $this->config->getBackfillTagEnabled(),
-            'tag_log_keyword'           => $this->config->getTagLogKeyword(),
+            'stale_tag_cleanup_enabled' => $this->appSettings->getStaleTagCleanupEnabled(),
+            'backfill_tag_enabled'      => $this->appSettings->getBackfillTagEnabled(),
+            'tag_log_keyword'           => $this->appSettings->getTagLogKeyword(),
+            'api_access_log_level'           => $this->appSettings->getApiAccessLogLevel(),
+            'api_access_log_retain_days'     => $this->appSettings->getApiAccessLogRetainDays(),
+            'api_access_log_cleanup_enabled' => $this->appSettings->getApiAccessLogCleanupEnabled(),
         ], $request);
     }
 
@@ -1799,7 +1878,7 @@ class AdminController extends BaseController
         if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_PLATFORM_CONFIG)) {
             return $resp;
         }
-        if ($resp = $this->guardTagJob($response, $this->config->getStaleTagCleanupEnabled(), 'build.tag_cleanup_disabled')) {
+        if ($resp = $this->guardTagJob($response, $this->appSettings->getStaleTagCleanupEnabled(), 'build.tag_cleanup_disabled')) {
             return $resp;
         }
         // 手动触发属长任务（逐仓库探测 Harbor），尽力解除 PHP 脚本时限；
@@ -1835,7 +1914,7 @@ class AdminController extends BaseController
         if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_PLATFORM_CONFIG)) {
             return $resp;
         }
-        if ($resp = $this->guardTagJob($response, $this->config->getBackfillTagEnabled(), 'build.tag_backfill_disabled')) {
+        if ($resp = $this->guardTagJob($response, $this->appSettings->getBackfillTagEnabled(), 'build.tag_backfill_disabled')) {
             return $resp;
         }
         @set_time_limit(0);
@@ -2057,7 +2136,7 @@ class AdminController extends BaseController
         // 未启用 Custom_Push 时，新增/编辑为 custom_push 的映射强制降为待定，避免「关了开关仍能新增一条 active」
         if (
             ($entry['build_provider'] ?? '') === AppConfig::PROVIDER_CUSTOM_PUSH
-            && !$this->config->getCustomPushEnabled()
+            && !$this->appSettings->getCustomPushEnabled()
             && ($entry['status'] ?? AppConfig::STATUS_ACTIVE) === AppConfig::STATUS_ACTIVE
         ) {
             $entry['status'] = AppConfig::STATUS_PENDING;

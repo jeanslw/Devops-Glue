@@ -8,6 +8,7 @@ use App\Helper\Log;
 use App\Service\AdminUserRepository;
 use App\Service\Database;
 use App\Service\I18nService;
+use App\Service\Settings;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -28,13 +29,13 @@ class RbacController extends BaseController
     /** verify-password 失败计数键前缀（独立于登录锁，避免改密码时输错旧密码连带锁死登录） */
     private const VERIFY_FAIL_PREFIX = 'rbac_verify_fail_';
 
-    private AppConfig $config;
+    private Settings $config;
     private AdminUserRepository $adminUserRepository;
     private \PDO $pdo;
 
     public function __construct(
         I18nService $i18n,
-        AppConfig $config,
+        Settings $config,
         AdminUserRepository $adminUserRepository,
         \PDO $pdo
     ) {

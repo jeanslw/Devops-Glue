@@ -9,7 +9,8 @@ use App\Config\AppConfig;
  *
  * 设计原则：
  *  - 写路径轻量且绝不抛异常：审计日志失败只记应用日志，绝不影响主操作。
- *  - 只提供 append + 只读分页，不提供 update/delete（保证审计记录不可被界面篡改）。
+ *  - 界面层只提供 append + 只读分页，不提供 update/delete（保证审计记录不可被界面篡改）；
+ *    唯一的删除入口是 purge()，仅供 CLI 定时任务按保留期清理。
  *  - 与业务事务解耦：由调用方在操作成功/失败后调用，记录事实快照。
  */
 class OperationLogRepository
@@ -111,5 +112,24 @@ class OperationLogRepository
         unset($item);
 
         return ['total' => $total, 'page' => $page, 'per_page' => $perPage, 'total_pages' => $totalPages, 'items' => $items];
+    }
+
+    /**
+     * 清理早于保留期的操作日志，返回删除行数。供 cli/cleanup-api-access-logs.php 统一调度
+     * （与 API 调用日志共用保留天数与开关）。仅 CLI 定时任务调用，界面不提供删除入口。
+     */
+    public function purge(int $retainDays): int
+    {
+        $retainDays = max(1, $retainDays);
+        try {
+            $stmt = $this->pdo->prepare(
+                'DELETE FROM ' . AppConfig::TABLE_OPERATION_LOGS . ' WHERE created_at < ?'
+            );
+            $stmt->execute([date('Y-m-d H:i:s', time() - $retainDays * 86400)]);
+            return $stmt->rowCount();
+        } catch (\Throwable $e) {
+            \App\Helper\Log::error('[操作日志] 清理失败', ['error' => $e->getMessage()]);
+            return 0;
+        }
     }
 }

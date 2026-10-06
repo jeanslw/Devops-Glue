@@ -2,7 +2,7 @@ import { authHeaders, handle401 } from '../core/api.js';
 import { esc } from '../core/utils.js';
 import { toast, confirmDialog } from '../core/toast.js';
 import { getRole } from '../core/auth.js';
-import { applyTagSettings } from './mode.js';
+import { applyTagSettings, applyApiLogSettings } from './mode.js';
 
 export async function loadSystemInfo() {
     const loading = document.getElementById('sys-loading');
@@ -132,9 +132,9 @@ export async function loadBackups() {
         el.innerHTML = '<div style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:10px 12px;font-weight:600;font-size:13px;background:#f9fafb;user-select:none;" onclick="toggleSysBackups()">'
             + '<span>🗜️ ' + __.t('sys.backup_list') + '</span>'
             + '<span style="color:#6b7280;font-weight:400;">(' + d.files.length + ')</span>'
-            + '<span id="sys-backups-arrow" style="margin-left:auto;">▼</span>'
+            + '<span id="sys-backups-arrow" style="margin-left:auto;">▶</span>'
             + '</div>'
-            + '<div id="sys-backups-list" style="padding:10px 12px;">' + items + '</div>';
+            + '<div id="sys-backups-list" style="padding:10px 12px;display:none;">' + items + '</div>';
         el.style.display = '';
     } catch(e) {
         el.style.display = 'none';
@@ -161,6 +161,7 @@ export async function loadPlatformConfig() {
         const d = await res.json();
         if (!res.ok) { toast(d.message || 'load failed', false); loading.style.display = 'none'; return; }
         applyTagSettings(d);
+        applyApiLogSettings(d);
         const wrap = document.getElementById('pc-platforms');
         wrap.innerHTML = '';
         const platforms = d.platforms || {};

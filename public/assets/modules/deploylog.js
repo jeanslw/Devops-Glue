@@ -46,12 +46,12 @@ export async function loadDeployLogs(page) {
                     '<td style="font-size:12px;white-space:nowrap;color:#6b7280;">' + esc(time) + '</td>' +
                     '<td>' + esc(r.project || '') + '</td>' +
                     '<td style="font-size:12px;">' + esc(r.tag || '') + '</td>' +
-                    '<td style="font-size:12px;max-width:240px;overflow-wrap:anywhere;color:#6b7280;">' + esc(r.image || '') + '</td>' +
+                    '<td style="font-size:12px;max-width:240px;overflow-wrap:anywhere;white-space:normal;color:#6b7280;">' + esc(r.image || '') + '</td>' +
                     '<td>' + esc(deploylogTypeLabel(r.deploy_type)) + '</td>' +
-                    '<td style="font-size:12px;max-width:200px;overflow-wrap:anywhere;">' + esc(r.target || '') + '</td>' +
+                    '<td style="font-size:12px;max-width:200px;overflow-wrap:anywhere;white-space:normal;">' + esc(r.target || '') + '</td>' +
                     '<td>' + statusHtml + '</td>' +
                     '<td>' + esc(r.triggered_by || '') + '</td>' +
-                    '<td style="font-size:12px;max-width:200px;overflow-wrap:anywhere;color:#6b7280;">' + esc(r.deploy_note || '') + '</td>' +
+                    '<td style="font-size:12px;max-width:200px;overflow-wrap:anywhere;white-space:normal;color:#6b7280;">' + esc(r.deploy_note || '') + '</td>' +
                 '</tr>';
             }).join('');
             wrap.style.display = 'block';

@@ -49,9 +49,9 @@
             </span>
             <a href="/"><span class="menu-icon">🏠</span> <span data-i18n="admin.home">首页</span></a>
             <span class="top-user-wrap" id="top-user-wrap">
-                <button type="button" id="top-user" onclick="toggleTopMenu()" title="账号与退出"><span id="top-user-name"></span><span class="top-user-caret">▾</span></button>
+                <button type="button" id="top-user" onclick="toggleTopMenu()" data-i18n-title="admin.account_logout"><span id="top-user-name"></span><span class="top-user-caret">▾</span></button>
                 <div class="top-user-menu" id="top-user-menu">
-                    <a href="#" onclick="doLogout()">退出</a>
+                    <a href="#" onclick="doLogout()" data-i18n="auth.logout">退出</a>
                 </div>
             </span>
             <a href="#" onclick="goToDocs()"><span class="menu-icon">📖</span> <span data-i18n="admin.api_docs">API 文档</span></a>
@@ -147,6 +147,9 @@
                     </div>
                     <div class="menu-item submenu-item" data-tab="deploy-logs" onclick="switchTab('deploy-logs')">
                         <span class="menu-icon">🚀</span> <span data-i18n="deploylog.menu">部署日志</span>
+                    </div>
+                    <div class="menu-item submenu-item" data-tab="api-access-logs" onclick="switchTab('api-access-logs')">
+                        <span class="menu-icon">🔎</span> <span data-i18n="apilog.menu">API 调用日志</span>
                     </div>
                 </div>
             </div>
@@ -526,10 +529,11 @@
                                 </ul>
                             </div>
                             <div class="mode-card">
-                                <div class="mode-card-hd switch-row">
+                                <div class="mode-card-hd switch-row" style="flex-wrap:wrap;">
+                                    <span class="mode-card-title" data-i18n="build.custom_push_title" style="flex:0 0 100%;">自定义推送</span>
                                     <label class="mode-card-toggle" for="custom-push-toggle">
                                         <input type="checkbox" id="custom-push-toggle" onchange="onCustomPushToggle()">
-                                        <span data-i18n="build.custom_push_toggle">📤 启用 Custom_Push</span>
+                                        <span data-i18n="build.custom_push_toggle">启用</span>
                                     </label>
                                     <span id="custom-push-status" class="mode-save-status" data-i18n="build.mode_saved">✅ 已保存</span>
                                 </div>
@@ -599,7 +603,7 @@
                             <tr><td colspan="9" style="text-align:center;color:#9ca3af;" data-i18n="common.loading">加载中...</td></tr>
                         </tbody>
                     </table>
-                    <div id="push-pagination" style="display:flex;justify-content:center;align-items:center;gap:8px;padding:12px 0;font-size:13px;"></div>
+                    <div id="push-pagination" style="display:flex;justify-content:center;align-items:center;gap:8px;padding:12px 0;font-size:13px;flex-wrap:wrap;"></div>
                 </div>
             </div>
 
@@ -968,7 +972,7 @@
                         </table>
                     </div>
                     <div id="oplog-empty" style="display:none;text-align:center;padding:40px;color:#9ca3af;" data-i18n="oplog.empty">暂无操作记录</div>
-                    <div id="oplog-pagination" style="display:none;justify-content:center;align-items:center;gap:8px;padding:14px;"></div>
+                    <div id="oplog-pagination" style="display:none;justify-content:center;align-items:center;gap:8px;padding:14px;flex-wrap:wrap;"></div>
                 </div>
             </div>
 
@@ -1045,7 +1049,87 @@
                         </table>
                     </div>
                     <div id="deploylog-empty" style="display:none;text-align:center;padding:40px;color:#9ca3af;" data-i18n="deploylog.empty">暂无部署记录</div>
-                    <div id="deploylog-pagination" style="display:none;justify-content:center;align-items:center;gap:8px;padding:14px;"></div>
+                    <div id="deploylog-pagination" style="display:none;justify-content:center;align-items:center;gap:8px;padding:14px;flex-wrap:wrap;"></div>
+                </div>
+            </div>
+
+            <!-- ═══ API 调用日志 Tab（只记 API token 身份请求，交互式会话不记）═══ -->
+            <div id="tab-api-access-logs" style="display:none;">
+                <div class="toolbar">
+                    <h3 data-i18n="apilog.menu">🔎 API 调用日志</h3>
+                </div>
+
+                <!-- 筛选栏 -->
+                <div class="card" style="margin-bottom:12px;">
+                    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;">
+                        <div>
+                            <label data-i18n="apilog.token_name">Token 名称</label>
+                            <input type="text" id="apilog-token-name" data-i18n-placeholder="apilog.token_name_placeholder" placeholder="模糊搜索 Token 名称" style="width:170px;">
+                        </div>
+                        <div>
+                            <label data-i18n="apilog.route">路由</label>
+                            <input type="text" id="apilog-route" data-i18n-placeholder="apilog.route_placeholder" placeholder="模糊搜索路由" style="width:200px;">
+                        </div>
+                        <div>
+                            <label data-i18n="apilog.method">方法</label>
+                            <select id="apilog-method" style="width:100px;">
+                                <option value="" data-i18n="apilog.method_all">全部</option>
+                                <option value="GET">GET</option>
+                                <option value="POST">POST</option>
+                                <option value="PUT">PUT</option>
+                                <option value="PATCH">PATCH</option>
+                                <option value="DELETE">DELETE</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label data-i18n="apilog.result">结果</label>
+                            <select id="apilog-result" style="width:110px;">
+                                <option value="" data-i18n="apilog.result_all">全部</option>
+                                <option value="success" data-i18n="apilog.result_success">成功</option>
+                                <option value="failure" data-i18n="apilog.result_failure">失败</option>
+                                <option value="denied" data-i18n="apilog.result_denied">拒绝</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label data-i18n="deploylog.date_from">起始日期</label>
+                            <input type="date" id="apilog-date-from" style="width:150px;">
+                        </div>
+                        <div>
+                            <label data-i18n="deploylog.date_to">结束日期</label>
+                            <input type="date" id="apilog-date-to" style="width:150px;">
+                        </div>
+                        <div>
+                            <button class="btn btn-pri" onclick="loadApiAccessLogs(1)" data-i18n="deploylog.search">查询</button>
+                            <button class="btn" onclick="resetApiAccessLogs()" data-i18n="deploylog.reset">重置</button>
+                        </div>
+                    </div>
+                    <div style="margin-top:8px;font-size:12px;color:#9ca3af;" data-i18n="apilog.notice">仅记录 API Token 发起的调用（不含交互式登录会话），日志只保留 Token 名称，不记录 Token 本身、请求体与查询参数。默认查询近 30 天。</div>
+                </div>
+
+                <!-- 列表 -->
+                <div class="card" style="overflow-x:auto;">
+                    <div id="apilog-loading" style="text-align:center;padding:40px;color:#9ca3af;" data-i18n="common.loading">加载中…</div>
+                    <div id="apilog-table-wrap" style="display:none;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th data-i18n="deploylog.time">时间</th>
+                                    <th data-i18n="apilog.token_name">Token 名称</th>
+                                    <th data-i18n="apilog.method">方法</th>
+                                    <th data-i18n="apilog.route">路由</th>
+                                    <th data-i18n="apilog.status">状态码</th>
+                                    <th data-i18n="apilog.result">结果</th>
+                                    <th data-i18n="apilog.error_reason">出错原因</th>
+                                    <th data-i18n="apilog.scopes">Scopes</th>
+                                    <th data-i18n="apilog.ip">来源 IP</th>
+                                    <th data-i18n="apilog.duration">耗时(ms)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="apilog-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div id="apilog-empty" style="display:none;text-align:center;padding:40px;color:#9ca3af;" data-i18n="apilog.empty">暂无 API 调用记录</div>
+                    <div id="apilog-pagination" style="display:none;justify-content:center;align-items:center;gap:8px;padding:14px;flex-wrap:wrap;"></div>
                 </div>
             </div>
 
@@ -1059,10 +1143,11 @@
                         <div id="pc-platforms"></div>
                         <div class="mode-cards pc-tag-cards" style="margin-top:16px;">
                             <div class="mode-card">
-                                <div class="mode-card-hd switch-row">
+                                <div class="mode-card-hd switch-row" style="flex-wrap:wrap;">
+                                    <span class="mode-card-title" data-i18n="build.stale_tag_cleanup_title" style="flex:0 0 100%;">🧹 过期镜像标签</span>
                                     <label class="mode-card-toggle" for="stale-tag-cleanup-toggle">
                                         <input type="checkbox" id="stale-tag-cleanup-toggle" onchange="onStaleTagCleanupToggle()">
-                                        <span data-i18n="build.stale_tag_cleanup_toggle">🧹 启用清理过期 tag 记录</span>
+                                        <span data-i18n="build.stale_tag_cleanup_toggle">启用</span>
                                     </label>
                                     <span id="stale-tag-status" class="mode-save-status" data-i18n="build.mode_saved">✅ 已保存</span>
                                 </div>
@@ -1077,10 +1162,11 @@
                                 </div>
                             </div>
                             <div class="mode-card">
-                                <div class="mode-card-hd switch-row">
+                                <div class="mode-card-hd switch-row" style="flex-wrap:wrap;">
+                                    <span class="mode-card-title" data-i18n="build.tag_backfill_title" style="flex:0 0 100%;">🔄 构建日志回填镜像标签</span>
                                     <label class="mode-card-toggle" for="backfill-tag-toggle">
                                         <input type="checkbox" id="backfill-tag-toggle" onchange="onBackfillTagToggle()">
-                                        <span data-i18n="build.backfill_tag_toggle">🔄 启用镜像 Tag 日志回填</span>
+                                        <span data-i18n="build.backfill_tag_toggle">启用</span>
                                     </label>
                                     <span id="backfill-tag-status" class="mode-save-status" data-i18n="build.mode_saved">✅ 已保存</span>
                                 </div>
@@ -1095,14 +1181,53 @@
                                 </div>
                             </div>
                             <div class="mode-card">
-                                <div class="mode-card-hd">
-                                    <span class="mode-card-title" data-i18n="build.tag_log_keyword_title">🔍 镜像 Tag 日志关键字</span>
+                                <div class="mode-card-hd" style="flex-wrap:wrap;">
+                                    <span class="mode-card-title" data-i18n="build.tag_log_keyword_title" style="flex:0 0 100%;">🔍 构建日志镜像关键字</span>
                                     <input type="text" id="tag-log-keyword" onchange="onTagLogKeywordChange()" placeholder="digest|pushed"
                                            style="flex:1 1 120px;min-width:0;padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
                                     <span id="tag-log-keyword-status" class="mode-save-status" data-i18n="build.mode_saved">✅ 已保存</span>
                                 </div>
                                 <ul class="mode-card-notes">
                                     <li data-i18n="build.tag_log_keyword_note">拉取式记录「镜像 Tag」列未命中扫描回写时，用该关键字在构建日志中匹配推送成功片段（大小写不敏感，`|` 分隔多个，留空恢复默认 digest）。</li>
+                                </ul>
+                            </div>
+                            <div class="mode-card">
+                                <div class="mode-card-hd">
+                                    <span class="mode-card-title" data-i18n="apilog.settings_title">📋 API 调用日志设置</span>
+                                    <span id="apilog-settings-status" class="mode-save-status"></span>
+                                </div>
+                                <div style="display:flex;flex-direction:column;gap:10px;padding:4px 0;">
+                                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                                        <label for="apilog-set-level" style="min-width:72px;font-size:13px;white-space:nowrap;" data-i18n="apilog.level_label">写入级别</label>
+                                        <select id="apilog-set-level" onchange="saveApiLogSettings()" style="width:200px;">
+                                            <option value="all" data-i18n="apilog.level_all">全部（成功+拒绝+失败）</option>
+                                            <option value="warning" data-i18n="apilog.level_warning">仅拒绝+失败</option>
+                                            <option value="error" data-i18n="apilog.level_error">仅失败</option>
+                                            <option value="off" data-i18n="apilog.level_off">关闭（不写数据表）</option>
+                                        </select>
+                                    </div>
+                                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                                        <label for="apilog-set-retain" style="min-width:72px;font-size:13px;white-space:nowrap;" data-i18n="apilog.retain_label">保留天数</label>
+                                        <select id="apilog-set-retain" onchange="onApiLogRetainChange()" style="width:120px;">
+                                            <option value="90" data-i18n="apilog.retain_90">90 天</option>
+                                            <option value="60" data-i18n="apilog.retain_60">60 天</option>
+                                            <option value="30" data-i18n="apilog.retain_30">30 天</option>
+                                            <option value="custom" data-i18n="apilog.retain_custom">自定义</option>
+                                        </select>
+                                        <input type="number" id="apilog-set-retain-custom" min="1" max="3650" placeholder="1-3650"
+                                               onchange="saveApiLogSettings()" style="display:none;width:100px;">
+                                    </div>
+                                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                                        <span style="min-width:72px;font-size:13px;white-space:nowrap;" data-i18n="apilog.cleanup_label">定时清理</span>
+                                        <label class="mode-card-toggle" for="apilog-cleanup-toggle">
+                                            <input type="checkbox" id="apilog-cleanup-toggle" onchange="onApiLogCleanupToggle()">
+                                            <span data-i18n="apilog.cleanup_toggle">启用</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <ul class="mode-card-notes">
+                                    <li data-i18n="apilog.level_note">写入级别控制哪些结果写入数据表；文件日志始终全量记录。</li>
+                                    <li data-i18n="apilog.cleanup_note">定时清理每天执行一次，仅删除早于保留天数的记录；关闭后日志将无限保留。</li>
                                 </ul>
                             </div>
                         </div>

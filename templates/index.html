@@ -191,7 +191,7 @@
     var target = (p || '') + '/admin';   // 根域 -> /admin；子路径 /prefix -> /prefix/admin
     document.querySelectorAll('[data-dg-home]').forEach(function(a){ a.setAttribute('href', target); });
 })();</script>
-<script>(function(){var l=new URLSearchParams(location.search).get('lang');if(l==='zh'||l==='zh_CN'||l==='zh-CN')l='zh-CN';else if(l==='en')l='en';else l=null;if(l)localStorage.setItem('dg_lang',l);__.init(l);})();</script>
+<script>(function(){var l=new URLSearchParams(location.search).get('lang');if(l==='zh'||l==='zh_CN'||l==='zh-CN')l='zh-CN';else if(l==='en')l='en';else l=null;if(l)localStorage.setItem('dg_lang',l);__.init(l);var s=document.getElementById('lang-select');if(s)s.value=__.lang;document.addEventListener('i18n-changed',function(){if(s)s.value=__.lang;});})();</script>
 
 </body>
 </html>

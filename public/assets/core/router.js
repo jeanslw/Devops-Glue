@@ -23,6 +23,7 @@ export const ROUTES = {
   'api-tokens':     { title: 'api_token.menu', icon: '🔑', parent: null },
   'operation-logs': { title: 'oplog.menu', icon: '📝', parent: 'logs-group' },
   'deploy-logs':    { title: 'deploylog.menu', icon: '🚀', parent: 'logs-group' },
+  'api-access-logs': { title: 'apilog.menu', icon: '🔎', parent: 'logs-group' },
   'logs-group':     { title: 'log.center', icon: '📝', parent: null },
 
   'platform-config': { title: 'sys.tab_platform', parent: 'settings-group' },

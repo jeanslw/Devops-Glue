@@ -7,25 +7,29 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Service\JenkinsService;
 use App\Service\HarborService;
 use App\Service\MappingManager;
+use App\Service\AppSettingRepository;
 use App\Service\I18nService;
+use App\Service\Settings;
 use App\Service\TokenService;
 use App\Config\AppConfig;
 
 class MainController extends BaseController
 {
     private JenkinsService $jenkins;
-    private AppConfig $config;
+    private Settings $config;
     private MappingManager $mapping;
+    private AppSettingRepository $appSettings;
     private ?HarborService $harbor;
     private \PDO $pdo;
     private ?TokenService $tokenService = null;
 
-    public function __construct(I18nService $i18n, JenkinsService $jenkins, AppConfig $config, MappingManager $mapping, \PDO $pdo, ?HarborService $harbor = null, ?TokenService $tokenService = null)
+    public function __construct(I18nService $i18n, JenkinsService $jenkins, Settings $config, MappingManager $mapping, AppSettingRepository $appSettings, \PDO $pdo, ?HarborService $harbor = null, ?TokenService $tokenService = null)
     {
         parent::__construct($i18n);
         $this->jenkins = $jenkins;
         $this->config = $config;
         $this->mapping = $mapping;
+        $this->appSettings = $appSettings;
         $this->pdo = $pdo;
         $this->harbor = $harbor;
         $this->tokenService = $tokenService;
@@ -41,7 +45,7 @@ class MainController extends BaseController
             return $resp;
         }
 
-        $modes = $this->config->getBuildModes();
+        $modes = $this->appSettings->getBuildModes();
         if (!in_array(AppConfig::PROVIDER_JENKINS, $modes, true)) {
             return $this->output($response, $this->mapping->activeJobNames(), $request);
         }
@@ -73,7 +77,7 @@ class MainController extends BaseController
             return $resp;
         }
 
-        $buildModes = $this->config->getBuildModes();
+        $buildModes = $this->appSettings->getBuildModes();
         $cacheKey = AppConfig::CACHE_KEY_MAP_LIST_PREFIX . implode(',', $buildModes);
 
         // 有缓存且未过期，直接返回（cache key 已含启用集合，跨模式不会串数据）
@@ -200,7 +204,7 @@ class MainController extends BaseController
                 ];
             } else {
                 $exampleRemote = '';
-                foreach ($this->config->getJobGitMap() as $map) {
+                foreach ($this->mapping->allMaps() as $map) {
                     if (($map['git_platform'] ?? '') === $name && !empty($map['git_remote'])) {
                         $exampleRemote = $map['git_remote'];
                         break;
@@ -250,7 +254,7 @@ class MainController extends BaseController
             'harbor_version'  => null,
         ];
 
-        if (in_array(AppConfig::PROVIDER_JENKINS, $this->config->getBuildModes(), true)) {
+        if (in_array(AppConfig::PROVIDER_JENKINS, $this->appSettings->getBuildModes(), true)) {
             $jk = $this->config->getJenkinsConfig();
             $jenkinsUrl = rtrim((string)($jk['url'] ?? ''), '/');
             try {
@@ -449,10 +453,10 @@ class MainController extends BaseController
 
         return [
             'stats'                 => $stats,
-            'build_mode'            => $this->config->getBuildMode(),
-            'build_modes'           => $this->config->getBuildModes(),
-            'build_mode_source'     => $this->config->getBuildModeSource(),
-            'custom_push_enabled'  => $this->config->getCustomPushEnabled(),
+            'build_mode'            => $this->appSettings->getBuildMode(),
+            'build_modes'           => $this->appSettings->getBuildModes(),
+            'build_mode_source'     => $this->appSettings->getBuildModeSource(),
+            'custom_push_enabled'  => $this->appSettings->getCustomPushEnabled(),
             'custom_push_providers' => array_column($this->config->getCustomBuildProviders(), 'name'),
             'db_driver'             => \App\Service\Database::driver(),
             'app_version'           => AppConfig::APP_VERSION,

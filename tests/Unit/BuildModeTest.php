@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace App\Test\Unit;
 
 use App\Config\AppConfig;
+use App\Service\AppSettingRepository;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -45,48 +46,48 @@ class BuildModeTest extends TestCase
         return $row ? (string) $row['value'] : '';
     }
 
-    private function cfg(): AppConfig
+    private function repo(): AppSettingRepository
     {
-        return new AppConfig([], $this->pdo);
+        return new AppSettingRepository($this->pdo);
     }
 
     public function testLegacyBothMapsToJenkinsAndGitlabAndSelfHeals(): void
     {
         $this->seedBuildMode('both');
-        $this->assertSame(['jenkins', 'gitlab_ci'], $this->cfg()->getBuildModes());
+        $this->assertSame(['jenkins', 'gitlab_ci'], $this->repo()->getBuildModes());
         $this->assertSame('jenkins,gitlab_ci', $this->storedBuildMode(), '旧值 both 读取时自愈回写为新格式');
     }
 
     public function testLegacySingleValue(): void
     {
         $this->seedBuildMode('gitlab_ci');
-        $this->assertSame(['gitlab_ci'], $this->cfg()->getBuildModes());
+        $this->assertSame(['gitlab_ci'], $this->repo()->getBuildModes());
     }
 
     public function testNewCommaFormatIsCanonicalOrder(): void
     {
         $this->seedBuildMode('jenkins,gitlab_ci,gitea_ci');
-        $this->assertSame(['jenkins', 'gitlab_ci', 'gitea_ci'], $this->cfg()->getBuildModes());
-        $this->assertSame('jenkins,gitlab_ci,gitea_ci', $this->cfg()->getBuildMode());
+        $this->assertSame(['jenkins', 'gitlab_ci', 'gitea_ci'], $this->repo()->getBuildModes());
+        $this->assertSame('jenkins,gitlab_ci,gitea_ci', $this->repo()->getBuildMode());
     }
 
     public function testSetBuildModesSortsToCanonicalOrder(): void
     {
-        $this->cfg()->setBuildModes(['gitea_ci', 'jenkins']);
-        $this->assertSame(['jenkins', 'gitea_ci'], $this->cfg()->getBuildModes());
+        $this->repo()->setBuildModes(['gitea_ci', 'jenkins']);
+        $this->assertSame(['jenkins', 'gitea_ci'], $this->repo()->getBuildModes());
         $this->assertSame('jenkins,gitea_ci', $this->storedBuildMode());
     }
 
     public function testEmptyValueMeansNoPullCi(): void
     {
         $this->seedBuildMode('');
-        $this->assertSame([], $this->cfg()->getBuildModes());
-        $this->assertSame('', $this->cfg()->getBuildMode());
+        $this->assertSame([], $this->repo()->getBuildModes());
+        $this->assertSame('', $this->repo()->getBuildMode());
     }
 
     public function testUnknownValuesDropped(): void
     {
         $this->seedBuildMode('jenkins,unknown_provider,gitea_ci');
-        $this->assertSame(['jenkins', 'gitea_ci'], $this->cfg()->getBuildModes());
+        $this->assertSame(['jenkins', 'gitea_ci'], $this->repo()->getBuildModes());
     }
 }

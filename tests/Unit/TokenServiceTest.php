@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace App\Test\Unit;
 
 use App\Config\AppConfig;
+use App\Service\Settings;
 use App\Service\TokenService;
 use PHPUnit\Framework\TestCase;
 
@@ -31,7 +32,7 @@ class TokenServiceTest extends TestCase
             expires_at INTEGER NOT NULL
         )');
 
-        $this->service = new TokenService($this->pdo, new AppConfig([]));
+        $this->service = new TokenService($this->pdo, new Settings([]));
     }
 
     private function seedToken(string $token, string $value, int $expiresAt = 3600): void

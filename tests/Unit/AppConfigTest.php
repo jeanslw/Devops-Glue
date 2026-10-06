@@ -4,16 +4,12 @@ declare(strict_types=1);
 namespace App\Test\Unit;
 
 use App\Config\AppConfig;
-use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
- * AppConfig 单元测试
+ * AppConfig 常量目录测试（纯常量类，不允许实例化、不含 IO）。
  *
- * 验证常量一致性、默认值逻辑和配置方法正确性。
- * 不依赖数据库或外部服务。
- *
- * 运行：vendor/bin/phpunit tests/Unit/AppConfigTest.php
+ * 配置读取行为见 SettingsTest；DB 设置行为见 AppSettingRepositoryTest。
  */
 class AppConfigTest extends TestCase
 {
@@ -74,6 +70,7 @@ class AppConfigTest extends TestCase
         $this->assertNotEmpty(AppConfig::TABLE_CACHE);
         $this->assertNotEmpty(AppConfig::TABLE_ADMIN_USERS);
         $this->assertNotEmpty(AppConfig::TABLE_APP_SETTINGS);
+        $this->assertNotEmpty(AppConfig::TABLE_API_ACCESS_LOGS);
         $this->assertNotEmpty(AppConfig::TABLE_PIPELINE_ARTIFACTS);
         $this->assertNotEmpty(AppConfig::TABLE_SECURITY_CHECKS);
         $this->assertNotEmpty(AppConfig::TABLE_PLATFORM_VERSIONS);
@@ -99,207 +96,13 @@ class AppConfigTest extends TestCase
         $this->assertMatchesRegularExpression('/^\d+\.\d+\.\d+$/', AppConfig::APP_VERSION);
     }
 
-    // ── getSystemType 测试 ──
-
-    public static function systemTypeProvider(): array
+    public function testAppConfigHasNoConstructor(): void
     {
-        return [
-            '默认 ci'      => [[], 'ci'],
-            '显式 ci'      => [['app' => ['system_type' => 'ci']], 'ci'],
-            '显式 cd'      => [['app' => ['system_type' => 'cd']], 'cd'],
-            '显式 both'    => [['app' => ['system_type' => 'both']], 'both'],
-            '非法值回退'  => [['app' => ['system_type' => 'hacker']], 'ci'],
-            '空字符串回退' => [['app' => ['system_type' => '']], 'ci'],
-        ];
-    }
-
-    #[DataProvider('systemTypeProvider')]
-    public function testGetSystemType(array $config, string $expected): void
-    {
-        $appConfig = new AppConfig($config);
-        $this->assertEquals($expected, $appConfig->getSystemType());
-    }
-
-    // ── getRootAdminUser 测试 ──
-
-    public function testGetRootAdminUserDefault(): void
-    {
-        $appConfig = new AppConfig([]);
-        $this->assertEquals('admin', $appConfig->getRootAdminUser());
-    }
-
-    public function testGetRootAdminUserCustom(): void
-    {
-        $appConfig = new AppConfig(['admin' => ['user' => 'root']]);
-        $this->assertEquals('root', $appConfig->getRootAdminUser());
-    }
-
-    // ── getAdminCredentials 测试 ──
-
-    public function testGetAdminCredentialsReturnsUserAndPassword(): void
-    {
-        $appConfig = new AppConfig(['admin' => ['user' => 'admin', 'password' => 'secret']]);
-        $creds = $appConfig->getAdminCredentials();
-        $this->assertArrayHasKey('user', $creds);
-        $this->assertArrayHasKey('password', $creds);
-        $this->assertEquals('admin', $creds['user']);
-        $this->assertEquals('secret', $creds['password']);
-    }
-
-    public function testGetAdminCredentialsWithoutPasswordReturnsEmpty(): void
-    {
-        $appConfig = new AppConfig([]);
-        $creds = $appConfig->getAdminCredentials();
-        $this->assertEquals('', $creds['password']);
-    }
-
-    // ── getAppEnv 测试 ──
-
-    public function testGetAppEnvDefault(): void
-    {
-        $appConfig = new AppConfig([]);
-        $this->assertEquals('production', $appConfig->getAppEnv());
-    }
-
-    public function testGetAppEnvCustom(): void
-    {
-        $appConfig = new AppConfig(['app' => ['env' => 'development']]);
-        $this->assertEquals('development', $appConfig->getAppEnv());
-    }
-
-    // ── getApiBaseUrl 测试 ──
-
-    public function testGetApiBaseUrlDefaultEmpty(): void
-    {
-        $appConfig = new AppConfig([]);
-        $this->assertEquals('', $appConfig->getApiBaseUrl());
-    }
-
-    public function testGetApiBaseUrlCustom(): void
-    {
-        $appConfig = new AppConfig(['app' => ['api_base_url' => 'https://example.com']]);
-        $this->assertEquals('https://example.com', $appConfig->getApiBaseUrl());
-    }
-
-    // ── Git 平台判读 ──
-
-    public function testIsPlatformConfiguredNotConfigured(): void
-    {
-        $appConfig = new AppConfig([]);
-        $this->assertFalse($appConfig->isPlatformConfigured('gitlab'));
-        $this->assertFalse($appConfig->isPlatformConfigured('gitee'));
-    }
-
-    public function testIsPlatformConfiguredWithBaseUrl(): void
-    {
-        $appConfig = new AppConfig(['git' => ['gitlab' => ['base_url' => 'https://gitlab.example.com']]]);
-        $this->assertTrue($appConfig->isPlatformConfigured('gitlab'));
-    }
-
-    public function testIsPlatformConfiguredWithApiBaseUrl(): void
-    {
-        $appConfig = new AppConfig(['git' => ['gitee' => ['api_base_url' => 'https://gitee.com/api/v5']]]);
-        $this->assertTrue($appConfig->isPlatformConfigured('gitee'));
-    }
-
-    public function testGetDefaultGitPlatform(): void
-    {
-        $appConfig = new AppConfig([]);
-        $this->assertEquals('gitlab', $appConfig->getDefaultGitPlatform());
-
-        $appConfig = new AppConfig(['git' => ['default_platform' => 'gitee']]);
-        $this->assertEquals('gitee', $appConfig->getDefaultGitPlatform());
-    }
-
-    // ── Jenkins 配置 ──
-
-    public function testGetJenkinsConfigDefaults(): void
-    {
-        $appConfig = new AppConfig([]);
-        $jenkins = $appConfig->getJenkinsConfig();
-        $this->assertArrayHasKey('url', $jenkins);
-        $this->assertArrayHasKey('user', $jenkins);
-        $this->assertArrayHasKey('token', $jenkins);
-        $this->assertEquals('http://localhost:8083', $jenkins['url']);
-        $this->assertEquals('', $jenkins['user']);
-    }
-
-    // ── 自定义 Build Provider（custom_push）配置 ──
-
-    public function testGetCustomBuildProvidersEmptyByDefault(): void
-    {
-        $appConfig = new AppConfig([]);
-        $providers = $appConfig->getCustomBuildProviders();
-        $this->assertIsArray($providers);
-        $this->assertEmpty($providers);
-    }
-
-    public function testGetCustomBuildProvidersFromConfig(): void
-    {
-        $providers = [
-            ['name' => 'custom_push', 'class' => 'App\\Service\\Build\\CustomPushBuildProvider', 'config' => ['variables' => []]],
-        ];
-        $appConfig = new AppConfig(['build' => ['custom_providers' => $providers]]);
-        $this->assertSame($providers, $appConfig->getCustomBuildProviders());
-    }
-
-    // ── CORS 配置 ──
-
-    public function testGetCorsConfigDefault(): void
-    {
-        $appConfig = new AppConfig([]);
-        $cors = $appConfig->getCorsConfig();
-        $this->assertArrayHasKey('allowed_origins', $cors);
-        $this->assertEquals(['*'], $cors['allowed_origins']);
-    }
-
-    // ── getGitPlatformsConfig ──
-
-    public function testGetGitPlatformsConfigEmpty(): void
-    {
-        $appConfig = new AppConfig([]);
-        $platforms = $appConfig->getGitPlatformsConfig();
-        $this->assertIsArray($platforms);
-        $this->assertEmpty($platforms);
-    }
-
-    public function testGetGitPlatformsConfigWithGitlab(): void
-    {
-        $appConfig = new AppConfig([
-            'git' => ['gitlab' => ['base_url' => 'https://gitlab.example.com', 'api_version' => 'v4']],
-        ]);
-        $platforms = $appConfig->getGitPlatformsConfig();
-        $this->assertCount(1, $platforms);
-        $this->assertEquals('gitlab', $platforms[0]['name']);
-        $this->assertEquals('v4', $platforms[0]['api_version']);
-        $this->assertStringContainsString('/api/v4', $platforms[0]['api_base_url']);
-    }
-
-    public function testGetGitPlatformsConfigSkipsUnconfigured(): void
-    {
-        $appConfig = new AppConfig([
-            'git' => [
-                'gitlab' => ['base_url' => 'https://gitlab.example.com'],
-                'gitee'  => [], // 未配置
-            ],
-        ]);
-        $platforms = $appConfig->getGitPlatformsConfig();
-        $this->assertCount(1, $platforms);
-        $this->assertEquals('gitlab', $platforms[0]['name']);
-    }
-
-    // ── getLogPath ──
-
-    public function testGetLogPathDefault(): void
-    {
-        $appConfig = new AppConfig([]);
-        $this->assertEquals('', $appConfig->getLogPath());
-    }
-
-    public function testGetLogPathCustom(): void
-    {
-        $appConfig = new AppConfig(['app' => ['log_path' => '/var/log/app']]);
-        $this->assertEquals('/var/log/app', $appConfig->getLogPath());
+        // 纯常量类：不允许再挂实例状态/IO，职责已拆到 Settings / *Repository / MappingManager
+        $this->assertFalse(
+            (new \ReflectionClass(AppConfig::class))->hasMethod('__construct'),
+            'AppConfig 必须是纯常量类，不能有构造函数'
+        );
     }
 
     // ── IMPLIED_PERMISSIONS ──
@@ -349,37 +152,47 @@ class AppConfigTest extends TestCase
                 }
             }
         }
-        // 至少要验证过一次空断言，避免 risky（如果真没循环，显式 assertTrue 一次记录检查次数）
         $this->assertTrue(true, "未发现非法隐含循环（已检查 {$checkedPairs} 对双向边）");
     }
 
     public function testParentChildRelationship(): void
     {
-        // 验证常见的父子关系存在
         $implied = AppConfig::IMPLIED_PERMISSIONS;
         $this->assertArrayHasKey(AppConfig::PERM_CD_BUILD, $implied, 'cd.build-manage 必须有隐含子权限');
         $this->assertContains(AppConfig::PERM_CI_TRIGGER, $implied[AppConfig::PERM_CD_BUILD], 'cd.build-manage 必须隐含 ci.trigger');
-        // CI 用户管理子权限选中时自动带上父权限
         $this->assertContains(AppConfig::PERM_CI_USERS_MANAGE, $implied[AppConfig::PERM_CI_USERS_LIST], 'ci.users.list 必须隐含 ci.users.manage');
         $this->assertContains(AppConfig::PERM_CI_USERS_MANAGE, $implied[AppConfig::PERM_CI_USERS_PASSWORD], 'ci.users.password 必须隐含 ci.users.manage');
         $this->assertContains(AppConfig::PERM_CI_USERS_MANAGE, $implied[AppConfig::PERM_CI_USERS_MANAGE_ADMIN], 'ci.users.manage_admin 必须隐含 ci.users.manage');
-        // CI 权限管理：1 父 3 子，子 → 父隐含
         $this->assertArrayHasKey(AppConfig::PERM_CI_PERMISSIONS_LIST, $implied);
         $this->assertArrayHasKey(AppConfig::PERM_CI_PERMISSIONS_REGISTER, $implied);
         $this->assertArrayHasKey(AppConfig::PERM_CI_PERMISSIONS_RULES, $implied);
         $this->assertContains(AppConfig::PERM_CI_PERMISSIONS_MANAGE, $implied[AppConfig::PERM_CI_PERMISSIONS_LIST], 'ci.permissions.list 必须隐含 ci.permissions.manage');
         $this->assertContains(AppConfig::PERM_CI_PERMISSIONS_MANAGE, $implied[AppConfig::PERM_CI_PERMISSIONS_REGISTER], 'ci.permissions.register 必须隐含 ci.permissions.manage');
         $this->assertContains(AppConfig::PERM_CI_PERMISSIONS_MANAGE, $implied[AppConfig::PERM_CI_PERMISSIONS_RULES], 'ci.permissions.rules 必须隐含 ci.permissions.manage');
+        // 新增：API 调用日志 → 日志中心父菜单
+        $this->assertContains(AppConfig::PERM_CI_LOGS, $implied[AppConfig::PERM_CI_API_LOGS], 'ci.api-logs 必须隐含 ci.logs');
     }
 
-    // ── 权限 key 结构一致性：本次改动的专项测试 ──
+    public function testApiLogsPermissionRegistered(): void
+    {
+        $this->assertSame(
+            AppConfig::PERM_CI_LOGS,
+            AppConfig::DEFAULT_PERMISSIONS[AppConfig::PERM_CI_API_LOGS]['parent'] ?? null,
+            'ci.api-logs 必须注册在日志中心下'
+        );
+        $this->assertContains(
+            AppConfig::PERM_CI_API_LOGS,
+            AppConfig::DEFAULT_ROLES[AppConfig::ROLE_VIEWER],
+            'viewer 默认角色应含 ci.api-logs（只读审计）'
+        );
+    }
+
+    // ── 权限 key 结构一致性 ──
 
     public function testDeprecatedRolesManageKeyIsGone(): void
     {
-        // v2.4.2 撤销 ci.roles.manage，不能再出现在 DEFAULT_PERMISSIONS / 常量 / IMPLIED_PERMISSIONS 里
         $defaultKeys = array_keys(AppConfig::DEFAULT_PERMISSIONS);
         $this->assertNotContains('ci.roles.manage', $defaultKeys, "废弃 key 'ci.roles.manage' 不能存在于 DEFAULT_PERMISSIONS");
-        // 反射所有 PERM_* 公共常量，确认没有值为 ci.roles.manage
         $r = new \ReflectionClass(AppConfig::class);
         foreach ($r->getConstants(\ReflectionClassConstant::IS_PUBLIC) as $name => $value) {
             if (str_starts_with($name, 'PERM_') && is_string($value)) {
@@ -401,15 +214,12 @@ class AppConfigTest extends TestCase
             AppConfig::PERM_CI_PERMISSIONS_REGISTER,
             AppConfig::PERM_CI_PERMISSIONS_RULES,
         ];
-        // 1) 四个权限都在白名单里
         $this->assertContains(AppConfig::PERM_CI_PERMISSIONS_MANAGE, $defaultKeys, 'ci.permissions.manage 必须在 DEFAULT_PERMISSIONS');
         foreach ($children as $c) $this->assertContains($c, $defaultKeys, "子权限 '{$c}' 必须在 DEFAULT_PERMISSIONS");
-        // 2) 父级 parent_key 为 null；三个子级 parent_key 均为 ci.permissions.manage
         $this->assertNull($this->extractParent($defaults, AppConfig::PERM_CI_PERMISSIONS_MANAGE), 'ci.permissions.manage parent_key 必须为 null');
         foreach ($children as $c) {
             $this->assertSame(AppConfig::PERM_CI_PERMISSIONS_MANAGE, $this->extractParent($defaults, $c), "子权限 '{$c}' 的 parent_key 必须是 ci.permissions.manage");
         }
-        // 3) 三个子权限都定义了子 → 父隐含关系
         foreach ($children as $c) {
             $this->assertArrayHasKey($c, AppConfig::IMPLIED_PERMISSIONS, "子权限 '{$c}' 必须在 IMPLIED_PERMISSIONS 中定义子→父隐含");
         }
@@ -417,7 +227,6 @@ class AppConfigTest extends TestCase
 
     public function testCiUsersManageAdminStillCoversRoles(): void
     {
-        // 撤销 ci.roles.manage 后，ci.users.manage_admin 必须：仍在 DEFAULT_PERMISSIONS，parent 指向 ci.users.manage
         $defaults = AppConfig::DEFAULT_PERMISSIONS;
         $this->assertArrayHasKey(AppConfig::PERM_CI_USERS_MANAGE_ADMIN, $defaults, 'ci.users.manage_admin 必须存在（已恢复上一版）');
         $this->assertSame(AppConfig::PERM_CI_USERS_MANAGE, $this->extractParent($defaults, AppConfig::PERM_CI_USERS_MANAGE_ADMIN), 'ci.users.manage_admin parent 必须是 ci.users.manage');
@@ -434,21 +243,5 @@ class AppConfigTest extends TestCase
         $def = $defaults[$key];
         if (is_array($def)) return $def['parent'] ?? null;
         return null;
-    }
-
-    // ── getHarborConfig ──
-
-    public function testGetHarborConfigDefault(): void
-    {
-        $appConfig = new AppConfig([]);
-        $this->assertEquals([], $appConfig->getHarborConfig());
-    }
-
-    public function testGetHarborConfigCustom(): void
-    {
-        $appConfig = new AppConfig(['harbor' => ['url' => 'https://harbor.example.com', 'username' => 'admin']]);
-        $config = $appConfig->getHarborConfig();
-        $this->assertEquals('https://harbor.example.com', $config['url']);
-        $this->assertEquals('admin', $config['username']);
     }
 }

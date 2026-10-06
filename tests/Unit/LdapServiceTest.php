@@ -3,8 +3,8 @@ declare(strict_types=1);
 
 namespace App\Test\Unit;
 
-use App\Config\AppConfig;
 use App\Service\LdapService;
+use App\Service\Settings;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -48,7 +48,7 @@ class LdapServiceTest extends TestCase
 
     public function testAuthenticateReturnsEmptyCredentialsForBlankInput(): void
     {
-        $service = new LdapService(new AppConfig([]));
+        $service = new LdapService(new Settings([]));
 
         // 空凭据在 isAvailable() 之前短路，无需扩展即可断言
         $this->assertSame(['ok' => false, 'error' => 'empty_credentials'], $service->authenticate('', ''));
@@ -58,7 +58,7 @@ class LdapServiceTest extends TestCase
 
     public function testIsEnabledFalseWhenConfigDisabled(): void
     {
-        $service = new LdapService(new AppConfig([])); // 未配置 ldap.enabled → getLdapConfig() = ['enabled' => false]
+        $service = new LdapService(new Settings([])); // 未配置 ldap.enabled → getLdapConfig() = ['enabled' => false]
         $this->assertFalse($service->isEnabled());
     }
 
@@ -70,7 +70,7 @@ class LdapServiceTest extends TestCase
 
         // 配置 enabled=true 但扩展缺失：isEnabled 必须为 false，authenticate 直接返回 extension_missing，
         // 绝不尝试 ldap_connect（这正是「不用 LDAP 也能安全运行」的契约）。
-        $service = new LdapService(new AppConfig(['ldap' => ['enabled' => true, 'host' => 'ldap.example.com']]));
+        $service = new LdapService(new Settings(['ldap' => ['enabled' => true, 'host' => 'ldap.example.com']]));
 
         $this->assertFalse($service->isAvailable());
         $this->assertFalse($service->isEnabled());
