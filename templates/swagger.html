@@ -18,7 +18,7 @@
       background: linear-gradient(135deg, #667eea, #764ba2); font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
     .lbox { background: #fff; border-radius: 16px; padding: 36px 32px; box-shadow: 0 8px 32px rgba(0,0,0,.18);
       width: 380px; max-width: 90vw; text-align: center; }
-    .lbox h3 { font-size: 20px; margin: 0 0 4px; }
+    .lbox .login-title { font-size: 20px; margin: 0 0 4px; }
     .lbox .sub { font-size: 13px; color: #9ca3af; margin-bottom: 24px; }
     .lbox input { width: 100%; padding: 10px 14px; border: 1.5px solid #d1d5db; border-radius: 8px; font-size: 14px; margin-bottom: 12px; }
     .lbox input:focus { outline: none; border-color: #667eea; box-shadow: 0 0 0 3px rgba(102,126,234,.15); }
@@ -50,15 +50,15 @@
     </select>
   </div>
   <div id="login-layer">
-    <div class="lbox">
-      <h3 data-t="title">📖 API 文档</h3>
-      <p class="sub" data-t="subtitle">请使用管理后台账号登录</p>
+    <form class="lbox" onsubmit="event.preventDefault();login();">
+      <div class="login-title" data-t="title">📖 API 文档</div>
+      <div class="sub" data-t="subtitle">请使用管理后台账号登录</div>
       <input id="u" data-t-placeholder="account" placeholder="账号" autocomplete="username">
       <input id="p" type="password" data-t-placeholder="password" placeholder="密码" autocomplete="current-password">
-      <button class="btn" onclick="login()" data-t="login_btn">登 录</button>
+      <button type="submit" class="btn" data-t="login_btn">登 录</button>
       <div class="err" id="e"></div>
       <div class="back"><a href="/" data-t="back_home">🏠 回首页</a></div>
-    </div>
+    </form>
   </div>
   <script>
     // ── 会话凭证获取 ─────────────────────────────────────────────
