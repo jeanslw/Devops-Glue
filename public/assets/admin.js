@@ -103,12 +103,27 @@ function applySystemInfoMenuVisibility() {
     if (group) group.style.display = (platformOk || systemOk) ? '' : 'none';
 }
 
+function applyMenuDivVisibility() {
+    const sidebar = document.querySelector('.sidebar');
+    if (!sidebar) return;
+    Array.from(sidebar.querySelectorAll(':scope > .menu-div')).forEach(function(div) {
+        let node = div.nextElementSibling, visible = false;
+        while (node && !node.classList.contains('menu-div')) {
+            if ((node.classList.contains('menu-item') || node.classList.contains('menu-group'))
+                && getComputedStyle(node).display !== 'none') { visible = true; break; }
+            node = node.nextElementSibling;
+        }
+        div.style.display = visible ? '' : 'none';
+    });
+}
+
 function applyAllMenuVisibility() {
     applyRoleMenuVisibility();
     applyPermMenuVisibility();
     applyApiTokenMenuVisibility();
     applyOperationLogMenuVisibility();
     applySystemInfoMenuVisibility();
+    applyMenuDivVisibility();
 }
 
 // ═══════════ 登录 / 登出 / 导航 ═══════════
