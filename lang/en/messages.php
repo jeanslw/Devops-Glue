@@ -283,6 +283,7 @@ return [
     'admin.home'            => 'Home',
     'admin.console'         => 'Console',
     'admin.api_docs'        => 'API Docs',
+    'admin.account_logout'  => 'Account & Logout',
     'admin.sidebar_monitor' => 'Monitoring Overview',
     'admin.sidebar_mapping' => 'Mapping Config',
     'admin.sidebar_security'=> 'Security Audit',

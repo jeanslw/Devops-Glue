@@ -283,6 +283,7 @@ return [
     'admin.home'            => '首页',
     'admin.console'         => '控制台',
     'admin.api_docs'        => 'API 文档',
+    'admin.account_logout'  => '账号与退出',
     'admin.sidebar_monitor' => '监测概览',
     'admin.sidebar_mapping' => '映射管理',
     'admin.sidebar_security'=> '安全审计',
