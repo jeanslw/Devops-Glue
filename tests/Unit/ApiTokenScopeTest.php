@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace App\Test\Unit;
 
 use App\Config\AppConfig;
+use App\Support\ApiScopeResolver;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -114,19 +115,19 @@ class ApiTokenScopeTest extends TestCase
     #[DataProvider('routeProvider')]
     public function testResolveRequiredScope(string $method, string $path, ?string $expected): void
     {
-        $this->assertSame($expected, AppConfig::resolveRequiredScope($method, $path));
+        $this->assertSame($expected, ApiScopeResolver::resolve($method, $path));
     }
 
     public function testResolveStripsQueryString(): void
     {
         $this->assertSame(
             AppConfig::API_SCOPE_BUILD_WRITE,
-            AppConfig::resolveRequiredScope('POST', '/api/build/static/trigger?format=json')
+            ApiScopeResolver::resolve('POST', '/api/build/static/trigger?format=json')
         );
     }
 
     public function testResolveNormalizesTrailingSlash(): void
     {
-        $this->assertSame(AppConfig::API_SCOPE_MAIN, AppConfig::resolveRequiredScope('GET', '/api/main/map/list/'));
+        $this->assertSame(AppConfig::API_SCOPE_MAIN, ApiScopeResolver::resolve('GET', '/api/main/map/list/'));
     }
 }

@@ -14,13 +14,13 @@ declare(strict_types=1);
 
 require __DIR__ . '/../vendor/autoload.php';
 
-use App\Config\AppConfig;
 use App\Service\LdapService;
+use App\Service\Settings;
 
 const LDAP_HOST = '127.0.0.1';
 const LDAP_PORT = 1389;
 
-$config = new AppConfig([
+$config = new Settings([
     'ldap' => [
         'enabled'       => true,
         'host'          => LDAP_HOST,

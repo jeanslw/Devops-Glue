@@ -627,10 +627,50 @@ Chinese (`zh_CN`) and English (`en`).
 
 ### Q: How to add a new language?
 
-1. Add the language code to `SUPPORTED_LOCALES` in `config/AppConfig.php`
-2. Create a new language directory under `lang/` (e.g., `lang/ja/`)
-3. Translate all keys in `messages.php`
-4. Add the corresponding language pack to `public/assets/i18n.js`
+Using Japanese (`ja_JP`) as an example, you need to modify 4 places:
+
+**1. Register the language in the backend — `src/Service/I18nService.php`**
+
+```php
+// Line 31: which locale directories to load
+$locales = ['zh_CN', 'en', 'ja_JP'];
+
+// Line 73: available locales list
+return ['zh_CN', 'en', 'ja_JP'];
+
+// Line 89: URL param ?lang= whitelist
+if (in_array($queryLang, ['zh_CN', 'en', 'ja_JP'])) {
+
+// Accept-Language auto-detection (optional): add after line 97
+if ($lang === 'ja') return 'ja_JP';
+```
+
+**2. Create the language file — `lang/ja_JP/messages.php`**
+
+Copy the full structure of `lang/zh_CN/messages.php` and translate the values into Japanese. **Keys must be identical to the Chinese/English versions** — otherwise `__.t(key)` on the frontend returns the raw key (no fallback to Chinese).
+
+**3. Register the language mapping in the frontend — `public/assets/i18n.js`**
+
+```js
+const LANGS = { 'zh-CN': 'zh_CN', 'en': 'en', 'ja': 'ja_JP' };
+```
+
+The key is the frontend language identifier (e.g., `ja`), the value is the backend locale directory name (e.g., `ja_JP`).
+
+**4. Add the option to page language selectors — 3 HTML templates**
+
+In each page's language `<select>`, add:
+
+```html
+<option value="ja">日本語</option>
+```
+
+Pages to modify:
+- `templates/admin.html` — login page + top bar (2 places)
+- `templates/index.html` — landing page
+- `templates/swagger.html` — OpenAPI docs (has its own `switchLang()` function, needs separate handling)
+
+> **Note:** `swagger.html` uses its own `switchLang()` + `data-t` attribute system, not `__.i18n`, so it must be handled separately. The `/api/i18n/{locale}` route takes a dynamic parameter, so new locales are automatically available — no route changes needed.
 
 ### Q: Does i18n affect the API?
 
@@ -638,4 +678,4 @@ No. API responses always return raw data. i18n only affects the frontend UI and 
 
 ---
 
-*Document version: v2.7.0 | Last updated: 2026-08-31*
+*Document version: v2.8.0 | Last updated: 2026-09-31*

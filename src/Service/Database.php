@@ -492,6 +492,29 @@ class Database
             result {$VARCHAR} DEFAULT 'success',
             created_at {$TS_TYPE} DEFAULT ({$NOW})
         ){$ENGINE}");
+
+        // ci_api_access_logs（API token 调用审计日志，append-only + 定时清理）
+        // 安全约束：只记 token 展示名，不记 token/hash/body/query；route 存路由模板。
+        // 列宽显式声明并与 database/*_init.sql 保持一致（route/scopes/error_reason 需 500）。
+        $S  = $isMySQL ? 'VARCHAR(255)' : 'TEXT';
+        $L  = $isMySQL ? 'VARCHAR(500)' : 'TEXT';
+        $M  = $isMySQL ? 'VARCHAR(10)'  : 'TEXT';
+        $R  = $isMySQL ? 'VARCHAR(20)'  : 'TEXT';
+        $IP = $isMySQL ? 'VARCHAR(45)'  : 'TEXT';
+        $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_API_ACCESS_LOGS . " (
+            id {$PK},
+            username {$S} DEFAULT '',
+            token_name {$S} DEFAULT '',
+            scopes {$L} DEFAULT '',
+            method {$M} NOT NULL,
+            route {$L} NOT NULL,
+            status_code INTEGER NOT NULL DEFAULT 0,
+            result {$R} NOT NULL DEFAULT 'success',
+            error_reason {$L} DEFAULT '',
+            ip {$IP} DEFAULT '',
+            duration_ms INTEGER NOT NULL DEFAULT 0,
+            created_at {$TS_TYPE} DEFAULT ({$NOW})
+        ){$ENGINE}");
         // ── RBAC 权限系统 ──
         // roles
         $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_ROLES . " (
@@ -653,6 +676,9 @@ class Database
         self::createIndex('idx_operation_logs_created', \App\Config\AppConfig::TABLE_OPERATION_LOGS, 'created_at');
         self::createIndex('idx_operation_logs_user', \App\Config\AppConfig::TABLE_OPERATION_LOGS, 'username');
         self::createIndex('idx_operation_logs_action', \App\Config\AppConfig::TABLE_OPERATION_LOGS, 'action');
+        self::createIndex('idx_api_access_logs_created', \App\Config\AppConfig::TABLE_API_ACCESS_LOGS, 'created_at');
+        self::createIndex('idx_api_access_logs_token', \App\Config\AppConfig::TABLE_API_ACCESS_LOGS, 'token_name');
+        self::createIndex('idx_api_access_logs_result', \App\Config\AppConfig::TABLE_API_ACCESS_LOGS, 'result');
 
         // 一次性 JSON 迁移（仅 SQLite）
         if (!$isMySQL) {

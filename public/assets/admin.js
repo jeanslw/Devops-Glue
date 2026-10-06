@@ -20,7 +20,7 @@ import { loadVersions, saveVersions } from './modules/versions.js';
 import {
     loadSettings, onBuildModesChange, onCustomPushToggle, onStaleTagCleanupToggle,
     onBackfillTagToggle, onTagLogKeywordChange, renderBuildModeCheckboxes,
-    runStaleTagCleanup, runTagBackfill
+    runStaleTagCleanup, runTagBackfill, saveApiLogSettings, onApiLogRetainChange
 } from './modules/mode.js';
 import {
     loadPullProjects, loadPullRecords, openPullLog, pullShowLog, closePullLog,
@@ -46,6 +46,7 @@ import {
 } from './modules/apiTokens.js';
 import { loadOperationLogs, resetOperationLogs } from './modules/oplog.js';
 import { loadDeployLogs, resetDeployLogs } from './modules/deploylog.js';
+import { loadApiAccessLogs, resetApiAccessLogs } from './modules/apiaccesslog.js';
 import { loadSystemInfo, doMigrate, doBackup, loadPlatformConfig, toggleSysTables, toggleSysBackups } from './modules/system.js';
 
 const LOGIN_API = '/api/admin/login';
@@ -84,9 +85,11 @@ function applyOperationLogMenuVisibility() {
     const group = document.getElementById('menu-group-logs');
     const opItem = document.querySelector('#menu-group-logs .submenu .menu-item[data-tab="operation-logs"]');
     const depItem = document.querySelector('#menu-group-logs .submenu .menu-item[data-tab="deploy-logs"]');
+    const apiItem = document.querySelector('#menu-group-logs .submenu .menu-item[data-tab="api-access-logs"]');
     if (opItem) opItem.style.display = hasPermission('ci.operation-logs') ? '' : 'none';
     if (depItem) depItem.style.display = hasPermission('ci.deploy-logs') ? '' : 'none';
-    const showGroup = hasPermission('ci.operation-logs') || hasPermission('ci.deploy-logs');
+    if (apiItem) apiItem.style.display = hasPermission('ci.api-logs') ? '' : 'none';
+    const showGroup = hasPermission('ci.operation-logs') || hasPermission('ci.deploy-logs') || hasPermission('ci.api-logs');
     if (group) group.style.display = showGroup ? '' : 'none';
 }
 function applySystemInfoMenuVisibility() {
@@ -154,7 +157,7 @@ function toggleBuildRecordsMenu() { document.getElementById('menu-group-build-re
 function toggleLogMenu() { document.getElementById('menu-group-logs')?.classList.toggle('expanded'); }
 function toggleSettingsMenu() { document.getElementById('menu-group-settings')?.classList.toggle('expanded'); }
 
-const TAB_LIST = ['monitor','mapping','security','versions','mode','pull-records','push-records','users','roles','password','perm-list','perm-register','implied-rules','api-tokens','operation-logs','deploy-logs','platform-config','system-info'];
+const TAB_LIST = ['monitor','mapping','security','versions','mode','pull-records','push-records','users','roles','password','perm-list','perm-register','implied-rules','api-tokens','operation-logs','deploy-logs','api-access-logs','platform-config','system-info'];
 
 function doSwitch(name) {
     stopPullAutoRefresh();
@@ -186,6 +189,7 @@ function doSwitch(name) {
     if (name === 'api-tokens') loadApiTokens();
     if (name === 'operation-logs') loadOperationLogs(1);
     if (name === 'deploy-logs') loadDeployLogs(1);
+    if (name === 'api-access-logs') loadApiAccessLogs(1);
     if (name === 'platform-config') loadPlatformConfig();
     if (name === 'system-info') loadSystemInfo();
 
@@ -233,7 +237,7 @@ Object.assign(window, {
     loadSecurityChecks, secOnFilterChange, secSetPage, getSecPage, getSecTotalPages,
     loadVersions, saveVersions,
     loadSettings, onBuildModesChange, onCustomPushToggle, onStaleTagCleanupToggle, onBackfillTagToggle, onTagLogKeywordChange,
-    runStaleTagCleanup, runTagBackfill,
+    runStaleTagCleanup, runTagBackfill, saveApiLogSettings, onApiLogRetainChange,
     loadPullProjects, loadPullRecords, openPullLog, pullShowLog, closePullLog, loadPushRecords,
     applyBuildRecordsMenuVisibility, resolvePullTag, reparsePullTag,
     loadUsers, toggleUserStatus, showUserForm, showUserEditForm, hideUserForm, submitUserForm, deleteUser, modifyUserPassword, closePasswordModal, submitPasswordChange, changePassword,
@@ -241,6 +245,7 @@ Object.assign(window, {
     loadPermList, deletePermission, registerPermission, loadImpliedRules, showImpliedForm, hideImpliedForm, submitImpliedForm, deleteImpliedRule,
     loadApiTokens, showApiTokenForm, hideApiTokenForm, submitApiTokenForm, copyApiToken, revokeApiToken, deleteApiToken,
     loadOperationLogs, resetOperationLogs, loadDeployLogs, resetDeployLogs,
+    loadApiAccessLogs, resetApiAccessLogs,
     loadSystemInfo, doMigrate, doBackup, loadPlatformConfig, toggleSysTables, toggleSysBackups,
     // 分页 / 视图
     getMapView, getMapPage, setMapPage, getMapTotalPages, setMapTotalPages,

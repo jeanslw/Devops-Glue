@@ -562,7 +562,7 @@
         .bm-check input { width:15px; height:15px; margin:0; cursor:pointer; accent-color:#4f46e5; }
         .mode-card-toggle {
             display:inline-flex; align-items:center; gap:8px; flex:1 1 auto; min-width:0;
-            cursor:pointer;
+            cursor:pointer; font-size:14px; font-weight:700; color:#1f2937;
         }
         .build-mode-row { flex-wrap:nowrap; }
         #build-mode-value {
@@ -574,7 +574,7 @@
             font-size:12px; color:#16a34a; display:none; margin-left:auto;
             white-space:nowrap; flex-shrink:0;
         }
-        #custom-push-toggle, #stale-tag-cleanup-toggle, #backfill-tag-toggle {
+        #custom-push-toggle, #stale-tag-cleanup-toggle, #backfill-tag-toggle, #apilog-cleanup-toggle {
             width:16px; height:16px; margin:0; cursor:pointer;
             accent-color:#4f46e5;
         }
@@ -664,12 +664,14 @@
             /* 例外：Token 管理的「接口权限 scope」列允许换行——全选时 scope 很多，
                nowrap 会让内容溢出 td 画到后面列上混在一起 */
             table td.scope-cell { white-space:normal; }
-            .table-wrap table, #table-wrap table { min-width:720px; }
+            [id$="-table-wrap"] table, .table-wrap table, #table-wrap table { min-width:720px; }
             /* 窄屏顶栏：单行不换行；隐藏 logo 旁「管理后台」文字，只留 logo；左对齐避免 space-between 把 ☰ 甩到中间 */
             .topbar { height:52px; padding:8px 12px; flex-wrap:nowrap; gap:8px; justify-content:flex-start; }
             .topbar .logo { flex-shrink:0; }
             .topbar .logo span[data-i18n] { display:none; }
             .topbar .top-right { margin-left:auto; flex-wrap:nowrap; justify-content:flex-end; gap:10px; }
+            .topbar .top-right > * { flex-shrink:0; white-space:nowrap; }
+            .topbar .top-right a .menu-icon ~ span { display:none; }
             /* 小屏：数据管理三个操作按钮不换行，等宽铺满一行 */
             .sys-actions { flex-wrap:nowrap; width:100%; }
             .sys-actions .btn { flex:1 1 0; min-width:0; justify-content:center; padding:8px 4px; font-size:12.5px; }

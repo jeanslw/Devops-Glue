@@ -1,6 +1,9 @@
 <?php
 
 use App\Config\AppConfig;
+use App\Service\Settings;
+use App\Service\AppSettingRepository;
+use App\Service\PlatformVersionRepository;
 use App\Service\JenkinsService;
 use App\Service\GitService;
 use App\Service\GitRemoteResolver;
@@ -14,6 +17,7 @@ use App\Service\TokenService;
 use App\Service\ApiTokenService;
 use App\Service\AdminAuthService;
 use App\Service\AdminUserRepository;
+use App\Service\ApiAccessLogRepository;
 use App\Service\LdapService;
 use App\Service\UserIdentityRepository;
 
@@ -53,16 +57,31 @@ return [
         return \App\Service\Database::getPdo();
     },
 
-    // 全局配置
-    AppConfig::class => function (\Psr\Container\ContainerInterface $c) use ($settings) {
-        return new AppConfig($settings, $c->get(\PDO::class));
+    // 运行时配置（只读 settings.php / env 合并数组）
+    Settings::class => function (\Psr\Container\ContainerInterface $c) use ($settings) {
+        return new Settings($settings, $c->get(PlatformVersionRepository::class));
+    },
+
+    // ci_app_settings 运行时开关/配置（build_mode、custom_push、tag 关键字等）
+    AppSettingRepository::class => function (\Psr\Container\ContainerInterface $c) {
+        return new AppSettingRepository($c->get(\PDO::class));
+    },
+
+    // 平台 API 版本覆盖（ci_platform_versions）
+    PlatformVersionRepository::class => function (\Psr\Container\ContainerInterface $c) {
+        return new PlatformVersionRepository($c->get(\PDO::class));
+    },
+
+    // API token 调用审计日志（ci_api_access_logs）
+    ApiAccessLogRepository::class => function (\Psr\Container\ContainerInterface $c) {
+        return new ApiAccessLogRepository($c->get(\PDO::class));
     },
 
     // ---------- 基础设施 ----------
 
     // 映射查询（数据层）
     MappingManager::class => function (\Psr\Container\ContainerInterface $c) {
-        return new MappingManager($c->get(AppConfig::class));
+        return new MappingManager($c->get(AppSettingRepository::class), $c->get(\PDO::class));
     },
 
     // 自动发现
@@ -70,7 +89,7 @@ return [
         return new AutoDiscover(
             $c->get(JenkinsService::class),
             $c->get(ProviderRegistry::class),
-            $c->get(AppConfig::class),
+            $c->get(Settings::class),
             $c->get(MappingManager::class),
             $c->get(Logger::class),
             $c->get('gitlabHttpClient'),
@@ -86,7 +105,7 @@ return [
 
     // 日志服务
     Logger::class => function (\Psr\Container\ContainerInterface $c) {
-        $config = $c->get(AppConfig::class);
+        $config = $c->get(Settings::class);
         return new Logger(
             $config->getLogPath(),
             // 与环境无关：APP_DEBUG=true → debug（全量），false → info（生产保留诊断信息，仅过滤 debug 噪声）
@@ -96,7 +115,7 @@ return [
 
     // CORS 中间件
     CorsMiddleware::class => function (\Psr\Container\ContainerInterface $c) {
-        $config = $c->get(AppConfig::class);
+        $config = $c->get(Settings::class);
         return new CorsMiddleware($config->getCorsConfig());
     },
 
@@ -104,7 +123,7 @@ return [
     TokenService::class => function (\Psr\Container\ContainerInterface $c) {
         return new TokenService(
             $c->get(\PDO::class),
-            $c->get(AppConfig::class),
+            $c->get(Settings::class),
             $c->get(ApiTokenService::class)
         );
     },
@@ -128,7 +147,7 @@ return [
 
     // LDAP 认证客户端：仅在 ldap.enabled=true 且 PHP ext-ldap 加载时工作
     LdapService::class => function (\Psr\Container\ContainerInterface $c) {
-        return new LdapService($c->get(AppConfig::class));
+        return new LdapService($c->get(Settings::class));
     },
 
     // 管理认证服务
@@ -136,7 +155,7 @@ return [
         return new AdminAuthService(
             $c->get(\PDO::class),
             $c->get(AdminUserRepository::class),
-            $c->get(AppConfig::class),
+            $c->get(Settings::class),
             $c->get(LdapService::class),
             $c->get(UserIdentityRepository::class)
         );
@@ -148,14 +167,18 @@ return [
         return new AuthMiddleware(
             $c->get(I18nService::class),
             $c->get(ResponseFactoryInterface::class),
-            $c->get(TokenService::class)
+            $c->get(TokenService::class),
+            $c->get(ApiAccessLogRepository::class),
+            $c->get(Logger::class),
+            $c->get(Settings::class)->getTrustedProxyHops(),
+            $c->get(AppSettingRepository::class)
         );
     },
 
     // ---------- Git Provider 注册表 ----------
 
     ProviderRegistry::class => function (\Psr\Container\ContainerInterface $c) {
-        $config = $c->get(AppConfig::class);
+        $config = $c->get(Settings::class);
         $logger  = $c->get(Logger::class);
         $registry = new ProviderRegistry($logger);
 
@@ -265,7 +288,7 @@ return [
     // ---------- Build Provider 注册表 ----------
 
     BuildProviderRegistry::class => function (\Psr\Container\ContainerInterface $c) {
-        $config   = $c->get(AppConfig::class);
+        $config   = $c->get(Settings::class);
         $logger   = $c->get(Logger::class);
         $registry = new BuildProviderRegistry($logger);
 
@@ -335,14 +358,14 @@ return [
             $logger = null;
         }
         return new JenkinsService(
-            $c->get(AppConfig::class)->getJenkinsConfig(),
+            $c->get(Settings::class)->getJenkinsConfig(),
             $logger
         );
     },
 
     // Git remote 解析
     GitRemoteResolver::class => function (\Psr\Container\ContainerInterface $c) {
-        $config = $c->get(AppConfig::class);
+        $config = $c->get(Settings::class);
         try {
             $logger = $c->get(Logger::class);
         } catch (\Throwable $e) {
@@ -354,7 +377,7 @@ return [
         return new GitRemoteResolver(
             $c->get(JenkinsService::class),
             $c->get(ProviderRegistry::class),
-            $config->getJobGitMap(),
+            $c->get(MappingManager::class)->allMaps(),
             $config->getGitlabConfig(),
             $gitlabIdCache,
             $config->getDefaultGitPlatform(),
@@ -382,8 +405,9 @@ return [
         return new \App\Controller\MainController(
             $c->get(I18nService::class),
             $c->get(JenkinsService::class),
-            $c->get(AppConfig::class),
+            $c->get(Settings::class),
             $c->get(MappingManager::class),
+            $c->get(AppSettingRepository::class),
             $c->get(\PDO::class),
             $c->get(HarborService::class),
             $c->get(TokenService::class)
@@ -394,7 +418,10 @@ return [
     AdminController::class => function (\Psr\Container\ContainerInterface $c) {
         return new AdminController(
             $c->get(I18nService::class),
-            $c->get(AppConfig::class),
+            $c->get(Settings::class),
+            $c->get(MappingManager::class),
+            $c->get(AppSettingRepository::class),
+            $c->get(PlatformVersionRepository::class),
             $c->get(\PDO::class),
             $c->get(AdminAuthService::class),
             $c->get(AdminUserRepository::class),
@@ -410,7 +437,7 @@ return [
     RbacController::class => function (\Psr\Container\ContainerInterface $c) {
         return new RbacController(
             $c->get(I18nService::class),
-            $c->get(AppConfig::class),
+            $c->get(Settings::class),
             $c->get(AdminUserRepository::class),
             $c->get(\PDO::class)
         );
@@ -421,8 +448,9 @@ return [
         return new BuildController(
             $c->get(I18nService::class),
             $c->get(BuildProviderRegistry::class),
-            $c->get(AppConfig::class),
+            $c->get(Settings::class),
             $c->get(MappingManager::class),
+            $c->get(AppSettingRepository::class),
             $c->get(\PDO::class),
             $c->get(PipelineTagService::class),
             $c->get(PipelineArtifactService::class),
@@ -442,7 +470,7 @@ return [
     // ---------- GitLab HTTP 客户端（共享，供 AutoDiscover / GitRemoteResolver 复用）----------
 
     'gitlabHttpClient' => function (\Psr\Container\ContainerInterface $c) {
-        $config = $c->get(AppConfig::class);
+        $config = $c->get(Settings::class);
         $glCfg  = $config->getGitlabConfig();
         $base   = rtrim($glCfg['base_url'] ?? '', '/');
         $token  = $glCfg['token'] ?? '';
@@ -459,7 +487,7 @@ return [
 
     // Gitea HTTP 客户端（共享，供 AutoDiscover 扫描 Gitea 项目复用）
     'giteaHttpClient' => function (\Psr\Container\ContainerInterface $c) {
-        $config = $c->get(AppConfig::class);
+        $config = $c->get(Settings::class);
         $giteaCfg = $config->getGiteaConfig();
         $base   = rtrim($giteaCfg['base_url'] ?? '', '/');
         $token  = $giteaCfg['token'] ?? '';
@@ -478,7 +506,7 @@ return [
 
     // Harbor Guzzle 客户端
     'harborClient' => function (\Psr\Container\ContainerInterface $c) {
-        $config = $c->get(AppConfig::class);
+        $config = $c->get(Settings::class);
         $harbor = $config->getHarborConfig();
         return new Client([
             'base_uri' => $harbor['url'] ?? '',
@@ -536,8 +564,7 @@ return [
             $c->get(AdminAuthService::class),
             $c->get(AdminUserRepository::class),
             $c->get(OidcService::class),
-            $c->get(AppConfig::class)
+            $c->get(Settings::class)
         );
     },
 ];
-
