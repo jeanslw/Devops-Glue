@@ -17,14 +17,14 @@
 
 <!-- ═══════════ 登录 ═══════════ -->
 <div id="login-page" class="login-wrap">
-    <div class="login-card">
-        <h3 data-i18n="admin.login_title">🔐 管理登录</h3>
-        <p class="sub" data-i18n="admin.login_subtitle">Devops-Glue 管理后台</p>
+    <form class="login-card" onsubmit="event.preventDefault();doLogin();">
+        <div class="login-title" data-i18n="admin.login_title">🔐 管理登录</div>
+        <div class="sub" data-i18n="admin.login_subtitle">Devops-Glue 管理后台</div>
         <input id="login-user" data-i18n-placeholder="admin.account_placeholder" placeholder="账号" autocomplete="username">
         <input id="login-pass" type="password" data-i18n-placeholder="admin.password_placeholder" placeholder="密码" autocomplete="current-password">
-        <button class="btn btn-pri" onclick="doLogin()" data-i18n="auth.login">登 录</button>
+        <button type="submit" class="btn btn-pri" data-i18n="auth.login">登 录</button>
         <div class="login-err" id="login-err"></div>
-    </div>
+    </form>
     <div style="position:fixed;top:16px;right:16px;z-index:100;display:inline-flex;align-items:center;gap:4px;">
         🌐 <select id="lang-select-login" onchange="__.switchTo(this.value);document.getElementById('lang-select').value=this.value;" style="border:1px solid rgba(255,255,255,0.5);border-radius:6px;padding:4px 10px;font-size:13px;background:rgba(255,255,255,0.2);color:#fff;cursor:pointer;backdrop-filter:blur(4px);">
             <option value="zh-CN" style="color:#333;background:#fff;">中文</option>
@@ -67,9 +67,6 @@
             <div class="menu-item active" data-tab="monitor" onclick="switchTab('monitor')">
                 <span class="menu-icon">📡</span> <span data-i18n="admin.sidebar_monitor">监测概览</span>
             </div>
-            <div class="menu-item" data-tab="mapping" onclick="switchTab('mapping')">
-                <span class="menu-icon">📋</span> <span data-i18n="admin.sidebar_mapping">映射管理</span>
-            </div>
             <div class="menu-item" data-tab="security" onclick="switchTab('security')">
                 <span class="menu-icon">🛡️</span> <span data-i18n="admin.sidebar_security">安全审计</span>
             </div>
@@ -77,9 +74,28 @@
                 <span class="menu-icon">🧩</span> <span data-i18n="admin.sidebar_versions">对接版本</span>
             </div>
             <div class="menu-div"></div>
-            <div class="menu-item" data-tab="mode" onclick="switchTab('mode')">
-                <span class="menu-icon">🔧</span> <span data-i18n="admin.sidebar_mode">配置模式</span>
+            <div class="menu-item" data-tab="mapping" onclick="switchTab('mapping')">
+                <span class="menu-icon">📋</span> <span data-i18n="admin.sidebar_mapping">映射管理</span>
             </div>
+            <div class="menu-item" data-tab="mode" onclick="switchTab('mode')">
+                <span class="menu-icon">🔧</span> <span data-i18n="admin.sidebar_mode">构建模式</span>
+            </div>
+            <div class="menu-group" id="menu-group-build-records" style="display:none;">
+                <div class="menu-item menu-group-title" onclick="toggleBuildRecordsMenu()">
+                    <span class="menu-icon">📊</span>
+                    <span data-i18n="admin.sidebar_build_records">构建记录</span>
+                    <span class="menu-arrow">▼</span>
+                </div>
+                <div class="submenu">
+                    <div class="menu-item submenu-item" data-tab="pull-records" onclick="switchTab('pull-records')">
+                        <span class="menu-icon">📥</span> <span data-i18n="admin.sidebar_pull_records">拉取式记录</span>
+                    </div>
+                    <div class="menu-item submenu-item" data-tab="push-records" onclick="switchTab('push-records')">
+                        <span class="menu-icon">📤</span> <span data-i18n="admin.sidebar_push_records">自定义推送</span>
+                    </div>
+                </div>
+            </div>
+            <div class="menu-div"></div>
             <div class="menu-group" id="menu-group-users">
                 <div class="menu-item menu-group-title" onclick="toggleUserMenu()">
                     <span class="menu-icon">👥</span>
@@ -116,25 +132,6 @@
                     </div>
                 </div>
             </div>
-            <div class="menu-group" id="menu-group-build-records" style="display:none;">
-                <div class="menu-item menu-group-title" onclick="toggleBuildRecordsMenu()">
-                    <span class="menu-icon">📊</span>
-                    <span data-i18n="admin.sidebar_build_records">构建记录</span>
-                    <span class="menu-arrow">▼</span>
-                </div>
-                <div class="submenu">
-                    <div class="menu-item submenu-item" data-tab="pull-records" onclick="switchTab('pull-records')">
-                        <span class="menu-icon">📥</span> <span data-i18n="admin.sidebar_pull_records">拉取式记录</span>
-                    </div>
-                    <div class="menu-item submenu-item" data-tab="push-records" onclick="switchTab('push-records')">
-                        <span class="menu-icon">📤</span> <span data-i18n="admin.sidebar_push_records">自定义推送</span>
-                    </div>
-                </div>
-            </div>
-            <div class="menu-div"></div>
-            <div class="menu-item" id="menu-api-tokens" data-tab="api-tokens" onclick="switchTab('api-tokens')" style="display:none;">
-                <span class="menu-icon">🔑</span> <span data-i18n="api_token.menu">API 管理</span>
-            </div>
             <div class="menu-group" id="menu-group-logs" style="display:none;">
                 <div class="menu-item menu-group-title" onclick="toggleLogMenu()">
                     <span class="menu-icon">📝</span>
@@ -152,6 +149,10 @@
                         <span class="menu-icon">🔎</span> <span data-i18n="apilog.menu">API 调用日志</span>
                     </div>
                 </div>
+            </div>
+            <div class="menu-div"></div>
+            <div class="menu-item" id="menu-api-tokens" data-tab="api-tokens" onclick="switchTab('api-tokens')" style="display:none;">
+                <span class="menu-icon">🔑</span> <span data-i18n="api_token.menu">API 管理</span>
             </div>
             <div class="menu-group" id="menu-group-settings" style="display:none;">
                 <div class="menu-item menu-group-title" onclick="toggleSettingsMenu()">
@@ -508,9 +509,9 @@
                 </div>
             </div>
 
-            <!-- ═══ 配置模式 Tab ═══ -->
+            <!-- ═══ 构建模式 Tab ═══ -->
             <div id="tab-mode" style="display:none;">
-                <div class="toolbar"><h3 data-i18n="admin.sidebar_mode">🔧 配置模式</h3></div>
+                <div class="toolbar"><h3 data-i18n="admin.sidebar_mode">🔧 构建模式</h3></div>
                 <div class="monitor-card">
                     <div id="mode-display" data-i18n="common.loading">
                         加载中…
