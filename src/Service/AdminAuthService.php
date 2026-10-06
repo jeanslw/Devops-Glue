@@ -9,7 +9,7 @@ class AdminAuthService
     public function __construct(
         private \PDO $pdo,
         private AdminUserRepository $repository,
-        private AppConfig $config,
+        private Settings $config,
         private ?LdapService $ldap = null,
         private ?UserIdentityRepository $identities = null
     ) {

@@ -14,7 +14,7 @@ class TokenService
 {
     public function __construct(
         private \PDO $pdo,
-        private AppConfig $config,
+        private Settings $config,
         private ?ApiTokenService $apiTokenService = null
     ) {
     }
@@ -87,7 +87,7 @@ class TokenService
      * 验证 API token（服务账号 / 第三方调用）。
      * 明文 sha256 后查 api_tokens 表，校验 enabled + 未过期。
      *
-     * @return array{user:string, scopes:string[]}|null
+     * @return array{user:string, token_name:string, token_id:?int, scopes:string[]}|null
      */
     public function validateApiToken(string $token): ?array
     {
@@ -100,8 +100,12 @@ class TokenService
                 return null;
             }
             return [
-                'user'   => $resolved['name'],
-                'scopes' => $resolved['scopes'],
+                // user/token_name 都是 token 的展示名（api_tokens.name，非登录账号），
+                // 供调用方归因与审计；token 原文/hash 绝不进入返回值。
+                'user'       => $resolved['name'],
+                'token_name' => $resolved['name'],
+                'token_id'   => $resolved['id'] ?? null,
+                'scopes'     => $resolved['scopes'],
             ];
         } catch (\Exception $e) {
             return null;

@@ -139,6 +139,22 @@ CREATE TABLE IF NOT EXISTS `ci_operation_logs` (
     `created_at`    DATETIME DEFAULT (NOW())
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- ── 8.2 ci_api_access_logs（API token 调用审计日志：只记 token 名，不记 token/body/query）──
+CREATE TABLE IF NOT EXISTS `ci_api_access_logs` (
+    `id`           INT AUTO_INCREMENT PRIMARY KEY,
+    `username`     VARCHAR(255) DEFAULT '',
+    `token_name`   VARCHAR(255) DEFAULT '',
+    `scopes`       VARCHAR(500) DEFAULT '',
+    `method`       VARCHAR(10) NOT NULL,
+    `route`        VARCHAR(500) NOT NULL,
+    `status_code`  INT NOT NULL DEFAULT 0,
+    `result`       VARCHAR(20) NOT NULL DEFAULT 'success',
+    `error_reason` VARCHAR(500) DEFAULT '',
+    `ip`           VARCHAR(45) DEFAULT '',
+    `duration_ms`  INT NOT NULL DEFAULT 0,
+    `created_at`   DATETIME DEFAULT (NOW())
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- ── 9. roles（角色）──
 CREATE TABLE IF NOT EXISTS `roles` (
     `id`          INT AUTO_INCREMENT PRIMARY KEY,
@@ -208,3 +224,6 @@ CREATE INDEX `idx_custom_builds_status`     ON `ci_custom_builds` (`status`);
 CREATE INDEX `idx_operation_logs_created`   ON `ci_operation_logs` (`created_at`);
 CREATE INDEX `idx_operation_logs_user`      ON `ci_operation_logs` (`username`);
 CREATE INDEX `idx_operation_logs_action`    ON `ci_operation_logs` (`action`);
+CREATE INDEX `idx_api_access_logs_created`  ON `ci_api_access_logs` (`created_at`);
+CREATE INDEX `idx_api_access_logs_token`    ON `ci_api_access_logs` (`token_name`);
+CREATE INDEX `idx_api_access_logs_result`   ON `ci_api_access_logs` (`result`);

@@ -5,21 +5,23 @@ namespace App\Service;
 use App\Config\AppConfig;
 
 /**
- * 统一映射查询层 —— 所有 job_git_map 读/写/过滤/BUILD_MODE 控制集中于此
+ * 统一映射层 —— ci_job_git_map 的全部读/写/过滤，以及构建 provider 启用状态判定集中于此。
+ *
+ * 从 AppConfig 迁入的持久化职责：allMaps/saveMaps/deleteMap（原 getJobGitMap 等）。
+ * 构建模式/custom_push 等 DB 开关委托 {@see AppSettingRepository}。
  */
 class MappingManager
 {
-    private AppConfig $config;
-
-    public function __construct(AppConfig $config)
-    {
-        $this->config = $config;
+    public function __construct(
+        private AppSettingRepository $appSettings,
+        private \PDO $pdo
+    ) {
     }
 
     /** 当前启用的拉取式构建 provider 集合（数据库为唯一来源） */
     public function activeBuildProviders(): array
     {
-        return $this->config->getBuildModes();
+        return $this->appSettings->getBuildModes();
     }
 
     /** 是否启用了某类 Provider */
@@ -40,7 +42,65 @@ class MappingManager
 
     public function hasCustomPush(): bool
     {
-        return $this->config->getCustomPushEnabled();
+        return $this->appSettings->getCustomPushEnabled();
+    }
+
+    // ── 持久化（原 AppConfig::getJobGitMap/saveJobGitMap/deleteJobGitMap） ──
+
+    /** 全量映射（含 inactive/pending），按 job_name 排序 */
+    public function allMaps(): array
+    {
+        return $this->pdo
+            ->query("SELECT * FROM " . AppConfig::TABLE_JOB_GIT_MAP . " ORDER BY job_name")
+            ->fetchAll();
+    }
+
+    /**
+     * 全量覆盖保存：upsert 传入行，并删除 DB 中存在但本次未提交的行。
+     */
+    public function saveMaps(array $data): void
+    {
+        $cols = 'job_name,git_platform,build_provider,git_remote,project_id,web_url,current_path,harbor_repository,api_version,status';
+        $upsertSql = Database::sqlUpsert(AppConfig::TABLE_JOB_GIT_MAP, $cols, '?,?,?,?,?,?,?,?,?,?');
+        $upsertStmt = $this->pdo->prepare($upsertSql);
+
+        $incomingNames = [];
+        foreach ($data as $row) {
+            if (empty($row['job_name'])) {
+                continue;
+            }
+            $incomingNames[] = $row['job_name'];
+            $upsertStmt->execute([
+                $row['job_name'],
+                $row['git_platform'] ?? null,
+                $row['build_provider'] ?? AppConfig::PROVIDER_JENKINS,
+                $row['git_remote'] ?? null,
+                $row['project_id'] ?? null,
+                $row['web_url'] ?? null,
+                $row['current_path'] ?? null,
+                $row['harbor_repository'] ?? null,
+                $row['api_version'] ?? null,
+                $row['status'] ?? AppConfig::STATUS_ACTIVE,
+            ]);
+        }
+
+        // 删除 DB 中存在但传入数据里已移除的行（不再全表删除）
+        if (!empty($incomingNames)) {
+            $placeholders = implode(',', array_fill(0, count($incomingNames), '?'));
+            $this->pdo
+                ->prepare("DELETE FROM " . AppConfig::TABLE_JOB_GIT_MAP . " WHERE job_name NOT IN ({$placeholders})")
+                ->execute($incomingNames);
+        } else {
+            $this->pdo->exec("DELETE FROM " . AppConfig::TABLE_JOB_GIT_MAP);
+        }
+    }
+
+    /** 单条删除映射 */
+    public function deleteMap(string $jobName): void
+    {
+        $this->pdo
+            ->prepare("DELETE FROM " . AppConfig::TABLE_JOB_GIT_MAP . " WHERE job_name = ?")
+            ->execute([$jobName]);
     }
 
     // ── 全量查询（过滤禁用 + 模式筛选） ──
@@ -48,11 +108,11 @@ class MappingManager
     /** 返回当前启用集合下活跃的映射条目（custom_push 独立开关，开启时一并保留） */
     public function activeMaps(): array
     {
-        $maps = $this->config->getJobGitMap();
+        $maps = $this->allMaps();
         $maps = array_filter($maps, fn($m) => ($m['status'] ?? AppConfig::STATUS_ACTIVE) === AppConfig::STATUS_ACTIVE);
 
-        $enabled = $this->config->getBuildModes();
-        $cpEnabled = $this->config->getCustomPushEnabled();
+        $enabled = $this->activeBuildProviders();
+        $cpEnabled = $this->hasCustomPush();
 
         $maps = array_filter($maps, function ($m) use ($enabled, $cpEnabled) {
             $bp = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
@@ -100,7 +160,7 @@ class MappingManager
         // 否则 gitea_ci 未启用时，路径 jeanslw/Devops_CD（gitea 的 job_name）会落到 jenkins 的
         // current_path 别名上，拼出 job/jeanslw/... 404（历史 bug）。
         // 命中未启用 provider 时也返回该 provider，让调用方走 registry 的「未配置/未启用」分支。
-        foreach ($this->config->getJobGitMap() as $m) {
+        foreach ($this->allMaps() as $m) {
             $job = trim((string) ($m['job_name'] ?? ''));
             if ($job !== '' && $job === $projectPath) {
                 return $this->resolveMap($projectPath, $m);

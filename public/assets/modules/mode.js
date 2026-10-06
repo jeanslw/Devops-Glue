@@ -11,6 +11,8 @@ import {
     pullProviderMeta
 } from '../core/state.js';
 
+let currentApiLogCleanupEnabled = true;
+
 export function renderBuildModeCheckboxes(availability, selected) {
     const box = document.getElementById('build-mode-checkboxes');
     if (!box) return;
@@ -445,4 +447,103 @@ export function applyTagSettings(data) {
     setStaleCleanup(!!data.stale_tag_cleanup_enabled);
     setBackfill(!!data.backfill_tag_enabled);
     syncTagRunButtons();
+}
+
+// ── 日志设置（API 调用日志 + 操作日志统一策略；部署日志暂不清理）──
+
+// 平台管理页填充日志设置（写入级别 / 保留天数 / 清理开关）
+export function applyApiLogSettings(data) {
+    const levelSel = document.getElementById('apilog-set-level');
+    const retainSel = document.getElementById('apilog-set-retain');
+    const retainCustom = document.getElementById('apilog-set-retain-custom');
+    if (levelSel && data.api_access_log_level) levelSel.value = data.api_access_log_level;
+    const days = parseInt(data.api_access_log_retain_days, 10) || 90;
+    if (retainSel) {
+        if ([90, 60, 30].includes(days)) {
+            retainSel.value = String(days);
+            if (retainCustom) retainCustom.style.display = 'none';
+        } else {
+            retainSel.value = 'custom';
+            if (retainCustom) { retainCustom.style.display = ''; retainCustom.value = days; }
+        }
+    }
+    const cleanupToggle = document.getElementById('apilog-cleanup-toggle');
+    if (cleanupToggle) {
+        cleanupToggle.checked = data.api_access_log_cleanup_enabled !== false;
+        currentApiLogCleanupEnabled = cleanupToggle.checked;
+    }
+}
+
+// 保留天数下拉切换：选「自定义」只展开输入框等用户输入，其余档位直接保存
+export function onApiLogRetainChange() {
+    const retainSel = document.getElementById('apilog-set-retain');
+    const retainCustom = document.getElementById('apilog-set-retain-custom');
+    if (!retainSel || !retainCustom) return;
+    if (retainSel.value === 'custom') {
+        retainCustom.style.display = '';
+        retainCustom.focus();
+        return;
+    }
+    retainCustom.style.display = 'none';
+    saveApiLogSettings();
+}
+
+// 定时清理开关：弹窗确认后再保存（与 tag 清理/回填开关行为一致）
+export async function onApiLogCleanupToggle() {
+    const cleanupToggle = document.getElementById('apilog-cleanup-toggle');
+    const newEnabled = cleanupToggle.checked;
+    const oldEnabled = currentApiLogCleanupEnabled;
+
+    if (!await confirmDialog({
+        title: __.t('common.confirm'),
+        message: newEnabled ? __.t('js.apilog_cleanup_enable_confirm') : __.t('js.apilog_cleanup_disable_confirm'),
+        note: __.t('js.apilog_cleanup_note')
+    })) { cleanupToggle.checked = oldEnabled; return; }
+
+    currentApiLogCleanupEnabled = newEnabled;
+    const ok = await saveApiLogSettings();
+    if (!ok) {
+        currentApiLogCleanupEnabled = oldEnabled;
+        cleanupToggle.checked = oldEnabled;
+    }
+}
+
+export async function saveApiLogSettings() {
+    const levelSel = document.getElementById('apilog-set-level');
+    const retainSel = document.getElementById('apilog-set-retain');
+    const retainCustom = document.getElementById('apilog-set-retain-custom');
+    const statusEl = document.getElementById('apilog-settings-status');
+    if (!levelSel || !retainSel) return;
+    let days;
+    if (retainSel.value === 'custom') {
+        days = parseInt(retainCustom.value, 10);
+        if (!days || days < 1 || days > 3650) { toast(__.t('apilog.retain_invalid'), false); return; }
+    } else {
+        days = parseInt(retainSel.value, 10);
+    }
+    const cleanupToggle = document.getElementById('apilog-cleanup-toggle');
+    try {
+        const res = await fetch('/api/admin/platform_config', {
+            method: 'PUT',
+            headers: Object.assign({'Content-Type':'application/json'}, authHeaders()),
+            body: JSON.stringify({
+                api_access_log_level: levelSel.value,
+                api_access_log_retain_days: days,
+                api_access_log_cleanup_enabled: cleanupToggle ? cleanupToggle.checked : true,
+            })
+        });
+        if (handle401(res)) return false;
+        const data = await res.json();
+        if (!res.ok) { toast(data.message || __.t('js.save_failed'), false); return false; }
+        applyApiLogSettings(data); // 回显服务端归一化后的值
+        if (statusEl) {
+            statusEl.textContent = '✅ ' + __.t('build.mode_saved');
+            statusEl.style.display = 'inline';
+            setTimeout(() => statusEl.style.display = 'none', 2000);
+        }
+        return true;
+    } catch(e) {
+        toast(__.t('js.network_error') + ': ' + e.message, false);
+        return false;
+    }
 }

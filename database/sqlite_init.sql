@@ -135,6 +135,22 @@ CREATE TABLE IF NOT EXISTS ci_operation_logs (
     created_at    TEXT DEFAULT (datetime('now','localtime'))
 );
 
+-- ── 8.2 ci_api_access_logs（API token 调用审计日志：只记 token 名，不记 token/body/query）──
+CREATE TABLE IF NOT EXISTS ci_api_access_logs (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    username     TEXT DEFAULT '',
+    token_name   TEXT DEFAULT '',
+    scopes       TEXT DEFAULT '',
+    method       TEXT NOT NULL,
+    route        TEXT NOT NULL,
+    status_code  INTEGER NOT NULL DEFAULT 0,
+    result       TEXT NOT NULL DEFAULT 'success',
+    error_reason TEXT DEFAULT '',
+    ip           TEXT DEFAULT '',
+    duration_ms  INTEGER NOT NULL DEFAULT 0,
+    created_at   TEXT DEFAULT (datetime('now','localtime'))
+);
+
 -- ── 9. roles（角色）──
 CREATE TABLE IF NOT EXISTS roles (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -205,6 +221,9 @@ CREATE INDEX IF NOT EXISTS idx_custom_builds_status       ON ci_custom_builds(st
 CREATE INDEX IF NOT EXISTS idx_operation_logs_created     ON ci_operation_logs(created_at);
 CREATE INDEX IF NOT EXISTS idx_operation_logs_user        ON ci_operation_logs(username);
 CREATE INDEX IF NOT EXISTS idx_operation_logs_action      ON ci_operation_logs(action);
+CREATE INDEX IF NOT EXISTS idx_api_access_logs_created    ON ci_api_access_logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_api_access_logs_token      ON ci_api_access_logs(token_name);
+CREATE INDEX IF NOT EXISTS idx_api_access_logs_result     ON ci_api_access_logs(result);
 
 -- =============================================================
 -- 迁移说明

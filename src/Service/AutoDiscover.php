@@ -10,13 +10,13 @@ class AutoDiscover
 {
     private JenkinsService $jenkins;
     private ProviderRegistry $gitRegistry;
-    private AppConfig $config;
+    private Settings $config;
     private MappingManager $mapping;
     private ?Logger $logger;
     private ?Client $gitlabClient = null;
     private ?Client $giteaClient = null;
 
-    public function __construct(JenkinsService $jenkins, ProviderRegistry $gitRegistry, AppConfig $config, MappingManager $mapping, ?Logger $logger = null, ?Client $gitlabClient = null, ?Client $giteaClient = null)
+    public function __construct(JenkinsService $jenkins, ProviderRegistry $gitRegistry, Settings $config, MappingManager $mapping, ?Logger $logger = null, ?Client $gitlabClient = null, ?Client $giteaClient = null)
     {
         $this->jenkins      = $jenkins;
         $this->gitRegistry  = $gitRegistry;
@@ -34,10 +34,10 @@ class AutoDiscover
         // ⚠️ 关键安全约束：按「已启用的拉取式 provider 集合」严格隔离
         // - 只参考 build_provider ∈ enabled 的已有记录去重（跨源：同仓库仅一条 active）
         // - custom_push_enabled 开启时：custom_push 记录也纳入去重（正交维度）
-        $cpEnabled = $this->config->getCustomPushEnabled();
+        $cpEnabled = $this->mapping->hasCustomPush();
         $activeRemotes = [];   // 归一化后的 key：host/path（统一格式，跨协议去重）
         $existingNames = [];
-        foreach ($this->config->getJobGitMap() as $m) {
+        foreach ($this->mapping->allMaps() as $m) {
             $bp = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
 
             // 非启用 provider 的记录不参与去重（custom_push 开启时始终纳入）
@@ -108,8 +108,8 @@ class AutoDiscover
     {
         $saved = 0;
         $enabled = $this->mapping->activeBuildProviders();
-        $cpEnabled = $this->config->getCustomPushEnabled();
-        $maps  = $this->config->getJobGitMap();
+        $cpEnabled = $this->mapping->hasCustomPush();
+        $maps  = $this->mapping->allMaps();
 
         // 同样按集合隔离：只收集启用 provider 的 job_name，防止跨 provider 误判重复
         $names = [];
@@ -137,7 +137,7 @@ class AutoDiscover
             $saved++;
         }
         if ($saved > 0) {
-            $this->config->saveJobGitMap($maps);
+            $this->mapping->saveMaps($maps);
         }
         return $saved;
     }

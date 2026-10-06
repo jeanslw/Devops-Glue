@@ -5,6 +5,7 @@ namespace App\Controller;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Config\AppConfig;
+use App\Service\AppSettingRepository;
 use App\Service\Build\BuildProviderRegistry;
 use App\Service\HarborService;
 use App\Service\I18nService;
@@ -13,14 +14,16 @@ use App\Service\PipelineTagService;
 use App\Service\PipelineArtifactService;
 use App\Service\PipelineIdentity;
 use App\Service\OperationLogRepository;
+use App\Service\Settings;
 use App\Service\Git\ProviderRegistry as GitProviderRegistry;
 use App\Helper\ClientIp;
 
 class BuildController extends BaseController
 {
     private BuildProviderRegistry $registry;
-    private AppConfig $config;
+    private Settings $config;
     private MappingManager $mapping;
+    private AppSettingRepository $appSettings;
     private PipelineTagService $pipelineTags;
     private PipelineArtifactService $artifacts;
     private ?HarborService $harbor;
@@ -28,12 +31,13 @@ class BuildController extends BaseController
     private \PDO $pdo;
     private ?OperationLogRepository $operationLog = null;
 
-    public function __construct(I18nService $i18n, BuildProviderRegistry $registry, AppConfig $config, MappingManager $mapping, \PDO $pdo, PipelineTagService $pipelineTags, PipelineArtifactService $artifacts, ?HarborService $harbor = null, ?GitProviderRegistry $gitRegistry = null)
+    public function __construct(I18nService $i18n, BuildProviderRegistry $registry, Settings $config, MappingManager $mapping, AppSettingRepository $appSettings, \PDO $pdo, PipelineTagService $pipelineTags, PipelineArtifactService $artifacts, ?HarborService $harbor = null, ?GitProviderRegistry $gitRegistry = null)
     {
         parent::__construct($i18n);
         $this->registry     = $registry;
         $this->config       = $config;
         $this->mapping      = $mapping;
+        $this->appSettings  = $appSettings;
         $this->pdo          = $pdo;
         $this->pipelineTags = $pipelineTags;
         $this->artifacts    = $artifacts;
@@ -105,7 +109,7 @@ class BuildController extends BaseController
         }
 
         $maps = array_values(array_filter(
-            $this->config->getJobGitMap(),
+            $this->mapping->allMaps(),
             fn($m) => ($m['status'] ?? AppConfig::STATUS_ACTIVE) === AppConfig::STATUS_ACTIVE
         ));
 
@@ -182,7 +186,7 @@ class BuildController extends BaseController
         // 注意：dash 与 slash 是 Jenkins 中不同的 job 身份（java-registry 为顶层 job，
         // java/registry 为 folder 下 job），不互相归并。
         $keys = [$path];
-        foreach ($this->config->getJobGitMap() as $m) {
+        foreach ($this->mapping->allMaps() as $m) {
             $job = $m['job_name'] ?? '';
             $cp  = $m['current_path'] ?? '';
             if ($job === $path || $cp === $path) {
@@ -253,8 +257,8 @@ class BuildController extends BaseController
         $hasJenkins = $this->registry->isRegistered(AppConfig::PROVIDER_JENKINS);
         $hasGitlab  = $this->registry->isRegistered(AppConfig::PROVIDER_GITLAB_CI);
         $hasGitea   = $this->registry->isRegistered(AppConfig::PROVIDER_GITEA_CI);
-        $modes  = $this->config->getBuildModes();
-        $source = $this->config->getBuildModeSource();
+        $modes  = $this->appSettings->getBuildModes();
+        $source = $this->appSettings->getBuildModeSource();
 
         // 自定义 Build Provider 状态（custom_push 等）
         $customProviders = [];
@@ -266,14 +270,14 @@ class BuildController extends BaseController
         }
 
         return $this->output($response, [
-            'mode'                  => $this->config->getBuildMode(),
+            'mode'                  => $this->appSettings->getBuildMode(),
             'modes'                 => $modes,
             'source'                => $source,
             'has_jenkins'           => $hasJenkins,
             'has_gitlab_ci'         => $hasGitlab,
             'has_gitea_ci'          => $hasGitea,
             'has_custom_push'       => !empty($customProviders),
-            'custom_push_enabled'   => $this->config->getCustomPushEnabled(),
+            'custom_push_enabled'   => $this->appSettings->getCustomPushEnabled(),
             'custom_providers'      => $customProviders,
         ], $request);
     }
@@ -651,7 +655,7 @@ class BuildController extends BaseController
         }
 
         // ── 查找 git_platform ──
-        $maps = $this->config->getJobGitMap();
+        $maps = $this->mapping->allMaps();
         $gitPlatform    = '';
         $gitProjectId   = null;
         $gitCurrentPath = '';
@@ -735,7 +739,7 @@ class BuildController extends BaseController
         $sourceUpdatedAt = trim((string) ($body['source_updated_at'] ?? ''));
 
         // 1. 获取 job_git_map 中的映射信息（不依赖 CI 系统）
-        $maps = $this->config->getJobGitMap();
+        $maps = $this->mapping->allMaps();
         $harborRepo  = '';
         $provider    = AppConfig::PROVIDER_JENKINS;
         $gitPlatform = '';
@@ -922,7 +926,7 @@ class BuildController extends BaseController
         $entry = $tags[$path] ?? [];
         // 别名归并：同一项目可能同时以 job_name / current_path 落 tag（与 tagsList 一致），
         // 按其中一键查询时把另一键下的 pipeline→tag 也合并进来，避免按 current_path 查空。
-        foreach ($this->config->getJobGitMap() as $m) {
+        foreach ($this->mapping->allMaps() as $m) {
             $job = $m['job_name'] ?? '';
             $cp  = $m['current_path'] ?? '';
             if ($job === $path || $cp === $path) {
@@ -987,7 +991,7 @@ class BuildController extends BaseController
             // 同时收集本项目 harbor_repository（用于判断「可日志兜底」）。
             $aliases = [$path];
             $harborRepo = '';
-            foreach ($this->config->getJobGitMap() as $m) {
+            foreach ($this->mapping->allMaps() as $m) {
                 $job = $m['job_name'] ?? '';
                 $cp  = $m['current_path'] ?? '';
                 $matched = ($job === $path || $cp === $path);
@@ -1092,7 +1096,7 @@ class BuildController extends BaseController
 
         // 映射的 harbor_repository（两段式 project/repo）；缺配则无需兜底
         $harborRepo = '';
-        foreach ($this->config->getJobGitMap() as $m) {
+        foreach ($this->mapping->allMaps() as $m) {
             $job = $m['job_name'] ?? '';
             $cp  = $m['current_path'] ?? '';
             if ($job === $path || $cp === $path) {
@@ -1120,7 +1124,7 @@ class BuildController extends BaseController
             }
         }
 
-        $keyword = $this->config->getTagLogKeyword();
+        $keyword = $this->appSettings->getTagLogKeyword();
         $tag = '';
         try {
             $p = $this->registry->create($provider);
@@ -1311,7 +1315,7 @@ class BuildController extends BaseController
         // artifact 是最终部署依据，harbor_repository 与 tag 都必须真实存在于 Harbor，否则拒绝。
         $harborRepo = '';
         if ($status === 'success') {
-            foreach ($this->config->getJobGitMap() as $m) {
+            foreach ($this->mapping->allMaps() as $m) {
                 $job = $m['job_name'] ?? '';
                 $cp  = $m['current_path'] ?? '';
                 if ($job === $path || $cp === $path) {
@@ -1382,7 +1386,7 @@ class BuildController extends BaseController
     {
         try {
             // 先以 Harbor 为准清理过期 tag（不可达/不可校验时安全跳过，不误删）；受后台开关控制
-            if ($this->config->getStaleTagCleanupEnabled()) {
+            if ($this->appSettings->getStaleTagCleanupEnabled()) {
                 $this->pipelineTags->cleanupStaleTags();
             }
 

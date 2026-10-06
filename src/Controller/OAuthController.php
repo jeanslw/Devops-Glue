@@ -10,6 +10,7 @@ use App\Service\OidcService;
 use App\Service\AdminAuthService;
 use App\Service\AdminUserRepository;
 use App\Config\AppConfig;
+use App\Service\Settings;
 use App\Helper\ClientIp;
 
 /**
@@ -33,7 +34,7 @@ class OAuthController extends BaseController
         private AdminAuthService $auth,
         private AdminUserRepository $users,
         private OidcService $oidc,
-        private AppConfig $config
+        private Settings $config
     ) {
         parent::__construct($i18n);
     }

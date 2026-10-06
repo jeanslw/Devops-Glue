@@ -1,7 +1,17 @@
 <?php
 namespace App\Config;
 
-class AppConfig
+/**
+ * 全局常量目录：表名、角色、权限种子、状态、构建模式/provider、scope 目录等纯静态数据。
+ *
+ * 本类刻意保持「无状态、无 IO」：
+ *   - settings.php / env 配置读取 → {@see \App\Service\Settings}
+ *   - ci_app_settings 运行时开关（build_mode/custom_push/tag 关键字等）→ {@see \App\Service\AppSettingRepository}
+ *   - ci_platform_versions 读写 → {@see \App\Service\PlatformVersionRepository}
+ *   - ci_job_git_map 读写/过滤 → {@see \App\Service\MappingManager}
+ *   - API token 路由 scope 解析 → {@see \App\Support\ApiScopeResolver}
+ */
+final class AppConfig
 {
     public const APP_VERSION = '2.8.8';
 
@@ -23,6 +33,7 @@ class AppConfig
     public const TABLE_API_TOKENS        = 'api_tokens';
     public const TABLE_USER_IDENTITIES   = 'user_identities'; // 身份源关联表（v2.6.3 引入，支持 ldap/local 等多登录方式）
     public const TABLE_OPERATION_LOGS    = 'ci_operation_logs'; // 后台操作审计日志
+    public const TABLE_API_ACCESS_LOGS   = 'ci_api_access_logs'; // API token 调用日志（只记名不记 token）
     public const TABLE_CD_DEPLOY_LOG_VIEW = 'v_glue_deploy_logs'; // CD 部署记录契约视图（只读审计）
 
     // ── 角色常量 ──
@@ -62,6 +73,8 @@ class AppConfig
     public const PERM_CI_OPERATION_LOGS   = 'ci.operation-logs';
     // 部署日志（只读 CD 部署记录审计视图，日志中心子菜单）
     public const PERM_CI_DEPLOY_LOGS      = 'ci.deploy-logs';
+    // API 调用日志（API token 调用审计，日志中心子菜单）
+    public const PERM_CI_API_LOGS         = 'ci.api-logs';
     // 系统设置（一级父权限：平台管理 + 数据管理两个子权限，对应「系统设置」菜单分组）
     public const PERM_CI_SETTINGS         = 'ci.settings';
     // 数据管理（DB schema 状态面板，系统设置子菜单，仅 super_admin 可触发迁移）
@@ -105,6 +118,7 @@ class AppConfig
         self::PERM_CI_LOGS               => ['name' => 'Log Center', 'parent' => null],
         self::PERM_CI_OPERATION_LOGS     => ['name' => 'Operation Logs', 'parent' => self::PERM_CI_LOGS],
         self::PERM_CI_DEPLOY_LOGS        => ['name' => 'Deploy Logs', 'parent' => self::PERM_CI_LOGS],
+        self::PERM_CI_API_LOGS           => ['name' => 'API Access Logs', 'parent' => self::PERM_CI_LOGS],
         self::PERM_CI_SETTINGS           => ['name' => 'System Settings', 'parent' => null],
         self::PERM_CI_PLATFORM_CONFIG    => ['name' => 'Platform Management', 'parent' => self::PERM_CI_SETTINGS],
         self::PERM_CI_SYSTEM             => ['name' => 'Data Management', 'parent' => self::PERM_CI_SETTINGS],
@@ -127,7 +141,7 @@ class AppConfig
         'cd.monitor.app'    => ['name' => 'App Resources', 'parent' => self::PERM_CD_MONITOR],
         'cd.monitor.system' => ['name' => 'System Resources', 'parent' => self::PERM_CD_MONITOR],
         'cd.monitor.custom' => ['name' => 'Custom Resources', 'parent' => self::PERM_CD_MONITOR],
-        'cd.monitor.alert'  => ['name' => 'Alert Rules', 'parent' => self::PERM_CD_MONITOR],
+        'cd.monitor.alert'   => ['name' => 'Alert Rules', 'parent' => self::PERM_CD_MONITOR],
         // CD 审批中心（一级菜单 + 审批操作子权限，2 个）
         self::PERM_CD_APPROVAL_CENTER => ['name' => 'Approval Center', 'parent' => null],
         self::PERM_CD_APPROVE         => ['name' => 'Approve', 'parent' => self::PERM_CD_APPROVAL_CENTER],
@@ -169,6 +183,7 @@ class AppConfig
         // 日志中心：选了二级（操作日志/部署日志）自动显示一级菜单
         self::PERM_CI_OPERATION_LOGS => [self::PERM_CI_LOGS],
         self::PERM_CI_DEPLOY_LOGS    => [self::PERM_CI_LOGS],
+        self::PERM_CI_API_LOGS       => [self::PERM_CI_LOGS],
         // 系统设置：选了二级（平台管理/数据管理）自动显示一级菜单
         self::PERM_CI_PLATFORM_CONFIG => [self::PERM_CI_SETTINGS],
         self::PERM_CI_SYSTEM          => [self::PERM_CI_SETTINGS],
@@ -189,6 +204,7 @@ class AppConfig
             self::PERM_CI_LOGS,              // 日志中心一级菜单
             self::PERM_CI_OPERATION_LOGS,    // 操作日志（只读）
             self::PERM_CI_DEPLOY_LOGS,       // 部署日志（只读）
+            self::PERM_CI_API_LOGS,          // API 调用日志（只读）
             // CD 侧只读。刻意不含 cd.image-registry——它在 CD 同时 gate 删除 tag 等写操作。
             self::PERM_CD_BUILD,            // CI 构建结果
             self::PERM_CD_HISTORY,          // 部署记录
@@ -252,6 +268,23 @@ class AppConfig
     // 镜像 Tag 日志回填开关：开启后回填 cron 会把日志推导的 tag（经 Harbor 校验存在）
     // 提升写入 canonical ci_pipeline_artifacts。默认关闭（写入需显式授权）。
     public const SETTING_BACKFILL_TAG_ENABLED = 'backfill_tag_enabled';
+
+    // ── API 调用审计写入级别（ci_api_access_logs）──
+    // 控制哪些结果写入数据表（文件日志不受限，始终全量，便于排障）：
+    //   all     全部（success + denied + failure）
+    //   warning 仅 denied + failure
+    //   error   仅 failure
+    //   off     不写数据表
+    public const SETTING_API_ACCESS_LOG_LEVEL = 'api_access_log_level';
+    public const DEFAULT_API_ACCESS_LOG_LEVEL = 'all';
+    public const API_ACCESS_LOG_LEVELS = ['all', 'warning', 'error', 'off'];
+
+    // 审计日志保留天数（cli/cleanup-api-access-logs.php 每日清理依据）与清理开关。
+    // 开关默认开启：保持「每日按保留期清理」的既有行为，需显式关闭才停止。
+    public const SETTING_API_ACCESS_LOG_RETAIN_DAYS = 'api_access_log_retain_days';
+    public const DEFAULT_API_ACCESS_LOG_RETAIN_DAYS = 90;
+    public const MAX_API_ACCESS_LOG_RETAIN_DAYS = 3650;
+    public const SETTING_API_ACCESS_LOG_CLEANUP_ENABLED = 'api_access_log_cleanup_enabled';
 
     // ── 缓存键前缀常量 ──
     public const CACHE_KEY_ADMIN_TOKEN_PREFIX = 'admin_token_';
@@ -328,691 +361,4 @@ class AppConfig
         self::API_SCOPE_BUILD_REPORT => ['scan-sync', 'commit-status', 'report'],
         self::API_SCOPE_RBAC_USER_WRITE => ['rbac.users', 'rbac.roles'],
     ];
-
-    /**
-     * 根据 HTTP 方法 + 路径解析所需的 API scope。
-     *
-     * 返回值约定：
-     *   - null          → API token 禁止访问（/api/admin/* 等管理端点，fail-closed）
-     *   - '*'           → 任意有效 token 均可访问（如 /api/health）
-     *   - 具体 scope    → token 必须持有该 scope
-     *
-     * 只对「已被 AuthMiddleware 保护」的路径生效；公开路由（i18n/docs 等）不经过此方法。
-     */
-    public static function resolveRequiredScope(string $method, string $path): ?string
-    {
-        $m = strtoupper($method);
-        // 归一化：去掉查询串、统一斜杠
-        $path = parse_url($path, PHP_URL_PATH) ?? $path;
-        $path = '/' . trim($path, '/');
-        if ($path !== '/' && str_ends_with($path, '/')) {
-            $path = rtrim($path, '/');
-        }
-
-        // 健康检查：任意有效 token
-        if ($path === '/api/health') {
-            return '*';
-        }
-
-        // 管理端点：API token 一律禁止（super_admin 交互式专属）
-        if (preg_match('#^/api/admin($|/)#', $path)) {
-            return null;
-        }
-
-        // RBAC（CD 服务账号专用）：用户读写（建/读/改/删/校验密码）+ 角色目录，统一 scope。
-        // 复用 rbac.user.write 而非新增 read scope：CD 是单一 trusted 消费方，token 本就有写权限，
-        // 读操作不构成额外提权，也避免为读接口再重签 token。不落入 /api/admin fail-closed。
-        if (preg_match('#^/api/rbac($|/)#', $path)) {
-            return self::API_SCOPE_RBAC_USER_WRITE;
-        }
-
-        // MAIN：只读
-        if (preg_match('#^/api/main($|/)#', $path)) {
-            return self::API_SCOPE_MAIN;
-        }
-
-        // GIT：只读
-        if (preg_match('#^/api/git($|/)#', $path)) {
-            return self::API_SCOPE_GIT;
-        }
-
-        // Harbor：触发扫描（写）优先于读判断
-        if (preg_match('#^/api/harbor/.+/repositories/.+/tags/.+/scan$#', $path) && $m === 'POST') {
-            return self::API_SCOPE_HARBOR_SCAN;
-        }
-        if (preg_match('#^/api/harbor($|/)#', $path)) {
-            return self::API_SCOPE_HARBOR_READ;
-        }
-
-        // Build：写操作（trigger / retry / cancel）
-        if (preg_match('#^/api/build/.+/pipelines/\d+/(retry|cancel)$#', $path)) {
-            return self::API_SCOPE_BUILD_WRITE;
-        }
-        if (preg_match('#^/api/build/.+/trigger$#', $path)) {
-            return self::API_SCOPE_BUILD_WRITE;
-        }
-
-        // Build：CI 流水线回写（scan-sync / commit-status / report）
-        if (preg_match('#^/api/build/.+/(scan-sync|commit-status|report)$#', $path)) {
-            return self::API_SCOPE_BUILD_REPORT;
-        }
-
-        // Build：其余全部只读
-        if (preg_match('#^/api/build($|/)#', $path)) {
-            return self::API_SCOPE_BUILD_READ;
-        }
-
-        // 未知路径：fail-closed
-        return null;
-    }
-
-    private array $config;
-    private ?\PDO $pdo;
-
-    public function __construct(array $config, ?\PDO $pdo = null)
-    {
-        $this->config = $config;
-        $this->pdo = $pdo;
-    }
-
-    private function getPdo(): \PDO
-    {
-        if ($this->pdo === null) {
-            throw new \RuntimeException('AppConfig requires an injected PDO instance.');
-        }
-        return $this->pdo;
-    }
-
-    // Jenkins
-    public function getJenkinsConfig(): array
-    {
-        return [
-            'url'   => $this->config['jenkins']['url'] ?? 'http://localhost:8083',
-            'user'  => $this->config['jenkins']['user'] ?? '',
-            'token' => $this->config['jenkins']['token'] ?? '',
-        ];
-    }
-
-    // GitLab 配置
-    public function getGitlabConfig(): array
-    {
-        return $this->config['git']['gitlab'] ?? [];
-    }
-
-    // Gitee 配置
-    public function getGiteeConfig(): array
-    {
-        return $this->config['git']['gitee'] ?? [];
-    }
-
-    // GitHub 配置
-    public function getGithubConfig(): array
-    {
-        return $this->config['git']['github'] ?? [];
-    }
-
-    // Gitea 配置
-    public function getGiteaConfig(): array
-    {
-        return $this->config['git']['gitea'] ?? [];
-    }
-
-    // 应用环境
-    public function getAppEnv(): string
-    {
-        return $this->config['app']['env'] ?? 'production';
-    }
-
-    // 日志路径
-    public function getLogPath(): string
-    {
-        return $this->config['app']['log_path'] ?? '';
-    }
-
-    // 是否调试模式（对应 APP_DEBUG）。true 时输出全量日志（含关键操作成功/失败），false 只留 error
-    public function isDebug(): bool
-    {
-        return !empty($this->config['app']['debug']);
-    }
-
-    // API 外部访问地址（用于 Swagger UI / OpenAPI，不设返回空字符串由调用方自动推导）
-    public function getApiBaseUrl(): string
-    {
-        return $this->config['app']['api_base_url'] ?? '';
-    }
-
-    // 当前实例系统类型：ci / cd / both
-    public function getSystemType(): string
-    {
-        $type = $this->config['app']['system_type'] ?? self::SYSTEM_CI;
-        return in_array($type, [self::SYSTEM_CI, self::SYSTEM_CD, self::SYSTEM_BOTH]) ? $type : self::SYSTEM_CI;
-    }
-
-    // 可信反向代理跳数（0=直连不信任 XFF；反代后置 1）
-    public function getTrustedProxyHops(): int
-    {
-        return max(0, (int) ($this->config['app']['trusted_proxy_hops'] ?? 0));
-    }
-
-    // CORS 配置
-    public function getCorsConfig(): array
-    {
-        return $this->config['cors'] ?? ['allowed_origins' => ['*']];
-    }
-
-    // 手动映射 —— 从 SQLite 读写
-    public function getJobGitMap(): array
-    {
-        $pdo = $this->getPdo();
-        return $pdo->query("SELECT * FROM " . self::TABLE_JOB_GIT_MAP . " ORDER BY job_name")->fetchAll();
-    }
-
-    public function saveJobGitMap(array $data): void
-    {
-        $pdo = $this->getPdo();
-        $cols = 'job_name,git_platform,build_provider,git_remote,project_id,web_url,current_path,harbor_repository,api_version,status';
-        $upsertSql = \App\Service\Database::sqlUpsert(self::TABLE_JOB_GIT_MAP, $cols, '?,?,?,?,?,?,?,?,?,?');
-        $upsertStmt = $pdo->prepare($upsertSql);
-
-        $incomingNames = [];
-        foreach ($data as $row) {
-            if (empty($row['job_name'])) continue;
-            $incomingNames[] = $row['job_name'];
-            $upsertStmt->execute([
-                $row['job_name'],
-                $row['git_platform'] ?? null,
-                $row['build_provider'] ?? self::PROVIDER_JENKINS,
-                $row['git_remote'] ?? null,
-                $row['project_id'] ?? null,
-                $row['web_url'] ?? null,
-                $row['current_path'] ?? null,
-                $row['harbor_repository'] ?? null,
-                $row['api_version'] ?? null,
-                $row['status'] ?? self::STATUS_ACTIVE,
-            ]);
-        }
-
-        // 删除 DB 中存在但传入数据里已移除的行（不再全表删除）
-        if (!empty($incomingNames)) {
-            $placeholders = implode(',', array_fill(0, count($incomingNames), '?'));
-            $pdo->prepare("DELETE FROM " . self::TABLE_JOB_GIT_MAP . " WHERE job_name NOT IN ({$placeholders})")->execute($incomingNames);
-        } else {
-            $pdo->exec("DELETE FROM " . self::TABLE_JOB_GIT_MAP);
-        }
-    }
-
-    /** 单条删除映射 */
-    public function deleteJobGitMap(string $jobName): void
-    {
-        $pdo = $this->getPdo();
-        $pdo->prepare("DELETE FROM " . self::TABLE_JOB_GIT_MAP . " WHERE job_name = ?")->execute([$jobName]);
-    }
-
-    // Harbor
-    public function getHarborConfig(): array
-    {
-        return $this->config['harbor'] ?? [];
-    }
-
-    /**
-     * 判断当前配置的 Harbor 账号是否为机器人账户（用户名含 'robot$' 前缀）。
-     * Harbor v2.2.0 之前机器人账户是 JWT，无法调用 REST API，仅 Docker/Helm CLI 可用。
-     */
-    public function isHarborRobotAccount(): bool
-    {
-        $username = $this->config['harbor']['username'] ?? '';
-        return str_contains($username, 'robot$');
-    }
-
-    /**
-     * 获取用户自定义 Git Provider 列表
-     * @return array 每个元素包含 class (完整类名) 和 config (构造参数数组)
-     */
-    public function getCustomGitProviders(): array
-    {
-        return $this->config['git']['custom_providers'] ?? [];
-    }
-
-    /**
-     * 获取用户自定义 Build Provider 列表（custom_push 等推送式 CI）
-     * 与 Git 自定义平台解耦：独立配置项 build.custom_providers，不放在 git 下。
-     * @return array 每个元素包含 name (注册名), class (完整类名) 和 config (构造参数数组)
-     */
-    public function getCustomBuildProviders(): array
-    {
-        return $this->config['build']['custom_providers'] ?? [];
-    }
-
-    // getGitPlatformsConfig 方法
-    public function getGitPlatformsConfig(): array
-    {
-        $platforms = [];
-        $gitConfig = $this->config['git'] ?? [];
-
-        // 内置平台
-        foreach (['gitlab', 'gitee', 'github', 'gitea'] as $name) {
-            $cfg = $gitConfig[$name] ?? [];
-            // 有 base_url 或 api_base_url 任一非空即认为已配置
-            if (!empty($cfg['base_url']) || !empty($cfg['api_base_url'])) {
-                $baseUrl = $cfg['api_base_url'] ?? $cfg['base_url'];
-                $version = $cfg['api_version'] ?? ($this->getPlatformApiVersions()[$name] ?? $this->getDefaultApiVersion($name));
-
-                // 拼接 API 版本路径（GitHub 除外：版本通过 HTTP header 传递）
-                if ($name !== 'github') {
-                    $expectedPath = '/api/' . $version;
-                    if (strpos($baseUrl, $expectedPath) === false) {
-                        $baseUrl = rtrim($baseUrl, '/') . $expectedPath;
-                    }
-                }
-
-                $platforms[] = [
-                    'name'         => $name,
-                    'api_base_url' => $baseUrl,
-                    'api_version'  => $version,
-                ];
-            }
-        }
-
-        // 自定义平台
-        foreach ($this->getCustomGitProviders() as $provider) {
-            $class = $provider['class'] ?? '';
-            $cfg   = $provider['config'] ?? [];
-            if (empty($class)) continue;
-
-            $name    = $cfg['name'] ?? strtolower(substr(strrchr($class, '\\'), 1));
-            $baseUrl = $cfg['api_base_url'] ?? $cfg['base_url'] ?? '';
-            $version = $cfg['api_version'] ?? 'custom';
-
-            $platforms[] = [
-                'name'         => $name,
-                'api_base_url' => $baseUrl,
-                'api_version'  => $version,
-            ];
-        }
-
-        return $platforms;
-    }
-
-    // 获取 Harbor 的 API 配置
-    public function getHarborApiInfo(): array
-    {
-        $harbor = $this->config['harbor'] ?? [];
-        $baseUrl = rtrim($harbor['url'] ?? '', '/');
-        $version = $harbor['api_version'] ?? ($this->getPlatformApiVersions()['harbor'] ?? 'v2.0');
-        $expectedPath = '/api/' . $version;
-        if (strpos($baseUrl, $expectedPath) === false) {
-            $baseUrl .= $expectedPath;
-        }
-        return [
-            'api_base_url' => $baseUrl,
-            'api_version'  => $version,
-        ];
-    }
-
-    // 按名称获取单个 Git 平台配置
-    public function getGitPlatformConfig(string $name): array
-    {
-        return $this->config['git'][$name] ?? [];
-    }
-
-    /**
-     * URL 无法匹配时使用的默认平台名
-     */
-    public function getDefaultGitPlatform(): string
-    {
-        return $this->config['git']['default_platform'] ?? 'gitlab';
-    }
-
-    // 判断某个平台是否已在配置中（用于 discovery 对比）
-    public function isPlatformConfigured(string $platformName): bool
-    {
-        $cfg = $this->config['git'][$platformName] ?? null;
-        if (!$cfg) return false;
-        return !empty($cfg['base_url']) || !empty($cfg['api_base_url']);
-    }
-
-    /**
-     * 根管理员用户名（从 app.env ADMIN_USER 读取，默认 'admin'）
-     * 这是唯一的根账号标识，所有权限判断都从这里取，不散落写死
-     */
-    public function getRootAdminUser(): string
-    {
-        // 统一小写：与登录输入、建号、seedAdminFromEnv 的规范化保持一致，
-        // 否则根账号保护比对（===）在大小写不一致时会被绕过
-        return strtolower($this->config['admin']['user'] ?? 'admin');
-    }
-
-    /**
-     * 管理后台登录凭证（从 app.env 读取）
-     */
-    public function getAdminCredentials(): array
-    {
-        return [
-            'user'     => $this->getRootAdminUser(),
-            'password' => $this->config['admin']['password'] ?? '',
-        ];
-    }
-
-    /**
-     * LDAP 身份源配置。
-     * 仅在 settings.php 的 ldap.enabled=true 时启用；密码源、DN 模板、过滤等均从 app.env 读取。
-     */
-    public function getLdapConfig(): array
-    {
-        $cfg = $this->config['ldap'] ?? [];
-        $enabled = (bool)($cfg['enabled'] ?? false);
-        if (!$enabled) {
-            return ['enabled' => false];
-        }
-        return [
-            'enabled'         => true,
-            'host'            => (string)($cfg['host'] ?? ''),
-            'port'            => (int)($cfg['port'] ?? 389),
-            'use_tls'         => (bool)($cfg['use_tls'] ?? false),  // LDAP_CONNECT 之后 STARTTLS
-            'use_ldaps'       => (bool)($cfg['use_ldaps'] ?? false), // ldap_connect 时直接用 ldaps://
-            'base_dn'         => (string)($cfg['base_dn'] ?? ''),
-            'bind_dn'         => (string)($cfg['bind_dn'] ?? ''),   // 先以管理员绑定搜索用户 DN，再切回用户密码校验
-            'bind_password'   => (string)($cfg['bind_password'] ?? ''),
-            'user_filter'     => (string)($cfg['user_filter'] ?? '(uid=%s)'), // %s → 用户名
-            'user_dn_pattern' => (string)($cfg['user_dn_pattern'] ?? ''),     // 若已固定 DN 模板（如 uid=%s,ou=users,dc=x），跳过管理员搜索
-            'attrs'           => is_array($cfg['attrs'] ?? null) ? $cfg['attrs'] : ['uid', 'cn', 'mail', 'dn'],
-            'network_timeout' => (int)($cfg['network_timeout'] ?? 5),
-        ];
-    }
-
-    // ──────────────────── 平台 API 版本 ────────────────────
-
-    private static array $DEFAULT_API_VERSIONS = [
-        'gitlab' => 'v4',
-        'gitee'  => 'v5',
-        'github' => 'v3',
-        'gitea'  => 'v1',
-        'harbor' => 'v2.0',
-    ];
-
-    /** 获取所有平台的 API 版本（SQLite 覆盖默认值） */
-    public function getPlatformApiVersions(): array
-    {
-        $enriched = $this->getPlatformApiVersionsWithSource();
-        $result = [];
-        foreach ($enriched as $name => $info) {
-            $result[$name] = $info['value'];
-        }
-        return $result;
-    }
-
-    /**
-     * 获取版本号 + 来源标识（供管理界面展示）
-     * source: 'config' = settings.php 显式配置（最高优先级，UI 只读）
-     *         'json'   = platform_versions.json（管理界面可改）
-     *         'default'= 系统硬编码默认值（管理界面可覆盖）
-     */
-    public function getPlatformApiVersionsWithSource(): array
-    {
-        $result = [];
-        foreach (self::$DEFAULT_API_VERSIONS as $name => $default) {
-            $result[$name] = ['value' => $default, 'source' => 'default'];
-        }
-
-        // SQLite 覆盖默认
-        try {
-            $pdo = $this->getPdo();
-            $rows = $pdo->query("SELECT platform, version FROM " . self::TABLE_PLATFORM_VERSIONS)->fetchAll();
-            foreach ($rows as $r) {
-                if (isset($result[$r['platform']])) {
-                    $result[$r['platform']] = ['value' => $r['version'], 'source' => 'json'];
-                }
-            }
-        } catch (\Exception $e) {
-            // DB 不可用时保持默认
-        }
-
-        // settings.php 显式配置优先级最高
-        foreach (['gitlab', 'gitee', 'github', 'gitea'] as $name) {
-            $cfg = $this->config['git'][$name] ?? [];
-            if (!empty($cfg['api_version'])) {
-                $result[$name] = ['value' => $cfg['api_version'], 'source' => 'config'];
-            }
-        }
-        if (!empty($this->config['harbor']['api_version'])) {
-            $result['harbor'] = ['value' => $this->config['harbor']['api_version'], 'source' => 'config'];
-        }
-
-        return $result;
-    }
-
-    public function savePlatformApiVersions(array $data): void
-    {
-        $pdo = $this->getPdo();
-        $pdo->exec("DELETE FROM " . self::TABLE_PLATFORM_VERSIONS);
-        $stmt = $pdo->prepare("INSERT INTO " . self::TABLE_PLATFORM_VERSIONS . " (platform, version) VALUES (?, ?)");
-        foreach ($data as $name => $ver) {
-            $default = self::$DEFAULT_API_VERSIONS[$name] ?? null;
-            if ($ver !== $default && $ver !== '' && $ver !== null) {
-                $stmt->execute([$name, $ver]);
-            }
-        }
-    }
-
-    // ─── 构建系统模式（数据库为唯一来源） ───
-
-    /**
-     * 获取启用的构建 provider 集合（主 API）。
-     * 逻辑：DB ci_app_settings.build_mode → 解析为集合返回。若 DB 无记录（首次运行），
-     * 从 app.env BUILD_MODE 取种子值写入 DB 后返回。此后 DB 为唯一真相来源，app.env 不再参与运行时决策。
-     *
-     * 旧格式（jenkins / gitlab_ci / both 单值）惰性映射到新格式（both → jenkins,gitlab_ci），
-     * 并在读取时自愈回写为规范逗号串。
-     *
-     * @return string[] 已启用的拉取式 provider（jenkins/gitlab_ci/gitea_ci），可为空数组（仅 custom_push）
-     */
-    public function getBuildModes(): array
-    {
-        try {
-            $pdo = $this->getPdo();
-            $row = $pdo->query("SELECT value FROM " . self::TABLE_APP_SETTINGS . " WHERE setting_key = 'build_mode'")->fetch();
-            if ($row && is_string($row['value'] ?? null)) {
-                $modes = self::parseBuildModes($row['value']);
-                if ($row['value'] !== implode(',', $modes)) {
-                    $this->persistBuildModes($modes);
-                }
-                return $modes;
-            }
-            // DB 无记录 → 首次运行，以 app.env 为种子写入 DB
-            $modes = self::parseBuildModes($_ENV['BUILD_MODE'] ?? self::BUILD_MODE_BOTH);
-            $this->persistBuildModes($modes);
-            return $modes;
-        } catch (\Exception $e) {
-            // DB 彻底不可用时的最后兜底
-            return self::parseBuildModes($_ENV['BUILD_MODE'] ?? self::BUILD_MODE_BOTH);
-        }
-    }
-
-    /**
-     * 解析 build_mode 值为规范化 provider 集合（旧格式 both/jenkins/gitlab_ci 兼容映射）。
-     */
-    private static function parseBuildModes(string $value): array
-    {
-        $value = trim($value);
-        if ($value === '') {
-            return [];
-        }
-        if ($value === self::BUILD_MODE_BOTH) {
-            return [self::PROVIDER_JENKINS, self::PROVIDER_GITLAB_CI];
-        }
-        if (in_array($value, self::BUILTIN_PULL_PROVIDERS, true)) {
-            return [$value];
-        }
-        // 新格式：逗号分隔集合，只保留内置拉取式 provider，未知值丢弃。
-        // array_intersect 以 BUILTIN_PULL_PROVIDERS 的顺序返回（jenkins,gitlab_ci,gitea_ci），保持规范顺序。
-        $parts = array_values(array_filter(array_map('trim', explode(',', $value)), fn($s) => $s !== ''));
-        return array_values(array_intersect(self::BUILTIN_PULL_PROVIDERS, $parts));
-    }
-
-    private function persistBuildModes(array $modes): void
-    {
-        $pdo = $this->getPdo();
-        $sql = \App\Service\Database::sqlUpsert(self::TABLE_APP_SETTINGS, 'setting_key, value, updated_at', '?, ?, ' . \App\Service\Database::sqlNow());
-        $pdo->prepare($sql)->execute(['build_mode', implode(',', $modes)]);
-    }
-
-    /**
-     * 兼容字符串：返回 join 出的规范串（供缓存 key / 汇总 / configMode 复用）。
-     * @deprecated 新代码优先用 getBuildModes()
-     */
-    public function getBuildMode(): string
-    {
-        return implode(',', $this->getBuildModes());
-    }
-
-    /**
-     * 获取当前构建模式的来源：'database' | 'env'
-     */
-    public function getBuildModeSource(): string
-    {
-        try {
-            $pdo = $this->getPdo();
-            $row = $pdo->query("SELECT value FROM " . self::TABLE_APP_SETTINGS . " WHERE setting_key = 'build_mode'")->fetch();
-            if ($row && is_string($row['value'] ?? null)) {
-                return 'database';
-            }
-        } catch (\Exception $e) {
-            \App\Helper\Log::exception($e);
-        }
-        return 'env';
-    }
-
-    /**
-     * 设置启用的构建 provider 集合（写入 app_settings 表）
-     */
-    public function setBuildModes(array $modes): void
-    {
-        // array_intersect 以 BUILTIN_PULL_PROVIDERS 的顺序返回，天然去重，保持规范顺序
-        $modes = array_values(array_intersect(self::BUILTIN_PULL_PROVIDERS, array_map('trim', $modes)));
-        $this->persistBuildModes($modes);
-    }
-
-    /**
-     * 兼容桥接：单值/旧格式字符串 → 集合。
-     * @deprecated 新代码优先用 setBuildModes()
-     */
-    public function setBuildMode(string $mode): void
-    {
-        $this->setBuildModes(self::parseBuildModes($mode));
-    }
-
-    /**
-     * custom_push 是否启用（独立开关，可与任何 build_mode 组合）
-     * 存储于 ci_app_settings 表，key = 'custom_push_enabled'，value = '1'/'0'
-     */
-    public function getCustomPushEnabled(): bool
-    {
-        try {
-            $pdo = $this->getPdo();
-            $row = $pdo->query("SELECT value FROM " . self::TABLE_APP_SETTINGS . " WHERE setting_key = 'custom_push_enabled'")->fetch();
-            if ($row) {
-                return $row['value'] === '1';
-            }
-            // DB 无记录 → 首次运行，默认关闭（settings.php 已配置 provider，需在后台勾选启用）
-            $this->setCustomPushEnabled(false);
-            return false;
-        } catch (\Exception $e) {
-            return false;
-        }
-    }
-
-    public function setCustomPushEnabled(bool $enabled): void
-    {
-        $pdo = $this->getPdo();
-        $sql = \App\Service\Database::sqlUpsert(self::TABLE_APP_SETTINGS, 'setting_key, value, updated_at', '?, ?, ' . \App\Service\Database::sqlNow());
-        $pdo->prepare($sql)->execute(['custom_push_enabled', $enabled ? '1' : '0']);
-    }
-
-    /**
-     * 过期 tag 清理开关（stale_tag_cleanup_enabled）。
-     * 默认关闭：刚装好时 ci_pipeline_artifacts 为空，且删除不可逆，需后台显式开启。
-     * 存储于 ci_app_settings 表，key = 'stale_tag_cleanup_enabled'，value = '1'/'0'。
-     */
-    public function getStaleTagCleanupEnabled(): bool
-    {
-        try {
-            $pdo = $this->getPdo();
-            $row = $pdo->query("SELECT value FROM " . self::TABLE_APP_SETTINGS . " WHERE setting_key = 'stale_tag_cleanup_enabled'")->fetch();
-            if ($row) {
-                return $row['value'] === '1';
-            }
-            // DB 无记录 → 首次运行，默认关闭（需后台开启）
-            $this->setStaleTagCleanupEnabled(false);
-            return false;
-        } catch (\Exception $e) {
-            return false;
-        }
-    }
-
-    public function setStaleTagCleanupEnabled(bool $enabled): void
-    {
-        $pdo = $this->getPdo();
-        $sql = \App\Service\Database::sqlUpsert(self::TABLE_APP_SETTINGS, 'setting_key, value, updated_at', '?, ?, ' . \App\Service\Database::sqlNow());
-        $pdo->prepare($sql)->execute(['stale_tag_cleanup_enabled', $enabled ? '1' : '0']);
-    }
-
-    /**
-     * 镜像 Tag 日志回填开关（backfill_tag_enabled）。
-     * 默认关闭：回填会向 ci_pipeline_artifacts 写入日志推导的 tag（经 Harbor 校验存在），
-     * 属写操作，需后台显式开启。存储于 ci_app_settings，value = '1'/'0'。
-     */
-    public function getBackfillTagEnabled(): bool
-    {
-        try {
-            $pdo = $this->getPdo();
-            $row = $pdo->query("SELECT value FROM " . self::TABLE_APP_SETTINGS . " WHERE setting_key = '" . self::SETTING_BACKFILL_TAG_ENABLED . "'")->fetch();
-            if ($row) {
-                return $row['value'] === '1';
-            }
-            $this->setBackfillTagEnabled(false);
-            return false;
-        } catch (\Exception $e) {
-            return false;
-        }
-    }
-
-    public function setBackfillTagEnabled(bool $enabled): void
-    {
-        $pdo = $this->getPdo();
-        $sql = \App\Service\Database::sqlUpsert(self::TABLE_APP_SETTINGS, 'setting_key, value, updated_at', '?, ?, ' . \App\Service\Database::sqlNow());
-        $pdo->prepare($sql)->execute([self::SETTING_BACKFILL_TAG_ENABLED, $enabled ? '1' : '0']);
-    }
-
-    /**
-     * 拉取式记录「镜像 Tag」日志兜底的推送成功关键字。
-     * 存储于 ci_app_settings 表，key = 'tag_log_keyword'；用户可在「配置模式」页自定义。
-     * 空串视为未配置 → 回退默认 'digest'。
-     */
-    public function getTagLogKeyword(): string
-    {
-        try {
-            $pdo = $this->getPdo();
-            $row = $pdo->query("SELECT value FROM " . self::TABLE_APP_SETTINGS . " WHERE setting_key = '" . self::SETTING_TAG_LOG_KEYWORD . "'")->fetch();
-            if ($row) {
-                $kw = trim((string) ($row['value'] ?? ''));
-                return $kw !== '' ? $kw : self::DEFAULT_TAG_LOG_KEYWORD;
-            }
-        } catch (\Exception $e) {
-            \App\Helper\Log::exception($e);
-        }
-        return self::DEFAULT_TAG_LOG_KEYWORD;
-    }
-
-    public function setTagLogKeyword(string $keyword): void
-    {
-        $pdo = $this->getPdo();
-        $sql = \App\Service\Database::sqlUpsert(self::TABLE_APP_SETTINGS, 'setting_key, value, updated_at', '?, ?, ' . \App\Service\Database::sqlNow());
-        $pdo->prepare($sql)->execute([self::SETTING_TAG_LOG_KEYWORD, trim($keyword)]);
-    }
-
-    // 私有：获取平台默认 API 版本
-    private function getDefaultApiVersion(string $platform): string
-    {
-        return self::$DEFAULT_API_VERSIONS[$platform] ?? 'unknown';
-    }
 }

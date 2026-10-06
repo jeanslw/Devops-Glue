@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace App\Test\Unit;
 
 use App\Config\AppConfig;
+use App\Service\AppSettingRepository;
 use App\Service\MappingManager;
 use PHPUnit\Framework\TestCase;
 
@@ -73,7 +74,7 @@ class MappingManagerTest extends TestCase
 
     private function makeManager(): MappingManager
     {
-        return new MappingManager(new AppConfig([], $this->pdo));
+        return new MappingManager(new AppSettingRepository($this->pdo), $this->pdo);
     }
 
     public function testCustomPushByCurrentPathNormalizesToJobName(): void

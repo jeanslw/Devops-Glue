@@ -6,6 +6,7 @@ namespace App\Test\Unit;
 use App\Config\AppConfig;
 use App\Service\AdminAuthService;
 use App\Service\AdminUserRepository;
+use App\Service\Settings;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -41,7 +42,7 @@ class AdminAuthServiceTest extends TestCase
 
     private function makeService(array $adminCfg = [], ?AdminUserRepository $repo = null): AdminAuthService
     {
-        return new AdminAuthService($this->pdo, $repo ?? $this->repo, new AppConfig($adminCfg));
+        return new AdminAuthService($this->pdo, $repo ?? $this->repo, new Settings($adminCfg));
     }
 
     private function seedRoot(string $username, string $password): void

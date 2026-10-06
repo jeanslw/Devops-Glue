@@ -2,8 +2,6 @@
 
 namespace App\Service;
 
-use App\Config\AppConfig;
-
 /**
  * 基于 PHP ext-ldap 的 LDAP 认证客户端。
  *
@@ -22,7 +20,7 @@ use App\Config\AppConfig;
  */
 class LdapService
 {
-    public function __construct(private AppConfig $config)
+    public function __construct(private Settings $config)
     {
     }
 
