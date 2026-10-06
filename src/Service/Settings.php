@@ -294,7 +294,7 @@ class Settings
     /**
      * 获取版本号 + 来源标识（供管理界面展示）
      * source: 'config'   = settings.php 显式配置（最高优先级，UI 只读）
-     *         'database' = DB 覆盖（管理界面可改）
+     *         'json'     = DB 覆盖（管理界面可改）
      *         'default'  = 系统硬编码默认值（管理界面可覆盖）
      *
      * @return array<string, array{value:string, source:string}>

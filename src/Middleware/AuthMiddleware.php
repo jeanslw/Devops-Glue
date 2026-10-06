@@ -128,7 +128,7 @@ class AuthMiddleware implements MiddlewareInterface
         try {
             $statusCode = $response->getStatusCode();
             if ($denyReason !== null) {
-                $result = $statusCode === 401 ? 'denied' : ($statusCode === 403 ? 'denied' : 'failure');
+                $result = in_array($statusCode, [401, 403], true) ? 'denied' : 'failure';
                 $errorReason = $denyReason;
             } elseif ($statusCode < 400) {
                 $result = 'success';
@@ -154,15 +154,14 @@ class AuthMiddleware implements MiddlewareInterface
                 'duration_ms'  => $durationMs,
             ];
 
-            // 数据表写入受级别开关控制（all/warning/error/off）；
-            // 文件日志不受限，始终全量，便于排障时不进后台也能 grep 到完整轨迹。
+            // 数据表 + 文件双写都受级别开关控制（all/warning/error/off），避免审计日志失控增长。
             $level = $this->appSettings?->getApiAccessLogLevel()
                 ?? \App\Config\AppConfig::DEFAULT_API_ACCESS_LOG_LEVEL;
             if (ApiAccessLogRepository::shouldRecord($result, $level)) {
                 $this->apiLogs?->record($entry);
+                // 文件双写：一条廉价 JSON，便于不进后台也能 grep 审计；同样不含 token 原文。
+                $this->logger?->info('[API调用]', $entry);
             }
-            // 文件双写：一条廉价 JSON，便于不进后台也能 grep 审计；同样不含 token 原文。
-            $this->logger?->info('[API调用]', $entry);
         } catch (\Throwable $e) {
             // 审计本身绝不能反噬主流程
             $this->logger?->error('[API调用日志] 记录失败', ['error' => $e->getMessage()]);
@@ -175,7 +174,7 @@ class AuthMiddleware implements MiddlewareInterface
      */
     private function resolveRoute(Request $request): string
     {
-        $route = $request->getAttribute('route');
+        $route = $request->getAttribute(\Slim\Routing\RouteContext::ROUTE);
         if (is_object($route) && method_exists($route, 'getPattern')) {
             $pattern = (string)$route->getPattern();
             if ($pattern !== '') {
