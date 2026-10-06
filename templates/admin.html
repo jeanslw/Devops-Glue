@@ -17,14 +17,14 @@
 
 <!-- ═══════════ 登录 ═══════════ -->
 <div id="login-page" class="login-wrap">
-    <div class="login-card">
-        <h3 data-i18n="admin.login_title">🔐 管理登录</h3>
-        <p class="sub" data-i18n="admin.login_subtitle">Devops-Glue 管理后台</p>
+    <form class="login-card" onsubmit="event.preventDefault();doLogin();">
+        <div class="login-title" data-i18n="admin.login_title">🔐 管理登录</div>
+        <div class="sub" data-i18n="admin.login_subtitle">Devops-Glue 管理后台</div>
         <input id="login-user" data-i18n-placeholder="admin.account_placeholder" placeholder="账号" autocomplete="username">
         <input id="login-pass" type="password" data-i18n-placeholder="admin.password_placeholder" placeholder="密码" autocomplete="current-password">
-        <button class="btn btn-pri" onclick="doLogin()" data-i18n="auth.login">登 录</button>
+        <button type="submit" class="btn btn-pri" data-i18n="auth.login">登 录</button>
         <div class="login-err" id="login-err"></div>
-    </div>
+    </form>
     <div style="position:fixed;top:16px;right:16px;z-index:100;display:inline-flex;align-items:center;gap:4px;">
         🌐 <select id="lang-select-login" onchange="__.switchTo(this.value);document.getElementById('lang-select').value=this.value;" style="border:1px solid rgba(255,255,255,0.5);border-radius:6px;padding:4px 10px;font-size:13px;background:rgba(255,255,255,0.2);color:#fff;cursor:pointer;backdrop-filter:blur(4px);">
             <option value="zh-CN" style="color:#333;background:#fff;">中文</option>

@@ -360,7 +360,7 @@
             box-shadow:0 8px 32px rgba(0,0,0,.18); width:380px; max-width:90vw;
             text-align:center;
         }
-        .login-card h3 { font-size:20px; margin-bottom:6px; }
+        .login-card .login-title { font-size:20px; margin-bottom:6px; }
         .login-card .sub { font-size:13px; color:#9ca3af; margin-bottom:24px; }
         .login-card input { width:100%; padding:10px 14px; border:1.5px solid #d1d5db; border-radius:8px; font-size:14px; margin-bottom:12px; }
         .login-card input:focus { outline:none; border-color:#667eea; box-shadow:0 0 0 3px rgba(102,126,234,.15); }
