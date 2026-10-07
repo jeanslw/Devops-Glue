@@ -370,7 +370,7 @@ return [
     'js.activate_confirm'       => '确认',
     'js.activate_warn_hide'     => '启用后，同仓库的另一条映射将立即隐藏，且下次自动发现时也会被过滤。',
     'js.delete_note'            => '删除后，该映射相关的触发与回写配置将立即失效，且无法恢复。',
-    'js.cannot_activate_mode'   => '当前构建模式为 {mode}，无法启用 {item} 项目',
+    'js.cannot_activate_mode'   => '{item} 未启用，无法启用该项目；请在编辑中更改 CI 源，或在设置中启用 {item} 构建模式',
     'js.load_failed'            => '加载失败',
     'js.timeout'                => '超时',
     'js.cannot_connect'         => '无法连接',

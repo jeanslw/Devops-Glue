@@ -21,7 +21,7 @@ class MappingManager
     /**
      * 当前启用的拉取式构建 provider 集合（数据库为唯一来源）
      *
-     * @return array<int,string>
+     * @return list<string>
      */
     public function activeBuildProviders(): array
     {

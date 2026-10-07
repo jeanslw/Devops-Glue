@@ -483,7 +483,8 @@ class BuildController extends BaseController
         }
 
         $path = $args['path'] ?? '';
-        $body = $request->getParsedBody() ?? [];
+        $parsedBody = $request->getParsedBody();
+        $body       = is_array($parsedBody) ? $parsedBody : [];
         $qs   = $request->getQueryParams();
         [$provider, $projectId] = $this->resolve($path);
 
@@ -679,7 +680,8 @@ class BuildController extends BaseController
         }
 
         $path = $args['path'] ?? '';
-        $body = $request->getParsedBody() ?? [];
+        $parsedBody = $request->getParsedBody();
+        $body       = is_array($parsedBody) ? $parsedBody : [];
 
         // ── 参数校验 ──
         $sha         = trim($body['sha'] ?? '');
@@ -795,8 +797,9 @@ class BuildController extends BaseController
         }
 
         $path = $args['path'] ?? '';
-        $body   = $request->getParsedBody() ?? [];
-        $tag    = $body['tag'] ?? null;
+        $parsedBody = $request->getParsedBody();
+        $body       = is_array($parsedBody) ? $parsedBody : [];
+        $tag        = $body['tag'] ?? null;
         $sourceUpdatedAt = trim((string) ($body['source_updated_at'] ?? ''));
 
         // 1. 获取 job_git_map 中的映射信息（不依赖 CI 系统）
@@ -1175,7 +1178,8 @@ class BuildController extends BaseController
 
         $path       = $args['path'] ?? '';
         $pipelineId = (int) ($args['id'] ?? 0);
-        $body       = $request->getParsedBody() ?? [];
+        $parsedBody = $request->getParsedBody();
+        $body       = is_array($parsedBody) ? $parsedBody : [];
         $sha        = trim((string) ($body['sha'] ?? ''));
         $force      = (bool) ($body['force'] ?? false);
         if ($pipelineId <= 0) {
@@ -1375,7 +1379,8 @@ class BuildController extends BaseController
         }
 
         $path        = $args['path'] ?? '';
-        $body        = $request->getParsedBody() ?? [];
+        $parsedBody  = $request->getParsedBody();
+        $body        = is_array($parsedBody) ? $parsedBody : [];
         $pipelineIid = (int) ($body['pipeline_iid'] ?? 0);
         $status      = trim((string) ($body['status'] ?? ''));
         $finishedAt  = trim((string) ($body['finished_at'] ?? ''));

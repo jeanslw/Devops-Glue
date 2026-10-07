@@ -103,7 +103,7 @@ class DeployLogRepository
                 'page'        => $page,
                 'per_page'    => $perPage,
                 'total_pages' => $totalPages,
-                'items'       => $items,
+                'items'       => array_values($items),
             ];
         } catch (\Throwable $e) {
             \App\Helper\Log::error('[部署日志] 查询失败', ['error' => $e->getMessage()]);

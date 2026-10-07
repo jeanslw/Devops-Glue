@@ -66,9 +66,9 @@ class AdminUserRepository
     public function listUsers(bool $includeAdmin = true): array
     {
         if ($includeAdmin) {
-            return $this->pdo->query("SELECT username, role, systems, email, status, created_at, updated_at FROM " . AppConfig::TABLE_ADMIN_USERS . " ORDER BY username")->fetchAll();
+            return array_values($this->pdo->query("SELECT username, role, systems, email, status, created_at, updated_at FROM " . AppConfig::TABLE_ADMIN_USERS . " ORDER BY username")->fetchAll());
         }
-        return $this->pdo->query("SELECT username, role, systems, email, status, created_at, updated_at FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE role NOT IN ('" . AppConfig::ROLE_ADMIN . "', '" . AppConfig::ROLE_SUPER_ADMIN . "') ORDER BY username")->fetchAll();
+        return array_values($this->pdo->query("SELECT username, role, systems, email, status, created_at, updated_at FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE role NOT IN ('" . AppConfig::ROLE_ADMIN . "', '" . AppConfig::ROLE_SUPER_ADMIN . "') ORDER BY username")->fetchAll());
     }
 
     /**
@@ -92,9 +92,9 @@ class AdminUserRepository
      */
     public function listUsersForApi(): array
     {
-        return $this->pdo->query(
+        return array_values($this->pdo->query(
             "SELECT username, role, systems, status FROM " . AppConfig::TABLE_ADMIN_USERS . " ORDER BY username"
-        )->fetchAll();
+        )->fetchAll());
     }
 
     /**
@@ -118,9 +118,9 @@ class AdminUserRepository
      */
     public function listRolesForApi(): array
     {
-        return $this->pdo->query(
+        return array_values($this->pdo->query(
             "SELECT name, description FROM " . AppConfig::TABLE_ROLES . " ORDER BY name"
-        )->fetchAll();
+        )->fetchAll());
     }
 
     /** 角色是否已存在于 roles 表（建号/改号前校验，防「角色名悬空」导致权限加载为空）。 */

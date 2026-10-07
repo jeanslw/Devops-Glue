@@ -88,16 +88,17 @@ class LdapService
             $filter = sprintf((string)$cfg['user_filter'], $this->escapeFilter($username));
             $attrsToRead = is_array($cfg['attrs'] ?? null) ? $cfg['attrs'] : ['uid', 'cn', 'mail', 'dn'];
             $search = @ldap_search($resource, (string)$cfg['base_dn'], $filter, $attrsToRead);
-            if ($search === false) {
+            if (!$search instanceof \LDAP\Result) {
                 return ['ok' => false, 'error' => 'ldap_search_failed'];
             }
             $entries = ldap_get_entries($resource, $search);
-            if ($entries === false || (int)($entries['count'] ?? 0) === 0) {
+            if ($entries === false || (int)($entries['count'] ?? 0) === 0 || !is_array($entries[0] ?? null)) {
                 return ['ok' => false, 'error' => 'ldap_user_not_found'];
             }
 
-            $userDn = (string)$entries[0]['dn'];
-            $attrs  = $this->normalizeAttrs($entries[0]);
+            $entry  = $entries[0];
+            $userDn = (string)($entry['dn'] ?? '');
+            $attrs  = $this->normalizeAttrs($entry);
 
             // 用用户 DN + 密码替换连接身份，做最终认证
             if (!$this->bind($resource, $userDn, $password)) {
@@ -167,11 +168,14 @@ class LdapService
     {
         $attrsToRead = is_array($cfg['attrs'] ?? null) ? $cfg['attrs'] : ['uid', 'cn', 'mail'];
         $search = @ldap_read($resource, $dn, '(objectClass=*)', $attrsToRead);
-        if ($search === false) {
+        if (!$search instanceof \LDAP\Result) {
             return [];
         }
         $entries = ldap_get_entries($resource, $search);
-        return $entries === false ? [] : $this->normalizeAttrs($entries[0]);
+        if ($entries === false || !is_array($entries[0] ?? null)) {
+            return [];
+        }
+        return $this->normalizeAttrs($entries[0]);
     }
 
     /**

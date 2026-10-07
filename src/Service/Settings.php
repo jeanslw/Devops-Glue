@@ -186,7 +186,8 @@ class Settings
                 continue;
             }
 
-            $name    = $cfg['name'] ?? strtolower(substr(strrchr($class, '\\'), 1));
+            $tail    = strrchr($class, '\\');
+            $name    = $cfg['name'] ?? strtolower($tail === false ? $class : substr($tail, 1));
             $baseUrl = $cfg['api_base_url'] ?? $cfg['base_url'] ?? '';
             $version = $cfg['api_version'] ?? 'custom';
 
@@ -282,6 +283,7 @@ class Settings
         if (!$enabled) {
             return ['enabled' => false];
         }
+        $rawAttrs = $cfg['attrs'] ?? null;
         return [
             'enabled'         => true,
             'host'            => (string)($cfg['host'] ?? ''),
@@ -293,7 +295,9 @@ class Settings
             'bind_password'   => (string)($cfg['bind_password'] ?? ''),
             'user_filter'     => (string)($cfg['user_filter'] ?? '(uid=%s)'), // %s → 用户名
             'user_dn_pattern' => (string)($cfg['user_dn_pattern'] ?? ''),     // 若已固定 DN 模板（如 uid=%s,ou=users,dc=x），跳过管理员搜索
-            'attrs'           => is_array($cfg['attrs'] ?? null) ? $cfg['attrs'] : ['uid', 'cn', 'mail', 'dn'],
+            'attrs'           => is_array($rawAttrs)
+                ? array_values(array_map('strval', $rawAttrs))
+                : ['uid', 'cn', 'mail', 'dn'],
             'network_timeout' => (int)($cfg['network_timeout'] ?? 5),
         ];
     }

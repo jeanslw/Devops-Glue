@@ -112,7 +112,7 @@ class AuthMiddleware implements MiddlewareInterface
             $errorResponse = $this->responseFactory
                 ->createResponse($statusCode)
                 ->withHeader('Content-Type', 'application/json');
-            $errorResponse->getBody()->write(json_encode([
+            $errorResponse->getBody()->write((string) json_encode([
                 'code'    => $statusCode,
                 'message' => $isCiDown ? $e->getMessage() : 'Internal Server Error',
             ], JSON_UNESCAPED_UNICODE));
@@ -207,7 +207,7 @@ class AuthMiddleware implements MiddlewareInterface
         $message = $this->i18n->trans($messageKey, [], $locale);
 
         $response = $this->responseFactory->createResponse();
-        $response->getBody()->write(json_encode(['code' => 401, 'message' => $message], JSON_UNESCAPED_UNICODE));
+        $response->getBody()->write((string) json_encode(['code' => 401, 'message' => $message], JSON_UNESCAPED_UNICODE));
         return $response->withStatus(401)->withHeader('Content-Type', 'application/json');
     }
 
@@ -217,7 +217,7 @@ class AuthMiddleware implements MiddlewareInterface
         $message = $this->i18n->trans($messageKey, [], $locale);
 
         $response = $this->responseFactory->createResponse();
-        $response->getBody()->write(json_encode(['code' => 403, 'message' => $message], JSON_UNESCAPED_UNICODE));
+        $response->getBody()->write((string) json_encode(['code' => 403, 'message' => $message], JSON_UNESCAPED_UNICODE));
         return $response->withStatus(403)->withHeader('Content-Type', 'application/json');
     }
 }

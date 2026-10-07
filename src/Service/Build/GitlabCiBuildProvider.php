@@ -40,7 +40,7 @@ class GitlabCiBuildProvider implements BuildProviderInterface
             if (!is_array($data)) {
                 return [];
             }
-            return array_map(fn($p) => [
+            return array_values(array_map(fn($p) => [
                 'id'         => $p['id'] ?? 0,
                 'iid'        => $p['iid'] ?? 0,
                 'status'     => BuildStatus::normalize((string) ($p['status'] ?? '')),
@@ -49,7 +49,7 @@ class GitlabCiBuildProvider implements BuildProviderInterface
                 'web_url'    => $p['web_url'] ?? '',
                 'created_at' => $this->fmtTime($p['created_at'] ?? ''),
                 'updated_at' => $this->fmtTime($p['updated_at'] ?? ''),
-            ], $data);
+            ], $data));
         } catch (\Exception $e) {
             $this->logger?->error('GitLab CI pipeline 查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
             throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
@@ -76,7 +76,7 @@ class GitlabCiBuildProvider implements BuildProviderInterface
             if (!is_array($data)) {
                 return [];
             }
-            return array_map(fn($j) => [
+            return array_values(array_map(fn($j) => [
                 'id'         => $j['id'] ?? 0,
                 'name'       => $j['name'] ?? '',
                 'stage'      => $j['stage'] ?? '',
@@ -84,7 +84,7 @@ class GitlabCiBuildProvider implements BuildProviderInterface
                 'runner'     => $j['runner']['description'] ?? '',
                 'created_at' => $j['created_at'] ?? '',
                 'duration'   => $j['duration'] ?? 0,
-            ], $data);
+            ], $data));
         } catch (\Exception $e) {
             $this->logger?->error('GitLab CI job 查询失败', ['project' => $projectId, 'pipeline' => $pipelineId, 'error' => $e->getMessage()]);
             throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
@@ -183,13 +183,13 @@ class GitlabCiBuildProvider implements BuildProviderInterface
             if (!is_array($data)) {
                 return [];
             }
-            return array_map(fn($v) => [
+            return array_values(array_map(fn($v) => [
                 'key'       => $v['key'] ?? '',
                 'value'     => '***',    // 脱敏
                 'protected' => $v['protected'] ?? false,
                 'masked'    => $v['masked'] ?? false,
                 'variable_type' => $v['variable_type'] ?? 'env_var',
-            ], $data);
+            ], $data));
         } catch (\Exception $e) {
             $this->logger?->error('GitLab CI variables 查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
             throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);

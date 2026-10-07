@@ -124,7 +124,10 @@ class AdminController extends BaseController
                 'saved' => $saved,
                 'errors' => $errors,
                 'sources' => $sources,
-                'items' => array_map(fn($i) => $i['entry']['job_name'], $found),
+                'items' => array_map(function ($i) {
+                    $entry = is_array($i['entry'] ?? null) ? $i['entry'] : [];
+                    return $entry['job_name'] ?? null;
+                }, $found),
             ], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.scan_failed') . ': ' . $e->getMessage(), 500);
@@ -320,7 +323,7 @@ class AdminController extends BaseController
             $stmt->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . $token]);
             $value = $stmt->fetchColumn();
             if ($value !== false && $value !== '') {
-                return (string)explode('|', $value, 2)[0];
+                return (string)explode('|', (string)($value ?? ''), 2)[0];
             }
         } catch (\Throwable $e) {
         }
@@ -1547,7 +1550,7 @@ class AdminController extends BaseController
             $permissions = $this->userPermissions;
         }
 
-        $response->getBody()->write(json_encode([
+        $response->getBody()->write((string) json_encode([
             'role'        => $this->currentRole,
             'permissions' => $permissions,
         ], JSON_UNESCAPED_UNICODE));
@@ -1568,7 +1571,7 @@ class AdminController extends BaseController
         foreach (AppConfig::API_SCOPES as $key => $labelKey) {
             $scopes[] = ['key' => $key, 'label' => $this->i18n->trans($labelKey, [], $locale)];
         }
-        $response->getBody()->write(json_encode(['scopes' => $scopes], JSON_UNESCAPED_UNICODE));
+        $response->getBody()->write((string) json_encode(['scopes' => $scopes], JSON_UNESCAPED_UNICODE));
         return $response->withHeader('Content-Type', 'application/json');
     }
 
@@ -1583,7 +1586,7 @@ class AdminController extends BaseController
             return $this->jsonError($response, 'api_token.service_unavailable', 503);
         }
         $tokens = $this->apiTokenService->listTokens();
-        $response->getBody()->write(json_encode(['tokens' => $tokens], JSON_UNESCAPED_UNICODE));
+        $response->getBody()->write((string) json_encode(['tokens' => $tokens], JSON_UNESCAPED_UNICODE));
         return $response->withHeader('Content-Type', 'application/json');
     }
 
@@ -1614,7 +1617,7 @@ class AdminController extends BaseController
         }
 
         $this->opLog()->record($this->currentUser, 'create_api_token', $body['name'] ?? '', ['id' => $created['id'], 'scopes' => $body['scopes'] ?? []], $this->clientIp($request), 'success');
-        $response->getBody()->write(json_encode(['id' => $created['id'], 'token' => $created['token']], JSON_UNESCAPED_UNICODE));
+        $response->getBody()->write((string) json_encode(['id' => $created['id'], 'token' => $created['token']], JSON_UNESCAPED_UNICODE));
         return $response->withHeader('Content-Type', 'application/json');
     }
 
@@ -1634,7 +1637,7 @@ class AdminController extends BaseController
         }
         $revoked = $this->apiTokenService->revoke((int)($args['id'] ?? 0));
         $this->opLog()->record($this->currentUser, 'revoke_api_token', (string)($args['id'] ?? ''), [], $this->clientIp($request), $revoked ? 'success' : 'failure');
-        $response->getBody()->write(json_encode(['ok' => $revoked], JSON_UNESCAPED_UNICODE));
+        $response->getBody()->write((string) json_encode(['ok' => $revoked], JSON_UNESCAPED_UNICODE));
         return $response->withHeader('Content-Type', 'application/json');
     }
 
@@ -1654,7 +1657,7 @@ class AdminController extends BaseController
         }
         $deleted = $this->apiTokenService->delete((int)($args['id'] ?? 0));
         $this->opLog()->record($this->currentUser, 'delete_api_token', (string)($args['id'] ?? ''), [], $this->clientIp($request), $deleted ? 'success' : 'failure');
-        $response->getBody()->write(json_encode(['ok' => $deleted], JSON_UNESCAPED_UNICODE));
+        $response->getBody()->write((string) json_encode(['ok' => $deleted], JSON_UNESCAPED_UNICODE));
         return $response->withHeader('Content-Type', 'application/json');
     }
 
@@ -2102,7 +2105,7 @@ class AdminController extends BaseController
     {
         try {
             $pdo = $this->pdo;
-            return $pdo->query("SELECT perm_key FROM " . AppConfig::TABLE_PERMISSIONS)->fetchAll(\PDO::FETCH_COLUMN);
+            return array_values($pdo->query("SELECT perm_key FROM " . AppConfig::TABLE_PERMISSIONS)->fetchAll(\PDO::FETCH_COLUMN));
         } catch (\Exception $e) {
             return array_keys(AppConfig::DEFAULT_PERMISSIONS);
         }

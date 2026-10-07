@@ -69,11 +69,9 @@ export async function loadMaps() {
         });
         maps = maps.filter(m => (m.status || 'active') === 'active' || !activeRemotes.has(normalizeRemote(m.git_remote)));
 
-        maps = maps.filter(m => {
-            const bp = (m.build_provider || 'jenkins');
-            if (!isPullProvider(bp)) return true;
-            return (m.status || 'active') === 'active' || currentBuildModes.includes(bp);
-        });
+        // 注意：不再按 currentBuildModes 隐藏「provider 未启用」的映射——
+        // Git 平台扫描按原生 CI 标记（与 BUILD_MODE 无关），未启用的映射应正常显示，
+        // 点击「启用」时由 activateMap() 拦截并提示更改 CI 源。
 
         const displayTotal = maps.length;
         mapTotalPages = Math.max(1, Math.ceil(displayTotal / mapPerPage));
@@ -294,8 +292,7 @@ export async function activateMap(jobName, item) {
     const isBuiltinBp = isPullProvider(bp);
     if (isBuiltinBp && !currentBuildModes.includes(bp)) {
         const itemLabel = pullProviderMeta(bp).label;
-        const curLabel = currentBuildModes.map(m => pullProviderMeta(m).label).join(' + ') || __.t('js.mode_none');
-        toast(__.t('js.cannot_activate_mode', {mode: curLabel, item: itemLabel}), false);
+        toast(__.t('js.cannot_activate_mode', {item: itemLabel}), false);
         return;
     }
     if (bp === 'custom_push' && !currentCpEnabled) {

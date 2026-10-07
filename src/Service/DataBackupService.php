@@ -111,7 +111,7 @@ class DataBackupService
                 throw new \RuntimeException("表 {$table} 存在异常的列名: " . var_export($c, true));
             }
         }
-        return $cols;
+        return array_values($cols);
     }
 
     /**

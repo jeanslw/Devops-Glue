@@ -22,7 +22,8 @@ class ApiScopeResolver
     {
         $m = strtoupper($method);
         // 归一化：去掉查询串、统一斜杠
-        $path = parse_url($path, PHP_URL_PATH) ?? $path;
+        $parsed = parse_url($path, PHP_URL_PATH);
+        $path = is_string($parsed) ? $parsed : $path;
         $path = '/' . trim($path, '/');
         if ($path !== '/' && str_ends_with($path, '/')) {
             $path = rtrim($path, '/');
