@@ -3,7 +3,9 @@
 namespace App\Service\Git;
 
 use GuzzleHttp\Client;
+use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\GuzzleException;
+use GuzzleHttp\Exception\ServerException;
 use App\Service\Logger;
 
 class GitlabService implements GitProviderInterface
@@ -20,8 +22,9 @@ class GitlabService implements GitProviderInterface
         $this->baseUrl = rtrim($baseUrl, '/');
         $this->logger  = $logger;
         $this->client = new Client([
-            'headers' => ['PRIVATE-TOKEN' => $token],
-            'timeout' => 15,
+            'headers'         => ['PRIVATE-TOKEN' => $token],
+            'timeout'         => 15,
+            'connect_timeout' => 10,
         ]);
     }
 
@@ -60,6 +63,9 @@ class GitlabService implements GitProviderInterface
         return $this->paginatedList($path, 'name');
     }
 
+    /**
+     * @return array{success:bool, message:string}
+     */
     public function setCommitStatus(string $repository, string $sha, string $state, string $context, string $description, string $targetUrl = ''): array
     {
         // 注意：本方法入参与 getBranches/getTags 不同——调用方（BuildController）三级回退传入
@@ -90,7 +96,10 @@ class GitlabService implements GitProviderInterface
         }
     }
 
-    /** 通用分页列表获取 */
+    /**
+     * 通用分页列表获取
+     * @return list<string>
+     */
     private function paginatedList(string $path, string $key): array
     {
         $all = [];
@@ -105,6 +114,13 @@ class GitlabService implements GitProviderInterface
                 }
                 $all = array_merge($all, array_column($data, $key));
                 $page++;
+            } catch (ConnectException | ServerException $e) {
+                // 连接级失败（拒绝/DNS/超时）与 5xx：上抛给 GitService 统一包装为
+                // 「平台不可达」（→ 502），不得吞成空数组（否则与「仓库无分支」无法区分）
+                $this->logger?->warning('GitLab 平台不可达', [
+                    'path' => $path, 'page' => $page, 'error' => $e->getMessage(),
+                ]);
+                throw $e;
             } catch (GuzzleException $e) {
                 $this->logger?->warning('GitLab API 请求失败', [
                     'path' => $path, 'page' => $page, 'error' => $e->getMessage(),

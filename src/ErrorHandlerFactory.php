@@ -19,7 +19,7 @@ class ErrorHandlerFactory
      * @param ErrorMiddleware $errorMiddleware
      * @param bool $appDebug 是否显示详细错误
      * @param callable $isApiRequest 判断是否 API 请求
-     * @param array $errorMessages 友好错误文案
+     * @param array<string,array<int,string>> $errorMessages 友好错误文案（语言 => 状态码 => 文案）
      * @param callable $resolveErrorLocale 错误页面语言检测
      * @param ResponseFactoryInterface $responseFactory
      */

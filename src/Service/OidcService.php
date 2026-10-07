@@ -32,6 +32,7 @@ class OidcService
         'name', 'preferred_username', 'email', 'email_verified', 'groups',
     ];
 
+    /** @var array<string,mixed> */
     private array $config;
 
     private ?\OpenSSLAsymmetricKey $privateKey = null;
@@ -39,6 +40,9 @@ class OidcService
     private ?string $publicKeyPem = null;
     private ?string $keyId = null;
 
+    /**
+     * @param array<string,mixed> $config
+     */
     public function __construct(array $config = [])
     {
         $this->config = $config;
@@ -229,7 +233,11 @@ class OidcService
 
     // ─────────────────────────── discovery / jwks ───────────────────────────
 
-    /** OIDC Discovery 文档（RFC 8414 / OIDC Discovery 1.0） */
+    /**
+     * OIDC Discovery 文档（RFC 8414 / OIDC Discovery 1.0）
+     *
+     * @return array<string, string|array<int,string>>
+     */
     public function discovery(string $issuer): array
     {
         $issuer = rtrim($issuer, '/');
@@ -248,7 +256,11 @@ class OidcService
         ];
     }
 
-    /** JWKS：只发布公钥（n/e），绝不泄露私钥 */
+    /**
+     * JWKS：只发布公钥（n/e），绝不泄露私钥
+     *
+     * @return array<string, array<int, array<string,string>>>
+     */
     public function jwks(): array
     {
         $details = openssl_pkey_get_details($this->privateKey());
@@ -270,7 +282,11 @@ class OidcService
 
     // ─────────────────────────── 角色 → groups ───────────────────────────
 
-    /** Glue 角色映射为 OIDC groups claim（各系统自行把 group 映射到本地角色） */
+    /**
+     * Glue 角色映射为 OIDC groups claim（各系统自行把 group 映射到本地角色）
+     *
+     * @return array<int,string>
+     */
     public function groupsFromRole(string $role): array
     {
         $role = trim($role);

@@ -15,7 +15,7 @@ class Bootstrap
 {
     /**
      * 创建并配置 Slim App
-     * @return \Slim\App
+     * @return \Slim\App<\Psr\Container\ContainerInterface>
      */
     public static function createApp(): \Slim\App
     {

@@ -21,6 +21,8 @@ class Log
     /**
      * 记录一条友好错误日志（message + 简要 context，不携带堆栈）。
      * 若 Logger 未启用，回退到 error_log。
+     *
+     * @param array<string,mixed> $context 日志上下文
      */
     public static function error(string $message, array $context = []): void
     {

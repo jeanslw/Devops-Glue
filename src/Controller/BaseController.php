@@ -11,6 +11,7 @@ class BaseController
 {
     protected string $currentUser = '';
     protected string $currentRole = AppConfig::ROLE_ADMIN;
+    /** @var list<string> 用户权限键列表 */
     protected array $userPermissions = [];
 
     public function __construct(protected I18nService $i18n)
@@ -19,8 +20,8 @@ class BaseController
 
     /**
      * 翻译快捷方法
-     * @param string $key    翻译键
-     * @param array  $params 替换参数
+     * @param string                    $key    翻译键
+     * @param array<string,string|int> $params 替换参数
      */
     protected function __(string $key, array $params = []): string
     {
@@ -103,6 +104,8 @@ class BaseController
     /**
      * JSON 成功响应
      * 如果数据已包含 'code' 键，直接输出，避免二次包裹
+     *
+     * @param mixed $data 要输出的数据（数组或标量）
      */
     protected function jsonResponse(Response $response, $data, int $code = 200): Response
     {
@@ -120,6 +123,8 @@ class BaseController
 
     /**
      * XML 成功响应
+     *
+     * @param mixed $data 要输出的数据（数组或标量）
      */
     protected function xmlResponse(Response $response, $data, int $code = 200): Response
     {
@@ -148,6 +153,8 @@ class BaseController
 
     /**
      * 递归将数组转为 XML 字符串
+     *
+     * @param mixed $data 要转换的数据（数组或标量）
      */
     private function arrayToXml($data, string $root = 'root'): string
     {
@@ -158,6 +165,11 @@ class BaseController
         return $xml;
     }
 
+    /**
+     * 递归输出 XML 节点
+     *
+     * @param mixed $data 节点数据（数组或标量）
+     */
     private function arrayToXmlNodes($data): string
     {
         $xml = '';

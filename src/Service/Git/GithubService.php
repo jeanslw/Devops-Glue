@@ -3,7 +3,9 @@
 namespace App\Service\Git;
 
 use GuzzleHttp\Client;
+use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\GuzzleException;
+use GuzzleHttp\Exception\ServerException;
 use App\Service\Logger;
 
 class GithubService implements GitProviderInterface
@@ -25,7 +27,8 @@ class GithubService implements GitProviderInterface
                 'Accept'               => 'application/vnd.github+json',
                 'X-GitHub-Api-Version' => '2022-11-28',
             ],
-            'timeout' => 15,
+            'timeout'         => 15,
+            'connect_timeout' => 10,
         ]);
     }
 
@@ -68,6 +71,9 @@ class GithubService implements GitProviderInterface
         return $this->paginatedList("/repos/{$owner}/{$repo}/tags", 'name');
     }
 
+    /**
+     * @return array{success:bool, message:string}
+     */
     public function setCommitStatus(string $repository, string $sha, string $state, string $context, string $description, string $targetUrl = ''): array
     {
         $parts = explode('/', $repository, 2);
@@ -90,7 +96,10 @@ class GithubService implements GitProviderInterface
         return ['success' => $ok, 'message' => $ok ? 'status 已回写' : ($result['error'] ?? '回写失败')];
     }
 
-    /** 通用分页列表获取 */
+    /**
+     * 通用分页列表获取
+     * @return list<string>
+     */
     private function paginatedList(string $path, string $key): array
     {
         $all = [];
@@ -113,6 +122,9 @@ class GithubService implements GitProviderInterface
         return $all;
     }
 
+    /**
+     * @return array{project_id:mixed, web_url:string, path_with_namespace:string}|null
+     */
     public function getProjectMeta(string $owner, string $repo): ?array
     {
         $data = $this->request('GET', "/repos/{$owner}/{$repo}");
@@ -126,6 +138,9 @@ class GithubService implements GitProviderInterface
         ];
     }
 
+    /**
+     * @return array{project_id:mixed, web_url:string, path_with_namespace:string}|null
+     */
     public function searchProject(string $keyword): ?array
     {
         if (strlen($keyword) < 2) {
@@ -143,6 +158,10 @@ class GithubService implements GitProviderInterface
         return null;
     }
 
+    /**
+     * @param array<string,mixed> $data
+     * @return array{project_id:mixed, web_url:string, path_with_namespace:string}
+     */
     private function formatProjectMeta(array $data): array
     {
         return [
@@ -152,6 +171,10 @@ class GithubService implements GitProviderInterface
         ];
     }
 
+    /**
+     * @param array<string,mixed> $options
+     * @return array<string,mixed>
+     */
     private function request(string $method, string $uri, array $options = []): array
     {
         try {
@@ -159,6 +182,15 @@ class GithubService implements GitProviderInterface
             $response = $this->client->request($method, $fullUrl, $options);
             $body = (string) $response->getBody();
             return json_decode($body, true) ?? [];
+        } catch (ConnectException | ServerException $e) {
+            // 连接级失败（拒绝/DNS/超时）与 5xx：上抛为「平台不可达」（→ 502），
+            // 不得吞成 error 数组（否则 paginatedList 断页返回空/部分数据，与「无分支」无法区分）
+            $this->logger?->warning('GitHub 平台不可达', [
+                'method' => $method,
+                'uri'    => $uri,
+                'error'  => $e->getMessage(),
+            ]);
+            throw new \RuntimeException('GitHub 服务不可达: ' . $e->getMessage(), 0, $e);
         } catch (GuzzleException $e) {
             $this->logger?->warning('GitHub API 请求失败', [
                 'method' => $method,

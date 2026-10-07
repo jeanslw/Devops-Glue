@@ -17,6 +17,9 @@ namespace App\Helper;
  */
 class ClientIp
 {
+    /**
+     * @param array<string,string> $serverParams 服务器参数（PSR-7 getServerParams）
+     */
     public static function resolve(array $serverParams, int $trustedHops = 0): string
     {
         $remote = trim((string) ($serverParams['REMOTE_ADDR'] ?? ''));

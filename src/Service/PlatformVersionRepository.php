@@ -68,6 +68,8 @@ class PlatformVersionRepository
 
     /**
      * 保存管理界面提交的版本：与默认值相同的不落库（仅存覆盖值）。
+     *
+     * @param array<string,string|null> $data
      */
     public function saveAll(array $data): void
     {

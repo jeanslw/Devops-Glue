@@ -3,7 +3,9 @@
 namespace App\Service\Git;
 
 use GuzzleHttp\Client;
+use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\GuzzleException;
+use GuzzleHttp\Exception\ServerException;
 use App\Service\Logger;
 
 /**
@@ -26,8 +28,9 @@ class GiteaService implements GitProviderInterface
         $this->baseUrl = rtrim($baseUrl, '/');
         $this->logger  = $logger;
         $this->client = new Client([
-            'headers' => ['Authorization' => 'token ' . $token],
-            'timeout' => 15,
+            'headers'         => ['Authorization' => 'token ' . $token],
+            'timeout'         => 15,
+            'connect_timeout' => 10,
         ]);
     }
 
@@ -70,6 +73,9 @@ class GiteaService implements GitProviderInterface
         return $this->paginatedList("/api/v1/repos/{$owner}/{$repo}/tags", 'name');
     }
 
+    /**
+     * @return array{success:bool, message:string}
+     */
     public function setCommitStatus(string $repository, string $sha, string $state, string $context, string $description, string $targetUrl = ''): array
     {
         $parts = explode('/', $repository, 2);
@@ -102,7 +108,10 @@ class GiteaService implements GitProviderInterface
         }
     }
 
-    /** 通用分页列表获取 */
+    /**
+     * 通用分页列表获取
+     * @return list<string>
+     */
     private function paginatedList(string $path, string $key): array
     {
         $all = [];
@@ -117,6 +126,13 @@ class GiteaService implements GitProviderInterface
                 }
                 $all = array_merge($all, array_column($data, $key));
                 $page++;
+            } catch (ConnectException | ServerException $e) {
+                // 连接级失败（拒绝/DNS/超时）与 5xx：上抛给 GitService 统一包装为
+                // 「平台不可达」（→ 502），不得吞成空数组（否则与「仓库无分支」无法区分）
+                $this->logger?->warning('Gitea 平台不可达', [
+                    'path' => $path, 'page' => $page, 'error' => $e->getMessage(),
+                ]);
+                throw $e;
             } catch (GuzzleException $e) {
                 $this->logger?->warning('Gitea API 请求失败', [
                     'path' => $path, 'page' => $page, 'error' => $e->getMessage(),

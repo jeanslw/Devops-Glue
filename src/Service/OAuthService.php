@@ -20,8 +20,13 @@ class OAuthService
     private const ACCESS_TOKEN_TTL   = 3600;    // 访问令牌有效期（秒）
 
     private \PDO $pdo;
+
+    /** @var array<string, array<int|string,mixed>> */
     private array $clients;
 
+    /**
+     * @param array<string, mixed> $clients
+     */
     public function __construct(\PDO $pdo, array $clients = [])
     {
         $this->pdo = $pdo;
@@ -103,6 +108,8 @@ class OAuthService
 
     /**
      * 消费授权码（一次性）：成功返回码内数据，失败返回 null
+     *
+     * @return array<string,mixed>|null
      */
     public function consumeCode(string $code, string $clientId, string $redirectUri): ?array
     {
@@ -134,7 +141,7 @@ class OAuthService
                 return null;
             }
             return $data;
-        } catch (\Throwable $e) {
+        } catch (\Throwable) {
             return null;
         }
     }
@@ -161,6 +168,8 @@ class OAuthService
 
     /**
      * 校验访问令牌，成功返回用户信息，失败返回 null
+     *
+     * @return array<string,mixed>|null
      */
     public function validateAccessToken(string $token): ?array
     {
@@ -183,7 +192,7 @@ class OAuthService
                 return null;
             }
             return $data;
-        } catch (\Throwable $e) {
+        } catch (\Throwable) {
             return null;
         }
     }
@@ -194,6 +203,8 @@ class OAuthService
      * - 查无此行（已删除）或 status=0（已停用）→ false，令牌立即失效；
      * - 否则用 admin_users 的当前 role 覆盖缓存里冻结的旧角色（降权即时生效）。
      * - 旧库缺 status 列 / 查询异常 → true 放行（沿用缓存原值），回查故障不能锁死 SSO。
+     *
+     * @param array<string,mixed> $data
      */
     private function refreshAccount(array &$data): bool
     {
@@ -218,7 +229,7 @@ class OAuthService
                 $data['role'] = $acc['role'];
             }
             return true;
-        } catch (\Throwable $e) {
+        } catch (\Throwable) {
             return true;
         }
     }

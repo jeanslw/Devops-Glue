@@ -384,6 +384,9 @@ return [
     'js.edit_mapping'           => '编辑映射',
     'js.discover_confirm'       => '将自动扫描项目并导入映射表',
     'js.discover_note'          => '将自动扫描当前已配置平台的 Git/Jenkins 项目并导入映射；Git 和 Jenkins 平台，相同仓库地址的项目可能会有重复。',
+    'js.discover_ok'            => '扫描成功：发现 {found} 项，新增 {saved} 项',
+    'js.discover_partial'       => '扫描部分失败：{names}',
+    'js.discover_all_failed'    => '扫描全部失败：{names}',
     // 拓扑图
     'js.topo_manual'            => '手动映射',
     'js.topo_fallback'          => '兜底识别',

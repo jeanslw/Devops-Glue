@@ -18,7 +18,11 @@ class MappingManager
     ) {
     }
 
-    /** 当前启用的拉取式构建 provider 集合（数据库为唯一来源） */
+    /**
+     * 当前启用的拉取式构建 provider 集合（数据库为唯一来源）
+     *
+     * @return array<int,string>
+     */
     public function activeBuildProviders(): array
     {
         return $this->appSettings->getBuildModes();
@@ -47,7 +51,11 @@ class MappingManager
 
     // ── 持久化（原 AppConfig::getJobGitMap/saveJobGitMap/deleteJobGitMap） ──
 
-    /** 全量映射（含 inactive/pending），按 job_name 排序 */
+    /**
+     * 全量映射（含 inactive/pending），按 job_name 排序
+     *
+     * @return array<int,array<string,mixed>>
+     */
     public function allMaps(): array
     {
         return $this->pdo
@@ -57,6 +65,8 @@ class MappingManager
 
     /**
      * 全量覆盖保存：upsert 传入行，并删除 DB 中存在但本次未提交的行。
+     *
+     * @param array<int,array<string,mixed>> $data
      */
     public function saveMaps(array $data): void
     {
@@ -105,7 +115,11 @@ class MappingManager
 
     // ── 全量查询（过滤禁用 + 模式筛选） ──
 
-    /** 返回当前启用集合下活跃的映射条目（custom_push 独立开关，开启时一并保留） */
+    /**
+     * 返回当前启用集合下活跃的映射条目（custom_push 独立开关，开启时一并保留）
+     *
+     * @return array<int,array<string,mixed>>
+     */
     public function activeMaps(): array
     {
         $maps = $this->allMaps();
@@ -124,13 +138,21 @@ class MappingManager
         return array_values($maps);
     }
 
-    /** 返回当前模式下的 Job 名称列表 */
+    /**
+     * 返回当前模式下的 Job 名称列表
+     *
+     * @return array<int,mixed>
+     */
     public function activeJobNames(): array
     {
         return array_map(fn($m) => $m['job_name'], $this->activeMaps());
     }
 
-    /** 返回活跃条目使用的 Git 平台清单 */
+    /**
+     * 返回活跃条目使用的 Git 平台清单
+     *
+     * @return array<int,string>
+     */
     public function usedGitPlatforms(): array
     {
         $platforms = [];
@@ -183,6 +205,9 @@ class MappingManager
      * 将命中的映射行解析为 [provider, projectId]。
      * projectId 按 provider 归一化：gitlab_ci → 数字 project_id；jenkins → job_name（Job 路径）；
      * 其余（custom_push / gitea_ci）→ job_name（current_path 兜底），保证推 job_name/current_path 收敛到同一条。
+     *
+     * @param array<string,mixed> $m
+     * @return array{provider: string, projectId: string}
      */
     private function resolveMap(string $projectPath, array $m): array
     {

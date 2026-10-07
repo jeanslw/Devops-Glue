@@ -10,7 +10,23 @@ let pullRecordsCache = [];
 let pullLogJobs = [];
 let pullPage = 1;
 const pullPageSize = 20;
+// 拉取式记录是否成功渲染过：静默刷新失败时保留上一次表格，不闪错误行
+let pullLoadOk = false;
 let pushPage = 1, pushTotalPages = 1;
+
+/**
+ * 读取非 200 响应的友好错误消息：优先取 JSON body 中的 message 字段
+ *（如 502 {"code":502,"message":"CI 服务不可用: ..."}）。
+ */
+async function readErrorMessage(res) {
+    try {
+        const body = await res.clone().json();
+        if (body && body.message) return body.message;
+    } catch (_) {
+        // body 不是 JSON（如 nginx 错误页），回退
+    }
+    return 'HTTP ' + res.status;
+}
 
 export function startPullAutoRefresh() {
     stopPullAutoRefresh();
@@ -41,6 +57,7 @@ export async function loadPullProjects() {
     try {
         const res = await fetch('/api/build/jobs/list?format=json', { headers: authHeaders() });
         if (handle401(res)) return;
+        if (!res.ok) throw new Error(await readErrorMessage(res));
         const data = await res.json();
         const all = Array.isArray(data.data) ? data.data : [];
         const projects = all.filter(m => isPullProvider(m.ci_provider));
@@ -84,7 +101,7 @@ export async function loadPullRecords(silent) {
     try {
         const res = await fetch('/api/build/' + encodePath(path) + '/pipelines?per_page=200', { headers: authHeaders() });
         if (handle401(res)) return;
-        if (!res.ok) throw new Error('HTTP ' + res.status);
+        if (!res.ok) throw new Error(await readErrorMessage(res));
         const list = await res.json();
         const records = Array.isArray(list) ? list : [];
         const selOpt = sel.options[sel.selectedIndex];
@@ -93,6 +110,7 @@ export async function loadPullRecords(silent) {
             _runId: provider === 'gitlab_ci' ? (r.iid || r.id || 0) : (r.id || 0)
         }));
         if (loading) loading.style.display = 'none';
+        pullLoadOk = true;
         if (!records.length) {
             if (table) table.style.display = 'none';
             if (pagination) pagination.style.display = 'none';
@@ -163,6 +181,11 @@ export async function loadPullRecords(silent) {
         }
     } catch (e) {
         if (loading) loading.style.display = 'none';
+        // 静默自动刷新失败：保留上一次成功渲染的表格（含空态），不打断用户阅读
+        if (silent && pullLoadOk) return;
+        if (table) table.style.display = 'table';
+        if (empty) empty.style.display = 'none';
+        if (pagination) pagination.style.display = 'none';
         tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#dc2626;">' + __.t('pull.load_failed') + ': ' + esc(e.message) + '</td></tr>';
     }
 }
@@ -184,7 +207,7 @@ export async function resolvePullTag(idx, force) {
             body: JSON.stringify({ sha: r.sha || '', force: !!force })
         });
         if (handle401(res)) return;
-        if (!res.ok) throw new Error('HTTP ' + res.status);
+        if (!res.ok) throw new Error(await readErrorMessage(res));
         const data = await res.json();
         const tag = data.tag || '';
         r.tag = tag;
@@ -224,7 +247,7 @@ export async function openPullLog(idx) {
     try {
         const res = await fetch('/api/build/' + encodePath(currentPullPath) + '/pipelines/' + runId + '?format=json', { headers: authHeaders() });
         if (handle401(res)) return;
-        if (!res.ok) throw new Error('HTTP ' + res.status);
+        if (!res.ok) throw new Error(await readErrorMessage(res));
         const data = await res.json();
         const jobs = (data.data && Array.isArray(data.data.jobs)) ? data.data.jobs : [];
         if (!jobs.length) { content.textContent = __.t('pull.no_log'); return; }
@@ -255,7 +278,7 @@ export async function pullShowLog(i) {
         const url = j.log_url || ('/api/build/' + encodePath(currentPullPath) + '/logs/' + j.id);
         const res = await fetch(url, { headers: authHeaders() });
         if (handle401(res)) return;
-        if (!res.ok) { content.textContent = __.t('pull.no_log') + ' (HTTP ' + res.status + ')'; return; }
+        if (!res.ok) { content.textContent = __.t('pull.log_load_failed') + ': ' + (await readErrorMessage(res)); return; }
         content.textContent = await res.text();
     } catch (e) {
         content.textContent = __.t('pull.log_load_failed') + ': ' + e.message;

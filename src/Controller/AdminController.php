@@ -108,17 +108,12 @@ class AdminController extends BaseController
             return $this->jsonError($response, 'map.discover_disabled', 503);
         }
         try {
-            $raw = $this->autoDiscover->discover();
-            // 分离错误信息
-            $errors = [];
-            $found = array_filter($raw, function ($i) use (&$errors) {
-                if (($i['source'] ?? '') === '_errors') {
-                    $errors = $i['_errors'] ?? [];
-                    return false;
-                }
-                return true;
-            });
-            $found = array_values($found);
+            $result = $this->autoDiscover->discover();
+            $found = $result['found'];
+            // errors：平台级扫描错误；sources：本次实际发起扫描的源（前端据此
+            // 区分「扫描全部失败 / 扫描部分失败 / 扫描成功」）
+            $errors  = $result['errors'];
+            $sources = $result['sources'];
             $saved = $this->autoDiscover->saveDiscovered($found);
             if ($saved > 0) {
                 $this->invalidateTopologyCache();
@@ -128,6 +123,7 @@ class AdminController extends BaseController
                 'found' => count($found),
                 'saved' => $saved,
                 'errors' => $errors,
+                'sources' => $sources,
                 'items' => array_map(fn($i) => $i['entry']['job_name'], $found),
             ], $request);
         } catch (\Exception $e) {
@@ -940,6 +936,8 @@ class AdminController extends BaseController
 
     /**
      * PUT /api/admin/users/{username} — 更新用户（改密码 / 改角色）
+     *
+     * @param array<string,string> $args
      */
     public function userUpdate(Request $request, Response $response, array $args): Response
     {
@@ -1030,6 +1028,8 @@ class AdminController extends BaseController
      * 常规账号管理：登录中的 super_admin 可修改任意用户（deployer/admin/viewer）的密码。
      * 根账号（ADMIN_USER）除外——改自己的密码走 PUT /api/admin/password（需旧密码），
      * 忘记根密码走离线补丁
+     *
+     * @param array<string,string> $args
      */
     public function userModifyPassword(Request $request, Response $response, array $args): Response
     {
@@ -1075,6 +1075,8 @@ class AdminController extends BaseController
      * PUT /api/admin/users/{username}/status — 启用/停用用户
      * Body: { "enabled": true|false }
      * 保护：root 账号不可停用；不能停用自己。
+     *
+     * @param array<string,string> $args
      */
     public function userSetStatus(Request $request, Response $response, array $args): Response
     {
@@ -1122,6 +1124,8 @@ class AdminController extends BaseController
 
     /**
      * DELETE /api/admin/users/{username} — 删除用户
+     *
+     * @param array<string,string> $args
      */
     public function userDelete(Request $request, Response $response, array $args): Response
     {
@@ -1230,7 +1234,11 @@ class AdminController extends BaseController
         }
     }
 
-    /** PUT /api/admin/roles/{id} — 更新角色（权限列表全覆盖） */
+    /**
+     * PUT /api/admin/roles/{id} — 更新角色（权限列表全覆盖）
+     *
+     * @param array<string,string> $args
+     */
     public function roleUpdate(Request $request, Response $response, array $args): Response
     {
         $this->initAuthFromRequest($request);
@@ -1312,7 +1320,11 @@ class AdminController extends BaseController
         }
     }
 
-    /** DELETE /api/admin/roles/{id} — 删除角色（仅自定义角色） */
+    /**
+     * DELETE /api/admin/roles/{id} — 删除角色（仅自定义角色）
+     *
+     * @param array<string,string> $args
+     */
     public function roleDelete(Request $request, Response $response, array $args): Response
     {
         $this->initAuthFromRequest($request);
@@ -1425,6 +1437,8 @@ class AdminController extends BaseController
     /**
      * DELETE /api/admin/permissions/{perm_key} — 删除权限（super_admin 限定）
      * 系统内置 key（DEFAULT_PERMISSIONS 中的）不可删，避免误删核心权限
+     *
+     * @param array<string,string> $args
      */
     public function permissionDelete(Request $request, Response $response, array $args): Response
     {
@@ -1604,7 +1618,11 @@ class AdminController extends BaseController
         return $response->withHeader('Content-Type', 'application/json');
     }
 
-    /** POST /api/admin/api_tokens/{id}/revoke — 撤销（禁用，保留记录） */
+    /**
+     * POST /api/admin/api_tokens/{id}/revoke — 撤销（禁用，保留记录）
+     *
+     * @param array<string,string> $args
+     */
     public function apiTokenRevoke(Request $request, Response $response, array $args): Response
     {
         $this->initAuthFromRequest($request);
@@ -1620,7 +1638,11 @@ class AdminController extends BaseController
         return $response->withHeader('Content-Type', 'application/json');
     }
 
-    /** DELETE /api/admin/api_tokens/{id} — 删除（硬删除记录） */
+    /**
+     * DELETE /api/admin/api_tokens/{id} — 删除（硬删除记录）
+     *
+     * @param array<string,string> $args
+     */
     public function apiTokenDelete(Request $request, Response $response, array $args): Response
     {
         $this->initAuthFromRequest($request);
@@ -2032,6 +2054,10 @@ class AdminController extends BaseController
 
     /**
      * 展开权限列表：根据 implied_rules 表自动添加隐含权限（数据驱动，不再读常量）
+     *
+     * @param array<array-key, string> $perms
+     *
+     * @return list<string>
      */
     private function expandPermissions(array $perms): array
     {
@@ -2069,6 +2095,8 @@ class AdminController extends BaseController
 
     /**
      * 取所有已注册的权限 key（数据驱动，从 DB 读；DB 异常时回退常量）
+     *
+     * @return list<string>
      */
     private function allPermissionKeys(): array
     {
@@ -2081,6 +2109,9 @@ class AdminController extends BaseController
     }
 
 
+    /**
+     * @return array<int,string>
+     */
     private static function parseSystems(string $systems): array
     {
         return array_filter(array_map('trim', explode(',', strtolower($systems))), fn($value) => $value !== '');
@@ -2108,6 +2139,11 @@ class AdminController extends BaseController
     }
 
 
+    /**
+     * @param array<string,mixed> $body
+     *
+     * @return array<string,mixed>
+     */
     private function buildEntry(array $body): array
     {
         $entry = [];

@@ -1,9 +1,19 @@
 // assets/core/toast.js
-export function toast(msg, ok, center) {
+let _toastTimer = null;
+
+/**
+ * @param {string} msg  文案
+ * @param {boolean} ok  true=绿色（成功），false=红色（错误）
+ * @param {boolean} center 居中显示
+ * @param {number} [duration=2500] 自动消失毫秒数；0 = 常驻（由下一个 toast 替换）
+ */
+export function toast(msg, ok, center, duration = 2500) {
     const el = document.getElementById('toast');
+    // 先取消上一个 toast 的自灭定时器，否则旧定时器会把新提示一起关掉
+    if (_toastTimer) { clearTimeout(_toastTimer); _toastTimer = null; }
     el.textContent = msg;
     el.className = 'toast ' + (ok ? 'toast-ok' : 'toast-err') + ' show' + (center ? ' toast-center' : '');
-    setTimeout(() => el.classList.remove('show'), 2500);
+    if (duration > 0) _toastTimer = setTimeout(() => el.classList.remove('show'), duration);
 }
 
 let _confirmResolver = null;

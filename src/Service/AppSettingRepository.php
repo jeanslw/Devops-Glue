@@ -112,6 +112,9 @@ class AppSettingRepository
         return array_values(array_intersect(AppConfig::BUILTIN_PULL_PROVIDERS, $parts));
     }
 
+    /**
+     * @param list<string> $modes
+     */
     public function setBuildModes(array $modes): void
     {
         // array_intersect 以 BUILTIN_PULL_PROVIDERS 的顺序返回，天然去重，保持规范顺序
