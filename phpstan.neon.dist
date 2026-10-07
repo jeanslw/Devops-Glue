@@ -7,7 +7,6 @@ parameters:
         - templates
         - lang
         - public
-        - bin
         - cli
         - phpstan
     excludePaths:
