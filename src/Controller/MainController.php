@@ -328,7 +328,8 @@ class MainController extends BaseController
             }
         }
 
-        if ($this->harbor) {
+        $harbor = $this->harbor;
+        if ($harbor !== null) {
             $harborUrl = rtrim((string)($this->config->getHarborConfig()['url'] ?? ''), '/');
             $probeLogged = false;
             try {
@@ -373,14 +374,14 @@ class MainController extends BaseController
                     }
                 }
                 $checks['harbor'] = !in_array(false, $componentResults, true);
-                $checks['harbor_version'] = $this->harbor->getHarborVersion() ?? 'v2';
+                $checks['harbor_version'] = $harbor->getHarborVersion() ?? 'v2';
                 $checks['harbor_components'] = $componentResults;
             } catch (\Exception $e) {
                 if (!$probeLogged) {
                     \App\Helper\Log::error('[健康检查] Harbor 连接失败', ['platform' => 'harbor', 'url' => $harborUrl, 'error' => $e->getMessage()]);
                 }
                 $checks['harbor'] = false;
-                $checks['harbor_version'] = $this->harbor->getHarborVersion() ?? 'v2';
+                $checks['harbor_version'] = $harbor->getHarborVersion() ?? 'v2';
                 $checks['harbor_components'] = null;
             }
         } else {

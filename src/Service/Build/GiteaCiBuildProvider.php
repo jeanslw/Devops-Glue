@@ -170,7 +170,7 @@ class GiteaCiBuildProvider implements BuildProviderInterface
                 return '日志不可用（HTTP ' . $resp->getStatusCode() . '）';
             }
             $raw = (string) $resp->getBody();
-            return preg_replace("/\e\[[0-9;]*[mK]/", '', $raw);
+            return (string) preg_replace("/\e\[[0-9;]*[mK]/", '', $raw);
         } catch (\Exception $e) {
             $this->logger?->error('Gitea Actions 日志查询失败', ['project' => $projectId, 'job' => $jobId, 'error' => $e->getMessage()]);
             throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
