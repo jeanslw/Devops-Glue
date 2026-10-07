@@ -562,8 +562,7 @@
                     </span>
                 </div>
                 <div class="card" style="margin-top:12px;overflow-x:auto;">
-                    <div id="pull-records-loading" style="display:none;text-align:center;padding:40px;color:#9ca3af;" data-i18n="common.loading">加载中…</div>
-                    <table id="pull-records-table" style="display:none;">
+                    <table id="pull-records-table">
                         <thead>
                             <tr>
                                 <th data-i18n="pull.pipeline">流水线</th>
@@ -575,9 +574,10 @@
                                 <th data-i18n="map.actions">操作</th>
                             </tr>
                         </thead>
-                        <tbody id="pull-records-tbody"></tbody>
+                        <tbody id="pull-records-tbody">
+                            <tr><td colspan="7" style="text-align:center;color:#9ca3af;padding:30px;" data-i18n="pull.select_first">请先选择项目</td></tr>
+                        </tbody>
                     </table>
-                    <div id="pull-records-empty" style="display:none;text-align:center;padding:40px;color:#9ca3af;" data-i18n="pull.no_records">该项目暂无构建记录</div>
                     <div id="pull-pagination" style="display:none;justify-content:center;align-items:center;gap:8px;padding:12px 0;flex-wrap:wrap;"></div>
                 </div>
             </div>

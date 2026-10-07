@@ -123,7 +123,7 @@
         .sys-row { display:inline-flex; align-items:center; gap:6px; font-size:13px; line-height:1.4; flex:1 1 auto; min-width:140px; max-width:100%; }
         .sys-label { color:#6b7280; font-weight:500; white-space:nowrap; }
         .sys-label::after { content:'：'; }
-        .sys-value { color:#1f2937; font-weight:600; font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace; white-space:nowrap; max-width:100%; }
+        .sys-value { color:#1f2937; font-weight:600; font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace; white-space:normal; min-width:0; max-width:100%; }
 
         /* ── 统计卡片 ── */
         .stat-card {
@@ -237,7 +237,7 @@
         .btn-sm { padding:4px 12px; font-size:12px; border-radius:6px; }
         .btn-sm:disabled { opacity:.5; cursor:default; }
         .btn-edit { background:#e0e7ff; color:#4f46e5; }
-        .btn-edit:hover { background:#c7d2fe; }
+        .btn-edit:hover { background:#4f46e5; }
         .btn-del { background:#fee2e2; color:#dc2626; }
         .btn-del:hover { background:#fecaca; }
         .btn-warn { background:#fef3c7; color:#b45309; }
@@ -259,6 +259,9 @@
 		}
 
         table { width:100%; border-collapse:collapse; font-size:13px; }
+        /* 所有表格滚动容器统一收口：内容超出时在容器内横向滚动，避免撑破卡片
+           （部分容器靠内联 overflow-x:auto，这里补齐其余 *-table-wrap / .table-wrap） */
+        [id$="-table-wrap"], .table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
         th { text-align:left; padding:10px 8px; border-bottom:2px solid #e5e7eb; color:#6b7280; font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.5px; white-space:nowrap; }
         td { padding:10px 8px; border-bottom:1px solid #f3f4f6; vertical-align:middle; }
         tr:hover td { background:#f9fafb; }
@@ -275,6 +278,11 @@
         .badge-default { background:#f3f4f6; color:#6b7280; }
         .badge-sys   { background:#eef2ff; color:#4f46e5; }
         .badge-cus   { background:#fef3c7; color:#d97706; }
+
+        /* 分页：窄屏允许换行（按钮+「共 N 条」+「x/y」），文字项禁止逐字压缩
+           ——CJK 文本的 min-content 是单字宽，不锁 nowrap 会被压成竖排 */
+        [id$="-pagination"] { flex-wrap:wrap; row-gap:8px; }
+        [id$="-pagination"] > span { white-space:nowrap; }
 
         /* 权限标签 */
         .perm-check {
@@ -293,7 +301,7 @@
             font-size:11px; white-space:nowrap; border:1px solid #e5e7eb;
             color:#9ca3af; background:#f9fafb;
         }
-        .perm-tag.on { color:#4f46e5; background:#eef2ff; border-color:#c7d2fe; }
+        .perm-tag.on { color:#4f46e5; background:#eef2ff; border-color:#4f46e5; }
         .perm-col-ci { min-width:160px; }
         .perm-col-cd { min-width:220px; }
 
@@ -421,23 +429,23 @@
             word-break:break-all; margin-bottom:6px;
         }
         .topo-node .node-main a {
-            color:#2563eb; text-decoration:underline;
+            color:#4f46e5; text-decoration:underline;
             text-underline-offset:3px; text-decoration-thickness:1.5px;
         }
         .topo-node .node-main a:hover {
-            color:#1e40af; text-decoration-thickness:2px;
+            color:#4f46e5; text-decoration-thickness:2px;
         }
         .topo-node .node-sub {
             font-size:15px; font-weight:700; color:#1f2937;
             line-height:1.6;
         }
         .topo-node .node-sub a {
-            color:#2563eb; text-decoration:underline;
+            color:#4f46e5; text-decoration:underline;
             text-underline-offset:3px; text-decoration-thickness:1.5px;
             font-weight:700;
         }
         .topo-node .node-sub a:hover {
-            color:#1e40af; text-decoration-thickness:2px;
+            color:#4f46e5; text-decoration-thickness:2px;
         }
         .topo-jobs {
             margin-top:auto; padding-top:12px;
@@ -542,7 +550,7 @@
             min-height:180px;
         }
         .mode-card:hover {
-            border-color:#c7d2fe;
+            border-color:#4f46e5;
             box-shadow:0 4px 14px rgba(79,70,229,.08);
         }
         .mode-card-hd {
@@ -661,6 +669,8 @@
             /* 窄屏：宽表格交给外层滚动容器（如 .table-wrap / #table-wrap 自身已 overflow-x:auto）
                横向滚动；不再对 table 用 display:block——那会把 tr/td 脱离表格布局、逐字段竖排 */
             table th, table td { white-space:nowrap; }
+            /* 例外：对接版本表「说明」列允许换行，长描述在列内折行而非无限撑宽表格 */
+            #ver-tbody td:last-child { white-space:normal; min-width:150px; }
             /* 例外：Token 管理的「接口权限 scope」列允许换行——全选时 scope 很多，
                nowrap 会让内容溢出 td 画到后面列上混在一起 */
             table td.scope-cell { white-space:normal; }
@@ -715,7 +725,7 @@
 [data-theme="dark"] .sidebar .menu-item:hover { background:#26334a; color:#f1f5f9; }
 [data-theme="dark"] .sidebar .menu-item.active,
 [data-theme="dark"] .sidebar .menu-group-title.active {
-    background:#312e81; color:#a5b4fc; border-left-color:#818cf8;
+    background:#312e81; color:#4f46e5; border-left-color:#818cf8;
 }
 [data-theme="dark"] .sidebar .menu-div { border-top:1px solid #334155; }
 
@@ -743,6 +753,10 @@
 [data-theme="dark"] .topo-node .node-sub,
 [data-theme="dark"] .mode-card-hd,
 [data-theme="dark"] .bm-check { color:#e5e7eb; }
+[data-theme="dark"] .topo-node .node-main a,
+[data-theme="dark"] .topo-node .node-main a:hover,
+[data-theme="dark"] .topo-node .node-sub a,
+[data-theme="dark"] .topo-node .node-sub a:hover { color:#4f46e5; }
 [data-theme="dark"] .svc-row.parent { background:#26334a; }
 
 [data-theme="dark"] input,
@@ -759,7 +773,7 @@
 [data-theme="dark"] .btn-save { background:#4f46e5; color:#fff; }
 [data-theme="dark"] .btn-discover { background:linear-gradient(135deg,#f59e0b,#d97706); color:#fff; }
 [data-theme="dark"] .btn-cancel { background:#334155; color:#e5e7eb; }
-[data-theme="dark"] .btn-edit { background:#312e81; color:#a5b4fc; }
+[data-theme="dark"] .btn-edit { background:#312e81; color:#4f46e5; }
 [data-theme="dark"] .btn-del { background:#7f1d1d; color:#fecaca; }
 [data-theme="dark"] .btn-warn { background:#78350f; color:#fde68a; }
 
@@ -770,12 +784,12 @@
 
 [data-theme="dark"] .badge-github,
 [data-theme="dark"] .badge-default { background:#334155; color:#e5e7eb; }
-[data-theme="dark"] .badge-sys { background:#312e81; color:#a5b4fc; }
+[data-theme="dark"] .badge-sys { background:#312e81; color:#4f46e5; }
 
 [data-theme="dark"] .perm-check { border-color:#334155; }
-[data-theme="dark"] .perm-check.checked { background:#312e81; border-color:#818cf8; color:#a5b4fc; }
+[data-theme="dark"] .perm-check.checked { background:#312e81; border-color:#818cf8; color:#4f46e5; }
 [data-theme="dark"] .perm-tag { background:#26334a; border-color:#334155; color:#94a3b8; }
-[data-theme="dark"] .perm-tag.on { background:#312e81; color:#a5b4fc; border-color:#818cf8; }
+[data-theme="dark"] .perm-tag.on { background:#312e81; color:#4f46e5; border-color:#818cf8; }
 [data-theme="dark"] .perm-sect-hd { border-bottom:1px solid #334155; color:#e5e7eb; }
 [data-theme="dark"] .perm-sub { border-left:3px solid #334155; }
 
@@ -805,7 +819,7 @@
 
 [data-theme="dark"] .topo-node { background:#1e293b; }
 [data-theme="dark"] .topo-jobs { border-top:1px dashed #334155; }
-[data-theme="dark"] .topo-jobs .job-tag { background:#312e81; color:#a5b4fc; border:1px solid #3730a3; }
+[data-theme="dark"] .topo-jobs .job-tag { background:#312e81; color:#4f46e5; border:1px solid #3730a3; }
 [data-theme="dark"] .topo-header { border-bottom:1px solid #26334a; }
 
 [data-theme="dark"] .modal-content {
@@ -828,7 +842,7 @@
 /* 对接版本兼容提示条（Harbor/Jenkins 探测版本） */
 .ver-compat { padding:12px 16px; border-radius:8px; border:1px solid #e5e7eb; background:#f9fafb; font-size:13px; }
 [data-theme="dark"] .ver-compat { border-color:#334155; background:#1e293b; color:#e5e7eb; }
-[data-theme="dark"] .ver-compat code { color:#a5b4fc; }
+[data-theme="dark"] .ver-compat code { color:#4f46e5; }
 
 /* ── 面包屑导航 ── */
 .breadcrumb {
@@ -856,4 +870,4 @@
 [data-theme="dark"] .breadcrumb,
 [data-theme="dark"] .breadcrumb .bc-item { color: #94a3b8; }
 [data-theme="dark"] .breadcrumb .bc-current { color: #e5e7eb; }
-[data-theme="dark"] .breadcrumb a.bc-item:hover { background: #312e81; color: #a5b4fc; }
+[data-theme="dark"] .breadcrumb a.bc-item:hover { background: #312e81; color: #4f46e5; }
