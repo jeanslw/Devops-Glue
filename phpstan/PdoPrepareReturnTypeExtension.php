@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\PHPStan;
+namespace DevopsGluePHPStan;
 
 use PhpParser\Node\Expr\MethodCall;
 use PHPStan\Analyser\Scope;

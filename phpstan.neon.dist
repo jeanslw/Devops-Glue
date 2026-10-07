@@ -9,11 +9,12 @@ parameters:
         - public
         - bin
         - cli
+        - phpstan
     excludePaths:
         - */node_modules/*
 
 services:
     -
-        class: App\PHPStan\PdoPrepareReturnTypeExtension
+        class: DevopsGluePHPStan\PdoPrepareReturnTypeExtension
         tags:
             - phpstan.broker.dynamicMethodReturnTypeExtension
