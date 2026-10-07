@@ -104,7 +104,7 @@ class TokenService
                 // 供调用方归因与审计；token 原文/hash 绝不进入返回值。
                 'user'       => $resolved['name'],
                 'token_name' => $resolved['name'],
-                'token_id'   => $resolved['id'] ?? null,
+                'token_id'   => $resolved['id'],
                 'scopes'     => $resolved['scopes'],
             ];
         } catch (\Exception $e) {

@@ -370,7 +370,7 @@ return [
     'js.activate_confirm'       => '确认',
     'js.activate_warn_hide'     => '启用后，同仓库的另一条映射将立即隐藏，且下次自动发现时也会被过滤。',
     'js.delete_note'            => '删除后，该映射相关的触发与回写配置将立即失效，且无法恢复。',
-    'js.cannot_activate_mode'   => '当前构建模式为 {mode}，无法启用 {item} 项目',
+    'js.cannot_activate_mode'   => '{item} 未启用，无法启用该项目；请在编辑中更改 CI 源，或在设置中启用 {item} 构建模式',
     'js.load_failed'            => '加载失败',
     'js.timeout'                => '超时',
     'js.cannot_connect'         => '无法连接',
@@ -384,6 +384,9 @@ return [
     'js.edit_mapping'           => '编辑映射',
     'js.discover_confirm'       => '将自动扫描项目并导入映射表',
     'js.discover_note'          => '将自动扫描当前已配置平台的 Git/Jenkins 项目并导入映射；Git 和 Jenkins 平台，相同仓库地址的项目可能会有重复。',
+    'js.discover_ok'            => '扫描成功：发现 {found} 项，新增 {saved} 项',
+    'js.discover_partial'       => '扫描部分失败：{names}',
+    'js.discover_all_failed'    => '扫描全部失败：{names}',
     // 拓扑图
     'js.topo_manual'            => '手动映射',
     'js.topo_fallback'          => '兜底识别',

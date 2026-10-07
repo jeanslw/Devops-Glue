@@ -3,6 +3,8 @@
 namespace App\Service;
 
 use GuzzleHttp\Exception\ClientException;
+use GuzzleHttp\Exception\ConnectException;
+use GuzzleHttp\Exception\ServerException;
 use GuzzleHttp\Client;
 
 class JenkinsService
@@ -12,6 +14,9 @@ class JenkinsService
     private ?Logger $logger = null;
     private ?string $cachedVersion = null;
 
+    /**
+     * @param array<string,string> $config
+     */
     public function __construct(array $config, ?Logger $logger = null)
     {
         $this->baseUrl = rtrim($config['url'], '/');
@@ -44,6 +49,7 @@ class JenkinsService
         return $this->cachedVersion ?: null;
     }
 
+    /** @return list<string> */
     public function getAllJobs(): array
     {
         $url = "{$this->baseUrl}/api/json?tree=jobs[name,jobs[name,jobs[name]]]";
@@ -52,6 +58,10 @@ class JenkinsService
         return $this->flattenJobs($data['jobs'] ?? []);
     }
 
+    /**
+     * @param list<array<string,mixed>> $jobs
+     * @return list<string>
+     */
     private function flattenJobs(array $jobs, string $prefix = ''): array
     {
         $result = [];
@@ -59,7 +69,7 @@ class JenkinsService
             $name = trim((string) ($job['name'] ?? ''));
             $fullName = $prefix ? "{$prefix}/{$name}" : $name;
             if (isset($job['jobs']) && is_array($job['jobs'])) {
-                $result = array_merge($result, $this->flattenJobs($job['jobs'], $fullName));
+                $result = array_merge($result, $this->flattenJobs(array_values($job['jobs']), $fullName));
             } else {
                 $result[] = $fullName;
             }
@@ -67,6 +77,7 @@ class JenkinsService
         return $result;
     }
 
+    /** @return array{type: string, fullName: string}|null */
     public function resolvePath(string $path): ?array
     {
         $jobUrl = $this->getJobUrl($path);
@@ -80,6 +91,10 @@ class JenkinsService
             if (str_contains($class, 'Folder')) {
                 return ['type' => 'folder', 'fullName' => $path];
             }
+        } catch (ConnectException | ServerException $e) {
+            // 连接级失败（拒绝/DNS/超时）与 5xx：必须上抛（→ 502「服务不可达」），
+            // 不得与「路径不存在」混为一谈（否则触发方会收到「Job 不存在」的误报）
+            throw new \RuntimeException('Jenkins 服务不可达: ' . $e->getMessage(), 0, $e);
         } catch (\Exception $e) {
             $this->logger?->debug('Jenkins resolvePath: 直接路径解析失败', [
                 'path'  => $path,
@@ -100,6 +115,9 @@ class JenkinsService
                         return ['type' => 'job', 'fullName' => "{$folder}/{$job}"];
                     }
                 }
+            } catch (ConnectException | ServerException $e) {
+                // 同上：连接级失败上抛，不与「Folder 内无该 Job」混淆
+                throw new \RuntimeException('Jenkins 服务不可达: ' . $e->getMessage(), 0, $e);
             } catch (\Exception $e) {
                 $this->logger?->debug('Jenkins resolvePath: Folder 内查找失败', [
                     'folder' => $folder,
@@ -111,6 +129,7 @@ class JenkinsService
         return null;
     }
 
+    /** @return list<string> */
     public function getGitRemotes(string $jobPath): array
     {
         $jobUrl = $this->getJobUrl($jobPath);
@@ -148,6 +167,9 @@ class JenkinsService
         return $remotes;
     }
 
+    /**
+     * @return list<string>|array<string, array{choices: list<mixed>, _class: string, defaultValue: mixed, description: string}>
+     */
     public function getParameters(string $jobPath, ?int $buildId = null): array
     {
         if ($buildId === null) {
@@ -161,7 +183,7 @@ class JenkinsService
 
     /**
      * 获取 Job 参数定义，返回 name => [choices, _class, defaultValue, description] 映射
-     * @return array<string, array{choices: array, _class: string, defaultValue: mixed, description: string}>
+     * @return array<string, array{choices: list<mixed>, _class: string, defaultValue: mixed, description: string}>
      */
     public function getParameterDefinitions(string $jobPath): array
     {
@@ -196,11 +218,13 @@ class JenkinsService
         return $params;
     }
 
+    /** @return array<string, array{choices: list<mixed>, _class: string, defaultValue: mixed, description: string}> */
     private function getCurrentParameters(string $jobPath): array
     {
         return $this->getParameterDefinitions($jobPath);
     }
 
+    /** @return list<string> */
     private function getLatestBuildParametersList(string $jobPath): array
     {
         $lastBuild = $this->getLastBuild($jobPath);
@@ -218,6 +242,7 @@ class JenkinsService
         return array_values(array_unique($names));
     }
 
+    /** @return list<string> */
     private function getBuildParameters(string $jobPath, int $buildId): array
     {
         $buildUrl = $this->getBuildUrl($jobPath, $buildId);
@@ -232,6 +257,10 @@ class JenkinsService
         return array_values(array_unique($names));
     }
 
+    /**
+     * @param array<string,string> $parameters
+     * @return array{queue_id: string|null, queue_url: string, message?: string}
+     */
     public function triggerBuild(string $jobPath, array $parameters): array
     {
         $jobUrl = $this->getJobUrl($jobPath);
@@ -284,6 +313,7 @@ class JenkinsService
         ];
     }
 
+    /** @return array{field: string, value: string}|null */
     private function getCrumb(): ?array
     {
         try {
@@ -299,6 +329,7 @@ class JenkinsService
         }
     }
 
+    /** @return list<mixed> */
     public function getBuildIds(string $jobPath): array
     {
         $jobUrl = $this->getJobUrl($jobPath);
@@ -317,44 +348,46 @@ class JenkinsService
 
     public function getBuildTimestamp(string $jobPath, int $buildId): string
     {
-        try {
-            $buildUrl = $this->getBuildUrl($jobPath, $buildId);
-            $resp = $this->client->get("{$buildUrl}/api/json?tree=timestamp");
-            $data = json_decode($resp->getBody(), true);
-            $ts = (int) ($data['timestamp'] ?? 0);
-            return $ts > 0 ? date('Y-m-d H:i:s', (int) ($ts / 1000)) : '';
-        } catch (\Exception $e) {
-            return '';
-        }
+        $buildUrl = $this->getBuildUrl($jobPath, $buildId);
+        $resp = $this->client->get("{$buildUrl}/api/json?tree=timestamp");
+        $data = json_decode($resp->getBody(), true);
+        $ts = (int) ($data['timestamp'] ?? 0);
+        return $ts > 0 ? date('Y-m-d H:i:s', (int) ($ts / 1000)) : '';
     }
 
     /**
      * 批量获取构建 ID + 时间 + 状态 + git ref/sha（一次 API 调用）
+     *
+     * 不吞连接异常：Jenkins 不可用时必须抛出，让上层（Provider → AuthMiddleware）
+     * 能区分「项目无构建」（200 空数组）与「CI 不可用」（502），
+     * 否则审计日志会把 CI 故障误判为 success。
+     *
+     * @return array<int, array{time: string, status: string, ref: string, sha: string}>
      */
     public function getBuildTimestamps(string $jobPath): array
     {
-        try {
-            $jobUrl = $this->getJobUrl($jobPath);
-            $resp = $this->client->get("{$jobUrl}/api/json?tree=builds[number,timestamp,result,actions[lastBuiltRevision[branch[name,SHA1]]]]");
-            $data = json_decode($resp->getBody(), true);
-            $map = [];
-            foreach ($data['builds'] ?? [] as $b) {
-                $ts = (int) ($b['timestamp'] ?? 0);
-                $rev = $this->extractRevision($b['actions'] ?? []);
-                $map[(int) $b['number']] = [
-                    'time'   => $ts > 0 ? date('Y-m-d H:i:s', (int) ($ts / 1000)) : '',
-                    'status' => strtolower(($b['result'] ?? null) ?: 'unknown'),
-                    'ref'    => $rev['ref'] ?? '',
-                    'sha'    => $rev['sha'] ?? '',
-                ];
-            }
-            return $map;
-        } catch (\Exception $e) {
-            return [];
+        $jobUrl = $this->getJobUrl($jobPath);
+        $resp = $this->client->get("{$jobUrl}/api/json?tree=builds[number,timestamp,result,actions[lastBuiltRevision[branch[name,SHA1]]]]");
+        $data = json_decode($resp->getBody(), true);
+        $map = [];
+        foreach ($data['builds'] ?? [] as $b) {
+            $ts = (int) ($b['timestamp'] ?? 0);
+            $rev = $this->extractRevision($b['actions'] ?? []);
+            $map[(int) $b['number']] = [
+                'time'   => $ts > 0 ? date('Y-m-d H:i:s', (int) ($ts / 1000)) : '',
+                'status' => strtolower(($b['result'] ?? null) ?: 'unknown'),
+                'ref'    => $rev['ref'] ?? '',
+                'sha'    => $rev['sha'] ?? '',
+            ];
         }
+        return $map;
     }
 
-    /** 从 build actions 中提取 git revision 信息 */
+    /**
+     * 从 build actions 中提取 git revision 信息
+     * @param list<array<string,mixed>> $actions
+     * @return array{ref?: string, sha?: string}
+     */
     private function extractRevision(array $actions): array
     {
         foreach ($actions as $action) {
@@ -380,6 +413,7 @@ class JenkinsService
         return $resp->getBody()->getContents();
     }
 
+    /** @return list<array<string,mixed>> */
     public function getSuccessfulBuilds(string $jobPath): array
     {
         $jobUrl = $this->getJobUrl($jobPath);
@@ -406,6 +440,7 @@ class JenkinsService
         return $this->getJobUrl($jobPath) . "/{$buildId}";
     }
 
+    /** @return array{url: string}|null */
     private function getLastBuild(string $jobPath): ?array
     {
         $jobUrl = $this->getJobUrl($jobPath);

@@ -6,14 +6,31 @@ class Database
 {
     private static ?\PDO $pdo = null;
     private static string $driver = 'sqlite';
+    /** @var array<string,mixed> */
     private static array $config = [];
     private static bool $bootstrapped = false;
+
+    /**
+     * 内部访问器：返回「已引导」的连接。
+     * 到达这里的路径（bootstrap()/getPdo() 之后）必然已赋值；
+     * 若违反前置约定直接抛异常，而不是在 null 上调用方法报模糊 fatal。
+     */
+    private static function pdo(): \PDO
+    {
+        if (self::$pdo === null) {
+            throw new \RuntimeException('Database not bootstrapped: call Database::getPdo() or bootstrap() first');
+        }
+        return self::$pdo;
+    }
 
     /** ci_app_settings 中记录「已应用的 schema/种子版本」的 key */
     private const SCHEMA_VERSION_KEY = 'schema_version';
 
     // ── 初始化 ──
 
+    /**
+     * @param array<string,mixed>|null $config
+     */
     public static function init(array $config = null): void
     {
         self::$config = $config ?? self::defaultConfig();
@@ -63,7 +80,7 @@ class Database
     private static function isSchemaCurrent(): bool
     {
         try {
-            $stmt = self::$pdo->query(
+            $stmt = self::pdo()->query(
                 "SELECT value FROM " . \App\Config\AppConfig::TABLE_APP_SETTINGS
                 . " WHERE setting_key = '" . self::SCHEMA_VERSION_KEY . "'"
             );
@@ -82,10 +99,14 @@ class Database
             'setting_key, value, updated_at',
             '?, ?, ' . self::sqlNow()
         );
-        self::$pdo->prepare($sql)->execute([self::SCHEMA_VERSION_KEY, \App\Config\AppConfig::APP_VERSION]);
+        self::pdo()->prepare($sql)->execute([self::SCHEMA_VERSION_KEY, \App\Config\AppConfig::APP_VERSION]);
     }
 
-    /** 当前代码版本定义的全部数据表（系统信息面板按此清单逐表探测存在性） */
+    /**
+     * 当前代码版本定义的全部数据表（系统信息面板按此清单逐表探测存在性）
+     *
+     * @return list<string>
+     */
     private static function schemaTables(): array
     {
         return [
@@ -108,16 +129,20 @@ class Database
         ];
     }
 
-    /** 系统信息：DB 驱动 + schema 版本 + 各核心表存在性（供后台「系统信息」面板只读查询） */
+    /**
+     * 系统信息：DB 驱动 + schema 版本 + 各核心表存在性（供后台「系统信息」面板只读查询）
+     *
+     * @return array{driver:string, schema_version:string|null, app_version:string, is_current:bool, tables:array<string,bool>}
+     */
     public static function schemaStatus(): array
     {
         $status = [];
         foreach (self::schemaTables() as $t) {
-            $status[$t] = self::tableExists(self::$pdo, $t);
+            $status[$t] = self::tableExists(self::pdo(), $t);
         }
         $recorded = null;
         try {
-            $row = self::$pdo->query(
+            $row = self::pdo()->query(
                 "SELECT value FROM " . \App\Config\AppConfig::TABLE_APP_SETTINGS
                 . " WHERE setting_key = '" . self::SCHEMA_VERSION_KEY . "'"
             )->fetchColumn();
@@ -134,7 +159,11 @@ class Database
         ];
     }
 
-    /** 手动触发迁移：建缺失表 + RBAC/管理员种子 + 自检 + 标记 schema 当前（后台「迁移数据库」按钮，super_admin 专用）。 */
+    /**
+     * 手动触发迁移：建缺失表 + RBAC/管理员种子 + 自检 + 标记 schema 当前（后台「迁移数据库」按钮，super_admin 专用）。
+     *
+     * @return array{driver:string, schema_version:string|null, app_version:string, is_current:bool, tables:array<string,bool>}
+     */
     public static function migrateNow(): array
     {
         self::ensureTables();      // 建表 + RBAC 种子 + 索引 + JSON 迁移
@@ -154,6 +183,9 @@ class Database
         return $v === false ? $default : (string)$v;
     }
 
+    /**
+     * @return array{driver:string, path:string, host:string, port:string, database:string, username:string, password:string, charset:string, auto_migrate:bool}
+     */
     private static function defaultConfig(): array
     {
         $driver = strtolower(self::envValue('DB_DRIVER'));
@@ -211,7 +243,7 @@ class Database
                 throw $e;
             }
         }
-        return self::$pdo;
+        return self::pdo();
     }
 
     private static function connectSqlite(): \PDO
@@ -281,7 +313,7 @@ class Database
     /** 判断列是否已存在（MySQL/SQLite 双驱动），用于幂等 ALTER TABLE 迁移 */
     private static function columnExists(string $table, string $column): bool
     {
-        $pdo = self::$pdo;
+        $pdo = self::pdo();
         if (self::$driver === 'mysql') {
             $stmt = $pdo->prepare(
                 "SELECT 1 FROM information_schema.COLUMNS "
@@ -323,7 +355,7 @@ class Database
 
     private static function ensureTables(): void
     {
-        $pdo = self::$pdo;
+        $pdo = self::pdo();
         $isMySQL = self::$driver === 'mysql';
 
         // 字段类型映射
@@ -721,7 +753,7 @@ class Database
     {
         try {
             if (self::$driver === 'mysql') {
-                $stmt = self::$pdo->prepare(
+                $stmt = self::pdo()->prepare(
                     'SELECT COUNT(*) FROM information_schema.statistics'
                     . ' WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?'
                 );
@@ -729,9 +761,9 @@ class Database
                 if ((int)$stmt->fetchColumn() > 0) {
                     return; // 索引已存在
                 }
-                self::$pdo->exec("CREATE INDEX {$index} ON {$table} ({$columns})");
+                self::pdo()->exec("CREATE INDEX {$index} ON {$table} ({$columns})");
             } else {
-                self::$pdo->exec("CREATE INDEX IF NOT EXISTS {$index} ON {$table} ({$columns})");
+                self::pdo()->exec("CREATE INDEX IF NOT EXISTS {$index} ON {$table} ({$columns})");
             }
         } catch (\Exception $e) {
             // 索引非关键路径，失败不阻断启动，但记录日志以便排查
@@ -743,7 +775,7 @@ class Database
 
     private static function seedRbac(): void
     {
-        $pdo = self::$pdo;
+        $pdo = self::pdo();
 
         // 种子数据：权限定义（含 parent_key）
         $permUpsert = self::sqlUpsert(\App\Config\AppConfig::TABLE_PERMISSIONS, 'perm_key, description, parent_key', '?, ?, ?');
@@ -846,7 +878,7 @@ class Database
 
     private static function seedAdmin(): void
     {
-        AdminUserRepository::seedAdminFromEnv(self::$pdo);
+        AdminUserRepository::seedAdminFromEnv(self::pdo());
     }
 
     /**
@@ -858,7 +890,7 @@ class Database
      */
     private static function verifySeed(): void
     {
-        $pdo = self::$pdo;
+        $pdo = self::pdo();
         $problems = [];
 
         try {

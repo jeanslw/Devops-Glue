@@ -25,6 +25,7 @@ class JenkinsBuildProvider implements BuildProviderInterface
         return AppConfig::PROVIDER_JENKINS;
     }
 
+    /** @return list<array<string, mixed>> */
     public function getPipelines(string $projectId, int $perPage = 20): array
     {
         try {
@@ -47,16 +48,18 @@ class JenkinsBuildProvider implements BuildProviderInterface
             return $result;
         } catch (\Exception $e) {
             $this->logger?->error('Jenkins build 查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
-            return [];
+            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
         }
     }
 
+    /** @return list<array<string, mixed>> */
     public function getJobs(string $projectId, int $pipelineId): array
     {
         try {
             $status = $this->jenkins->getBuildStatus($projectId, $pipelineId);
         } catch (\Exception $e) {
-            $status = 'unknown';
+            $this->logger?->error('Jenkins build 状态查询失败', ['project' => $projectId, 'build' => $pipelineId, 'error' => $e->getMessage()]);
+            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
         }
         return [[
             'id'         => $pipelineId,
@@ -75,19 +78,28 @@ class JenkinsBuildProvider implements BuildProviderInterface
             return $this->jenkins->getConsoleOutput($projectId, $jobId);
         } catch (\Exception $e) {
             $this->logger?->error('Jenkins console 查询失败', ['project' => $projectId, 'job' => $jobId, 'error' => $e->getMessage()]);
-            return '日志获取失败: ' . $e->getMessage();
+            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
         }
     }
 
+    /**
+     * @param array<string, mixed> $variables
+     * @return array<string, mixed>
+     */
     public function trigger(string $projectId, string $ref, array $variables = []): array
     {
         // 1. 校验 Job 是否存在
         try {
+            /** @var array<string, mixed>|null $resolved */
             $resolved = $this->jenkins->resolvePath($projectId);
             if (!$resolved || ($resolved['type'] ?? '') !== 'job') {
                 return ['success' => false, 'message' => "Job 不存在: {$projectId}"];
             }
             $fullName = $resolved['fullName'];
+        } catch (\RuntimeException $e) {
+            // 连接级失败（resolvePath 上抛的「服务不可达」）：上抛 → AuthMiddleware 502，
+            // 不得吞成 200 + success=false（否则 Jenkins 宕机被当成业务失败）
+            throw $e;
         } catch (\Exception $e) {
             return ['success' => false, 'message' => "Jenkins 不可达: " . $e->getMessage()];
         }
@@ -95,6 +107,8 @@ class JenkinsBuildProvider implements BuildProviderInterface
         // 2. 获取参数定义
         try {
             $allParams = $this->jenkins->getParameterDefinitions($fullName);
+        } catch (\RuntimeException $e) {
+            throw $e; // 连接级失败：上抛 → 502
         } catch (\Exception $e) {
             return ['success' => false, 'message' => '获取构建参数失败: ' . $e->getMessage()];
         }
@@ -102,8 +116,11 @@ class JenkinsBuildProvider implements BuildProviderInterface
         // 无参数 → 直接触发
         if (empty($allParams)) {
             try {
+                /** @var array<string, mixed> $result */
                 $result = $this->jenkins->triggerBuild($fullName, []);
                 return ['success' => true, 'queue_id' => $result['queue_id'] ?? '', 'queue_url' => $result['queue_url'] ?? '', 'message' => '构建已触发'];
+            } catch (\RuntimeException $e) {
+                throw $e; // 连接级失败：上抛 → 502
             } catch (\Exception $e) {
                 return ['success' => false, 'message' => '触发失败: ' . $e->getMessage()];
             }
@@ -129,6 +146,7 @@ class JenkinsBuildProvider implements BuildProviderInterface
 
         // 4. 触发
         try {
+            /** @var array<string, mixed> $result */
             $result = $this->jenkins->triggerBuild($fullName, $variables);
             return [
                 'success'   => true,
@@ -138,20 +156,23 @@ class JenkinsBuildProvider implements BuildProviderInterface
             ];
         } catch (\Exception $e) {
             $this->logger?->error('Jenkins trigger 失败', ['project' => $projectId, 'error' => $e->getMessage()]);
-            return ['success' => false, 'message' => '触发失败: ' . $e->getMessage()];
+            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
         }
     }
 
+    /** @return array<string, mixed> */
     public function retry(string $projectId, int $pipelineId): array
     {
         return ['success' => false, 'message' => 'Jenkins 不支持 retry，请使用 trigger 重新触发构建'];
     }
 
+    /** @return array<string, mixed> */
     public function cancel(string $projectId, int $pipelineId): array
     {
         return ['success' => false, 'message' => 'Jenkins 不支持 cancel，请到 Jenkins 后台手动中止'];
     }
 
+    /** @return list<array<string, mixed>> */
     public function getVariables(string $projectId): array
     {
         try {
@@ -204,10 +225,11 @@ class JenkinsBuildProvider implements BuildProviderInterface
             return $result;
         } catch (\Exception $e) {
             $this->logger?->error('Jenkins parameters 查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
-            return [];
+            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
         }
     }
 
+    /** @return array<int, string> */
     public function getBranches(string $projectId): array
     {
         if (!$this->git) {
@@ -217,15 +239,17 @@ class JenkinsBuildProvider implements BuildProviderInterface
             return $this->git->getBranchesForJob($projectId);
         } catch (\Exception $e) {
             $this->logger?->warning('Git 分支查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
-            return [];
+            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
         }
     }
 
+    /** @return list<array<string, mixed>> */
     public function getRunners(string $projectId): array
     {
         return []; // runner 状态暂仅 Gitea Actions 提供，Jenkins 降级为空
     }
 
+    /** @return array<string, mixed> */
     public function setCommitStatus(string $projectId, string $sha, string $state, string $name, string $description, string $targetUrl = ''): array
     {
         return ['success' => false, 'message' => 'Jenkins 不支持 commit status 回写'];

@@ -20,7 +20,10 @@ class ApiTokenService
     /**
      * 创建 API token，返回一次性明文。
      *
-     * @param array $data { name, scopes(array|string), expires_at(?int unix), created_by, note }
+     * @param array<string,mixed> $data {
+     *     name: string, scopes: array<int,string>|string, expires_at: int|string|null (unix 时间戳),
+     *     created_by: int|string|null, note: string|null
+     * }
      * @return array{id:int, token:string}
      */
     public function createToken(array $data): array
@@ -60,6 +63,8 @@ class ApiTokenService
     /**
      * 列出全部 token（不含明文）。
      * 附上 scope 数组与是否过期的派生字段，方便 UI 直接渲染。
+     *
+     * @return array<int,array<string,mixed>>
      */
     public function listTokens(): array
     {
@@ -91,7 +96,11 @@ class ApiTokenService
         return $stmt->rowCount() > 0;
     }
 
-    /** 按 sha256 摘要查找 token 记录（供 TokenService 校验复用） */
+    /**
+     * 按 sha256 摘要查找 token 记录（供 TokenService 校验复用）
+     *
+     * @return array<string,mixed>|null
+     */
     public function findByHash(string $hash): ?array
     {
         $stmt = $this->pdo->prepare(
@@ -102,7 +111,11 @@ class ApiTokenService
         return $row ?: null;
     }
 
-    /** 校验并返回 token 元信息：仅当 enabled 且未过期时返回非 null。scopes 已解析为数组。 */
+    /**
+     * 校验并返回 token 元信息：仅当 enabled 且未过期时返回非 null。scopes 已解析为数组。
+     *
+     * @return array{id:int, name:mixed, scopes:array<int,string>}|null
+     */
     public function resolve(string $hash): ?array
     {
         $row = $this->findByHash($hash);
@@ -125,6 +138,9 @@ class ApiTokenService
     /**
      * 校验并规范化 scopes：只接受 AppConfig::API_SCOPES 中存在的 key。
      * 传入字符串（逗号分隔）或数组均可，返回去重后的 key 数组。
+     *
+     * @param mixed $scopes 字符串（逗号分隔）或数组；其它类型按空集合处理
+     * @return array<int,string>
      */
     public function normalizeScopes($scopes): array
     {
@@ -144,6 +160,9 @@ class ApiTokenService
         return $valid;
     }
 
+    /**
+     * @return array<int,string>
+     */
     private function scopesToArray(?string $scopes): array
     {
         if ($scopes === null || $scopes === '') {
@@ -155,6 +174,9 @@ class ApiTokenService
     /**
      * 把 scope 数组展开为具体接口能力清单（去重、保持目录定义顺序）。
      * 未在 API_SCOPE_CAPABILITIES 登记时，退化为展示 scope 键本身。
+     *
+     * @param array<int,string> $scopes
+     * @return array<int,string>
      */
     private function capabilitiesFor(array $scopes): array
     {
@@ -170,6 +192,10 @@ class ApiTokenService
         return $out;
     }
 
+    /**
+     * @param array<string,mixed> $row
+     * @return array<string,mixed>
+     */
     private function decorate(array $row): array
     {
         $expiresAt = $row['expires_at'] !== null ? (int)$row['expires_at'] : null;

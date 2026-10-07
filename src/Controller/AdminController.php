@@ -108,17 +108,12 @@ class AdminController extends BaseController
             return $this->jsonError($response, 'map.discover_disabled', 503);
         }
         try {
-            $raw = $this->autoDiscover->discover();
-            // 分离错误信息
-            $errors = [];
-            $found = array_filter($raw, function ($i) use (&$errors) {
-                if (($i['source'] ?? '') === '_errors') {
-                    $errors = $i['_errors'] ?? [];
-                    return false;
-                }
-                return true;
-            });
-            $found = array_values($found);
+            $result = $this->autoDiscover->discover();
+            $found = $result['found'];
+            // errors：平台级扫描错误；sources：本次实际发起扫描的源（前端据此
+            // 区分「扫描全部失败 / 扫描部分失败 / 扫描成功」）
+            $errors  = $result['errors'];
+            $sources = $result['sources'];
             $saved = $this->autoDiscover->saveDiscovered($found);
             if ($saved > 0) {
                 $this->invalidateTopologyCache();
@@ -128,7 +123,11 @@ class AdminController extends BaseController
                 'found' => count($found),
                 'saved' => $saved,
                 'errors' => $errors,
-                'items' => array_map(fn($i) => $i['entry']['job_name'], $found),
+                'sources' => $sources,
+                'items' => array_map(function ($i) {
+                    $entry = is_array($i['entry'] ?? null) ? $i['entry'] : [];
+                    return $entry['job_name'] ?? null;
+                }, $found),
             ], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.scan_failed') . ': ' . $e->getMessage(), 500);
@@ -324,7 +323,7 @@ class AdminController extends BaseController
             $stmt->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . $token]);
             $value = $stmt->fetchColumn();
             if ($value !== false && $value !== '') {
-                return (string)explode('|', $value, 2)[0];
+                return (string)explode('|', (string)($value ?? ''), 2)[0];
             }
         } catch (\Throwable $e) {
         }
@@ -940,6 +939,8 @@ class AdminController extends BaseController
 
     /**
      * PUT /api/admin/users/{username} — 更新用户（改密码 / 改角色）
+     *
+     * @param array<string,string> $args
      */
     public function userUpdate(Request $request, Response $response, array $args): Response
     {
@@ -1030,6 +1031,8 @@ class AdminController extends BaseController
      * 常规账号管理：登录中的 super_admin 可修改任意用户（deployer/admin/viewer）的密码。
      * 根账号（ADMIN_USER）除外——改自己的密码走 PUT /api/admin/password（需旧密码），
      * 忘记根密码走离线补丁
+     *
+     * @param array<string,string> $args
      */
     public function userModifyPassword(Request $request, Response $response, array $args): Response
     {
@@ -1075,6 +1078,8 @@ class AdminController extends BaseController
      * PUT /api/admin/users/{username}/status — 启用/停用用户
      * Body: { "enabled": true|false }
      * 保护：root 账号不可停用；不能停用自己。
+     *
+     * @param array<string,string> $args
      */
     public function userSetStatus(Request $request, Response $response, array $args): Response
     {
@@ -1122,6 +1127,8 @@ class AdminController extends BaseController
 
     /**
      * DELETE /api/admin/users/{username} — 删除用户
+     *
+     * @param array<string,string> $args
      */
     public function userDelete(Request $request, Response $response, array $args): Response
     {
@@ -1230,7 +1237,11 @@ class AdminController extends BaseController
         }
     }
 
-    /** PUT /api/admin/roles/{id} — 更新角色（权限列表全覆盖） */
+    /**
+     * PUT /api/admin/roles/{id} — 更新角色（权限列表全覆盖）
+     *
+     * @param array<string,string> $args
+     */
     public function roleUpdate(Request $request, Response $response, array $args): Response
     {
         $this->initAuthFromRequest($request);
@@ -1312,7 +1323,11 @@ class AdminController extends BaseController
         }
     }
 
-    /** DELETE /api/admin/roles/{id} — 删除角色（仅自定义角色） */
+    /**
+     * DELETE /api/admin/roles/{id} — 删除角色（仅自定义角色）
+     *
+     * @param array<string,string> $args
+     */
     public function roleDelete(Request $request, Response $response, array $args): Response
     {
         $this->initAuthFromRequest($request);
@@ -1425,6 +1440,8 @@ class AdminController extends BaseController
     /**
      * DELETE /api/admin/permissions/{perm_key} — 删除权限（super_admin 限定）
      * 系统内置 key（DEFAULT_PERMISSIONS 中的）不可删，避免误删核心权限
+     *
+     * @param array<string,string> $args
      */
     public function permissionDelete(Request $request, Response $response, array $args): Response
     {
@@ -1533,7 +1550,7 @@ class AdminController extends BaseController
             $permissions = $this->userPermissions;
         }
 
-        $response->getBody()->write(json_encode([
+        $response->getBody()->write((string) json_encode([
             'role'        => $this->currentRole,
             'permissions' => $permissions,
         ], JSON_UNESCAPED_UNICODE));
@@ -1554,7 +1571,7 @@ class AdminController extends BaseController
         foreach (AppConfig::API_SCOPES as $key => $labelKey) {
             $scopes[] = ['key' => $key, 'label' => $this->i18n->trans($labelKey, [], $locale)];
         }
-        $response->getBody()->write(json_encode(['scopes' => $scopes], JSON_UNESCAPED_UNICODE));
+        $response->getBody()->write((string) json_encode(['scopes' => $scopes], JSON_UNESCAPED_UNICODE));
         return $response->withHeader('Content-Type', 'application/json');
     }
 
@@ -1569,7 +1586,7 @@ class AdminController extends BaseController
             return $this->jsonError($response, 'api_token.service_unavailable', 503);
         }
         $tokens = $this->apiTokenService->listTokens();
-        $response->getBody()->write(json_encode(['tokens' => $tokens], JSON_UNESCAPED_UNICODE));
+        $response->getBody()->write((string) json_encode(['tokens' => $tokens], JSON_UNESCAPED_UNICODE));
         return $response->withHeader('Content-Type', 'application/json');
     }
 
@@ -1600,11 +1617,15 @@ class AdminController extends BaseController
         }
 
         $this->opLog()->record($this->currentUser, 'create_api_token', $body['name'] ?? '', ['id' => $created['id'], 'scopes' => $body['scopes'] ?? []], $this->clientIp($request), 'success');
-        $response->getBody()->write(json_encode(['id' => $created['id'], 'token' => $created['token']], JSON_UNESCAPED_UNICODE));
+        $response->getBody()->write((string) json_encode(['id' => $created['id'], 'token' => $created['token']], JSON_UNESCAPED_UNICODE));
         return $response->withHeader('Content-Type', 'application/json');
     }
 
-    /** POST /api/admin/api_tokens/{id}/revoke — 撤销（禁用，保留记录） */
+    /**
+     * POST /api/admin/api_tokens/{id}/revoke — 撤销（禁用，保留记录）
+     *
+     * @param array<string,string> $args
+     */
     public function apiTokenRevoke(Request $request, Response $response, array $args): Response
     {
         $this->initAuthFromRequest($request);
@@ -1616,11 +1637,15 @@ class AdminController extends BaseController
         }
         $revoked = $this->apiTokenService->revoke((int)($args['id'] ?? 0));
         $this->opLog()->record($this->currentUser, 'revoke_api_token', (string)($args['id'] ?? ''), [], $this->clientIp($request), $revoked ? 'success' : 'failure');
-        $response->getBody()->write(json_encode(['ok' => $revoked], JSON_UNESCAPED_UNICODE));
+        $response->getBody()->write((string) json_encode(['ok' => $revoked], JSON_UNESCAPED_UNICODE));
         return $response->withHeader('Content-Type', 'application/json');
     }
 
-    /** DELETE /api/admin/api_tokens/{id} — 删除（硬删除记录） */
+    /**
+     * DELETE /api/admin/api_tokens/{id} — 删除（硬删除记录）
+     *
+     * @param array<string,string> $args
+     */
     public function apiTokenDelete(Request $request, Response $response, array $args): Response
     {
         $this->initAuthFromRequest($request);
@@ -1632,7 +1657,7 @@ class AdminController extends BaseController
         }
         $deleted = $this->apiTokenService->delete((int)($args['id'] ?? 0));
         $this->opLog()->record($this->currentUser, 'delete_api_token', (string)($args['id'] ?? ''), [], $this->clientIp($request), $deleted ? 'success' : 'failure');
-        $response->getBody()->write(json_encode(['ok' => $deleted], JSON_UNESCAPED_UNICODE));
+        $response->getBody()->write((string) json_encode(['ok' => $deleted], JSON_UNESCAPED_UNICODE));
         return $response->withHeader('Content-Type', 'application/json');
     }
 
@@ -2032,6 +2057,10 @@ class AdminController extends BaseController
 
     /**
      * 展开权限列表：根据 implied_rules 表自动添加隐含权限（数据驱动，不再读常量）
+     *
+     * @param array<array-key, string> $perms
+     *
+     * @return list<string>
      */
     private function expandPermissions(array $perms): array
     {
@@ -2069,18 +2098,23 @@ class AdminController extends BaseController
 
     /**
      * 取所有已注册的权限 key（数据驱动，从 DB 读；DB 异常时回退常量）
+     *
+     * @return list<string>
      */
     private function allPermissionKeys(): array
     {
         try {
             $pdo = $this->pdo;
-            return $pdo->query("SELECT perm_key FROM " . AppConfig::TABLE_PERMISSIONS)->fetchAll(\PDO::FETCH_COLUMN);
+            return array_values($pdo->query("SELECT perm_key FROM " . AppConfig::TABLE_PERMISSIONS)->fetchAll(\PDO::FETCH_COLUMN));
         } catch (\Exception $e) {
             return array_keys(AppConfig::DEFAULT_PERMISSIONS);
         }
     }
 
 
+    /**
+     * @return array<int,string>
+     */
     private static function parseSystems(string $systems): array
     {
         return array_filter(array_map('trim', explode(',', strtolower($systems))), fn($value) => $value !== '');
@@ -2108,6 +2142,11 @@ class AdminController extends BaseController
     }
 
 
+    /**
+     * @param array<string,mixed> $body
+     *
+     * @return array<string,mixed>
+     */
     private function buildEntry(array $body): array
     {
         $entry = [];

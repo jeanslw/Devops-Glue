@@ -1,5 +1,5 @@
 parameters:
-    level: 5
+    level: 8
     paths:
         - src
         - config
@@ -9,5 +9,12 @@ parameters:
         - public
         - bin
         - cli
+        - phpstan
     excludePaths:
         - */node_modules/*
+
+services:
+    -
+        class: DevopsGluePHPStan\PdoPrepareReturnTypeExtension
+        tags:
+            - phpstan.broker.dynamicMethodReturnTypeExtension

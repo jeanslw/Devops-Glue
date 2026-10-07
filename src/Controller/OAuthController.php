@@ -191,7 +191,7 @@ class OAuthController extends BaseController
             $payload['scope'] = $scope;
         }
 
-        $response->getBody()->write(json_encode($payload));
+        $response->getBody()->write((string) json_encode($payload));
         return $response->withHeader('Content-Type', 'application/json')
             ->withHeader('Cache-Control', 'no-store');
     }
@@ -216,7 +216,7 @@ class OAuthController extends BaseController
         $username  = (string)$data['user'];
         $role      = (string)($data['role'] ?? '');
         $emailInfo = $this->resolveEmailInfo($username);
-        $response->getBody()->write(json_encode([
+        $response->getBody()->write((string) json_encode([
             'sub'                => $username,   // OAuth/OIDC 标准唯一标识
             'username'           => $username,
             'preferred_username' => $username,
@@ -249,7 +249,7 @@ class OAuthController extends BaseController
         }
 
         $emailInfo = $this->resolveEmailInfo((string)$data['user']);
-        $response->getBody()->write(json_encode([[
+        $response->getBody()->write((string) json_encode([[
             'email'    => $emailInfo['email'],
             'primary'  => true,
             'verified' => $emailInfo['verified'],
@@ -262,7 +262,7 @@ class OAuthController extends BaseController
      */
     public function discovery(Request $request, Response $response): Response
     {
-        $response->getBody()->write(json_encode(
+        $response->getBody()->write((string) json_encode(
             $this->oidc->discovery($this->resolveIssuer($request)),
             JSON_UNESCAPED_SLASHES
         ));
@@ -274,13 +274,15 @@ class OAuthController extends BaseController
      */
     public function jwks(Request $request, Response $response): Response
     {
-        $response->getBody()->write(json_encode($this->oidc->jwks(), JSON_UNESCAPED_SLASHES));
+        $response->getBody()->write((string) json_encode($this->oidc->jwks(), JSON_UNESCAPED_SLASHES));
         return $response->withHeader('Content-Type', 'application/json');
     }
 
     /**
      * 取用户邮箱：实时查库（token 期内 email 变更即时生效）；
      * 用户不存在或 email 为空时退回 username@devops-glue.local 占位（Grafana 按 email 匹配用户，不能为空）。
+     *
+     * @return array{email: string, verified: bool}
      */
     private function resolveEmailInfo(string $username): array
     {
@@ -308,6 +310,8 @@ class OAuthController extends BaseController
 
     /**
      * 组装 id_token 的 claims（iss/sub 由 OidcService 补 exp/iat/aud/nonce）
+     *
+     * @return array<string,mixed>
      */
     private function buildIdTokenClaims(string $username, string $role, string $issuer): array
     {
@@ -357,6 +361,8 @@ class OAuthController extends BaseController
     /**
      * 解析 HTTP Basic Auth 头（RFC 6749 §2.3.1 客户端认证）
      * 返回 [client_id, client_secret]，解析失败返回 ['', '']
+     *
+     * @return list<string>
      */
     private function parseBasicAuth(Request $request): array
     {
@@ -377,7 +383,7 @@ class OAuthController extends BaseController
      */
     private function oauthError(Response $response, string $error, int $code): Response
     {
-        $response->getBody()->write(json_encode(['error' => $error]));
+        $response->getBody()->write((string) json_encode(['error' => $error]));
         return $response->withStatus($code)->withHeader('Content-Type', 'application/json');
     }
 

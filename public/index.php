@@ -35,7 +35,7 @@ require __DIR__ . '/../config/routes.php';
 $app->get('/', function ($request, $response, $args) {
     $htmlFile = __DIR__ . '/../templates/index.html';
     if (file_exists($htmlFile)) {
-        $html = str_replace('{{APP_VERSION}}', AppConfig::APP_VERSION, file_get_contents($htmlFile));
+        $html = str_replace('{{APP_VERSION}}', AppConfig::APP_VERSION, (string) file_get_contents($htmlFile));
         $response->getBody()->write($html);
     } else {
         $response->getBody()->write('<h1>首页文件丢失</h1>');
@@ -71,8 +71,8 @@ $isApiRequest = function ($request): bool {
 $resolveErrorLocale = function ($request): string {
     $query = $request->getUri()->getQuery();
     parse_str($query, $params);
-    if (isset($params['lang'])) {
-        $lang = strtolower($params['lang']);
+    if (isset($params['lang']) && is_scalar($params['lang'])) {
+        $lang = strtolower((string) $params['lang']);
         if ($lang === 'zh' || $lang === 'zh_cn') return 'zh';
         if ($lang === 'en') return 'en';
     }

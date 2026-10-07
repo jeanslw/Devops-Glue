@@ -37,7 +37,8 @@ class DeployLogRepository
      * 分页查询，支持筛选：project（模糊）、status、deploy_type、date_from/date_to（含边界）。
      * 未传日期时默认近 30 天，避免全表扫描。
      *
-     * @return array{available:bool,total:int,page:int,per_page:int,total_pages:int,items:list<array>}
+     * @param array<string,mixed> $filters
+     * @return array{available:bool,total:int,page:int,per_page:int,total_pages:int,items:list<array<string,mixed>>}
      */
     public function list(array $filters = [], int $page = 1, int $perPage = 20): array
     {
@@ -102,7 +103,7 @@ class DeployLogRepository
                 'page'        => $page,
                 'per_page'    => $perPage,
                 'total_pages' => $totalPages,
-                'items'       => $items,
+                'items'       => array_values($items),
             ];
         } catch (\Throwable $e) {
             \App\Helper\Log::error('[部署日志] 查询失败', ['error' => $e->getMessage()]);

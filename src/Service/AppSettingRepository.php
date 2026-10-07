@@ -63,7 +63,7 @@ class AppSettingRepository
      *
      * 旧格式（jenkins / gitlab_ci / both 单值）惰性映射到新格式并自愈回写。
      *
-     * @return string[] 已启用的拉取式 provider（jenkins/gitlab_ci/gitea_ci），可为空数组
+     * @return list<string> 已启用的拉取式 provider（jenkins/gitlab_ci/gitea_ci），可为空数组
      */
     public function getBuildModes(): array
     {
@@ -93,7 +93,7 @@ class AppSettingRepository
     /**
      * 解析 build_mode 值为规范化 provider 集合（旧格式 both/jenkins/gitlab_ci 兼容映射）。
      *
-     * @return string[]
+     * @return list<string>
      */
     public static function parseBuildModes(string $value): array
     {
@@ -112,6 +112,9 @@ class AppSettingRepository
         return array_values(array_intersect(AppConfig::BUILTIN_PULL_PROVIDERS, $parts));
     }
 
+    /**
+     * @param list<string> $modes
+     */
     public function setBuildModes(array $modes): void
     {
         // array_intersect 以 BUILTIN_PULL_PROVIDERS 的顺序返回，天然去重，保持规范顺序

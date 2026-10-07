@@ -15,7 +15,7 @@ class Bootstrap
 {
     /**
      * 创建并配置 Slim App
-     * @return \Slim\App
+     * @return \Slim\App<\Psr\Container\ContainerInterface>
      */
     public static function createApp(): \Slim\App
     {
@@ -31,6 +31,7 @@ class Bootstrap
         $container = $containerBuilder->build();
 
         AppFactory::setContainer($container);
+        /** @var \Slim\App<\Psr\Container\ContainerInterface> $app 容器已 setContainer，泛型实参非空 */
         $app = AppFactory::create();
 
         // 兼容 Swagger UI 等客户端对 job 名称中 / 的编码（php%2Fmyapp → php/myapp）

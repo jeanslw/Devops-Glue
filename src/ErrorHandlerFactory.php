@@ -19,7 +19,7 @@ class ErrorHandlerFactory
      * @param ErrorMiddleware $errorMiddleware
      * @param bool $appDebug 是否显示详细错误
      * @param callable $isApiRequest 判断是否 API 请求
-     * @param array $errorMessages 友好错误文案
+     * @param array<string,array<int,string>> $errorMessages 友好错误文案（语言 => 状态码 => 文案）
      * @param callable $resolveErrorLocale 错误页面语言检测
      * @param ResponseFactoryInterface $responseFactory
      */
@@ -60,7 +60,7 @@ class ErrorHandlerFactory
                     $payload['file']  = $exception->getFile() . ':' . $exception->getLine();
                     $payload['trace'] = explode("\n", $exception->getTraceAsString());
                 }
-                $response->getBody()->write(json_encode($payload, JSON_UNESCAPED_UNICODE));
+                $response->getBody()->write((string) json_encode($payload, JSON_UNESCAPED_UNICODE));
                 return $response->withStatus($code)->withHeader('Content-Type', 'application/json; charset=utf-8');
             }
 
@@ -95,7 +95,7 @@ class ErrorHandlerFactory
                     if ($displayErrorDetails && $exception instanceof \Throwable) {
                         $payload['error'] = $exception->getMessage();
                     }
-                    $response->getBody()->write(json_encode($payload, JSON_UNESCAPED_UNICODE));
+                    $response->getBody()->write((string) json_encode($payload, JSON_UNESCAPED_UNICODE));
                     return $response->withStatus($statusCode)->withHeader('Content-Type', 'application/json; charset=utf-8');
                 }
 
@@ -114,7 +114,7 @@ class ErrorHandlerFactory
         $lang = $resolveErrorLocale($request);
         $htmlFile = __DIR__ . '/../templates/error.html';
         if (file_exists($htmlFile)) {
-            $html = file_get_contents($htmlFile);
+            $html = (string) file_get_contents($htmlFile);
             $html = str_replace('{{CODE}}', (string) $code, $html);
             $html = str_replace('{{LANG}}', $lang, $html);
             $html = str_replace('{{DETAIL}}', $detail ? htmlspecialchars($detail, ENT_QUOTES, 'UTF-8') : '', $html);

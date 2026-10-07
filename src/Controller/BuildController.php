@@ -65,6 +65,9 @@ class BuildController extends BaseController
         return $this->currentRole === AppConfig::ROLE_API_TOKEN ? 'api_token' : 'admin';
     }
 
+    /**
+     * @return array{0: string, 1: string}
+     */
     private function resolve(string $projectPath): array
     {
         // resolveProject 已按 provider 归一化 projectId：
@@ -167,7 +170,11 @@ class BuildController extends BaseController
         return $this->output($response, $result, $request);
     }
 
-    /** GET /api/build/{path}/tags — 项目 tag 列表（分页），keys = job_name + current_path */
+    /**
+     * GET /api/build/{path}/tags — 项目 tag 列表（分页），keys = job_name + current_path
+     *
+     * @param array<string,string> $args
+     */
     public function tagsList(Request $request, Response $response, array $args): Response
     {
         $this->initAuthFromRequest($request);
@@ -263,6 +270,8 @@ class BuildController extends BaseController
         // 自定义 Build Provider 状态（custom_push 等）
         $customProviders = [];
         foreach ($this->config->getCustomBuildProviders() as $p) {
+            // 防御：配置实现未必遵守形状契约，按可选偏移容忍
+            /** @var array{name?: string} $p */
             $name = $p['name'] ?? '';
             if ($name && $this->registry->isRegistered($name)) {
                 $customProviders[] = $name;
@@ -282,7 +291,11 @@ class BuildController extends BaseController
         ], $request);
     }
 
-    /** GET /api/build/{path}/pipelines — raw: 流水线数组, json/xml: 完整元数据 */
+    /**
+     * GET /api/build/{path}/pipelines — raw: 流水线数组, json/xml: 完整元数据
+     *
+     * @param array<string,string> $args
+     */
     public function pipelines(Request $request, Response $response, array $args): Response
     {
         $this->initAuthFromRequest($request);
@@ -340,7 +353,11 @@ class BuildController extends BaseController
         ], $request);
     }
 
-    /** GET /api/build/{path}/pipelines/{id} */
+    /**
+     * GET /api/build/{path}/pipelines/{id}
+     *
+     * @param array<string,string> $args
+     */
     public function pipelineDetail(Request $request, Response $response, array $args): Response
     {
         $this->initAuthFromRequest($request);
@@ -380,13 +397,21 @@ class BuildController extends BaseController
         ], $request);
     }
 
-    /** GET /api/build/{path}/logs/{id} — 统一日志入口（Jenkins/GitLab CI） */
+    /**
+     * GET /api/build/{path}/logs/{id} — 统一日志入口（Jenkins/GitLab CI）
+     *
+     * @param array<string,string> $args
+     */
     public function logs(Request $request, Response $response, array $args): Response
     {
         return $this->jobTrace($request, $response, $args);
     }
 
-    /** GET /api/build/{path}/jobs/{id}/trace */
+    /**
+     * GET /api/build/{path}/jobs/{id}/trace
+     *
+     * @param array<string,string> $args
+     */
     public function jobTrace(Request $request, Response $response, array $args): Response
     {
         $this->initAuthFromRequest($request);
@@ -407,7 +432,11 @@ class BuildController extends BaseController
         return $this->output($response, $trace, $request, true);
     }
 
-    /** GET /api/build/{path}/pipelines/{id}/logs — 输入 run id 直接返回该 run 下全部 job 日志（多 job 拼接） */
+    /**
+     * GET /api/build/{path}/pipelines/{id}/logs — 输入 run id 直接返回该 run 下全部 job 日志（多 job 拼接）
+     *
+     * @param array<string,string> $args
+     */
     public function pipelineLogs(Request $request, Response $response, array $args): Response
     {
         $this->initAuthFromRequest($request);
@@ -441,7 +470,11 @@ class BuildController extends BaseController
         return $this->output($response, $text, $request, true);
     }
 
-    /** POST /api/build/{path}/trigger（兼容 GET Query String 触发） */
+    /**
+     * POST /api/build/{path}/trigger（兼容 GET Query String 触发）
+     *
+     * @param array<string,string> $args
+     */
     public function trigger(Request $request, Response $response, array $args): Response
     {
         $this->initAuthFromRequest($request);
@@ -450,7 +483,8 @@ class BuildController extends BaseController
         }
 
         $path = $args['path'] ?? '';
-        $body = $request->getParsedBody() ?? [];
+        $parsedBody = $request->getParsedBody();
+        $body       = is_array($parsedBody) ? $parsedBody : [];
         $qs   = $request->getQueryParams();
         [$provider, $projectId] = $this->resolve($path);
 
@@ -486,7 +520,11 @@ class BuildController extends BaseController
         ] + $result, $request);
     }
 
-    /** POST /api/build/{path}/pipelines/{id}/retry */
+    /**
+     * POST /api/build/{path}/pipelines/{id}/retry
+     *
+     * @param array<string,string> $args
+     */
     public function retry(Request $request, Response $response, array $args): Response
     {
         $this->initAuthFromRequest($request);
@@ -511,7 +549,11 @@ class BuildController extends BaseController
         ] + $result, $request);
     }
 
-    /** POST /api/build/{path}/pipelines/{id}/cancel */
+    /**
+     * POST /api/build/{path}/pipelines/{id}/cancel
+     *
+     * @param array<string,string> $args
+     */
     public function cancel(Request $request, Response $response, array $args): Response
     {
         $this->initAuthFromRequest($request);
@@ -536,7 +578,11 @@ class BuildController extends BaseController
         ] + $result, $request);
     }
 
-    /** GET /api/build/{path}/variables — raw: 参数名数组, json/xml: 完整元数据 */
+    /**
+     * GET /api/build/{path}/variables — raw: 参数名数组, json/xml: 完整元数据
+     *
+     * @param array<string,string> $args
+     */
     public function variables(Request $request, Response $response, array $args): Response
     {
         $this->initAuthFromRequest($request);
@@ -569,7 +615,11 @@ class BuildController extends BaseController
         ], $request);
     }
 
-    /** GET /api/build/{path}/branches — raw: 分支名数组, json/xml: 完整元数据 */
+    /**
+     * GET /api/build/{path}/branches — raw: 分支名数组, json/xml: 完整元数据
+     *
+     * @param array<string,string> $args
+     */
     public function branches(Request $request, Response $response, array $args): Response
     {
         $this->initAuthFromRequest($request);
@@ -619,6 +669,8 @@ class BuildController extends BaseController
      *
      * 响应:
      *   { sha, state, context, description, commit_status: {success, message}, check_type }
+     *
+     * @param array<string,string> $args
      */
     public function commitStatus(Request $request, Response $response, array $args): Response
     {
@@ -628,7 +680,8 @@ class BuildController extends BaseController
         }
 
         $path = $args['path'] ?? '';
-        $body = $request->getParsedBody() ?? [];
+        $parsedBody = $request->getParsedBody();
+        $body       = is_array($parsedBody) ? $parsedBody : [];
 
         // ── 参数校验 ──
         $sha         = trim($body['sha'] ?? '');
@@ -686,10 +739,16 @@ class BuildController extends BaseController
                 : (!empty($gitCurrentPath) ? $gitCurrentPath : $path);
             $result = $gitProvider->setCommitStatus($gitRepo, $sha, $state, $context, $description, $targetUrl);
         } catch (\Exception $e) {
+            // 连接级失败（Git 平台不可用）抛异常让上层返回 502，而不是包装成 200 的 success=false
+            if ($e instanceof \RuntimeException) {
+                throw $e;
+            }
             $result = ['success' => false, 'message' => $e->getMessage()];
         }
 
         // ── 记录到 ci_security_checks 表（审计追踪，含回写结果）──
+        // 防御：Git provider 实现未必遵守形状契约，按可选偏移容忍
+        /** @var array{success?: bool, message?: string} $result */
         $writebackStatus = ($result['success'] ?? false) ? 'success' : 'failed';
         $this->recordSecurityCheck($path, $sha, $state, $context, $description, $checkType, $tag, $writebackStatus, $result['message'] ?? '');
 
@@ -725,7 +784,11 @@ class BuildController extends BaseController
         }
     }
 
-    /** POST /api/build/{path}/scan-sync（CI 流水线回写端点，不限制 BUILD_MODE） */
+    /**
+     * POST /api/build/{path}/scan-sync（CI 流水线回写端点，不限制 BUILD_MODE）
+     *
+     * @param array<string,string> $args
+     */
     public function scanSync(Request $request, Response $response, array $args): Response
     {
         $this->initAuthFromRequest($request);
@@ -734,8 +797,9 @@ class BuildController extends BaseController
         }
 
         $path = $args['path'] ?? '';
-        $body   = $request->getParsedBody() ?? [];
-        $tag    = $body['tag'] ?? null;
+        $parsedBody = $request->getParsedBody();
+        $body       = is_array($parsedBody) ? $parsedBody : [];
+        $tag        = $body['tag'] ?? null;
         $sourceUpdatedAt = trim((string) ($body['source_updated_at'] ?? ''));
 
         // 1. 获取 job_git_map 中的映射信息（不依赖 CI 系统）
@@ -780,7 +844,14 @@ class BuildController extends BaseController
         // 获取 Harbor 当前所有 tag（用于校验和兜底取最新）
         $harborTags = null;  // null=未请求, array=tag列表, ['error'=>...]=Harbor不可达
         if ($this->harbor) {
-            $harborTags = $this->harbor->getTags($harborProject, $harborRepoName);
+            try {
+                $harborTags = $this->harbor->getTags($harborProject, $harborRepoName);
+            } catch (\RuntimeException $e) {
+                // Harbor 连接级不可达（getTags 上抛）：降级放行（原有语义，见下方注释），
+                // 统一折叠回 error 数组形态，保持下游 isset($harborTags['error']) 判定不变
+                \App\Helper\Log::exception($e);
+                $harborTags = ['error' => $e->getMessage()];
+            }
         }
 
         // tag 不传则取 Harbor 最新
@@ -854,15 +925,28 @@ class BuildController extends BaseController
                 $result         = ['success' => false, 'message' => 'Harbor 未配置'];
             } else {
                 try {
-                    $scan = $this->harbor->getScanReport($harborProject, $harborRepoName, $tag);
-                    if (isset($scan['error']) || isset($scan['code'])) {
+                    $scan = null;
+                    try {
+                        $scan = $this->harbor->getScanReport($harborProject, $harborRepoName, $tag);
+                    } catch (\RuntimeException $e) {
+                        // Harbor 连接级不可达（getScanReport 上抛）：与「扫描未启用」严格区分，
+                        // scanState 记 pending（commit status 合法态，语义=暂无扫描结论），继续尽力回写
+                        \App\Helper\Log::exception($e);
                         $scanState = 'pending';
-                        $result    = ['success' => false, 'message' => $scan['message'] ?? '扫描功能未启用'];
-                    } else {
-                        // getScanReport 签名返回 array（永不为 null），?? [] 是不可达的死代码
-                        $vulns = $scan['vulnerabilities'] ?? $scan;
-                        $vulnCount = is_array($vulns) ? count($vulns) : 0;
-                        $scanState = $vulnCount > 0 ? 'failed' : 'success';
+                        $result    = ['success' => false, 'message' => 'Harbor 服务不可达: ' . $e->getMessage()];
+                    }
+                    if (is_array($scan)) {
+                        if (isset($scan['error']) || isset($scan['code'])) {
+                            $scanState = 'pending';
+                            // 4xx 业务错误（412=扫描未启用 / 404=资源不存在 / 401|403=认证失败）：
+                            // 透出 HarborService 的具体原因，不再笼统误报「扫描功能未启用」
+                            $result = ['success' => false, 'message' => $this->harborScanErrorMessage($scan)];
+                        } else {
+                            // getScanReport 签名返回 array（永不为 null），?? [] 是不可达的死代码
+                            $vulns = $scan['vulnerabilities'] ?? $scan;
+                            $vulnCount = is_array($vulns) ? count($vulns) : 0;
+                            $scanState = $vulnCount > 0 ? 'failed' : 'success';
+                        }
                     }
                     // 回写状态默认跟随扫描结果；仅当回写自身失败时才降为 error，绝不反改 scanState
                     $writebackState = $scanState;
@@ -897,6 +981,8 @@ class BuildController extends BaseController
         }
 
         // 6. 记录回写结果到 ci_security_checks（审计追踪）
+        // 防御：Git provider 实现未必遵守形状契约，按可选偏移容忍
+        /** @var array{success?: bool, message?: string} $result */
         $writebackStatus = !$canWriteBack ? 'skipped' : (($result['success'] ?? false) ? 'success' : 'failed');
         $this->recordSecurityCheck($path, $sha, $scanState, 'harbor-scan', $desc ?? '', 'harbor-scan', $tag, $writebackStatus, $result['message'] ?? '');
 
@@ -911,7 +997,11 @@ class BuildController extends BaseController
         ], $request);
     }
 
-    /** GET /api/build/{path}/tag?pipeline=10 — 查 pipeline 对应的 tag */
+    /**
+     * GET /api/build/{path}/tag?pipeline=10 — 查 pipeline 对应的 tag
+     *
+     * @param array<string,string> $args
+     */
     public function tagQuery(Request $request, Response $response, array $args): Response
     {
         $this->initAuthFromRequest($request);
@@ -980,6 +1070,10 @@ class BuildController extends BaseController
      * 的记录时，才认为该 commit 的镜像 tag 已推送成功，并把对应 tag 关联到 pipeline 行上。
      * 判断依据是「回写成功」（推送成功的审计事实），而非 ci_pipeline_artifacts（最终产物——
      * 产物有记录并不代表推送成功，不能用产物倒推）。
+     *
+     * @param array<int, array<string,mixed>> $pipelines
+     *
+     * @return array<int, array<string,mixed>>
      */
     private function attachPullTags(string $path, array $pipelines): array
     {
@@ -1072,6 +1166,8 @@ class BuildController extends BaseController
      * 遍历其 jobs 日志，按可配置关键字 + 本项目 harbor 仓库路径命中后尽力提取 tag，
      * 并落库到 ci_pipeline_build_log（sha→tag 缓存），下次列表直接命中，不再重复拉日志。
      * Body 可带 force=1 强制重解析：跳过缓存、覆盖旧 tag，用于修正历史解析错误。
+     *
+     * @param array<string,string> $args
      */
     public function resolveTag(Request $request, Response $response, array $args): Response
     {
@@ -1082,7 +1178,8 @@ class BuildController extends BaseController
 
         $path       = $args['path'] ?? '';
         $pipelineId = (int) ($args['id'] ?? 0);
-        $body       = $request->getParsedBody() ?? [];
+        $parsedBody = $request->getParsedBody();
+        $body       = is_array($parsedBody) ? $parsedBody : [];
         $sha        = trim((string) ($body['sha'] ?? ''));
         $force      = (bool) ($body['force'] ?? false);
         if ($pipelineId <= 0) {
@@ -1221,6 +1318,8 @@ class BuildController extends BaseController
     /**
      * 从候选 tag 中选一个：优先「尾号数字 = 当前构建编号」的（如 v20260827-130 ↔ pipelineId=130），
      * 避免日志里更早出现的上一条构建 tag（v20260827-129）被误采；无命中则取第一条。
+     *
+     * @param list<string> $candidates
      */
     private function pickTag(array $candidates, int $pipelineId): string
     {
@@ -1269,6 +1368,8 @@ class BuildController extends BaseController
      *   tag                - 镜像 tag（可选；status=success 时写入 ci_pipeline_artifacts）
      *   harbor_repository  - Harbor 仓库（由 job_git_map 决定，body 不覆盖）
      *   其余字段           - 作为自定义构建参数写入 variables_json
+     *
+     * @param array<string,string> $args
      */
     public function report(Request $request, Response $response, array $args): Response
     {
@@ -1278,7 +1379,8 @@ class BuildController extends BaseController
         }
 
         $path        = $args['path'] ?? '';
-        $body        = $request->getParsedBody() ?? [];
+        $parsedBody  = $request->getParsedBody();
+        $body        = is_array($parsedBody) ? $parsedBody : [];
         $pipelineIid = (int) ($body['pipeline_iid'] ?? 0);
         $status      = trim((string) ($body['status'] ?? ''));
         $finishedAt  = trim((string) ($body['finished_at'] ?? ''));
@@ -1382,6 +1484,9 @@ class BuildController extends BaseController
         ] + $result, $request);
     }
 
+    /**
+     * @return array<string, array<string, array<string,mixed>>>
+     */
     private function loadPipelineTags(): array
     {
         try {
@@ -1467,6 +1572,8 @@ class BuildController extends BaseController
      * 把 HarborService 返回的错误数组翻译成对用户明确的错误描述。
      * request() 出错时返回 ['error' => string]；HTTP 4xx 附带 ['http_code' => int]，
      * 网络错误（重试耗尽）只有 error 无 http_code，据此区分「不可达 / 认证失败 / 资源不存在」。
+     *
+     * @param array{http_code?: int, error?: string} $err
      */
     private function harborErrorMessage(array $err): string
     {
@@ -1489,6 +1596,21 @@ class BuildController extends BaseController
             return 'Harbor 服务端异常（HTTP ' . $httpCode . '）';
         }
         return 'Harbor 返回 HTTP ' . $httpCode . '（' . $msg . '）';
+    }
+
+    /**
+     * scanSync 场景下 Harbor 扫描报告 4xx 错误数组的文案。
+     * 与 harborErrorMessage() 的区别：412（扫描插件未启用）映射为既有的友好文案，
+     * 其余 4xx 透出 HarborService 的具体原因，避免一律误报「扫描功能未启用」。
+     *
+     * @param array{http_code?: int, error?: string, message?: string} $scan
+     */
+    private function harborScanErrorMessage(array $scan): string
+    {
+        if ((int) ($scan['http_code'] ?? 0) === 412) {
+            return $this->__('harbor.scan_not_enabled');
+        }
+        return (string) ($scan['error'] ?? ($scan['message'] ?? '扫描功能未启用'));
     }
 
     private function recordPipelineTag(

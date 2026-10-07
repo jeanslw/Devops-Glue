@@ -18,6 +18,9 @@ use App\Config\AppConfig;
  */
 class Settings
 {
+    /**
+     * @param array<string,mixed> $config
+     */
     public function __construct(
         private array $config,
         private ?PlatformVersionRepository $platformVersions = null
@@ -25,6 +28,7 @@ class Settings
     }
 
     // Jenkins
+    /** @return array<string,string> */
     public function getJenkinsConfig(): array
     {
         return [
@@ -35,24 +39,28 @@ class Settings
     }
 
     // GitLab 配置
+    /** @return array<string,mixed> */
     public function getGitlabConfig(): array
     {
         return $this->config['git']['gitlab'] ?? [];
     }
 
     // Gitee 配置
+    /** @return array<string,mixed> */
     public function getGiteeConfig(): array
     {
         return $this->config['git']['gitee'] ?? [];
     }
 
     // GitHub 配置
+    /** @return array<string,mixed> */
     public function getGithubConfig(): array
     {
         return $this->config['git']['github'] ?? [];
     }
 
     // Gitea 配置
+    /** @return array<string,mixed> */
     public function getGiteaConfig(): array
     {
         return $this->config['git']['gitea'] ?? [];
@@ -96,12 +104,14 @@ class Settings
     }
 
     // CORS 配置
+    /** @return array{allowed_origins?: list<string>, allowed_methods?: list<string>, allowed_headers?: list<string>} */
     public function getCorsConfig(): array
     {
         return $this->config['cors'] ?? ['allowed_origins' => ['*']];
     }
 
     // Harbor
+    /** @return array<string,mixed> */
     public function getHarborConfig(): array
     {
         return $this->config['harbor'] ?? [];
@@ -119,7 +129,7 @@ class Settings
 
     /**
      * 获取用户自定义 Git Provider 列表
-     * @return array 每个元素包含 class (完整类名) 和 config (构造参数数组)
+     * @return list<array{class?: string, config?: array<string,mixed>}> 每个元素包含 class (完整类名) 和 config (构造参数数组)
      */
     public function getCustomGitProviders(): array
     {
@@ -129,7 +139,7 @@ class Settings
     /**
      * 获取用户自定义 Build Provider 列表（custom_push 等推送式 CI）
      * 与 Git 自定义平台解耦：独立配置项 build.custom_providers，不放在 git 下。
-     * @return array 每个元素包含 name (注册名), class (完整类名) 和 config (构造参数数组)
+     * @return list<array{name: string, class: string, config: array<string,mixed>}> 每个元素包含 name (注册名), class (完整类名) 和 config (构造参数数组)
      */
     public function getCustomBuildProviders(): array
     {
@@ -137,6 +147,7 @@ class Settings
     }
 
     // getGitPlatformsConfig 方法
+    /** @return list<array<string,mixed>> */
     public function getGitPlatformsConfig(): array
     {
         $platforms = [];
@@ -175,7 +186,8 @@ class Settings
                 continue;
             }
 
-            $name    = $cfg['name'] ?? strtolower(substr(strrchr($class, '\\'), 1));
+            $tail    = strrchr($class, '\\');
+            $name    = $cfg['name'] ?? strtolower($tail === false ? $class : substr($tail, 1));
             $baseUrl = $cfg['api_base_url'] ?? $cfg['base_url'] ?? '';
             $version = $cfg['api_version'] ?? 'custom';
 
@@ -190,6 +202,7 @@ class Settings
     }
 
     // 获取 Harbor 的 API 配置
+    /** @return array{api_base_url: string, api_version: string} */
     public function getHarborApiInfo(): array
     {
         $harbor = $this->config['harbor'] ?? [];
@@ -206,6 +219,7 @@ class Settings
     }
 
     // 按名称获取单个 Git 平台配置
+    /** @return array<string,mixed> */
     public function getGitPlatformConfig(string $name): array
     {
         return $this->config['git'][$name] ?? [];
@@ -242,6 +256,8 @@ class Settings
 
     /**
      * 管理后台登录凭证（从 app.env 读取）
+     *
+     * @return array{user: string, password: string}
      */
     public function getAdminCredentials(): array
     {
@@ -254,6 +270,11 @@ class Settings
     /**
      * LDAP 身份源配置。
      * 仅在 settings.php 的 ldap.enabled=true 时启用；密码源、DN 模板、过滤等均从 app.env 读取。
+     *
+     * @return array{enabled: bool, host?: string, port?: int, use_tls?: bool, use_ldaps?: bool,
+     *               base_dn?: string, bind_dn?: string, bind_password?: string,
+     *               user_filter?: string, user_dn_pattern?: string,
+     *               attrs?: list<string>, network_timeout?: int}
      */
     public function getLdapConfig(): array
     {
@@ -262,6 +283,7 @@ class Settings
         if (!$enabled) {
             return ['enabled' => false];
         }
+        $rawAttrs = $cfg['attrs'] ?? null;
         return [
             'enabled'         => true,
             'host'            => (string)($cfg['host'] ?? ''),
@@ -273,14 +295,20 @@ class Settings
             'bind_password'   => (string)($cfg['bind_password'] ?? ''),
             'user_filter'     => (string)($cfg['user_filter'] ?? '(uid=%s)'), // %s → 用户名
             'user_dn_pattern' => (string)($cfg['user_dn_pattern'] ?? ''),     // 若已固定 DN 模板（如 uid=%s,ou=users,dc=x），跳过管理员搜索
-            'attrs'           => is_array($cfg['attrs'] ?? null) ? $cfg['attrs'] : ['uid', 'cn', 'mail', 'dn'],
+            'attrs'           => is_array($rawAttrs)
+                ? array_values(array_map('strval', $rawAttrs))
+                : ['uid', 'cn', 'mail', 'dn'],
             'network_timeout' => (int)($cfg['network_timeout'] ?? 5),
         ];
     }
 
     // ──────────────────── 平台 API 版本 ────────────────────
 
-    /** 获取所有平台的 API 版本（settings.php 显式配置 > DB 覆盖 > 默认值） */
+    /**
+     * 获取所有平台的 API 版本（settings.php 显式配置 > DB 覆盖 > 默认值）
+     *
+     * @return array<string,string>
+     */
     public function getPlatformApiVersions(): array
     {
         $enriched = $this->getPlatformApiVersionsWithSource();

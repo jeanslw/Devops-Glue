@@ -38,7 +38,7 @@ class GitRemote
             $parts = parse_url($r);
             $path = is_array($parts) ? ($parts['path'] ?? '') : '';
         } else {
-            $r = preg_replace('#^(https?|git)://#i', '', $r);
+            $r = (string) preg_replace('#^(https?|git)://#i', '', $r);
             if (preg_match('#^[^/@]+@([^:/]+):(.+)$#', $r, $m)) {
                 // scp 形式 user@host:path —— 注意此形式本身不支持端口，
                 // git 自身也会把冒号后的内容整体当作路径，故这里保持同样语义。

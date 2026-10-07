@@ -19,7 +19,10 @@ class UserIdentityRepository
     {
     }
 
-    /** 按身份源 + 外部 UID 查（登录主路径），返回行或 null */
+    /**
+     * 按身份源 + 外部 UID 查（登录主路径），返回行或 null
+     * @return array<string,mixed>|null
+     */
     public function find(string $providerType, string $providerUid): ?array
     {
         $stmt = $this->pdo->prepare(
@@ -33,7 +36,10 @@ class UserIdentityRepository
         return $row ?: null;
     }
 
-    /** 列出某用户名下所有已绑定的身份源（管理界面展示用） */
+    /**
+     * 列出某用户名下所有已绑定的身份源（管理界面展示用）
+     * @return list<array<string,mixed>>
+     */
     public function listByUsername(string $username): array
     {
         $stmt = $this->pdo->prepare(
@@ -43,11 +49,12 @@ class UserIdentityRepository
               ORDER BY provider_type, provider_uid"
         );
         $stmt->execute([$username]);
-        return $stmt->fetchAll();
+        return array_values($stmt->fetchAll());
     }
 
     /**
      * 新建绑定，幂等：同 (provider_type, provider_uid) 冲突时返回 false 由上层报错
+     * @param array<string,mixed> $opts
      */
     public function bind(string $username, string $providerType, string $providerUid, array $opts = []): bool
     {
@@ -89,6 +96,7 @@ class UserIdentityRepository
     /**
      * 登录成功后回填最新 LDAP 属性（email/raw_profile）。
      * 与 bind 不同：这里幂等 update，不插入；快照源是 LDAP 服务端字段，属缓存用途。
+     * @param array<string,mixed>|null $rawProfile
      */
     public function refreshProfile(string $providerType, string $providerUid, string $email = '', ?array $rawProfile = null): void
     {

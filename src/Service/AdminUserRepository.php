@@ -10,6 +10,9 @@ class AdminUserRepository
     {
     }
 
+    /**
+     * @return array<string,mixed>|null
+     */
     public function findByUsername(string $username): ?array
     {
         $username = $this->normalizeUsername($username);
@@ -57,14 +60,20 @@ class AdminUserRepository
         return (bool)$stmt->fetchColumn();
     }
 
+    /**
+     * @return list<array<string,mixed>>
+     */
     public function listUsers(bool $includeAdmin = true): array
     {
         if ($includeAdmin) {
-            return $this->pdo->query("SELECT username, role, systems, email, status, created_at, updated_at FROM " . AppConfig::TABLE_ADMIN_USERS . " ORDER BY username")->fetchAll();
+            return array_values($this->pdo->query("SELECT username, role, systems, email, status, created_at, updated_at FROM " . AppConfig::TABLE_ADMIN_USERS . " ORDER BY username")->fetchAll());
         }
-        return $this->pdo->query("SELECT username, role, systems, email, status, created_at, updated_at FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE role NOT IN ('" . AppConfig::ROLE_ADMIN . "', '" . AppConfig::ROLE_SUPER_ADMIN . "') ORDER BY username")->fetchAll();
+        return array_values($this->pdo->query("SELECT username, role, systems, email, status, created_at, updated_at FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE role NOT IN ('" . AppConfig::ROLE_ADMIN . "', '" . AppConfig::ROLE_SUPER_ADMIN . "') ORDER BY username")->fetchAll());
     }
 
+    /**
+     * @return array<string,mixed>|null
+     */
     public function findUser(string $username): ?array
     {
         $username = $this->normalizeUsername($username);
@@ -79,15 +88,19 @@ class AdminUserRepository
     /**
      * API 用户列表（CD 读接口用）：只回 username/role/systems/status，
      * 绝不携带 password_hash / email，收口 CD 直读 admin_users 的哈希暴露面。
+     * @return list<array<string,mixed>>
      */
     public function listUsersForApi(): array
     {
-        return $this->pdo->query(
+        return array_values($this->pdo->query(
             "SELECT username, role, systems, status FROM " . AppConfig::TABLE_ADMIN_USERS . " ORDER BY username"
-        )->fetchAll();
+        )->fetchAll());
     }
 
-    /** API 单用户读（CD 读接口用）：同样不含 password_hash。 */
+    /**
+     * API 单用户读（CD 读接口用）：同样不含 password_hash。
+     * @return array<string,mixed>|null
+     */
     public function findUserForApi(string $username): ?array
     {
         $username = $this->normalizeUsername($username);
@@ -99,12 +112,15 @@ class AdminUserRepository
         return $row ?: null;
     }
 
-    /** API 角色目录（供 CD 审批规则选角色）：只回 name/description，不含 is_system/created_at。 */
+    /**
+     * API 角色目录（供 CD 审批规则选角色）：只回 name/description，不含 is_system/created_at。
+     * @return list<array<string,mixed>>
+     */
     public function listRolesForApi(): array
     {
-        return $this->pdo->query(
+        return array_values($this->pdo->query(
             "SELECT name, description FROM " . AppConfig::TABLE_ROLES . " ORDER BY name"
-        )->fetchAll();
+        )->fetchAll());
     }
 
     /** 角色是否已存在于 roles 表（建号/改号前校验，防「角色名悬空」导致权限加载为空）。 */

@@ -22,7 +22,10 @@ class CustomPushBuildProvider implements BuildProviderInterface
 {
     private string $name;
 
-    /** 允许服务端代理拉取的日志主机白名单（可选；空数组 = 不启用白名单，走 IP 段校验） */
+    /**
+     * 允许服务端代理拉取的日志主机白名单（可选；空数组 = 不启用白名单，走 IP 段校验）
+     * @var list<string>
+     */
     private array $allowedLogHosts = [];
 
     /**
@@ -35,7 +38,7 @@ class CustomPushBuildProvider implements BuildProviderInterface
     ];
 
     /**
-     * @param array           $config 来自 settings.php 的 build.custom_providers[].config
+     * @param array<string, mixed> $config 来自 settings.php 的 build.custom_providers[].config
      * @param \PDO            $pdo    数据库连接（用于 ci_custom_builds 表查询）
      * @param GitService|null $git    Git 服务（用于 getBranches 委托）
      * @param Logger|null     $logger
@@ -57,6 +60,7 @@ class CustomPushBuildProvider implements BuildProviderInterface
 
     // ── Pipeline 列表 ────────────────────────────────────────────
 
+    /** @return list<array<string, mixed>> */
     public function getPipelines(string $projectId, int $perPage = 20): array
     {
         try {
@@ -70,7 +74,7 @@ class CustomPushBuildProvider implements BuildProviderInterface
             $stmt->bindValue(1, $projectId, \PDO::PARAM_STR);
             $stmt->bindValue(2, $perPage, \PDO::PARAM_INT);
             $stmt->execute();
-            return array_map(function (array $r): array {
+            return array_values(array_map(function (array $r): array {
                 return [
                     'id'         => (int) $r['id'],
                     'iid'        => (int) $r['pipeline_iid'],
@@ -83,15 +87,16 @@ class CustomPushBuildProvider implements BuildProviderInterface
                     // 完成时间：构建列表按此展示；未完成（无 finished_at）时留空，不回落 triggered_at
                     'updated_at' => $r['finished_at'] ?? '',
                 ];
-            }, $stmt->fetchAll());
+            }, $stmt->fetchAll()));
         } catch (\Exception $e) {
             $this->logger?->error('custom_push pipelines 查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
-            return [];
+            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
         }
     }
 
     // ── Job 列表（单 job 模型） ──────────────────────────────────
 
+    /** @return list<array<string, mixed>> */
     public function getJobs(string $projectId, int $pipelineId): array
     {
         try {
@@ -113,7 +118,7 @@ class CustomPushBuildProvider implements BuildProviderInterface
             ]];
         } catch (\Exception $e) {
             $this->logger?->error('custom_push jobs 查询失败', ['project' => $projectId, 'pipeline' => $pipelineId, 'error' => $e->getMessage()]);
-            return [];
+            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
         }
     }
 
@@ -149,7 +154,7 @@ class CustomPushBuildProvider implements BuildProviderInterface
                 'http_errors'     => false,
                 'allow_redirects' => false,
             ]);
-            $resp = $client->get($logUrl);
+            $resp = $client->get((string) $logUrl);
             $status = $resp->getStatusCode();
             if ($status >= 200 && $status < 300) {
                 return (string) $resp->getBody();
@@ -157,7 +162,7 @@ class CustomPushBuildProvider implements BuildProviderInterface
             return '日志拉取失败 (HTTP ' . $status . ')，请直接访问：' . $logUrl;
         } catch (\Exception $e) {
             $this->logger?->error('custom_push 日志拉取失败', ['project' => $projectId, 'job' => $jobId, 'error' => $e->getMessage()]);
-            return '日志拉取失败: ' . $e->getMessage() . '。请直接访问用户 CI 日志页面';
+            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
         }
     }
 
@@ -207,6 +212,7 @@ class CustomPushBuildProvider implements BuildProviderInterface
     /**
      * 解析域名到 IPv4 + IPv6 地址列表。
      * A 记录用 gethostbynamel（走系统解析，兼顾 /etc/hosts）；AAAA 用 dns_get_record 单独取。
+     * @return list<string>
      */
     private function resolveHostIps(string $host): array
     {
@@ -268,7 +274,14 @@ class CustomPushBuildProvider implements BuildProviderInterface
                 $embedded = substr($bin, 2, 4);
             }
             if ($embedded !== null) {
-                return $this->isSafeIp(long2ip(unpack('N', $embedded)[1]));
+                $unpacked = unpack('N', $embedded);
+                if ($unpacked === false) {
+                    // 内嵌 IPv4 解包失败：无法确认安全性，按不安全处理
+                    return false;
+                }
+                $ip = long2ip($unpacked[1]);
+
+                return is_string($ip) ? $this->isSafeIp($ip) : false;
             }
         }
         return true; // 公网 IPv6 或 fc00::/7 唯一本地（等价私网）放行
@@ -279,6 +292,8 @@ class CustomPushBuildProvider implements BuildProviderInterface
     /**
      * custom_push 不再通过 trigger 创建 pending 记录。
      * 用户 CI 在构建完成后通过 POST /api/build/{path}/report 一次性上报终态结果。
+     * @param array<string, mixed> $variables
+     * @return array<string, mixed>
      */
     public function trigger(string $projectId, string $ref, array $variables = []): array
     {
@@ -296,6 +311,9 @@ class CustomPushBuildProvider implements BuildProviderInterface
      * (job_name, pipeline_iid) 冲突时按覆盖（UPDATE）处理，保住原自增 id。
      * success 为不可逆终态：已 success 的记录拒绝被 failed/aborted 降级（防止与
      * ci_pipeline_artifacts 中已写入的 tag 产生矛盾）；failed/aborted → success 正常升级。
+     *
+     * @param array<string, mixed> $body
+     * @return array<string, mixed>
      */
     public function report(string $jobName, array $body): array
     {
@@ -380,7 +398,7 @@ class CustomPushBuildProvider implements BuildProviderInterface
             ];
         } catch (\Exception $e) {
             $this->logger?->error('custom_push report 失败', ['project' => $jobName, 'error' => $e->getMessage()]);
-            return ['success' => false, 'message' => '写入构建记录失败: ' . $e->getMessage()];
+            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
         }
     }
 
@@ -396,6 +414,7 @@ class CustomPushBuildProvider implements BuildProviderInterface
 
     /**
      * 查询指定 pipeline_iid 的记录
+     * @return array<string, mixed>|null
      */
     public function findByIid(string $jobName, int $pipelineIid): ?array
     {
@@ -410,11 +429,13 @@ class CustomPushBuildProvider implements BuildProviderInterface
 
     // ── retry / cancel ───────────────────────────────────────────
 
+    /** @return array<string, mixed> */
     public function retry(string $projectId, int $pipelineId): array
     {
         return ['success' => false, 'message' => 'custom_push 不支持 Devops-Glue 主动重试，请在用户 CI 重新触发'];
     }
 
+    /** @return array<string, mixed> */
     public function cancel(string $projectId, int $pipelineId): array
     {
         return ['success' => false, 'message' => 'custom_push 不支持 Devops-Glue 主动取消，请到用户 CI 后台手动中止'];
@@ -422,6 +443,7 @@ class CustomPushBuildProvider implements BuildProviderInterface
 
     // ── 构建参数 ──────────────────────────────────────────────────
 
+    /** @return list<array<string, mixed>> */
     public function getVariables(string $projectId): array
     {
         $vars   = $this->config['variables'] ?? [];
@@ -444,6 +466,7 @@ class CustomPushBuildProvider implements BuildProviderInterface
 
     // ── 分支（委托 GitService） ───────────────────────────────────
 
+    /** @return array<int, string> */
     public function getBranches(string $projectId): array
     {
         if (!$this->git) {
@@ -453,17 +476,19 @@ class CustomPushBuildProvider implements BuildProviderInterface
             return $this->git->getBranchesForJob($projectId);
         } catch (\Exception $e) {
             $this->logger?->warning('custom_push 分支查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
-            return [];
+            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
         }
     }
 
     // ── commit status ────────────────────────────────────────────
 
+    /** @return list<array<string, mixed>> */
     public function getRunners(string $projectId): array
     {
         return []; // runner 状态暂仅 Gitea Actions 提供，custom_push 降级为空
     }
 
+    /** @return array<string, mixed> */
     public function setCommitStatus(string $projectId, string $sha, string $state, string $name, string $description, string $targetUrl = ''): array
     {
         return ['success' => false, 'message' => 'custom_push 不支持 commit status 回写'];

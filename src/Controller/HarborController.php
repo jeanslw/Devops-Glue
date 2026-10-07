@@ -18,6 +18,9 @@ class HarborController extends BaseController
         $this->harbor = $harbor;
     }
 
+    /**
+     * @param array<string,string> $args 路由参数
+     */
     public function getProjectsList(Request $request, Response $response, array $args): Response
     {
         $this->initAuthFromRequest($request);
@@ -29,6 +32,9 @@ class HarborController extends BaseController
         return $this->handleResult($response, $result, $request);
     }
 
+    /**
+     * @param array<string,string> $args 路由参数
+     */
     public function getRepositoriesList(Request $request, Response $response, array $args): Response
     {
         $this->initAuthFromRequest($request);
@@ -41,6 +47,9 @@ class HarborController extends BaseController
         return $this->handleResult($response, $result, $request);
     }
 
+    /**
+     * @param array<string,string> $args 路由参数
+     */
     public function getTagsList(Request $request, Response $response, array $args): Response
     {
         $this->initAuthFromRequest($request);
@@ -54,6 +63,9 @@ class HarborController extends BaseController
         return $this->handleResult($response, $result, $request);
     }
 
+    /**
+     * @param array<string,string> $args 路由参数
+     */
     public function scanTrigger(Request $request, Response $response, array $args): Response
     {
         $this->initAuthFromRequest($request);
@@ -77,6 +89,9 @@ class HarborController extends BaseController
         return $this->handleResult($response, $result, $request);
     }
 
+    /**
+     * @param array<string,string> $args 路由参数
+     */
     public function getScanReport(Request $request, Response $response, array $args): Response
     {
         $this->initAuthFromRequest($request);
@@ -97,6 +112,9 @@ class HarborController extends BaseController
     }
 
     // ---------- 统一响应处理 ----------
+    /**
+     * @param array<int|string,mixed> $data Harbor 返回结果（键可能含整数）
+     */
     private function handleResult(Response $response, array $data, Request $request): Response
     {
         if (isset($data['error'])) {

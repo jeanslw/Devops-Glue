@@ -10,14 +10,21 @@ class GitRemoteResolver
 {
     private JenkinsService $jenkins;
     private ProviderRegistry $registry;
+    /** @var array<string,array<string,mixed>> */
     private array $manualMap;
+    /** @var array<string,mixed> */
     private array $gitlabConfig;
     private string $cacheFile;
     private string $defaultPlatform;
+    /** @var array<string,int|null> */
     private array $autoCache = [];
     private ?Logger $logger = null;
     private ?Client $gitlabClient = null;
 
+    /**
+     * @param array<array-key,array<string,mixed>> $manualConfig
+     * @param array<string,mixed>                  $gitlabConfig
+     */
     public function __construct(
         JenkinsService $jenkins,
         ProviderRegistry $registry,
@@ -52,6 +59,9 @@ class GitRemoteResolver
         }
     }
 
+    /**
+     * @return list<array<string,mixed>>
+     */
     public function getAllMaps(): array
     {
         $jobs = $this->jenkins->getAllJobs();
@@ -65,9 +75,22 @@ class GitRemoteResolver
         return $maps;
     }
 
+    /**
+     * @return array<string,mixed>|null
+     */
     public function getByJobName(string $jobName): ?array
     {
-        $resolved = $this->jenkins->resolvePath($jobName);
+        try {
+            $resolved = $this->jenkins->resolvePath($jobName);
+        } catch (\RuntimeException $e) {
+            // Jenkins 连接级不可达（resolvePath 上抛）：这里不冒泡——分支查询要继续走
+            // 手动映射兜底（与「Job 不存在」同路径），否则配置了 job_git_map 的项目会被误伤
+            $this->logger?->warning('Jenkins 不可达，resolvePath 降级走手动映射兜底', [
+                'job'   => $jobName,
+                'error' => $e->getMessage(),
+            ]);
+            $resolved = null;
+        }
         if (!$resolved || $resolved['type'] !== 'job') {
             // Jenkins 找不到 → 尝试手动映射兜底（GitLab CI 项目）
             if (isset($this->manualMap[$jobName])) {

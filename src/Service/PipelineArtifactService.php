@@ -72,6 +72,9 @@ final class PipelineArtifactService
         return ['written' => true, 'ignored' => false];
     }
 
+    /**
+     * @return array<string,mixed>|null
+     */
     public function find(PipelineIdentity $identity): ?array
     {
         $stmt = $this->pdo->prepare(

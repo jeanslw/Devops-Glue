@@ -34,13 +34,21 @@ class DataBackupService
         return $this->driver;
     }
 
-    /** 备份排除表：易失/派生缓存，绝不落进备份文件 */
+    /**
+     * 备份排除表：易失/派生缓存，绝不落进备份文件
+     *
+     * @return list<string>
+     */
     private function excludedTables(): array
     {
         return [AppConfig::TABLE_CACHE, AppConfig::TABLE_PLATFORM_VERSIONS];
     }
 
-    /** 应用自有表清单（AppConfig 全部 TABLE_ 常量，反射读取，未来加表自动跟随） */
+    /**
+     * 应用自有表清单（AppConfig 全部 TABLE_ 常量，反射读取，未来加表自动跟随）
+     *
+     * @return list<string>
+     */
     public function appTableNames(): array
     {
         $ref    = new \ReflectionClass(AppConfig::class);
@@ -57,7 +65,11 @@ class DataBackupService
         return $tables;
     }
 
-    /** 枚举全部用户表（排除 sqlite 内部表）；表名只接受 [a-zA-Z0-9_] */
+    /**
+     * 枚举全部用户表（排除 sqlite 内部表）；表名只接受 [a-zA-Z0-9_]
+     *
+     * @return list<string>
+     */
     private function listTables(): array
     {
         if ($this->driver === 'mysql') {
@@ -77,7 +89,11 @@ class DataBackupService
         return $tables;
     }
 
-    /** 表列清单（按物理顺序），列名只接受安全字符 */
+    /**
+     * 表列清单（按物理顺序），列名只接受安全字符
+     *
+     * @return list<string>
+     */
     private function tableColumns(string $table): array
     {
         if ($this->driver === 'mysql') {
@@ -95,12 +111,14 @@ class DataBackupService
                 throw new \RuntimeException("表 {$table} 存在异常的列名: " . var_export($c, true));
             }
         }
-        return $cols;
+        return array_values($cols);
     }
 
     /**
      * SQL 标准值转义：'' 加倍、NULL 保持 NULL、反斜杠按字面量保留。
      * 配合 NO_BACKSLASH_ESCAPES 跨驱动通用。
+     *
+     * @param scalar|null $value
      */
     private function escapeValue($value): string
     {
@@ -239,7 +257,11 @@ class DataBackupService
         return [basename($zipFile), $counts];
     }
 
-    /** 列出备份目录下已生成的 zip 备份文件（按时间倒序），供「数据管理」面板渲染 */
+    /**
+     * 列出备份目录下已生成的 zip 备份文件（按时间倒序），供「数据管理」面板渲染
+     *
+     * @return list<array{name:string, size:int, mtime:int}>
+     */
     public function listBackups(): array
     {
         $dir   = $this->backupDir();

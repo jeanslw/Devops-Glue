@@ -370,7 +370,7 @@ return [
     'js.activate_confirm'       => 'Confirm',
     'js.activate_warn_hide'     => 'After activation, the other mapping for the same repository will be hidden, and will also be filtered out in the next auto-discovery.',
     'js.delete_note'            => 'After deletion, the mapping’s trigger and write-back configuration becomes invalid immediately and cannot be restored.',
-    'js.cannot_activate_mode'   => 'Current mode is {mode}, cannot activate {item} project',
+    'js.cannot_activate_mode'   => '{item} is not enabled; change the CI source in Edit, or enable the {item} build mode in Settings to activate this project',
     'js.load_failed'            => 'Load failed',
     'js.timeout'                => 'Timeout',
     'js.cannot_connect'         => 'Cannot connect',
@@ -384,6 +384,9 @@ return [
     'js.edit_mapping'           => 'Edit Mapping',
     'js.discover_confirm'       => 'This will auto-scan projects and import mappings',
     'js.discover_note'          => 'This will auto-scan Git/Jenkins projects on the currently configured platforms and import mappings; projects with the same repository address may be duplicated across Git and Jenkins platforms.',
+    'js.discover_ok'            => 'Scan completed: {found} found, {saved} added',
+    'js.discover_partial'       => 'Scan partially failed: {names}',
+    'js.discover_all_failed'    => 'Scan failed on all sources: {names}',
     // Topology
     'js.topo_manual'            => 'Manual Mapping',
     'js.topo_fallback'          => 'Fallback Detection',

@@ -9,12 +9,13 @@ namespace App\Exceptions;
 class ApiException extends \RuntimeException
 {
     private int $statusCode;
+    /** @var array<string,mixed>|null 附加调试上下文 */
     private ?array $context;
 
     /**
-     * @param string $message    错误描述
-     * @param int    $statusCode HTTP 状态码，默认 400
-     * @param array  $context    附加调试上下文（仅 debug 模式输出）
+     * @param string                $message    错误描述
+     * @param int                   $statusCode HTTP 状态码，默认 400
+     * @param array<string,mixed>|null $context 附加调试上下文（仅 debug 模式输出）
      */
     public function __construct(string $message = '', int $statusCode = 400, ?array $context = null)
     {
@@ -28,6 +29,9 @@ class ApiException extends \RuntimeException
         return $this->statusCode;
     }
 
+    /**
+     * @return array<string,mixed>|null
+     */
     public function getContext(): ?array
     {
         return $this->context;

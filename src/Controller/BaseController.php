@@ -11,6 +11,7 @@ class BaseController
 {
     protected string $currentUser = '';
     protected string $currentRole = AppConfig::ROLE_ADMIN;
+    /** @var list<string> 用户权限键列表 */
     protected array $userPermissions = [];
 
     public function __construct(protected I18nService $i18n)
@@ -19,8 +20,8 @@ class BaseController
 
     /**
      * 翻译快捷方法
-     * @param string $key    翻译键
-     * @param array  $params 替换参数
+     * @param string                    $key    翻译键
+     * @param array<string,string|int> $params 替换参数
      */
     protected function __(string $key, array $params = []): string
     {
@@ -95,7 +96,7 @@ class BaseController
             case 'raw':
             default:
                 // 原始行为：数组/对象转JSON，字符串原样输出
-                $response->getBody()->write(is_string($data) ? $data : json_encode($data));
+                $response->getBody()->write(is_string($data) ? $data : (string) json_encode($data));
                 return $response->withHeader('Content-Type', is_string($data) ? 'text/plain' : 'application/json');
         }
     }
@@ -103,23 +104,27 @@ class BaseController
     /**
      * JSON 成功响应
      * 如果数据已包含 'code' 键，直接输出，避免二次包裹
+     *
+     * @param mixed $data 要输出的数据（数组或标量）
      */
     protected function jsonResponse(Response $response, $data, int $code = 200): Response
     {
         // 如果数据本身已经是完整的响应结构（比如 buildTrigger），直接输出
         if (is_array($data) && array_key_exists('code', $data)) {
-            $response->getBody()->write(json_encode($data));
+            $response->getBody()->write((string) json_encode($data));
             $status = is_int($data['code']) ? $data['code'] : $code;
             return $response->withStatus($status)->withHeader('Content-Type', 'application/json');
         } else {
             // 否则只包裹 data
-            $response->getBody()->write(json_encode(['data' => $data]));
+            $response->getBody()->write((string) json_encode(['data' => $data]));
         }
         return $response->withStatus($code)->withHeader('Content-Type', 'application/json');
     }
 
     /**
      * XML 成功响应
+     *
+     * @param mixed $data 要输出的数据（数组或标量）
      */
     protected function xmlResponse(Response $response, $data, int $code = 200): Response
     {
@@ -142,12 +147,14 @@ class BaseController
                 $message = $translated;
             }
         }
-        $response->getBody()->write(json_encode(['code' => $code, 'message' => $message]));
+        $response->getBody()->write((string) json_encode(['code' => $code, 'message' => $message]));
         return $response->withStatus($code)->withHeader('Content-Type', 'application/json');
     }
 
     /**
      * 递归将数组转为 XML 字符串
+     *
+     * @param mixed $data 要转换的数据（数组或标量）
      */
     private function arrayToXml($data, string $root = 'root'): string
     {
@@ -158,6 +165,11 @@ class BaseController
         return $xml;
     }
 
+    /**
+     * 递归输出 XML 节点
+     *
+     * @param mixed $data 节点数据（数组或标量）
+     */
     private function arrayToXmlNodes($data): string
     {
         $xml = '';

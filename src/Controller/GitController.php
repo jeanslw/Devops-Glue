@@ -18,6 +18,9 @@ class GitController extends BaseController
         $this->git = $git;
     }
 
+    /**
+     * @param array<string,string> $args 路由参数
+     */
     public function branches(Request $request, Response $response, array $args): Response
     {
         $this->initAuthFromRequest($request);

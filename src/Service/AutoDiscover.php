@@ -6,6 +6,9 @@ use App\Service\Git\ProviderRegistry;
 use App\Config\AppConfig;
 use GuzzleHttp\Client;
 
+/**
+ * @phpstan-type DiscoveredItem array{entry?: array<string,mixed>, source: string}
+ */
 class AutoDiscover
 {
     private JenkinsService $jenkins;
@@ -15,6 +18,9 @@ class AutoDiscover
     private ?Logger $logger;
     private ?Client $gitlabClient = null;
     private ?Client $giteaClient = null;
+    /** @var list<string> 本次 discover 实际发起网络扫描的源（已启用且已配置），
+     * 供前端区分「扫描全部失败 / 扫描部分失败 / 扫描成功」 */
+    private array $scanSources = [];
 
     public function __construct(JenkinsService $jenkins, ProviderRegistry $gitRegistry, Settings $config, MappingManager $mapping, ?Logger $logger = null, ?Client $gitlabClient = null, ?Client $giteaClient = null)
     {
@@ -27,12 +33,15 @@ class AutoDiscover
         $this->giteaClient  = $giteaClient;
     }
 
+    /** @return array{found: list<DiscoveredItem>, errors: list<string>, sources: list<string>} */
     public function discover(): array
     {
+        $this->scanSources = [];
         $enabled = $this->mapping->activeBuildProviders();
 
-        // ⚠️ 关键安全约束：按「已启用的拉取式 provider 集合」严格隔离
-        // - 只参考 build_provider ∈ enabled 的已有记录去重（跨源：同仓库仅一条 active）
+        // ⚠️ 关键安全约束：已有映射的去重范围
+        // - 内置拉取式 provider（jenkins/gitlab_ci/gitea_ci）的记录始终纳入去重：
+        //   Git 平台扫描按原生 CI 标记（与 BUILD_MODE 无关），已映射项目不应因对应 CI 未启用而被重复建议
         // - custom_push_enabled 开启时：custom_push 记录也纳入去重（正交维度）
         $cpEnabled = $this->mapping->hasCustomPush();
         $activeRemotes = [];   // 归一化后的 key：host/path（统一格式，跨协议去重）
@@ -40,8 +49,8 @@ class AutoDiscover
         foreach ($this->mapping->allMaps() as $m) {
             $bp = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
 
-            // 非启用 provider 的记录不参与去重（custom_push 开启时始终纳入）
-            if (!in_array($bp, $enabled, true)) {
+            // 未知/非内置 provider 的记录不参与去重
+            if (!in_array($bp, AppConfig::BUILTIN_PULL_PROVIDERS, true)) {
                 if (!($cpEnabled && $bp === AppConfig::PROVIDER_CUSTOM_PUSH)) {
                     continue;
                 }
@@ -64,17 +73,16 @@ class AutoDiscover
         $errors    = [];
         $found     = [];
 
-        if (in_array(AppConfig::PROVIDER_JENKINS, $enabled, true)) {
-            try {
-                $found = array_merge($found, $this->scanJenkins($activeRemotes, $existingNames));
-            } catch (\Exception $e) {
-                $errors[] = 'Jenkins: ' . $e->getMessage();
-            }
-        }
+        // 先扫描 Git 平台原生 CI（GitLab CI / Gitea Actions），构建「仓库路径 → 平台」提示表，
+        // 供 Jenkins 扫描纠正自建平台的误识别——自建 GitLab/Gitea 可能同 host 仅端口不同
+        //（且 SSH 端口与 Web 端口无配置对应关系），URL 子串匹配无法区分，会回退默认平台。
+        $platformHints = [];  // strtolower(仓库路径) => git_platform
 
         if (in_array(AppConfig::PROVIDER_GITLAB_CI, $enabled, true)) {
             try {
-                $found = array_merge($found, $this->scanGitlabCi($activeRemotes, $existingNames));
+                $batch = $this->scanGitlabCi($activeRemotes, $existingNames);
+                $this->collectPlatformHints($platformHints, $batch);
+                $found = array_merge($found, $batch);
             } catch (\Exception $e) {
                 $errors[] = 'GitLab CI: ' . $e->getMessage();
             }
@@ -82,40 +90,64 @@ class AutoDiscover
 
         if (in_array(AppConfig::PROVIDER_GITEA_CI, $enabled, true)) {
             try {
-                $found = array_merge($found, $this->scanGiteaCi($activeRemotes, $existingNames));
+                $batch = $this->scanGiteaCi($activeRemotes, $existingNames);
+                $this->collectPlatformHints($platformHints, $batch);
+                $found = array_merge($found, $batch);
             } catch (\Exception $e) {
                 $errors[] = 'Gitea Actions: ' . $e->getMessage();
             }
         }
 
-        // custom_push 开关开启时：扫描 Git 平台项目，build_provider 设为 custom_push
-        if ($cpEnabled) {
+        if (in_array(AppConfig::PROVIDER_JENKINS, $enabled, true)) {
+            $this->scanSources[] = 'Jenkins';
             try {
-                $found = array_merge($found, $this->scanGitPlatforms($activeRemotes, $existingNames));
+                $found = array_merge($found, $this->scanJenkins($activeRemotes, $existingNames, $platformHints));
             } catch (\Exception $e) {
-                $errors[] = 'Git: ' . $e->getMessage();
+                $errors[] = 'Jenkins: ' . $e->getMessage();
             }
         }
 
-        if (!empty($errors)) {
-            $found[] = ['entry' => ['job_name' => '__errors__'], 'source' => '_errors', '_errors' => $errors];
+        // Git 平台扫描：与 BUILD_MODE/custom_push 开关无关——只要平台已配置就发现其项目，
+        // build_provider 按平台原生 CI 标记（GitLab→gitlab_ci、Gitea→gitea_ci；
+        // 无原生拉取式 provider 的平台如 Bitbucket 才用 custom_push）。
+        // 原生 CI 已启用的平台由其专属扫描覆盖（如 scanGitlabCi），scanGitPlatforms 内部跳过。
+        try {
+            // 跨扫描去重：已被本轮前面扫描（Jenkins/GitLab CI/Gitea）发现的项目不再重复导入
+            $foundRemotes = $activeRemotes;
+            foreach ($found as $item) {
+                $r = $item['entry']['git_remote'] ?? '';
+                if (is_string($r) && $r !== '') {
+                    $k = $this->normalizeRemote($r);
+                    if ($k !== '') {
+                        $foundRemotes[] = $k;
+                    }
+                }
+            }
+            $found = array_merge($found, $this->scanGitPlatforms($foundRemotes, $existingNames, $enabled));
+        } catch (\Exception $e) {
+            $errors[] = 'Git: ' . $e->getMessage();
         }
 
-        return $found;
+        return [
+            'found'   => $found,
+            'errors'  => $errors,
+            'sources' => $this->scanSources,
+        ];
     }
 
+    /** @param list<DiscoveredItem> $discovered */
     public function saveDiscovered(array $discovered): int
     {
         $saved = 0;
-        $enabled = $this->mapping->activeBuildProviders();
         $cpEnabled = $this->mapping->hasCustomPush();
         $maps  = $this->mapping->allMaps();
 
-        // 同样按集合隔离：只收集启用 provider 的 job_name，防止跨 provider 误判重复
+        // 与 discover() 同口径：内置 provider 记录始终纳入，custom_push 记录在开关开启时纳入，
+        // 防止跨 provider 误判重复
         $names = [];
         foreach ($maps as $m) {
             $bp = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
-            if (!in_array($bp, $enabled, true)) {
+            if (!in_array($bp, AppConfig::BUILTIN_PULL_PROVIDERS, true)) {
                 // custom_push 记录在 custom_push_enabled 时始终纳入去重
                 if (!($cpEnabled && $bp === AppConfig::PROVIDER_CUSTOM_PUSH)) {
                     continue;
@@ -144,7 +176,13 @@ class AutoDiscover
 
     // ── Jenkins ──
 
-    private function scanJenkins(array $activeRemotes, array $existingNames): array
+    /**
+     * @param list<string> $activeRemotes
+     * @param list<string> $existingNames
+     * @param array<string,string> $platformHints 同轮平台扫描构建的「strtolower(仓库路径) => git_platform」提示表
+     * @return list<DiscoveredItem>
+     */
+    private function scanJenkins(array $activeRemotes, array $existingNames, array $platformHints = []): array
     {
         $found = [];
         $seen  = [];  // 归一化 key，仅本 provider 内去重
@@ -164,7 +202,15 @@ class AutoDiscover
                 if (in_array($jobName, $existingNames)) {
                     continue;
                 }
-                $platform = $this->detectPlatform($remote);
+                // 平台识别：优先用同轮平台扫描的「仓库路径→平台」提示表纠正
+                //（自建平台同 host 时 URL 无法区分）；查不到再走 URL 匹配/默认平台
+                $platform = '';
+                $pathKey  = $remote !== '' ? mb_strtolower($this->extractPath($remote, $jobName)) : '';
+                if ($pathKey !== '' && isset($platformHints[$pathKey])) {
+                    $platform = $platformHints[$pathKey];
+                } else {
+                    $platform = $this->detectPlatform($remote);
+                }
                 if ($rKey) {
                     $seen[] = $rKey;
                 }
@@ -182,12 +228,19 @@ class AutoDiscover
             }
         } catch (\Exception $e) {
             $this->logger?->warning('AutoDiscover Jenkins 扫描失败', ['error' => $e->getMessage()]);
+            // 上抛给 discover() 聚合进 __errors__——否则 Jenkins 宕机会被前端误判为「没有可发现的项目」
+            throw $e;
         }
         return $found;
     }
 
     // ── GitLab CI ──
 
+    /**
+     * @param list<string> $activeRemotes
+     * @param list<string> $existingNames
+     * @return list<DiscoveredItem>
+     */
     private function scanGitlabCi(array $activeRemotes, array $existingNames): array
     {
         $found = [];
@@ -196,6 +249,8 @@ class AutoDiscover
         if (empty($base) || !$this->gitlabClient) {
             return $found;
         }
+        // 已配置才计入扫描源（未配置的源不算「不可达」）
+        $this->scanSources[] = 'GitLab CI';
 
         try {
             // 快速验证认证
@@ -247,12 +302,19 @@ class AutoDiscover
             }
         } catch (\Exception $e) {
             $this->logger?->warning('AutoDiscover GitLab CI 扫描失败', ['error' => $e->getMessage()]);
+            // 上抛给 discover() 聚合进 __errors__——否则 GitLab 宕机/Token 失效会被误判为「空列表」
+            throw $e;
         }
         return $found;
     }
 
     // ── Gitea Actions ──
 
+    /**
+     * @param list<string> $activeRemotes
+     * @param list<string> $existingNames
+     * @return list<DiscoveredItem>
+     */
     private function scanGiteaCi(array $activeRemotes, array $existingNames): array
     {
         $found = [];
@@ -261,6 +323,8 @@ class AutoDiscover
         if (empty($base) || !$this->giteaClient) {
             return $found;
         }
+        // 已配置才计入扫描源（未配置的源不算「不可达」）
+        $this->scanSources[] = 'Gitea Actions';
 
         try {
             $page = 1;
@@ -312,24 +376,35 @@ class AutoDiscover
             }
         } catch (\Exception $e) {
             $this->logger?->warning('AutoDiscover Gitea Actions 扫描失败', ['error' => $e->getMessage()]);
+            // 上抛给 discover() 聚合进 __errors__——否则 Gitea 宕机/Token 失效会被误判为「空列表」
+            throw $e;
         }
         return $found;
     }
 
-    // ── Git 平台扫描（custom_push 模式专用） ──
+    // ── Git 平台扫描（与 BUILD_MODE / custom_push 开关无关） ──
 
     /**
-     * 扫描已配置的 Git 平台项目，build_provider 统一设为 custom_push。
+     * 扫描已配置的 Git 平台项目，build_provider 按平台原生 CI 标记：
+     * GitLab→gitlab_ci、Gitea→gitea_ci；无原生拉取式 provider 的平台才回落 custom_push。
+     * 原生 CI 已启用（∈ $enabledProviders）的平台由其专属扫描覆盖，这里跳过避免重复。
      * 目前支持 GitLab（通过已有 gitlabClient）；其他平台可后续扩展。
+     *
+     * @param list<string> $activeRemotes 调用方须并入本轮已发现项目的 remote key，避免跨扫描重复导入
+     * @param list<string> $existingNames
+     * @param list<string> $enabledProviders 当前 BUILD_MODE 启用的拉取式 provider
+     * @return list<DiscoveredItem>
      */
-    private function scanGitPlatforms(array $activeRemotes, array $existingNames): array
+    private function scanGitPlatforms(array $activeRemotes, array $existingNames, array $enabledProviders): array
     {
         $found = [];
 
-        // GitLab
+        // GitLab：原生 CI（gitlab_ci）启用时由 scanGitlabCi() 覆盖，跳过避免重复扫描
         $glCfg = $this->config->getGitlabConfig();
         $base  = rtrim($glCfg['base_url'] ?? '', '/');
-        if (!empty($base) && $this->gitlabClient) {
+        if (!empty($base) && $this->gitlabClient && !in_array(AppConfig::PROVIDER_GITLAB_CI, $enabledProviders, true)) {
+            // 已配置才计入扫描源（未配置的源不算「不可达」）
+            $this->scanSources[] = 'Git';
             try {
                 $test = $this->gitlabClient->get("{$base}/api/v4/user");
                 if ($test->getStatusCode() !== 401) {
@@ -361,7 +436,7 @@ class AutoDiscover
 
                             $found[] = ['entry' => [
                                 'job_name'       => $path,
-                                'build_provider' => AppConfig::PROVIDER_CUSTOM_PUSH,
+                                'build_provider' => AppConfig::PROVIDER_GITLAB_CI,
                                 'git_platform'   => 'gitlab',
                                 'git_remote'     => $remote,
                                 'current_path'   => $path,
@@ -375,6 +450,8 @@ class AutoDiscover
                 }
             } catch (\Exception $e) {
                 $this->logger?->warning('AutoDiscover Git 平台扫描失败 (GitLab)', ['error' => $e->getMessage()]);
+                // 上抛给 discover() 聚合进 __errors__——否则 GitLab 宕机会被误判为「空列表」
+                throw $e;
             }
         }
 
@@ -403,6 +480,24 @@ class AutoDiscover
             return $this->gitRegistry->detect($remote);
         } catch (\Exception $e) {
             return $this->config->getDefaultGitPlatform();
+        }
+    }
+
+    /**
+     * 收集「仓库路径 → 平台」提示表（供 Jenkins 扫描纠正自建平台误识别）。
+     * 同路径多平台并存时保留先扫描到的（GitLab CI 先于 Gitea Actions）。
+     *
+     * @param array<string,string> $hints
+     * @param list<DiscoveredItem> $batch
+     */
+    private function collectPlatformHints(array &$hints, array $batch): void
+    {
+        foreach ($batch as $item) {
+            $path     = $item['entry']['current_path'] ?? '';
+            $platform = $item['entry']['git_platform'] ?? '';
+            if (is_string($path) && $path !== '' && is_string($platform) && $platform !== '') {
+                $hints[mb_strtolower($path)] ??= $platform;
+            }
         }
     }
 

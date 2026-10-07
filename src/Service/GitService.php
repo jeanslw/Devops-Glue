@@ -21,6 +21,9 @@ class GitService
         $this->logger = $logger;
     }
 
+    /**
+     * @return list<string>
+     */
     public function getBranchesForJob(string $jobPath): array
     {
         $map = $this->remoteResolver->getByJobName($jobPath);
@@ -56,7 +59,7 @@ class GitService
         $repo = $this->parseRepositoryPath($map['git_remote'] ?? '', $platform);
 
         try {
-            return $provider->getBranches($repo);
+            return array_values($provider->getBranches($repo));
         } catch (GuzzleException $e) {
             $this->logger?->error("{$platform} 分支查询失败", [
                 'job'              => $jobPath,

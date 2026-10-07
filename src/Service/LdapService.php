@@ -33,13 +33,14 @@ class LdapService
     /** 配置 enabled + 扩展可用才算启用 */
     public function isEnabled(): bool
     {
+        /** @var array<string,mixed> $cfg */
         $cfg = $this->config->getLdapConfig();
         return ($cfg['enabled'] ?? false) && $this->isAvailable();
     }
 
     /**
      * 用用户名 + 密码去 LDAP 做一次完整的绑定认证。
-     * @return array{ok:bool, dn?:string, attrs?:array, error?:string}
+     * @return array{ok:bool, dn?:string, attrs?:array<string,mixed>, error?:string}
      */
     public function authenticate(string $username, string $password): array
     {
@@ -50,6 +51,7 @@ class LdapService
             return ['ok' => false, 'error' => 'ldap_extension_missing'];
         }
 
+        /** @var array<string,mixed> $cfg */
         $cfg = $this->config->getLdapConfig();
         if (!($cfg['enabled'] ?? false)) {
             return ['ok' => false, 'error' => 'ldap_disabled'];
@@ -86,16 +88,17 @@ class LdapService
             $filter = sprintf((string)$cfg['user_filter'], $this->escapeFilter($username));
             $attrsToRead = is_array($cfg['attrs'] ?? null) ? $cfg['attrs'] : ['uid', 'cn', 'mail', 'dn'];
             $search = @ldap_search($resource, (string)$cfg['base_dn'], $filter, $attrsToRead);
-            if ($search === false) {
+            if (!$search instanceof \LDAP\Result) {
                 return ['ok' => false, 'error' => 'ldap_search_failed'];
             }
             $entries = ldap_get_entries($resource, $search);
-            if ($entries === false || (int)($entries['count'] ?? 0) === 0) {
+            if ($entries === false || (int)($entries['count'] ?? 0) === 0 || !is_array($entries[0] ?? null)) {
                 return ['ok' => false, 'error' => 'ldap_user_not_found'];
             }
 
-            $userDn = (string)$entries[0]['dn'];
-            $attrs  = $this->normalizeAttrs($entries[0]);
+            $entry  = $entries[0];
+            $userDn = (string)($entry['dn'] ?? '');
+            $attrs  = $this->normalizeAttrs($entry);
 
             // 用用户 DN + 密码替换连接身份，做最终认证
             if (!$this->bind($resource, $userDn, $password)) {
@@ -107,7 +110,12 @@ class LdapService
         }
     }
 
-    /** 建立连接并按需 STARTTLS，失败返回 null */
+    /**
+     * 建立连接并按需 STARTTLS，失败返回 null
+     *
+     * @param array<string,mixed> $cfg
+     * @return \LDAP\Connection|null
+     */
     private function connect(array $cfg)
     {
         $useLdaps = (bool)($cfg['use_ldaps'] ?? false);
@@ -135,7 +143,11 @@ class LdapService
         return $resource;
     }
 
-    /** 包装 ldap_bind，避免上层直接看到 warning */
+    /**
+     * 包装 ldap_bind，避免上层直接看到 warning
+     *
+     * @param \LDAP\Connection $resource
+     */
     private function bind($resource, string $dn, string $password): bool
     {
         if ($dn === '' || $password === '') {
@@ -144,19 +156,34 @@ class LdapService
         return @ldap_bind($resource, $dn, $password);
     }
 
-    /** 从已 bind 的连接读属性（管理员搜索模式下已读到一次 entries，直接复用规范化的结果） */
+    /**
+     * 从已 bind 的连接读属性（管理员搜索模式下已读到一次 entries，直接复用规范化的结果）
+     *
+     * @param \LDAP\Connection   $resource
+     * @param string             $dn
+     * @param array<string,mixed> $cfg
+     * @return array<string,mixed>
+     */
     private function readAttributes($resource, string $dn, array $cfg): array
     {
         $attrsToRead = is_array($cfg['attrs'] ?? null) ? $cfg['attrs'] : ['uid', 'cn', 'mail'];
         $search = @ldap_read($resource, $dn, '(objectClass=*)', $attrsToRead);
-        if ($search === false) {
+        if (!$search instanceof \LDAP\Result) {
             return [];
         }
         $entries = ldap_get_entries($resource, $search);
-        return $entries === false ? [] : $this->normalizeAttrs($entries[0]);
+        if ($entries === false || !is_array($entries[0] ?? null)) {
+            return [];
+        }
+        return $this->normalizeAttrs($entries[0]);
     }
 
-    /** 把 LDAP entries 的"数值索引 + 命名索引混合"扁平化为纯关联数组 */
+    /**
+     * 把 LDAP entries 的"数值索引 + 命名索引混合"扁平化为纯关联数组
+     *
+     * @param array<int|string,mixed> $entry
+     * @return array<string,mixed>
+     */
     private function normalizeAttrs(array $entry): array
     {
         $attrs = [];

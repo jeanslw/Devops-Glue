@@ -17,9 +17,10 @@ class GitlabCiBuildProvider implements BuildProviderInterface
         $this->baseUrl = rtrim($baseUrl, '/');
         $this->logger  = $logger;
         $this->http    = new Client([
-            'headers'     => ['PRIVATE-TOKEN' => $token],
-            'timeout'     => 15,
-            'http_errors' => false,
+            'headers'         => ['PRIVATE-TOKEN' => $token],
+            'timeout'         => 15,
+            'connect_timeout' => 10,
+            'http_errors'     => false,
         ]);
     }
 
@@ -28,6 +29,7 @@ class GitlabCiBuildProvider implements BuildProviderInterface
         return AppConfig::PROVIDER_GITLAB_CI;
     }
 
+    /** @return list<array<string, mixed>> */
     public function getPipelines(string $projectId, int $perPage = 20): array
     {
         $encoded = urlencode($projectId);
@@ -38,7 +40,7 @@ class GitlabCiBuildProvider implements BuildProviderInterface
             if (!is_array($data)) {
                 return [];
             }
-            return array_map(fn($p) => [
+            return array_values(array_map(fn($p) => [
                 'id'         => $p['id'] ?? 0,
                 'iid'        => $p['iid'] ?? 0,
                 'status'     => BuildStatus::normalize((string) ($p['status'] ?? '')),
@@ -47,10 +49,10 @@ class GitlabCiBuildProvider implements BuildProviderInterface
                 'web_url'    => $p['web_url'] ?? '',
                 'created_at' => $this->fmtTime($p['created_at'] ?? ''),
                 'updated_at' => $this->fmtTime($p['updated_at'] ?? ''),
-            ], $data);
+            ], $data));
         } catch (\Exception $e) {
             $this->logger?->error('GitLab CI pipeline 查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
-            return [];
+            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
         }
     }
 
@@ -63,6 +65,7 @@ class GitlabCiBuildProvider implements BuildProviderInterface
         return $ts ? date('Y-m-d H:i:s', $ts) : $iso;
     }
 
+    /** @return list<array<string, mixed>> */
     public function getJobs(string $projectId, int $pipelineId): array
     {
         $encoded = urlencode($projectId);
@@ -73,7 +76,7 @@ class GitlabCiBuildProvider implements BuildProviderInterface
             if (!is_array($data)) {
                 return [];
             }
-            return array_map(fn($j) => [
+            return array_values(array_map(fn($j) => [
                 'id'         => $j['id'] ?? 0,
                 'name'       => $j['name'] ?? '',
                 'stage'      => $j['stage'] ?? '',
@@ -81,10 +84,10 @@ class GitlabCiBuildProvider implements BuildProviderInterface
                 'runner'     => $j['runner']['description'] ?? '',
                 'created_at' => $j['created_at'] ?? '',
                 'duration'   => $j['duration'] ?? 0,
-            ], $data);
+            ], $data));
         } catch (\Exception $e) {
             $this->logger?->error('GitLab CI job 查询失败', ['project' => $projectId, 'pipeline' => $pipelineId, 'error' => $e->getMessage()]);
-            return [];
+            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
         }
     }
 
@@ -96,15 +99,19 @@ class GitlabCiBuildProvider implements BuildProviderInterface
             $resp = $this->http->get($url);
             $raw = (string) $resp->getBody();
             // 清洗 ANSI 转义码 + GitLab Runner 时间戳前缀
-            $raw = preg_replace("/\e\[[0-9;]*[mK]/", '', $raw);
-            $raw = preg_replace('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z\s+\d+[A-Z]\s+/m', '', $raw);
+            $raw = (string) preg_replace("/\e\[[0-9;]*[mK]/", '', $raw);
+            $raw = (string) preg_replace('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z\s+\d+[A-Z]\s+/m', '', $raw);
             return $raw;
         } catch (\Exception $e) {
             $this->logger?->error('GitLab CI job trace 查询失败', ['project' => $projectId, 'job' => $jobId, 'error' => $e->getMessage()]);
-            return '日志获取失败: ' . $e->getMessage();
+            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
         }
     }
 
+    /**
+     * @param array<string, mixed> $variables
+     * @return array<string, mixed>
+     */
     public function trigger(string $projectId, string $ref, array $variables = []): array
     {
         $encoded = urlencode($projectId);
@@ -125,10 +132,11 @@ class GitlabCiBuildProvider implements BuildProviderInterface
             ];
         } catch (\Exception $e) {
             $this->logger?->error('GitLab CI trigger 失败', ['project' => $projectId, 'ref' => $ref, 'error' => $e->getMessage()]);
-            return ['success' => false, 'message' => '触发失败: ' . $e->getMessage()];
+            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
         }
     }
 
+    /** @return array<string, mixed> */
     public function retry(string $projectId, int $pipelineId): array
     {
         $encoded = urlencode($projectId);
@@ -142,10 +150,11 @@ class GitlabCiBuildProvider implements BuildProviderInterface
             ];
         } catch (\Exception $e) {
             $this->logger?->error('GitLab CI retry 失败', ['project' => $projectId, 'pipeline' => $pipelineId, 'error' => $e->getMessage()]);
-            return ['success' => false, 'message' => 'retry 失败: ' . $e->getMessage()];
+            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
         }
     }
 
+    /** @return array<string, mixed> */
     public function cancel(string $projectId, int $pipelineId): array
     {
         $encoded = urlencode($projectId);
@@ -159,10 +168,11 @@ class GitlabCiBuildProvider implements BuildProviderInterface
             ];
         } catch (\Exception $e) {
             $this->logger?->error('GitLab CI cancel 失败', ['project' => $projectId, 'pipeline' => $pipelineId, 'error' => $e->getMessage()]);
-            return ['success' => false, 'message' => 'cancel 失败: ' . $e->getMessage()];
+            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
         }
     }
 
+    /** @return list<array<string, mixed>> */
     public function getVariables(string $projectId): array
     {
         $encoded = urlencode($projectId);
@@ -173,19 +183,20 @@ class GitlabCiBuildProvider implements BuildProviderInterface
             if (!is_array($data)) {
                 return [];
             }
-            return array_map(fn($v) => [
+            return array_values(array_map(fn($v) => [
                 'key'       => $v['key'] ?? '',
                 'value'     => '***',    // 脱敏
                 'protected' => $v['protected'] ?? false,
                 'masked'    => $v['masked'] ?? false,
                 'variable_type' => $v['variable_type'] ?? 'env_var',
-            ], $data);
+            ], $data));
         } catch (\Exception $e) {
             $this->logger?->error('GitLab CI variables 查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
-            return [];
+            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
         }
     }
 
+    /** @return array<int, string> */
     public function getBranches(string $projectId): array
     {
         $encoded = urlencode($projectId);
@@ -199,15 +210,17 @@ class GitlabCiBuildProvider implements BuildProviderInterface
             return array_map(fn($b) => $b['name'] ?? '', $data);
         } catch (\Exception $e) {
             $this->logger?->warning('GitLab 分支查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
-            return [];
+            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
         }
     }
 
+    /** @return list<array<string, mixed>> */
     public function getRunners(string $projectId): array
     {
         return []; // runner 状态暂仅 Gitea Actions 提供，GitLab CI 降级为空
     }
 
+    /** @return array<string, mixed> */
     public function setCommitStatus(string $projectId, string $sha, string $state, string $name, string $description, string $targetUrl = ''): array
     {
         $encoded = urlencode($projectId);
@@ -230,7 +243,7 @@ class GitlabCiBuildProvider implements BuildProviderInterface
             ];
         } catch (\Exception $e) {
             $this->logger?->error('GitLab commit status 回写失败', ['project' => $projectId, 'sha' => $sha, 'error' => $e->getMessage()]);
-            return ['success' => false, 'message' => '回写失败: ' . $e->getMessage()];
+            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
         }
     }
 }

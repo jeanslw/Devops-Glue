@@ -30,7 +30,7 @@ interface GitProviderInterface
      * @param string $context     上下文名称（如 "harbor-scan"）
      * @param string $description 描述文本
      * @param string $targetUrl   详情链接（可选）
-     * @return array [success => bool, message => string]
+     * @return array{success:bool, message:string}
      */
     public function setCommitStatus(string $repository, string $sha, string $state, string $context, string $description, string $targetUrl = ''): array;
 

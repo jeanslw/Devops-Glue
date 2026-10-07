@@ -31,26 +31,43 @@ class Logger
         $this->level = $level;
     }
 
+    /**
+     * @param array<string,mixed> $context
+     */
     public function debug(string $message, array $context = []): void
     {
         $this->log('debug', $message, $context);
     }
 
+    /**
+     * @param array<string,mixed> $context
+     */
     public function info(string $message, array $context = []): void
     {
         $this->log('info', $message, $context);
     }
 
+    /**
+     * @param array<string,mixed> $context
+     */
     public function warning(string $message, array $context = []): void
     {
         $this->log('warning', $message, $context);
     }
 
+    /**
+     * @param array<string,mixed> $context
+     */
     public function error(string $message, array $context = []): void
     {
         $this->log('error', $message, $context);
     }
 
+    /**
+     * @param string              $level
+     * @param string              $message
+     * @param array<string,mixed> $context
+     */
     private function log(string $level, string $message, array $context = []): void
     {
         if (!$this->enabled) {

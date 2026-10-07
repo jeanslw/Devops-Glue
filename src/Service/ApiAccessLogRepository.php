@@ -72,7 +72,8 @@ class ApiAccessLogRepository
      * 分页查询：result / method / token_name（模糊）/ route（模糊）/ date_from / date_to（含边界）。
      * 未传日期默认近 30 天。
      *
-     * @return array{total:int,page:int,per_page:int,total_pages:int,items:list<array>}
+     * @param array<string,mixed> $filters
+     * @return array{total:int,page:int,per_page:int,total_pages:int,items:list<array<string,mixed>>}
      */
     public function list(array $filters = [], int $page = 1, int $perPage = 20): array
     {
@@ -137,7 +138,7 @@ class ApiAccessLogRepository
                 'page'        => $page,
                 'per_page'    => $perPage,
                 'total_pages' => $totalPages,
-                'items'       => $items,
+                'items'       => array_values($items),
             ];
         } catch (\Throwable $e) {
             Log::error('[API调用日志] 查询失败', ['error' => $e->getMessage()]);
