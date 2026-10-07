@@ -113,7 +113,7 @@ class HarborController extends BaseController
 
     // ---------- 统一响应处理 ----------
     /**
-     * @param array<string,mixed> $data Harbor 返回结果
+     * @param array<int|string,mixed> $data Harbor 返回结果（键可能含整数）
      */
     private function handleResult(Response $response, array $data, Request $request): Response
     {

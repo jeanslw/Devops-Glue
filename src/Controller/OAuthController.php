@@ -191,7 +191,7 @@ class OAuthController extends BaseController
             $payload['scope'] = $scope;
         }
 
-        $response->getBody()->write(json_encode($payload));
+        $response->getBody()->write((string) json_encode($payload));
         return $response->withHeader('Content-Type', 'application/json')
             ->withHeader('Cache-Control', 'no-store');
     }
@@ -216,7 +216,7 @@ class OAuthController extends BaseController
         $username  = (string)$data['user'];
         $role      = (string)($data['role'] ?? '');
         $emailInfo = $this->resolveEmailInfo($username);
-        $response->getBody()->write(json_encode([
+        $response->getBody()->write((string) json_encode([
             'sub'                => $username,   // OAuth/OIDC 标准唯一标识
             'username'           => $username,
             'preferred_username' => $username,
@@ -249,7 +249,7 @@ class OAuthController extends BaseController
         }
 
         $emailInfo = $this->resolveEmailInfo((string)$data['user']);
-        $response->getBody()->write(json_encode([[
+        $response->getBody()->write((string) json_encode([[
             'email'    => $emailInfo['email'],
             'primary'  => true,
             'verified' => $emailInfo['verified'],
@@ -262,7 +262,7 @@ class OAuthController extends BaseController
      */
     public function discovery(Request $request, Response $response): Response
     {
-        $response->getBody()->write(json_encode(
+        $response->getBody()->write((string) json_encode(
             $this->oidc->discovery($this->resolveIssuer($request)),
             JSON_UNESCAPED_SLASHES
         ));
@@ -274,7 +274,7 @@ class OAuthController extends BaseController
      */
     public function jwks(Request $request, Response $response): Response
     {
-        $response->getBody()->write(json_encode($this->oidc->jwks(), JSON_UNESCAPED_SLASHES));
+        $response->getBody()->write((string) json_encode($this->oidc->jwks(), JSON_UNESCAPED_SLASHES));
         return $response->withHeader('Content-Type', 'application/json');
     }
 
@@ -383,7 +383,7 @@ class OAuthController extends BaseController
      */
     private function oauthError(Response $response, string $error, int $code): Response
     {
-        $response->getBody()->write(json_encode(['error' => $error]));
+        $response->getBody()->write((string) json_encode(['error' => $error]));
         return $response->withStatus($code)->withHeader('Content-Type', 'application/json');
     }
 

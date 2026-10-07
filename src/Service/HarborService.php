@@ -538,7 +538,7 @@ class HarborService
             }
             // Harbor v2 返回的漏洞数据在 mime type 键下
             foreach ($data as $key => $value) {
-                if (str_contains($key, 'vulnerability') && is_array($value)) {
+                if (str_contains((string) $key, 'vulnerability') && is_array($value)) {
                     return $value;
                 }
             }

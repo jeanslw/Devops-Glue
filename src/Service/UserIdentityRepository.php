@@ -49,7 +49,7 @@ class UserIdentityRepository
               ORDER BY provider_type, provider_uid"
         );
         $stmt->execute([$username]);
-        return $stmt->fetchAll();
+        return array_values($stmt->fetchAll());
     }
 
     /**

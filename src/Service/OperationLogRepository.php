@@ -114,7 +114,7 @@ class OperationLogRepository
         }
         unset($item);
 
-        return ['total' => $total, 'page' => $page, 'per_page' => $perPage, 'total_pages' => $totalPages, 'items' => $items];
+        return ['total' => $total, 'page' => $page, 'per_page' => $perPage, 'total_pages' => $totalPages, 'items' => array_values($items)];
     }
 
     /**

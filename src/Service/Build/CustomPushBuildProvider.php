@@ -74,7 +74,7 @@ class CustomPushBuildProvider implements BuildProviderInterface
             $stmt->bindValue(1, $projectId, \PDO::PARAM_STR);
             $stmt->bindValue(2, $perPage, \PDO::PARAM_INT);
             $stmt->execute();
-            return array_map(function (array $r): array {
+            return array_values(array_map(function (array $r): array {
                 return [
                     'id'         => (int) $r['id'],
                     'iid'        => (int) $r['pipeline_iid'],
@@ -87,7 +87,7 @@ class CustomPushBuildProvider implements BuildProviderInterface
                     // 完成时间：构建列表按此展示；未完成（无 finished_at）时留空，不回落 triggered_at
                     'updated_at' => $r['finished_at'] ?? '',
                 ];
-            }, $stmt->fetchAll());
+            }, $stmt->fetchAll()));
         } catch (\Exception $e) {
             $this->logger?->error('custom_push pipelines 查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
             throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
@@ -154,7 +154,7 @@ class CustomPushBuildProvider implements BuildProviderInterface
                 'http_errors'     => false,
                 'allow_redirects' => false,
             ]);
-            $resp = $client->get($logUrl);
+            $resp = $client->get((string) $logUrl);
             $status = $resp->getStatusCode();
             if ($status >= 200 && $status < 300) {
                 return (string) $resp->getBody();
@@ -274,7 +274,14 @@ class CustomPushBuildProvider implements BuildProviderInterface
                 $embedded = substr($bin, 2, 4);
             }
             if ($embedded !== null) {
-                return $this->isSafeIp(long2ip(unpack('N', $embedded)[1]));
+                $unpacked = unpack('N', $embedded);
+                if ($unpacked === false) {
+                    // 内嵌 IPv4 解包失败：无法确认安全性，按不安全处理
+                    return false;
+                }
+                $ip = long2ip($unpacked[1]);
+
+                return is_string($ip) ? $this->isSafeIp($ip) : false;
             }
         }
         return true; // 公网 IPv6 或 fc00::/7 唯一本地（等价私网）放行

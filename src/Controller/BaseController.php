@@ -96,7 +96,7 @@ class BaseController
             case 'raw':
             default:
                 // 原始行为：数组/对象转JSON，字符串原样输出
-                $response->getBody()->write(is_string($data) ? $data : json_encode($data));
+                $response->getBody()->write(is_string($data) ? $data : (string) json_encode($data));
                 return $response->withHeader('Content-Type', is_string($data) ? 'text/plain' : 'application/json');
         }
     }
@@ -111,12 +111,12 @@ class BaseController
     {
         // 如果数据本身已经是完整的响应结构（比如 buildTrigger），直接输出
         if (is_array($data) && array_key_exists('code', $data)) {
-            $response->getBody()->write(json_encode($data));
+            $response->getBody()->write((string) json_encode($data));
             $status = is_int($data['code']) ? $data['code'] : $code;
             return $response->withStatus($status)->withHeader('Content-Type', 'application/json');
         } else {
             // 否则只包裹 data
-            $response->getBody()->write(json_encode(['data' => $data]));
+            $response->getBody()->write((string) json_encode(['data' => $data]));
         }
         return $response->withStatus($code)->withHeader('Content-Type', 'application/json');
     }
@@ -147,7 +147,7 @@ class BaseController
                 $message = $translated;
             }
         }
-        $response->getBody()->write(json_encode(['code' => $code, 'message' => $message]));
+        $response->getBody()->write((string) json_encode(['code' => $code, 'message' => $message]));
         return $response->withStatus($code)->withHeader('Content-Type', 'application/json');
     }
 

@@ -397,7 +397,7 @@ class MainController extends BaseController
         $data['status'] = $status;
         $data['checks'] = $checks;
 
-        $response->getBody()->write(json_encode($data));
+        $response->getBody()->write((string) json_encode($data));
         $httpCode = $allOk ? 200 : 503;
         return $response->withStatus($httpCode)->withHeader('Content-Type', 'application/json');
     }
@@ -486,7 +486,7 @@ class MainController extends BaseController
     {
         $locale = $args['locale'] ?? 'zh_CN';
         $messages = $this->i18n->getAll($locale);
-        $response->getBody()->write(json_encode($messages, JSON_UNESCAPED_UNICODE));
+        $response->getBody()->write((string) json_encode($messages, JSON_UNESCAPED_UNICODE));
         return $response->withHeader('Content-Type', 'application/json');
     }
 
@@ -503,7 +503,7 @@ class MainController extends BaseController
     {
         $htmlFile = __DIR__ . '/../../templates/swagger.html';
         $html = file_exists($htmlFile) ? file_get_contents($htmlFile) : '<h1>Swagger file missing / 文档文件丢失</h1>';
-        $response->getBody()->write($html);
+        $response->getBody()->write($html === false ? '' : $html);
         return $response->withHeader('Content-Type', 'text/html; charset=utf-8');
     }
 
@@ -513,7 +513,7 @@ class MainController extends BaseController
     public function openapiJson(Request $request, Response $response): Response
     {
         if (!$this->checkDocsAuth($request)) {
-            $response->getBody()->write(json_encode(['code' => 401, 'message' => $this->__('auth.please_login_first')]));
+            $response->getBody()->write((string) json_encode(['code' => 401, 'message' => $this->__('auth.please_login_first')]));
             return $response->withStatus(401)->withHeader('Content-Type', 'application/json');
         }
 
@@ -532,9 +532,20 @@ class MainController extends BaseController
         if (!file_exists($specFile)) {
             $specFile = __DIR__ . '/../../templates/openapi.json';
         }
-        $spec = file_exists($specFile)
-            ? json_decode(file_get_contents($specFile), true)
-            : ['openapi' => '3.0.3', 'info' => ['title' => 'Devops-Glue API'], 'paths' => []];
+        if (!file_exists($specFile)) {
+            $spec = ['openapi' => '3.0.3', 'info' => ['title' => 'Devops-Glue API'], 'paths' => []];
+        } else {
+            $json = file_get_contents($specFile);
+            if ($json === false) {
+                // 文件存在却读取失败（权限/IO 错误）属服务端异常：沿用本方法 JSON 错误响应风格返回 500，不静默吞错
+                $response->getBody()->write((string) json_encode([
+                    'code'    => 500,
+                    'message' => 'Unable to read OpenAPI spec file',
+                ]));
+                return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+            }
+            $spec = json_decode($json, true);
+        }
 
         $uri  = $request->getUri();
         $port = $uri->getPort();
@@ -554,7 +565,7 @@ class MainController extends BaseController
             'description' => $this->i18n->trans('admin.current_env', [], $locale),
         ]];
 
-        $response->getBody()->write(json_encode($spec, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
+        $response->getBody()->write((string) json_encode($spec, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
         return $response->withHeader('Content-Type', 'application/json');
     }
 

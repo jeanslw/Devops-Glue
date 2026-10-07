@@ -35,7 +35,11 @@ class I18nService
                 continue;
             }
 
-            foreach (glob($dir . '/*.php') as $file) {
+            $files = glob($dir . '/*.php');
+            if ($files === false) {
+                $files = [];
+            }
+            foreach ($files as $file) {
                 $domain = pathinfo($file, PATHINFO_FILENAME);
                 $messages = require $file;
                 if (is_array($messages)) {

@@ -138,7 +138,7 @@ class ApiAccessLogRepository
                 'page'        => $page,
                 'per_page'    => $perPage,
                 'total_pages' => $totalPages,
-                'items'       => $items,
+                'items'       => array_values($items),
             ];
         } catch (\Throwable $e) {
             Log::error('[API调用日志] 查询失败', ['error' => $e->getMessage()]);
