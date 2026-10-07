@@ -218,7 +218,7 @@ class HarborService
             $row->execute([time()]);
             $cached = $row->fetch();
             if ($cached) {
-                $this->apiVersion = $cached['value'];
+                $this->apiVersion = (string) $cached['value'];
                 return $this->apiVersion;
             }
         } catch (\Exception $e) {

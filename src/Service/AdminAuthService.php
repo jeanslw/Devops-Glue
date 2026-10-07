@@ -66,10 +66,11 @@ class AdminAuthService
             $ldapRes = $this->ldap->authenticate($username, $password);
             if (!empty($ldapRes['ok'])) {
                 $dn = (string)($ldapRes['dn'] ?? '');
-                $identity = $dn !== '' && $this->identities !== null
-                    ? $this->identities->find('ldap', $dn)
+                $identities = $this->identities;
+                $identity = $dn !== '' && $identities !== null
+                    ? $identities->find('ldap', $dn)
                     : null;
-                if ($identity !== null) {
+                if ($identity !== null && $identities !== null) {
                     $boundUser = $this->repository->findByUsername($identity['username']);
                     if ($boundUser !== null) {
                         // 停用账号（status=0）禁止通过 LDAP 登录
@@ -83,7 +84,7 @@ class AdminAuthService
                         $attrs = is_array($ldapRes['attrs'] ?? null) ? $ldapRes['attrs'] : [];
                         $email = (string)($attrs['mail'] ?? $attrs['email'] ?? $identity['email'] ?? '');
                         try {
-                            $this->identities->refreshProfile('ldap', $dn, $email, $attrs === [] ? null : $attrs);
+                            $identities->refreshProfile('ldap', $dn, $email, $attrs === [] ? null : $attrs);
                         } catch (\Throwable $e) {
                             // 缓存写入失败不影响登录
                         }
