@@ -75,8 +75,8 @@ export async function loadPullProjects() {
             if (exists) sel.value = prev;
         }
         if (projects.length === 0) {
-            const empty = document.getElementById('pull-records-empty');
-            if (empty) { empty.style.display = 'block'; empty.textContent = __.t('pull.no_projects'); }
+            const tb = document.getElementById('pull-records-tbody');
+            if (tb) tb.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#9ca3af;padding:30px;">' + esc(__.t('pull.no_projects')) + '</td></tr>';
         }
     } catch (e) {
         sel.innerHTML = '<option value="">' + esc(__.t('pull.load_failed')) + '</option>';
@@ -86,18 +86,22 @@ export async function loadPullProjects() {
 export async function loadPullRecords(silent) {
     const sel = document.getElementById('pull-project-select');
     const tbody = document.getElementById('pull-records-tbody');
-    const table = document.getElementById('pull-records-table');
-    const empty = document.getElementById('pull-records-empty');
-    const loading = document.getElementById('pull-records-loading');
     const pagination = document.getElementById('pull-pagination');
     if (!sel || !tbody) return;
     const path = sel.value;
     if (!path) {
         if (!silent) toast(__.t('pull.select_first'), false);
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#9ca3af;padding:30px;">' + esc(__.t('pull.select_first')) + '</td></tr>';
+        if (pagination) pagination.style.display = 'none';
         return;
     }
     currentPullPath = path;
-    if (!silent) { pullPage = 1; if (loading) loading.style.display = 'block'; if (table) table.style.display = 'none'; if (empty) empty.style.display = 'none'; if (pagination) pagination.style.display = 'none'; }
+    // 表头常驻，加载态只替换 tbody，标题行第一时间可见
+    if (!silent) {
+        pullPage = 1;
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#9ca3af;padding:30px;">' + esc(__.t('common.loading')) + '</td></tr>';
+        if (pagination) pagination.style.display = 'none';
+    }
     try {
         const res = await fetch('/api/build/' + encodePath(path) + '/pipelines?per_page=200', { headers: authHeaders() });
         if (handle401(res)) return;
@@ -109,16 +113,12 @@ export async function loadPullRecords(silent) {
         pullRecordsCache = records.map(r => Object.assign({}, r, {
             _runId: provider === 'gitlab_ci' ? (r.iid || r.id || 0) : (r.id || 0)
         }));
-        if (loading) loading.style.display = 'none';
         pullLoadOk = true;
         if (!records.length) {
-            if (table) table.style.display = 'none';
             if (pagination) pagination.style.display = 'none';
-            if (empty) { empty.style.display = 'block'; empty.textContent = __.t('pull.no_records'); }
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#9ca3af;padding:30px;">' + esc(__.t('pull.no_records')) + '</td></tr>';
             return;
         }
-        if (empty) empty.style.display = 'none';
-        if (table) table.style.display = 'table';
         const statusBadge = (s) => {
             const st = (s || '').toLowerCase();
             let bg = '#f3f4f6', fg = '#6b7280';
@@ -180,13 +180,10 @@ export async function loadPullRecords(silent) {
             }
         }
     } catch (e) {
-        if (loading) loading.style.display = 'none';
         // 静默自动刷新失败：保留上一次成功渲染的表格（含空态），不打断用户阅读
         if (silent && pullLoadOk) return;
-        if (table) table.style.display = 'table';
-        if (empty) empty.style.display = 'none';
         if (pagination) pagination.style.display = 'none';
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#dc2626;">' + __.t('pull.load_failed') + ': ' + esc(e.message) + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#dc2626;padding:20px;">' + esc(__.t('pull.load_failed')) + ': ' + esc(e.message) + '</td></tr>';
     }
 }
 
