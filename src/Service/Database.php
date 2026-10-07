@@ -6,6 +6,7 @@ class Database
 {
     private static ?\PDO $pdo = null;
     private static string $driver = 'sqlite';
+    /** @var array<string,mixed> */
     private static array $config = [];
     private static bool $bootstrapped = false;
 
@@ -14,6 +15,9 @@ class Database
 
     // ── 初始化 ──
 
+    /**
+     * @param array<string,mixed>|null $config
+     */
     public static function init(array $config = null): void
     {
         self::$config = $config ?? self::defaultConfig();
@@ -85,7 +89,11 @@ class Database
         self::$pdo->prepare($sql)->execute([self::SCHEMA_VERSION_KEY, \App\Config\AppConfig::APP_VERSION]);
     }
 
-    /** 当前代码版本定义的全部数据表（系统信息面板按此清单逐表探测存在性） */
+    /**
+     * 当前代码版本定义的全部数据表（系统信息面板按此清单逐表探测存在性）
+     *
+     * @return list<string>
+     */
     private static function schemaTables(): array
     {
         return [
@@ -108,7 +116,11 @@ class Database
         ];
     }
 
-    /** 系统信息：DB 驱动 + schema 版本 + 各核心表存在性（供后台「系统信息」面板只读查询） */
+    /**
+     * 系统信息：DB 驱动 + schema 版本 + 各核心表存在性（供后台「系统信息」面板只读查询）
+     *
+     * @return array{driver:string, schema_version:string|null, app_version:string, is_current:bool, tables:array<string,bool>}
+     */
     public static function schemaStatus(): array
     {
         $status = [];
@@ -134,7 +146,11 @@ class Database
         ];
     }
 
-    /** 手动触发迁移：建缺失表 + RBAC/管理员种子 + 自检 + 标记 schema 当前（后台「迁移数据库」按钮，super_admin 专用）。 */
+    /**
+     * 手动触发迁移：建缺失表 + RBAC/管理员种子 + 自检 + 标记 schema 当前（后台「迁移数据库」按钮，super_admin 专用）。
+     *
+     * @return array{driver:string, schema_version:string|null, app_version:string, is_current:bool, tables:array<string,bool>}
+     */
     public static function migrateNow(): array
     {
         self::ensureTables();      // 建表 + RBAC 种子 + 索引 + JSON 迁移
@@ -154,6 +170,9 @@ class Database
         return $v === false ? $default : (string)$v;
     }
 
+    /**
+     * @return array{driver:string, path:string, host:string, port:string, database:string, username:string, password:string, charset:string, auto_migrate:bool}
+     */
     private static function defaultConfig(): array
     {
         $driver = strtolower(self::envValue('DB_DRIVER'));

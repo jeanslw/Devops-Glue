@@ -26,9 +26,10 @@ class GiteaCiBuildProvider implements BuildProviderInterface
         $this->baseUrl = rtrim($baseUrl, '/');
         $this->logger  = $logger;
         $this->http    = new Client([
-            'headers'     => ['Authorization' => 'token ' . $token],
-            'timeout'     => 15,
-            'http_errors' => false,
+            'headers'         => ['Authorization' => 'token ' . $token],
+            'timeout'         => 15,
+            'connect_timeout' => 10,
+            'http_errors'     => false,
         ]);
     }
 
@@ -37,7 +38,10 @@ class GiteaCiBuildProvider implements BuildProviderInterface
         return AppConfig::PROVIDER_GITEA_CI;
     }
 
-    /** 拆分 projectId（owner/repo）为 [owner, repo]，非法则返回 null */
+    /**
+     * 拆分 projectId（owner/repo）为 [owner, repo]，非法则返回 null
+     * @return ?list<string>
+     */
     private function splitRepo(string $projectId): ?array
     {
         $parts = explode('/', $projectId, 2);
@@ -49,6 +53,7 @@ class GiteaCiBuildProvider implements BuildProviderInterface
         return [$owner, $repo];
     }
 
+    /** @return list<array<string, mixed>> */
     public function getPipelines(string $projectId, int $perPage = 20): array
     {
         $repo = $this->splitRepo($projectId);
@@ -87,7 +92,7 @@ class GiteaCiBuildProvider implements BuildProviderInterface
             ], $runs);
         } catch (\Exception $e) {
             $this->logger?->error('Gitea Actions runs 查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
-            return [];
+            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
         }
     }
 
@@ -111,6 +116,7 @@ class GiteaCiBuildProvider implements BuildProviderInterface
         return 0;
     }
 
+    /** @return list<array<string, mixed>> */
     public function getJobs(string $projectId, int $pipelineId): array
     {
         $repo = $this->splitRepo($projectId);
@@ -146,7 +152,7 @@ class GiteaCiBuildProvider implements BuildProviderInterface
             ], $jobs);
         } catch (\Exception $e) {
             $this->logger?->error('Gitea Actions jobs 查询失败', ['project' => $projectId, 'pipeline' => $pipelineId, 'error' => $e->getMessage()]);
-            return [];
+            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
         }
     }
 
@@ -167,10 +173,14 @@ class GiteaCiBuildProvider implements BuildProviderInterface
             return preg_replace("/\e\[[0-9;]*[mK]/", '', $raw);
         } catch (\Exception $e) {
             $this->logger?->error('Gitea Actions 日志查询失败', ['project' => $projectId, 'job' => $jobId, 'error' => $e->getMessage()]);
-            return '日志获取失败: ' . $e->getMessage();
+            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
         }
     }
 
+    /**
+     * @param array<string, mixed> $variables
+     * @return array<string, mixed>
+     */
     public function trigger(string $projectId, string $ref, array $variables = []): array
     {
         $repo = $this->splitRepo($projectId);
@@ -214,10 +224,11 @@ class GiteaCiBuildProvider implements BuildProviderInterface
             ];
         } catch (\Exception $e) {
             $this->logger?->error('Gitea Actions 触发失败', ['project' => $projectId, 'ref' => $ref, 'error' => $e->getMessage()]);
-            return ['success' => false, 'message' => '触发失败: ' . $e->getMessage()];
+            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
         }
     }
 
+    /** @return array<string, mixed> */
     public function retry(string $projectId, int $pipelineId): array
     {
         $repo = $this->splitRepo($projectId);
@@ -235,10 +246,11 @@ class GiteaCiBuildProvider implements BuildProviderInterface
             ];
         } catch (\Exception $e) {
             $this->logger?->error('Gitea Actions rerun 失败', ['project' => $projectId, 'run' => $pipelineId, 'error' => $e->getMessage()]);
-            return ['success' => false, 'message' => 'rerun 失败: ' . $e->getMessage()];
+            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
         }
     }
 
+    /** @return array<string, mixed> */
     public function cancel(string $projectId, int $pipelineId): array
     {
         $repo = $this->splitRepo($projectId);
@@ -262,10 +274,11 @@ class GiteaCiBuildProvider implements BuildProviderInterface
             ];
         } catch (\Exception $e) {
             $this->logger?->error('Gitea Actions cancel 失败', ['project' => $projectId, 'run' => $pipelineId, 'error' => $e->getMessage()]);
-            return ['success' => false, 'message' => 'cancel 失败: ' . $e->getMessage()];
+            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
         }
     }
 
+    /** @return list<array<string, mixed>> */
     public function getVariables(string $projectId): array
     {
         $repo = $this->splitRepo($projectId);
@@ -298,11 +311,14 @@ class GiteaCiBuildProvider implements BuildProviderInterface
             return $vars;
         } catch (\Exception $e) {
             $this->logger?->error('Gitea Actions variables 查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
-            return [];
+            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
         }
     }
 
-    /** 仓库可用 workflow 列表（id=文件名 dispatch 用；name=展示名；path=文件路径；state=active/disabled） */
+    /**
+     * 仓库可用 workflow 列表（id=文件名 dispatch 用；name=展示名；path=文件路径；state=active/disabled）
+     * @return list<array<string, mixed>>
+     */
     public function getWorkflows(string $projectId): array
     {
         $repo = $this->splitRepo($projectId);
@@ -328,7 +344,7 @@ class GiteaCiBuildProvider implements BuildProviderInterface
             ], $data['workflows'] ?? []);
         } catch (\Exception $e) {
             $this->logger?->error('Gitea Actions workflows 查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
-            return [];
+            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
         }
     }
 
@@ -336,6 +352,7 @@ class GiteaCiBuildProvider implements BuildProviderInterface
      * repo 级 runner 状态（Gitea 1.21+）：online/offline + busy + labels；last_seen 不暴露。
      * 注意：Gitea 1.27 的 ActionRunner 仅含 id/name/status/busy/disabled/ephemeral/labels，
      * os/arch/version 字段 1.27 不返回，保留在此仅为占位（恒为空串），勿依赖。
+     * @return list<array<string, mixed>>
      */
     public function getRunners(string $projectId): array
     {
@@ -367,10 +384,11 @@ class GiteaCiBuildProvider implements BuildProviderInterface
             ], $data['runners'] ?? []);
         } catch (\Exception $e) {
             $this->logger?->error('Gitea Actions runners 查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
-            return [];
+            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
         }
     }
 
+    /** @return array<int, string> */
     public function getBranches(string $projectId): array
     {
         $repo = $this->splitRepo($projectId);
@@ -391,10 +409,11 @@ class GiteaCiBuildProvider implements BuildProviderInterface
             return array_values(array_filter(array_map(fn($b) => $b['name'] ?? '', $data), fn($n) => $n !== ''));
         } catch (\Exception $e) {
             $this->logger?->warning('Gitea 分支查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
-            return [];
+            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
         }
     }
 
+    /** @return array<string, mixed> */
     public function setCommitStatus(string $projectId, string $sha, string $state, string $name, string $description, string $targetUrl = ''): array
     {
         $repo = $this->splitRepo($projectId);
@@ -420,7 +439,7 @@ class GiteaCiBuildProvider implements BuildProviderInterface
             ];
         } catch (\Exception $e) {
             $this->logger?->error('Gitea commit status 回写失败', ['project' => $projectId, 'sha' => $sha, 'error' => $e->getMessage()]);
-            return ['success' => false, 'message' => '回写失败: ' . $e->getMessage()];
+            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
         }
     }
 }

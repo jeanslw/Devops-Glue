@@ -21,6 +21,9 @@ class GitService
         $this->logger = $logger;
     }
 
+    /**
+     * @return list<string>
+     */
     public function getBranchesForJob(string $jobPath): array
     {
         $map = $this->remoteResolver->getByJobName($jobPath);

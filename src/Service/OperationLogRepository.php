@@ -24,7 +24,7 @@ class OperationLogRepository
      *
      * @param string $action 操作类型（login / create_user / delete_role / ...）
      * @param string $target 操作对象（用户名 / 角色名 / 映射名等）
-     * @param array  $detail 关键上下文（数组 → JSON 存 detail 列）
+     * @param array<string,mixed> $detail 关键上下文（数组 → JSON 存 detail 列）
      * @param string $result success / failure
      * @param string $operatorType 操作人类型（admin / api_token）
      */
@@ -52,6 +52,9 @@ class OperationLogRepository
 
     /**
      * 分页查询，支持筛选：username（模糊）、action、result、date_from/date_to（含边界）。
+     *
+     * @param array<string,mixed> $filters
+     * @return array{total:int, page:int, per_page:int, total_pages:int, items:list<array<string,mixed>>}
      */
     public function list(array $filters = [], int $page = 1, int $perPage = 20): array
     {

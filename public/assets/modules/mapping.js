@@ -169,18 +169,35 @@ export async function doDiscover() {
         note: __.t('js.discover_note')
     })) return;
     _discovering = true;
-    toast('⏳ ' + __.t('js.scanning'), true, true);
+    // 常驻扫描提示（duration=0）：请求期间一直显示，由最终结果替换。
+    // 修复：此前 2.5s 就自动消失，而扫描实际可能持续数十秒，期间无任何反馈
+    toast('⏳ ' + __.t('js.scanning'), true, true, 0);
     try {
         const res = await fetch('/api/admin/discover', { method:'POST', headers: authHeaders() });
         if (handle401(res)) return;
         const data = await res.json();
         if (res.ok) {
-            toast(__.t('map.discover_result', {found: data.found, saved: data.saved}), true, true);
+            // 三态判定（扫描范围 = 构建模式启用的 provider + custom_push 开启时的 Git 平台）：
+            // - 错误数 = 实际扫描源数 → 扫描全部失败
+            // - 0 < 错误数 < 源数    → 扫描部分失败
+            // - 无错误               → 扫描成功
+            const errs = Array.isArray(data.errors) ? data.errors : [];
+            const sources = Array.isArray(data.sources) ? data.sources : [];
+            const failed = [...new Set(errs.map(e => String(e).split(':')[0].trim()).filter(Boolean))];
+            const allFailed = sources.length > 0 && failed.length >= sources.length;
+            if (failed.length) console.warn('[discover] 平台扫描错误详情：', errs);
+            if (!failed.length) {
+                toast(__.t('js.discover_ok', {found: data.found, saved: data.saved}), true, true);
+            } else {
+                let msg = __.t(allFailed ? 'js.discover_all_failed' : 'js.discover_partial', {names: failed.join('、')});
+                if (data.saved > 0) msg += '；' + __.t('map.discover_result', {found: data.found, saved: data.saved});
+                toast(msg, false, true, 8000);
+            }
             if (currentMapView === 'topology') loadTopology(); else loadMaps();
         } else {
-            toast(data.message || __.t('js.scan_failed'), false, true);
+            toast(data.message || __.t('js.scan_failed'), false, true, 6000);
         }
-    } catch(e) { toast(__.t('js.network_error') + ': ' + e.message, false, true); }
+    } catch(e) { toast(__.t('js.network_error') + ': ' + e.message, false, true, 6000); }
     finally { _discovering = false; }
 }
 
@@ -330,7 +347,11 @@ export async function deleteMap(jobName) {
 export async function copyPipelineIds(jobName) {
     try {
         const res = await fetch('/api/build/' + encodeURIComponent(jobName) + '/pipelines?list=id', { headers: authHeaders() });
-        if (!res.ok) throw new Error('HTTP ' + res.status);
+        if (!res.ok) {
+            let msg = 'HTTP ' + res.status;
+            try { const b = await res.clone().json(); if (b && b.message) msg = b.message; } catch (_) {}
+            throw new Error(msg);
+        }
         const text = await res.text();
         if (!text.trim()) { toast('无 Pipeline 记录', false); return; }
         navigator.clipboard.writeText(text).then(

@@ -268,6 +268,11 @@ class HarborService
 
     /**
      * 统一请求，带重试：4xx 不重试，5xx/网络错误最多重试 2 次
+     *
+     * @param string             $method
+     * @param string             $uri
+     * @param array<string,mixed> $options
+     * @return array<int|string,mixed>
      */
     private function request(string $method, string $uri, array $options = []): array
     {
@@ -332,24 +337,31 @@ class HarborService
             }
         }
 
-        // 所有重试耗尽
+        // 所有重试耗尽：连接级/5xx 失败必须上抛（RuntimeException），
+        // 由 AuthMiddleware 统一转 502「服务不可达」——不得吞成 error 数组，
+        // 否则调用方会把「Harbor 宕机」误判为业务错误（如「扫描功能未启用」「无 tag」）。
+        // 4xx 业务错误仍走上方的 error 数组语义（资源不存在 / 认证失败等）。
         $this->logger?->error('Harbor 请求重试耗尽', [
             'method' => $method,
             'uri'    => $uri,
             'error'  => $lastException->getMessage(),
         ]);
-        return ['error' => "Harbor请求失败(已重试{$maxRetries}次): " . $lastException->getMessage()];
+        throw new \RuntimeException(
+            'Harbor 服务不可用（已重试' . $maxRetries . '次）: ' . $lastException->getMessage(),
+            0,
+            $lastException
+        );
     }
 
     /**
      * 通用分页获取：自动翻页直到数据不足 pageSize 或达到最大页数限制
      *
-     * @param string   $path        请求路径
-     * @param int      $pageSize    每页数量
-     * @param int      $maxPages    最大页数（安全阀）
-     * @param callable $extract     提取回调: fn(array $page): array 返回该页的业务数据
-     * @param array    $extraQuery  额外的 query 参数（如 with_tag, project_id）
-     * @return array
+     * @param string                                                $path        请求路径
+     * @param int                                                   $pageSize    每页数量
+     * @param int                                                   $maxPages    最大页数（安全阀）
+     * @param callable(array<int|string,mixed>): array<int|string,mixed> $extract 提取回调：返回该页的业务数据
+     * @param array<string,mixed>                                   $extraQuery  额外的 query 参数（如 with_tag, project_id）
+     * @return array<int|string,mixed>
      */
     private function paginatedGet(string $path, int $pageSize, int $maxPages, callable $extract, array $extraQuery = []): array
     {
@@ -393,6 +405,8 @@ class HarborService
 
     /**
      * 获取项目名称列表（自动翻页，上限 1000 个项目）
+     *
+     * @return array<int|string,mixed>
      */
     public function getProjects(): array
     {
@@ -407,6 +421,8 @@ class HarborService
 
     /**
      * 获取指定项目下的仓库名称列表（已去掉项目前缀，自动翻页上限 1000 个）
+     *
+     * @return array<int|string,mixed>
      */
     public function getRepositories(string $project): array
     {
@@ -448,6 +464,8 @@ class HarborService
 
     /**
      * 获取指定仓库的 tag 列表（自动翻页，上限 2000 个 tag）
+     *
+     * @return array<int|string,mixed>
      */
     public function getTags(string $project, string $repository): array
     {
@@ -482,6 +500,9 @@ class HarborService
         });
     }
 
+    /**
+     * @return array<int|string,mixed>
+     */
     public function scanArtifact(string $project, string $repository, string $tag): array
     {
         $version = $this->detectApiVersion();
@@ -500,6 +521,9 @@ class HarborService
         return $this->request('POST', $path);
     }
 
+    /**
+     * @return array<int|string,mixed>
+     */
     public function getScanReport(string $project, string $repository, string $tag): array
     {
         $version = $this->detectApiVersion();

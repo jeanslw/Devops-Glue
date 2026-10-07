@@ -106,11 +106,21 @@ class AuthMiddleware implements MiddlewareInterface
         try {
             $response = $handler->handle($authenticatedRequest);
         } catch (\Throwable $e) {
+            // CI Provider 抛出的 RuntimeException 返回 502（Bad Gateway），其他异常返回 500
+            $isCiDown = $e instanceof \RuntimeException;
+            $statusCode = $isCiDown ? 502 : 500;
             $errorResponse = $this->responseFactory
-                ->createResponse(500)
+                ->createResponse($statusCode)
                 ->withHeader('Content-Type', 'application/json');
-            $errorResponse->getBody()->write(json_encode(['code' => 500, 'message' => 'Internal Server Error'], JSON_UNESCAPED_UNICODE));
+            $errorResponse->getBody()->write(json_encode([
+                'code'    => $statusCode,
+                'message' => $isCiDown ? $e->getMessage() : 'Internal Server Error',
+            ], JSON_UNESCAPED_UNICODE));
             $this->recordAccess($request, $errorResponse, $startedAt, $api, 'exception:' . $e->getMessage());
+            // CI 不可用：直接返回 502，不再冒泡给 Slim ErrorHandler（避免响应格式不一致）
+            if ($isCiDown) {
+                return $errorResponse;
+            }
             throw $e;
         }
 

@@ -10,10 +10,16 @@ use Slim\Psr7\Response as SlimResponse;
 
 class CorsMiddleware implements MiddlewareInterface
 {
+    /** @var list<string> 允许的来源列表 */
     private array $allowedOrigins;
+    /** @var list<string> 允许的 HTTP 方法列表 */
     private array $allowedMethods;
+    /** @var list<string> 允许的请求头列表 */
     private array $allowedHeaders;
 
+    /**
+     * @param array<string,mixed> $config CORS 配置（allowed_origins / allowed_methods / allowed_headers）
+     */
     public function __construct(array $config = [])
     {
         $this->allowedOrigins = $config['allowed_origins'] ?? ['*'];

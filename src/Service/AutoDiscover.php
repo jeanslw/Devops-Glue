@@ -6,6 +6,9 @@ use App\Service\Git\ProviderRegistry;
 use App\Config\AppConfig;
 use GuzzleHttp\Client;
 
+/**
+ * @phpstan-type DiscoveredItem array{entry?: array<string,mixed>, source: string}
+ */
 class AutoDiscover
 {
     private JenkinsService $jenkins;
@@ -15,6 +18,9 @@ class AutoDiscover
     private ?Logger $logger;
     private ?Client $gitlabClient = null;
     private ?Client $giteaClient = null;
+    /** @var list<string> 本次 discover 实际发起网络扫描的源（已启用且已配置），
+     * 供前端区分「扫描全部失败 / 扫描部分失败 / 扫描成功」 */
+    private array $scanSources = [];
 
     public function __construct(JenkinsService $jenkins, ProviderRegistry $gitRegistry, Settings $config, MappingManager $mapping, ?Logger $logger = null, ?Client $gitlabClient = null, ?Client $giteaClient = null)
     {
@@ -27,8 +33,10 @@ class AutoDiscover
         $this->giteaClient  = $giteaClient;
     }
 
+    /** @return array{found: list<DiscoveredItem>, errors: list<string>, sources: list<string>} */
     public function discover(): array
     {
+        $this->scanSources = [];
         $enabled = $this->mapping->activeBuildProviders();
 
         // ⚠️ 关键安全约束：按「已启用的拉取式 provider 集合」严格隔离
@@ -65,6 +73,7 @@ class AutoDiscover
         $found     = [];
 
         if (in_array(AppConfig::PROVIDER_JENKINS, $enabled, true)) {
+            $this->scanSources[] = 'Jenkins';
             try {
                 $found = array_merge($found, $this->scanJenkins($activeRemotes, $existingNames));
             } catch (\Exception $e) {
@@ -97,13 +106,14 @@ class AutoDiscover
             }
         }
 
-        if (!empty($errors)) {
-            $found[] = ['entry' => ['job_name' => '__errors__'], 'source' => '_errors', '_errors' => $errors];
-        }
-
-        return $found;
+        return [
+            'found'   => $found,
+            'errors'  => $errors,
+            'sources' => $this->scanSources,
+        ];
     }
 
+    /** @param list<DiscoveredItem> $discovered */
     public function saveDiscovered(array $discovered): int
     {
         $saved = 0;
@@ -144,6 +154,11 @@ class AutoDiscover
 
     // ── Jenkins ──
 
+    /**
+     * @param list<string> $activeRemotes
+     * @param list<string> $existingNames
+     * @return list<DiscoveredItem>
+     */
     private function scanJenkins(array $activeRemotes, array $existingNames): array
     {
         $found = [];
@@ -182,12 +197,19 @@ class AutoDiscover
             }
         } catch (\Exception $e) {
             $this->logger?->warning('AutoDiscover Jenkins 扫描失败', ['error' => $e->getMessage()]);
+            // 上抛给 discover() 聚合进 __errors__——否则 Jenkins 宕机会被前端误判为「没有可发现的项目」
+            throw $e;
         }
         return $found;
     }
 
     // ── GitLab CI ──
 
+    /**
+     * @param list<string> $activeRemotes
+     * @param list<string> $existingNames
+     * @return list<DiscoveredItem>
+     */
     private function scanGitlabCi(array $activeRemotes, array $existingNames): array
     {
         $found = [];
@@ -196,6 +218,8 @@ class AutoDiscover
         if (empty($base) || !$this->gitlabClient) {
             return $found;
         }
+        // 已配置才计入扫描源（未配置的源不算「不可达」）
+        $this->scanSources[] = 'GitLab CI';
 
         try {
             // 快速验证认证
@@ -247,12 +271,19 @@ class AutoDiscover
             }
         } catch (\Exception $e) {
             $this->logger?->warning('AutoDiscover GitLab CI 扫描失败', ['error' => $e->getMessage()]);
+            // 上抛给 discover() 聚合进 __errors__——否则 GitLab 宕机/Token 失效会被误判为「空列表」
+            throw $e;
         }
         return $found;
     }
 
     // ── Gitea Actions ──
 
+    /**
+     * @param list<string> $activeRemotes
+     * @param list<string> $existingNames
+     * @return list<DiscoveredItem>
+     */
     private function scanGiteaCi(array $activeRemotes, array $existingNames): array
     {
         $found = [];
@@ -261,6 +292,8 @@ class AutoDiscover
         if (empty($base) || !$this->giteaClient) {
             return $found;
         }
+        // 已配置才计入扫描源（未配置的源不算「不可达」）
+        $this->scanSources[] = 'Gitea Actions';
 
         try {
             $page = 1;
@@ -312,6 +345,8 @@ class AutoDiscover
             }
         } catch (\Exception $e) {
             $this->logger?->warning('AutoDiscover Gitea Actions 扫描失败', ['error' => $e->getMessage()]);
+            // 上抛给 discover() 聚合进 __errors__——否则 Gitea 宕机/Token 失效会被误判为「空列表」
+            throw $e;
         }
         return $found;
     }
@@ -321,6 +356,10 @@ class AutoDiscover
     /**
      * 扫描已配置的 Git 平台项目，build_provider 统一设为 custom_push。
      * 目前支持 GitLab（通过已有 gitlabClient）；其他平台可后续扩展。
+     *
+     * @param list<string> $activeRemotes
+     * @param list<string> $existingNames
+     * @return list<DiscoveredItem>
      */
     private function scanGitPlatforms(array $activeRemotes, array $existingNames): array
     {
@@ -330,6 +369,8 @@ class AutoDiscover
         $glCfg = $this->config->getGitlabConfig();
         $base  = rtrim($glCfg['base_url'] ?? '', '/');
         if (!empty($base) && $this->gitlabClient) {
+            // 已配置才计入扫描源（未配置的源不算「不可达」）
+            $this->scanSources[] = 'Git';
             try {
                 $test = $this->gitlabClient->get("{$base}/api/v4/user");
                 if ($test->getStatusCode() !== 401) {
@@ -375,6 +416,8 @@ class AutoDiscover
                 }
             } catch (\Exception $e) {
                 $this->logger?->warning('AutoDiscover Git 平台扫描失败 (GitLab)', ['error' => $e->getMessage()]);
+                // 上抛给 discover() 聚合进 __errors__——否则 GitLab 宕机会被误判为「空列表」
+                throw $e;
             }
         }
 

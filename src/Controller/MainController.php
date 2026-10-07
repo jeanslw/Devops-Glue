@@ -436,6 +436,8 @@ class MainController extends BaseController
 
     /**
      * 汇总不依赖外部网络探测的健康信息（统计卡片 + 系统监测 + Custom_Push）。
+     *
+     * @return array<string,mixed>
      */
     private function buildHealthStaticData(): array
     {
@@ -477,6 +479,8 @@ class MainController extends BaseController
 
     /**
      * GET /api/i18n/{locale} — 获取指定语言的语言包
+     *
+     * @param array<string,string> $args 路由参数
      */
     public function i18n(Request $request, Response $response, array $args): Response
     {

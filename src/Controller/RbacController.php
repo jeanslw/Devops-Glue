@@ -48,6 +48,8 @@ class RbacController extends BaseController
     /**
      * 账号是否归属 CD 系统（systems 逗号列表含 'cd'）。
      * RBAC 服务账号是 CD 的账号管理通道，只允许动 cd 账号，禁止越界改 CI-only 用户。
+     *
+     * @param array<string,mixed> $target 用户记录
      */
     private function belongsToCd(array $target): bool
     {
@@ -109,7 +111,11 @@ class RbacController extends BaseController
         }
     }
 
-    /** PUT /api/rbac/users/{username} — 改角色 / 改密码（部分更新） */
+    /**
+     * PUT /api/rbac/users/{username} — 改角色 / 改密码（部分更新）
+     *
+     * @param array<string,string> $args 路由参数
+     */
     public function userUpdate(Request $request, Response $response, array $args): Response
     {
         $this->initAuthFromRequest($request);
@@ -173,7 +179,11 @@ class RbacController extends BaseController
         }
     }
 
-    /** DELETE /api/rbac/users/{username} — 删号 */
+    /**
+     * DELETE /api/rbac/users/{username} — 删号
+     *
+     * @param array<string,string> $args 路由参数
+     */
     public function userDelete(Request $request, Response $response, array $args): Response
     {
         $this->initAuthFromRequest($request);
@@ -224,7 +234,11 @@ class RbacController extends BaseController
         }
     }
 
-    /** GET /api/rbac/users/{username} — 单用户（404 不存在，不含哈希） */
+    /**
+     * GET /api/rbac/users/{username} — 单用户（404 不存在，不含哈希）
+     *
+     * @param array<string,string> $args 路由参数
+     */
     public function userGet(Request $request, Response $response, array $args): Response
     {
         $this->initAuthFromRequest($request);
@@ -252,6 +266,8 @@ class RbacController extends BaseController
      *   1. 失败限流（IP+用户名，5 次/15 分钟），防止持服务 token 在线爆破；
      *   2. 拒绝内置 root 与 super_admin（高权账号改密只能走 CI 交互后台）；
      *   3. 只允许校验归属 CD 的账号（跨系统边界收口）。
+     *
+     * @param array<string,string> $args 路由参数
      */
     public function userVerifyPassword(Request $request, Response $response, array $args): Response
     {

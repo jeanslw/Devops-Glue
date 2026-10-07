@@ -19,6 +19,8 @@ class AdminAuthService
     /**
      * Authenticate a user via DB or .env fallback.
      * Returns success or error payload for controller handling.
+     *
+     * @return array<string,mixed>
      */
     public function authenticate(string $username, string $password, string $systemType): array
     {
@@ -178,6 +180,9 @@ class AdminAuthService
         return in_array($needle, $this->parseSystems($systems), true);
     }
 
+    /**
+     * @return array<int,string>
+     */
     private function parseSystems(string $systems): array
     {
         return array_filter(array_map('trim', explode(',', strtolower($systems))), fn($value) => $value !== '');

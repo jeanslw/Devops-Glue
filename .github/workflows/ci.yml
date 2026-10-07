@@ -45,7 +45,7 @@ jobs:
         run: composer validate --no-check-publish
 
       - name: PHPStan Static Analysis
-        run: phpstan analyse src/ --level=5 --memory-limit=512M
+        run: phpstan analyse src/ --level=6 --memory-limit=512M
 
       - name: PHP_CodeSniffer
         run: vendor/bin/phpcs

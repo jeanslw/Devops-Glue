@@ -384,6 +384,9 @@ return [
     'js.edit_mapping'           => 'Edit Mapping',
     'js.discover_confirm'       => 'This will auto-scan projects and import mappings',
     'js.discover_note'          => 'This will auto-scan Git/Jenkins projects on the currently configured platforms and import mappings; projects with the same repository address may be duplicated across Git and Jenkins platforms.',
+    'js.discover_ok'            => 'Scan completed: {found} found, {saved} added',
+    'js.discover_partial'       => 'Scan partially failed: {names}',
+    'js.discover_all_failed'    => 'Scan failed on all sources: {names}',
     // Topology
     'js.topo_manual'            => 'Manual Mapping',
     'js.topo_fallback'          => 'Fallback Detection',

@@ -48,7 +48,7 @@ class I18nService
     /**
      * 翻译单个消息
      * @param string $id       翻译键
-     * @param array  $params   替换参数
+     * @param array<string,mixed> $params   替换参数
      * @param string|null $locale 指定语言（null=默认）
      */
     public function trans(string $id, array $params = [], ?string $locale = null): string
@@ -58,6 +58,8 @@ class I18nService
 
     /**
      * 获取指定语言的所有翻译（供前端 API 使用）
+     *
+     * @return array<string,string>
      */
     public function getAll(string $locale): array
     {
@@ -67,6 +69,8 @@ class I18nService
 
     /**
      * 获取所有可用语言
+     *
+     * @return list<string>
      */
     public function getAvailableLocales(): array
     {

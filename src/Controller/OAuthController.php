@@ -281,6 +281,8 @@ class OAuthController extends BaseController
     /**
      * 取用户邮箱：实时查库（token 期内 email 变更即时生效）；
      * 用户不存在或 email 为空时退回 username@devops-glue.local 占位（Grafana 按 email 匹配用户，不能为空）。
+     *
+     * @return array{email: string, verified: bool}
      */
     private function resolveEmailInfo(string $username): array
     {
@@ -308,6 +310,8 @@ class OAuthController extends BaseController
 
     /**
      * 组装 id_token 的 claims（iss/sub 由 OidcService 补 exp/iat/aud/nonce）
+     *
+     * @return array<string,mixed>
      */
     private function buildIdTokenClaims(string $username, string $role, string $issuer): array
     {
@@ -357,6 +361,8 @@ class OAuthController extends BaseController
     /**
      * 解析 HTTP Basic Auth 头（RFC 6749 §2.3.1 客户端认证）
      * 返回 [client_id, client_secret]，解析失败返回 ['', '']
+     *
+     * @return list<string>
      */
     private function parseBasicAuth(Request $request): array
     {
