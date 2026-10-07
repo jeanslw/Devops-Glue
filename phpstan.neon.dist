@@ -14,6 +14,6 @@ parameters:
 
 services:
     -
-        class: DevopsGluePHPStan\PdoPrepareReturnTypeExtension
+        class: App\PHPStan\PdoPrepareReturnTypeExtension
         tags:
             - phpstan.broker.dynamicMethodReturnTypeExtension

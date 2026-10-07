@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace DevopsGluePHPStan;
+namespace App\PHPStan;
 
 use PhpParser\Node\Expr\MethodCall;
 use PHPStan\Analyser\Scope;
@@ -39,7 +39,7 @@ final class PdoPrepareReturnTypeExtension implements DynamicMethodReturnTypeExte
         MethodReflection $methodReflection,
         MethodCall $methodCall,
         Scope $scope
-    ): ?Type {
+    ): Type {
         return new ObjectType('PDOStatement');
     }
 }

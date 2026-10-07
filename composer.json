@@ -18,8 +18,7 @@
     },
     "autoload-dev": {
         "psr-4": {
-            "App\\Test\\": "tests/",
-            "DevopsGluePHPStan\\": "phpstan/"
+            "App\\Test\\": "tests/"
         }
     },
     "require-dev": {
