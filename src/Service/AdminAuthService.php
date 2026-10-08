@@ -29,14 +29,9 @@ class AdminAuthService
         }
 
         $rootUser = $this->config->getRootAdminUser();
-        $dbAccessible = true;
-        $dbUser = null;
-
-        try {
-            $dbUser = $this->repository->findByUsername($username);
-        } catch (\Throwable $e) {
-            $dbAccessible = false;
-        }
+        // DB 是登录唯一权威：连接失败时 findByUsername 直接抛异常（上层转 500），
+        // 不再降级到 .env 兜底登录。
+        $dbUser = $this->repository->findByUsername($username);
 
         if ($dbUser !== null) {
             // 停用账号（status=0）禁止登录：无论密码对错都提示「已停用」，避免误报「账号或密码错误」。
@@ -61,7 +56,7 @@ class AdminAuthService
         // 本地 DB 校验未通过 → 尝试 LDAP（先账号密码打 LDAP，再在 user_identities 里找已绑定账号）
         // 策略：LDAP 只负责"验明正身"，授权（role/systems/email）仍以 admin_users 对应行作为唯一权威，
         //       未绑定（provider_uid 未出现在 user_identities）一律拒绝，不自动建号；
-        //       若 LDAP 链路有故障（连接失败等），落到 env 兜底（与现有灾难恢复路径一致）。
+        //       若 LDAP 链路有故障（连接失败等），落到后续 .env 兜底判断（仅首次部署生效）。
         if ($this->ldap !== null && $this->ldap->isEnabled()) {
             $ldapRes = $this->ldap->authenticate($username, $password);
             if (!empty($ldapRes['ok'])) {
@@ -109,14 +104,10 @@ class AdminAuthService
             }
         }
 
-        // env 兜底仅限两类场景（DB 是唯一权威，禁止常开明文旁路）：
-
-        //  1. DB 完全不可访问（灾难恢复，此时无法验证任何账号）
-        //  2. DB 可访问但尚无任何账号（首次部署，admin_users 为空）
-        // 其他情况一律不认 .env 密码；忘记密码走离线补丁
-        $allowEnvFallback = $dbAccessible ? $this->hasNoAdminUsers() : true;
-
-        if ($allowEnvFallback && $this->authenticateEnvRoot($username, $password)) {
+        // .env 兜底仅限首次部署（admin_users 为空）。DB 是登录唯一权威，禁止常开明文旁路；
+        // DB 不可访问时 findByUsername 已抛异常（上层转 500），不存在「灾难恢复兜底登录」。
+        // 忘记密码走离线补丁。
+        if ($this->hasNoAdminUsers() && $this->authenticateEnvRoot($username, $password)) {
             return [
                 'success' => true,
                 'user'    => $username,
@@ -130,20 +121,15 @@ class AdminAuthService
 
     public function verifyCurrentPassword(string $username, string $password): bool
     {
-        try {
-            $dbUser = $this->repository->findByUsername($username);
-            if ($dbUser && password_verify($password, $dbUser['password_hash'])) {
-                return true;
-            }
-            // DB 可访问：仅首次部署（无任何账号）才接受 .env 密码，与 authenticate 保持一致
-            if ($this->hasNoAdminUsers()) {
-                $cred = $this->config->getAdminCredentials();
-                return \hash_equals(strtolower($cred['user']), strtolower($username)) && \hash_equals($cred['password'], $password) && $password !== '';
-            }
-        } catch (\Throwable $e) {
-            // DB 不可访问：接受 .env 密码作为灾难恢复
+        $dbUser = $this->repository->findByUsername($username);
+        if ($dbUser && password_verify($password, $dbUser['password_hash'])) {
+            return true;
+        }
+        // 仅首次部署（无任何账号）才接受 .env 密码，与 authenticate 保持一致；
+        // DB 不可访问时 findByUsername 抛异常（上层转 500），不再降级到 .env。
+        if ($this->hasNoAdminUsers()) {
             $cred = $this->config->getAdminCredentials();
-            return strtolower($username) === strtolower($cred['user']) && $password === $cred['password'] && $password !== '';
+            return \hash_equals(strtolower($cred['user']), strtolower($username)) && \hash_equals($cred['password'], $password) && $password !== '';
         }
         return false;
     }

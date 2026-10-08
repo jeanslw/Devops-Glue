@@ -40,7 +40,8 @@ class TokenServiceTest extends TestCase
         $stmt = $this->pdo->prepare(
             'INSERT INTO ' . AppConfig::TABLE_CACHE . ' (cache_key, value, expires_at) VALUES (?, ?, ?)'
         );
-        $stmt->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . $token, $value, time() + $expiresAt]);
+        // 入库 key 与生产一致：admin_token_ + sha256(token)，明文 token 绝不出现在 cache 表
+        $stmt->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . TokenService::hashAdminToken($token), $value, time() + $expiresAt]);
     }
 
     private function createAdminUsersTable(): void
@@ -90,6 +91,16 @@ class TokenServiceTest extends TestCase
         $this->assertNull($this->service->validate('no_such_token'));
     }
 
+    public function testPlaintextTokenKeyDoesNotMatch(): void
+    {
+        // 锁死哈希化改造：若 cache 表里还留着旧实现的明文 token 当 key（或库被泄露），
+        // 校验端已改为按 sha256 查找，明文 key 命中不了 → 会话作废（fail-closed）。
+        $this->pdo->prepare(
+            'INSERT INTO ' . AppConfig::TABLE_CACHE . ' (cache_key, value, expires_at) VALUES (?, ?, ?)'
+        )->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . 'tok_plain', 'alice|admin', time() + 3600]);
+        $this->assertNull($this->service->validate('tok_plain'));
+    }
+
     public function testExpiredTokenReturnsNull(): void
     {
         $this->seedToken('tok_expired', 'alice|admin', -1);
@@ -126,10 +137,29 @@ class TokenServiceTest extends TestCase
 
     public function testMissingStatusColumnDoesNotLockOut(): void
     {
-        // 旧库无 status 列（或 DB 不可达）：状态检查抛异常 → 放行，灾难恢复不被误锁
+        // 旧库无 status 列（或 DB 不可达）：状态检查抛异常 → 放行（fail-open 保可用）
         $this->seedToken('tok_legacy', 'alice|admin');
         $result = $this->service->validate('tok_legacy');
         $this->assertNotNull($result);
         $this->assertSame('alice', $result['user']);
+    }
+
+    public function testLegacyTokenDisabledByDefault(): void
+    {
+        // 安全开关默认关：即使给出「正确的」base64(user:password)，也不放行（fail-closed）
+        $this->assertFalse($this->service->validateLegacy(base64_encode('admin:secret')));
+    }
+
+    public function testLegacyTokenEnabledWhenConfigured(): void
+    {
+        $legacy = new TokenService($this->pdo, new Settings([
+            'admin' => [
+                'user'         => 'admin',
+                'password'     => 'secret',
+                'legacy_token' => true,
+            ],
+        ]));
+        $this->assertTrue($legacy->validateLegacy(base64_encode('admin:secret')));
+        $this->assertFalse($legacy->validateLegacy(base64_encode('admin:wrong')));
     }
 }

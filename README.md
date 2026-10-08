@@ -25,6 +25,7 @@ DevOps-Glue API is a Slim 4–based integration platform designed to enhance Dev
 > ✅ Make your distributed Jenkins instances, GitLab CI projects,Gitea CI projects and Custom CI manageable, observable, and auditable
 
 - 🔍 **Unified Build View**: Cross-engine search and aggregation of all build history — no more platform switching
+- 📝 **Unified Log Center**: Operation logs, API access logs, and deploy logs
 - 🔧 **Support LDAP/SSO Login**: Easily integrate into the company's internal management system, say goodbye to information silos, and achieve account connectivity
 - 📝 **Custom_Push**: Orthogonal push-based CI — pull and push coexist simultaneously. [\[**Use case**\]](docs/ADMIN_MANUAL.md#12-configure-build-mode)
 - 🔐 **Fine-grained RBAC**: More flexible access control than native plugins, tailored for team-scale organizations
@@ -39,6 +40,7 @@ DevOps-Glue API is a Slim 4–based integration platform designed to enhance Dev
 
 - **Custom Push CI (Custom_Push)** — User CI pushes build status, log URL, image tags; Devops-Glue only stores metadata without participating in builds. Orthogonal to pull-based CI, can be enabled simultaneously
 - **Multi-Build Pipeline** — Jenkins + GitLab CI + Gitea CI + Custom_Push, switch or coexist, unified API
+- **Unified Logs** — Operation logs, API access logs, deploy logs
 - **Multi-Platform Git** — GitLab · GitHub · Gitee · Gitea, Built in-house or SaaS
 - **Full-Chain Mapping** — Job ↔ Git repo ↔ Harbor image, build→code→artifact auto-association
 - **Security Scan Audit** — SAST, secret scanning, dependency vulns written back via Commit Status
@@ -53,40 +55,40 @@ DevOps-Glue API is a Slim 4–based integration platform designed to enhance Dev
 <summary>Click to expand</summary>
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        CODE PUSH                            │
-│  GitLab / Gitee / GitHub / Gitea  →  Webhook Trigger        │
-└──────────────────────────┬──────────────────────────────────┘
-                           ↓
-┌─────────────────────────────────────────────────────────────┐
-│                  CI LAYER：Devops-Glue API (PHP)            │
-│                                                             │
-│  ┌──────────────┐  ┌──────────────┐   ┌──────────────┐      │  ┌───────────────┐
-│  │   Jenkins    │  │  GitLab CI   │   │   Gitea CI   │      │  │  Custom Push  │ ← User CI
-│  │ BuildProvider│  │ BuildProvider│   │ BuildProvider│      │  │ (custom_push) │  (pusher)
-│  └──────┬───────┘  └──────┬───────┘   └──────┬───────┘      │  └───────┬───────┘
-│         └─────────────────┼──────────────────┼──────────────<──────────┼          
-│                           ↓                                 │
-│              Build → Docker Image → Harbor Registry         │
-│                           ↓                                 │
-│              scan-sync → ci_pipeline_artifacts              │
-└──────────────────────────┬──────────────────────────────────┘
-                           ↓
-┌─────────────────────────────────────────────────────────────┐
-│                  CD LAYER：cd_service (Python)              │
-│                                                             │
-│   Select Project + Tag  ──→  Deploy Execution               │
-│                                                             │
-│   ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│   │ SSH Script   │  │Docker Compose│  │  Kubernetes  │      │
-│   │  Ansible     │  │  SFTP + up   │  │ kubectl/Helm │      │
-│   │              │  │              │  │ ArgoCD/FluxCD│      │
-│   └──────────────┘  └──────────────┘  └──────────────┘      │
-│                           ↓                                 │
-│              cd_deploy_logs (Deployment Records)            │
-│                           ↓                                 │
-│            DingTalk / WeCom Webhook Notifications           │
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                                CODE PUSH                                     │
+│          GitLab / Gitee / GitHub / Gitea  →  Webhook Trigger                 │
+└────────────────────────────────────┬─────────────────────────────────────────┘
+                                     ↓
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                     CI LAYER：Devops-Glue API (PHP)                          │
+│                                                                              │
+│  ┌──────────────┐  ┌──────────────┐   ┌──────────────┐    ┌───────────────┐  │
+│  │   Jenkins    │  │  GitLab CI   │   │   Gitea CI   │    │  Custom Push  │<──── User CI
+│  │ BuildProvider│  │ BuildProvider│   │ BuildProvider│    │ (custom_push) │  │   (pusher)
+│  └──────┬───────┘  └──────┬───────┘   └──────┬───────┘    └───────┬───────┘  │
+│         └─────────────────┼──────────────────┼────────── ─────────┼          │
+│                                    ↓                                         │
+│                    Build → Docker Image → Harbor Registry                    │
+│                                    ↓                                         │
+│                      scan-sync → ci_pipeline_artifacts                       │
+└────────────────────────────────────┬─────────────────────────────────────────┘
+                                     ↓									 
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                          CD 层：Devops-cd (Python)                           │
+│                                                                              │
+│                         选择 Project + Tag  ──→  部署执行                    │
+│                                                                              │
+│		   ┌──────────────┐  ┌──────────────┐  ┌──────────────┐                │
+│		   │  SSH Script  │  │Docker Compose│  │  Kubernetes  │                │
+│		   │    Ansible   │  │  SFTP + up   │  │ kubectl/Helm │                │
+│		   │              │  │              │  │ ArgoCD/FluxCD│                │
+│		   └──────────────┘  └──────────────┘  └──────────────┘                │
+│                                    ↓                                         │
+│                        cd_deploy_logs (Deployment Records)                   │
+│                                    ↓                                         │
+│                        DingTalk / WeCom Webhook Notifications                │
+└──────────────────────────────────────────────────────────────────────────────┘	
 ```
 </details>
 

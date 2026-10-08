@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Devops-Glue API",
-    "version": "2.8.8",
+    "version": "2.8.9",
     "description": "DevOps 工具链集成接口 —— Jenkins/GitLab CI、GitLab/Gitee/GitHub/Gitea、Harbor 统一 API。",
     "contact": {
       "email": "jeanslw@qq.com"
@@ -214,6 +214,39 @@
           "time": {
             "type": "string",
             "example": "2026-07-25 12:00:00"
+          }
+        }
+      },
+      "HealthzResult": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "degraded"
+            ],
+            "example": "ok"
+          },
+          "db": {
+            "type": "boolean",
+            "description": "数据库是否可达",
+            "example": true
+          },
+          "app_version": {
+            "type": "string",
+            "example": "2.8.8"
+          },
+          "schema_version": {
+            "type": "string",
+            "nullable": true,
+            "description": "已应用的 schema/种子版本（首次部署未标记时为 null）",
+            "example": "2.8.8"
+          },
+          "time": {
+            "type": "integer",
+            "description": "Unix 时间戳（秒）",
+            "example": 1760000000
           }
         }
       },
@@ -1279,6 +1312,38 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/healthz": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "存活/就绪探针",
+        "description": "无需鉴权的外部探针：只检测数据库可达性与 schema 版本，不探测 Jenkins/Git/Harbor。数据库可达返回 200 + status=ok，不可达返回 503 + status=degraded。",
+        "operationId": "healthz",
+        "responses": {
+          "200": {
+            "description": "数据库可达",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthzResult"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "数据库不可达（降级）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthzResult"
                 }
               }
             }
@@ -2761,7 +2826,7 @@
           "Admin"
         ],
         "summary": "管理后台登录",
-        "description": "返回 Bearer token（24h 过期）。优先查数据库 bcrypt 密码，数据库不可用时降级到 .env。",
+        "description": "返回 Bearer token（24h 过期）。优先查数据库 bcrypt 密码，仅首次部署（admin_users 表为空）时降级到 .env；数据库不可用时直接报错。",
         "operationId": "adminLogin",
         "requestBody": {
           "required": true,

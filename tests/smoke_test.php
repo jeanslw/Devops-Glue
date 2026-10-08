@@ -333,6 +333,24 @@ if (isset($health['db_driver'])) {
 
 echo "  [Infra] 健康检查 ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
 
+// /healthz 外部探针（无需鉴权）：DB 可达时应 200 + status=ok，含 db/app_version/schema_version/time
+$tc = apiT('/healthz 探针（无认证）', "{$baseUrl}/healthz");
+$tc->assertHttpIs(200, '/healthz 返回 200');
+$tc->assertJson();
+$hz = json_decode($tc->rawBody, true) ?? [];
+$tc->assertHasKeys($hz, ['status', 'db', 'app_version', 'schema_version', 'time'], '含 status/db/app_version/schema_version/time');
+if (isset($hz['status'])) {
+    $tc->assertIn($hz['status'], ['ok', 'degraded'], "status 是 ok 或 degraded");
+}
+if (isset($hz['db'])) {
+    $tc->assertIsType('bool', $hz['db'], 'db 是布尔值');
+}
+if (isset($hz['app_version'])) {
+    $tc->assertNotEmpty($hz['app_version'], 'app_version 非空');
+    $tc->assertIsType('string', $hz['app_version'], 'app_version 是字符串');
+}
+echo "  [Infra] /healthz 探针 ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
+
 // OpenAPI 规范（无 token 应返回 401）
 $tc = apiT('OpenAPI 规范（无认证）', "{$baseUrl}/api/openapi.json");
 $tc->assertHttpIs(401, '未认证返回 401');

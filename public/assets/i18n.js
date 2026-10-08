@@ -35,7 +35,10 @@
             if (msg === undefined || msg === null) return key;
             if (params) {
                 Object.keys(params).forEach(function (k) {
-                    msg = msg.replace('{' + k + '}', params[k]);
+                    // 用 split/join 全量替换：同一占位符可能在句中多次出现（如
+                    // js.cannot_activate_mode 的 {item} 出现两次），String.replace(字符串)
+                    // 只替换首个，会残留字面量 {item}。
+                    msg = msg.split('{' + k + '}').join(params[k]);
                 });
             }
             return msg;

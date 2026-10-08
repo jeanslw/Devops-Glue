@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Devops-Glue API",
-    "version": "2.8.8",
+    "version": "2.8.9",
     "description": "DevOps toolchain integration API — unified interface for Jenkins / GitLab CI, GitLab / Gitee / GitHub / Gitea, and Harbor.",
     "contact": {
       "email": "jeanslw@qq.com"
@@ -214,6 +214,39 @@
           "time": {
             "type": "string",
             "example": "2026-07-25 12:00:00"
+          }
+        }
+      },
+      "HealthzResult": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "degraded"
+            ],
+            "example": "ok"
+          },
+          "db": {
+            "type": "boolean",
+            "description": "Whether the database is reachable",
+            "example": true
+          },
+          "app_version": {
+            "type": "string",
+            "example": "2.8.8"
+          },
+          "schema_version": {
+            "type": "string",
+            "nullable": true,
+            "description": "Applied schema/seed version (null until first deployment marks it)",
+            "example": "2.8.8"
+          },
+          "time": {
+            "type": "integer",
+            "description": "Unix timestamp (seconds)",
+            "example": 1760000000
           }
         }
       },
@@ -1264,6 +1297,38 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HealthResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/healthz": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Liveness / readiness probe",
+        "description": "Unauthenticated external probe: only checks database reachability and schema version; does not probe Jenkins/Git/Harbor. Returns 200 + status=ok when the DB is reachable, 503 + status=degraded when it is not.",
+        "operationId": "healthz",
+        "responses": {
+          "200": {
+            "description": "Database reachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthzResult"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Database unreachable (degraded)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthzResult"
                 }
               }
             }
