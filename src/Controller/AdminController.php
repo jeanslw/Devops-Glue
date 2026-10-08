@@ -1981,7 +1981,8 @@ class AdminController extends BaseController
 
     /**
      * POST /api/admin/backup — 手动执行数据库备份，仅备份、不提供恢复。
-     * 支持 sqlite / mysql 两种驱动，产物为 zip 归档，命名 devops-glue_<driver>_<datetime>.zip
+     * 支持 sqlite / mysql 两种驱动，产物为 zip 归档，命名 devops-glue_<driver>_<datetime>.zip；
+     * 启用 CD（共享库存在 cd_* 表）时额外产出一份 devops-cd_<driver>_<datetime>.zip。
      * 权限：仅 super_admin（与迁移同级，属敏感运维操作）。
      *
      * 备份目录：Docker 内 BACKUP_DIR=/data/backups（compose 卷映射宿主 ./data/backups）；
@@ -1997,22 +1998,36 @@ class AdminController extends BaseController
         }
         try {
             $service = new \App\Service\DataBackupService($this->pdo);
-            [$zipFile, $counts] = $service->backup(10);
+            $files   = $service->backup(10);
+            $warning = $service->lastWarning();
 
+            $detail = ['driver' => $service->driver(), 'files' => count($files)];
+            if ($warning !== '') {
+                $detail['warning'] = $warning;
+            }
             $this->opLog()->record(
                 $this->currentUser,
                 'backup_database',
-                $zipFile,
-                ['driver' => $service->driver(), 'tables' => count($counts), 'rows' => array_sum($counts)],
+                implode(', ', array_column($files, 'name')),
+                $detail,
                 $this->clientIp($request),
                 'success'
             );
 
+            $out = [];
+            foreach ($files as $f) {
+                $out[] = [
+                    'name'   => $f['name'],
+                    'mode'   => $f['mode'],
+                    'tables' => count($f['counts']),
+                    'rows'   => array_sum($f['counts']),
+                ];
+            }
+
             return $this->output($response, [
-                'success' => true,
-                'file'    => $zipFile,
-                'tables'  => count($counts),
-                'rows'    => array_sum($counts),
+                'success'  => true,
+                'files'    => $out,
+                'warnings' => $warning !== '' ? [$warning] : [],
             ], $request);
         } catch (\Throwable $e) {
             if ($this->currentUser !== '') {
