@@ -6,10 +6,12 @@ use App\Config\AppConfig;
 use PDO;
 
 /**
- * Web 端数据库备份服务（仅备份，不提供恢复）。
+ * 数据库备份服务（Web 与 cron 共用，仅备份、不提供恢复）。
  *   - 支持 sqlite / mysql 两种驱动；
  *   - 纯数据 .sql（INSERT，不含 DDL），排除易失/派生缓存表（cache、ci_platform_versions）；
- *   - 产物 zip 命名 devops-glue_<driver>_<datetime>.zip，保存到 BACKUP_DIR；
+ *   - 启用 CD（共享库存在 cd_* 表）时产出两份 zip：应用表 devops-glue_<driver>_<datetime>.zip、
+ *     cd 系统表 devops-cd_<driver>_<datetime>.zip；未启用时只产出一份（应用表）。
+ *     两份各自独立、可独立恢复，恢复 Glue 不会误把 cd 数据灌回（防止误恢复）。
  *   - 目录：Docker 内 BACKUP_DIR=/data/backups（compose 卷映射宿主 ./data/backups）；
  *     非 Docker / 未设 BACKUP_DIR 时落仓库根 backups/（与 CLI 备份 cli/backup-lib.php 一致）；
  *     目录不存在则自动创建，并滚动留存最近 $keep 份。
@@ -18,6 +20,7 @@ class DataBackupService
 {
     private PDO $pdo;
     private string $driver;
+    private string $lastWarning = '';
 
     public function __construct(PDO $pdo)
     {
@@ -32,6 +35,15 @@ class DataBackupService
     public function driver(): string
     {
         return $this->driver;
+    }
+
+    /**
+     * 最近一次 backup() 检测到的权限告警（空串表示无告警）。
+     * 供调用方在备份后读取并呈现——Web 前端 toast 提示 / cron 写入操作日志。
+     */
+    public function lastWarning(): string
+    {
+        return $this->lastWarning;
     }
 
     /**
@@ -73,7 +85,14 @@ class DataBackupService
     private function listTables(): array
     {
         if ($this->driver === 'mysql') {
-            $names = $this->pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN);
+            // 只取基础表（information_schema + table_type='BASE TABLE'）：视图（如 v_glue_deploy_logs）
+            // 不会被当成表导出——SHOW TABLES 会带上视图，导出视图会生成对视图执行 SELECT * 的假 INSERT，
+            // 恢复时必然失败。
+            $names = $this->pdo->query(
+                "SELECT table_name FROM information_schema.tables
+                 WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'
+                 ORDER BY table_name"
+            )->fetchAll(PDO::FETCH_COLUMN);
         } else {
             $names = $this->pdo->query(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
@@ -150,12 +169,59 @@ class DataBackupService
         }
         return $dir;
     }
-/**
+
+    /**
+     * 判断是否为 cd 系统表（cd_ 前缀，与 Glue 共享库的姊妹系统）。
+     * 备份时单独成一份 zip，恢复时互不牵连，防止误把 cd 数据灌回 Glue。
+     */
+    private function isCdTable(string $table): bool
+    {
+        return str_starts_with($table, 'cd_');
+    }
+
+    /**
+     * 备份前自检：MySQL 下确认当前账户对当前库有库级/全局权限。
+     * information_schema.tables 按权限过滤——账户对某些表（尤其 cd_*）无任何权限时，
+     * 这些表会被静默漏掉（比报错更危险）。返回告警文本；无风险返回空串。
+     * SQLite 无权限模型，返回空串。
+     */
+    private function mysqlVisibilityWarning(): string
+    {
+        if ($this->driver !== 'mysql') {
+            return '';
+        }
+        $db = (string) $this->pdo->query('SELECT DATABASE()')->fetchColumn();
+        try {
+            $grants = $this->pdo->query('SHOW GRANTS FOR CURRENT_USER()')->fetchAll(PDO::FETCH_COLUMN);
+        } catch (\Throwable $e) {
+            return "无法读取当前账户授权信息，无法确认表可见性完整（{$e->getMessage()}）";
+        }
+        foreach ($grants as $grant) {
+            $g = (string) $grant;
+            // 纯 USAGE 是「无权限」占位行，跳过
+            if (preg_match('/^\s*GRANT\s+USAGE\s+ON/i', $g)) {
+                continue;
+            }
+            if (stripos($g, 'ON *.*') !== false) {
+                return ''; // 全局权限，库内表全可见
+            }
+            if (stripos($g, "ON `{$db}`.*") !== false || stripos($g, "ON {$db}.*") !== false) {
+                return ''; // 库级权限，库内表全可见
+            }
+        }
+        return "当前 MySQL 账户对库「{$db}」无库级/全局权限，information_schema 仅返回其有权限的表，"
+            . "cd_* 表可能被静默漏备。请授予库级权限：GRANT ALL PRIVILEGES ON `{$db}`.* TO 当前账户;";
+    }
+
+    /**
      * 执行数据库备份，生成 zip 归档。
      *
+     * 启用 CD（共享库存在 cd_* 表）时产出两份：应用表 devops-glue_<driver>_<stamp>.zip、
+     * cd 系统表 devops-cd_<driver>_<stamp>.zip；未启用时只产出一份（应用表）。
+     *
      * 一致性：MySQL REPEATABLE READ 快照、SQLite 读事务；导出经由临时 .sql 打入 zip 后清理。
-     * @param int $keep 同一驱动前缀下最多保留的 zip 份数
-     * @return array{0: string, 1: array<string,int>} [zip 文件名, 各表行数]
+     * @param int $keep 每个前缀下最多保留的 zip 份数
+     * @return list<array{name:string, mode:string, counts:array<string,int>}>
      */
     public function backup(int $keep = 10): array
     {
@@ -163,17 +229,42 @@ class DataBackupService
             throw new \RuntimeException('zip 扩展不可用');
         }
 
-        $dir    = $this->backupDir();
-        $tables = array_values(array_diff(
-            array_intersect($this->listTables(), $this->appTableNames()),
+        $this->lastWarning = $this->mysqlVisibilityWarning();
+
+        $live      = $this->listTables();
+        $appTables = array_values(array_diff(
+            array_intersect($live, $this->appTableNames()),
             $this->excludedTables()
         ));
-        if (empty($tables)) {
+        if (empty($appTables)) {
             throw new \RuntimeException('没有任何应用表可备份（数据库未初始化？）');
         }
+        $cdTables = array_values(array_filter($live, fn($t) => $this->isCdTable($t)));
 
         $stamp = date('Ymd_His');
-        $base  = 'devops-glue_' . $this->driver . '_' . $stamp;
+        $files = [];
+
+        $files[] = $this->exportZip('app', $appTables, 'devops-glue_' . $this->driver . '_' . $stamp);
+        $this->rotatePrefix('devops-glue_' . $this->driver, $keep);
+
+        if (!empty($cdTables)) {
+            $files[] = $this->exportZip('cd', $cdTables, 'devops-cd_' . $this->driver . '_' . $stamp);
+            $this->rotatePrefix('devops-cd_' . $this->driver, $keep);
+        }
+
+        return $files;
+    }
+
+    /**
+     * 导出指定表集为一份 zip（纯数据 .sql 打入 zip），返回文件信息与各表行数。
+     *
+     * @param list<string> $tables
+     * @param string $mode app|cd，写入 META，恢复时按模式校验（防止两种备份互相误用）
+     * @return array{name:string, mode:string, counts:array<string,int>}
+     */
+    private function exportZip(string $mode, array $tables, string $base): array
+    {
+        $dir = $this->backupDir();
 
         // 1) 导出纯数据 .sql
         if ($this->driver === 'mysql') {
@@ -216,10 +307,11 @@ class DataBackupService
         foreach ($counts as $t => $c) {
             $metaTables[] = "{$t}({$c})";
         }
-        $header = "-- Devops-Glue 数据备份（Web 触发导出）\n"
+        $header = "-- Devops-Glue 数据备份（纯数据 .sql，不含 DDL）\n"
             . '-- META: exported_at=' . date('Y-m-d H:i:s') . "\n"
             . "-- META: source_driver={$this->driver}\n"
             . '-- META: app_version=' . AppConfig::APP_VERSION . "\n"
+            . "-- META: mode={$mode}\n"
             . "-- META: tables=" . implode(',', $metaTables) . "\n"
             // mysqldump 同款版本注释：MySQL 服务端执行、SQLite 视为普通注释，同一份文件两种引擎都能吃
             . "/*!40101 SET SQL_MODE='NO_BACKSLASH_ESCAPES' */;\n"
@@ -245,16 +337,22 @@ class DataBackupService
             }
         }
 
-        // 3) 滚动留存：同驱动前缀只保留最近 $keep 份 zip
-        $files = glob($dir . '/devops-glue_' . $this->driver . '_*.zip') ?: [];
+        return ['name' => basename($zipFile), 'mode' => $mode, 'counts' => $counts];
+    }
+
+    /**
+     * 滚动留存：同前缀只保留最近 $keep 份 zip。
+     */
+    private function rotatePrefix(string $prefix, int $keep): void
+    {
+        $dir   = $this->backupDir();
+        $files = glob($dir . '/' . $prefix . '_*.zip') ?: [];
         if (count($files) > $keep) {
             usort($files, fn($a, $b) => filemtime($b) <=> filemtime($a));
             foreach (array_slice($files, $keep) as $old) {
                 @unlink($old);
             }
         }
-
-        return [basename($zipFile), $counts];
     }
 
     /**
@@ -265,7 +363,10 @@ class DataBackupService
     public function listBackups(): array
     {
         $dir   = $this->backupDir();
-        $files = glob($dir . '/devops-glue_*.zip') ?: [];
+        $files = array_merge(
+            glob($dir . '/devops-glue_*.zip') ?: [],
+            glob($dir . '/devops-cd_*.zip') ?: []
+        );
         $out   = [];
         foreach ($files as $f) {
             $out[] = [

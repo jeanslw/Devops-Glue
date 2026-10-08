@@ -83,9 +83,18 @@ export async function doBackup() {
         if (handle401(res)) return;
         const d = await res.json();
         if (res.ok) {
-            st.textContent = '✅ ' + __.t('sys.backup_done') + ' · ' + d.file;
-            st.style.color = '#16a34a';
-            toast(__.t('sys.backup_done') + ' · ' + d.file, true);
+            const names = (Array.isArray(d.files) ? d.files : []).map(function(f) { return f.name || ''; }).filter(Boolean);
+            const label = names.length ? names.join(' · ') : (d.file || '');
+            const warns = Array.isArray(d.warnings) ? d.warnings.filter(Boolean) : [];
+            if (warns.length) {
+                st.textContent = '⚠️ ' + __.t('sys.backup_done') + ' · ' + label + ' — ' + warns.join(' ');
+                st.style.color = '#d97706';
+                toast('⚠️ ' + warns.join(' '), false, false, 6000);
+            } else {
+                st.textContent = '✅ ' + __.t('sys.backup_done') + ' · ' + label;
+                st.style.color = '#16a34a';
+                toast(__.t('sys.backup_done') + ' · ' + label, true);
+            }
         } else {
             st.textContent = '❌ ' + (d.message || __.t('sys.backup_failed'));
             st.style.color = '#dc2626';
