@@ -240,7 +240,7 @@ class AdminUserRepository
             $user = strtolower($_ENV['ADMIN_USER'] ?? 'admin');
             $pass = $_ENV['ADMIN_PASSWORD'] ?? '';
             if ($pass !== '') {
-                $hash = password_hash($pass, PASSWORD_BCRYPT);
+                $hash = PasswordHasher::hash($pass);
                 $pdo->prepare("INSERT INTO " . AppConfig::TABLE_ADMIN_USERS . " (username, password_hash, role, systems, email) VALUES (?, ?, ?, 'ci,cd', ?)")
                     ->execute([$user, $hash, AppConfig::ROLE_SUPER_ADMIN, $adminEmail]);
             }

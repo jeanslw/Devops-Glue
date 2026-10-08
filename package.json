@@ -1,0 +1,10 @@
+{
+  "name": "devops-glue-frontend-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "前端原生 JS 的单元测试（Node 内置 node:test，零依赖，无 npm install）",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/frontend/*.test.mjs"
+  }
+}

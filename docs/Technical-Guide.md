@@ -1,4 +1,4 @@
-# Devops-Glue API Technical Guide v2.8.0
+# Devops-Glue API Technical Guide v2.8
 
 > This document is intended for developers, operations engineers, and troubleshooting. It covers all business logic, data flows, database table structures, and common issues.
 
@@ -11,23 +11,24 @@
 3. [Configuration System](#3-configuration-system)
 4. [Database Design](#4-database-design)
 5. [Core Business Logic](#5-core-business-logic)
-   - [5.1 Health Check](#51-health-check)
-   - [5.2 Mapping Management (job_git_map)](#52-mapping-management)
-   - [5.3 Dual-Channel Build System](#53-dual-channel-build-system)
-   - [5.4 Scan Sync (scan-sync)](#54-scan-sync)
-   - [5.5 Commit Status Writeback](#55-commit-status-writeback)
-   - [5.6 Security Scan Audit](#56-security-scan-audit)
-   - [5.7 Platform Version Management](#57-platform-version-management)
-   - [5.8 Build Mode Switching](#58-build-mode-switching)
-   - [5.9 Authentication & Authorization](#59-authentication--authorization)
-   - [5.10 Custom_Push CI Mode](#510-custom_push-ci-mode)
-   - [5.10.1 Orthogonal Design](#5101-orthogonal-design)
-   - [5.10.2 Core Components](#5102-core-components)
-   - [5.10.3 Configuration & Registration](#5103-configuration--registration)
-   - [5.10.4 Report API](#5104-report-api)
-   - [5.10.5 Log Proxy](#5105-log-proxy)
-   - [5.10.6 Admin Panel](#5106-admin-panel)
-   - [5.10.7 Permissions & Scope](#5107-permissions--scope)
+   - [5.1 Liveness / Readiness Probe](#51-liveness--readiness-probe)
+   - [5.2 Health Check](#52-health-check)
+   - [5.3 Mapping Management (job_git_map)](#53-mapping-management)
+   - [5.4 Dual-Channel Build System](#54-dual-channel-build-system)
+   - [5.5 Scan Sync (scan-sync)](#55-scan-sync)
+   - [5.6 Commit Status Writeback](#56-commit-status-writeback)
+   - [5.7 Security Scan Audit](#57-security-scan-audit)
+   - [5.8 Platform Version Management](#58-platform-version-management)
+   - [5.9 Build Mode Switching](#59-build-mode-switching)
+   - [5.10 Authentication & Authorization](#510-authentication--authorization)
+   - [5.11 Custom_Push CI Mode](#511-custom_push-ci-mode)
+   - [5.11.1 Orthogonal Design](#5111-orthogonal-design)
+   - [5.11.2 Core Components](#5112-core-components)
+   - [5.11.3 Configuration & Registration](#5113-configuration--registration)
+   - [5.11.4 Report API](#5114-report-api)
+   - [5.11.5 Log Proxy](#5115-log-proxy)
+   - [5.11.6 Admin Panel](#5116-admin-panel)
+   - [5.11.7 Permissions & Scope](#5117-permissions--scope)
 6. [Key Data Flows](#6-key-data-flows)
 7. [Common Troubleshooting](#7-common-troubleshooting)
 8. [Appendix: Complete Configuration Reference](#8-appendix-complete-configuration-reference)
@@ -304,12 +305,61 @@ Controller → AppConfig::getXxxConfig()
 3. `database/mysql_init.sql`
 4. `database/sqlite_init.sql`
 
+### 4.3 Database Backup (Web)
+
+The admin panel's "System Settings → Data Management → Database" card provides a **Backup Database** button (`super_admin` only), implemented by `src/Service/DataBackupService` (the `bin/` tools are not shipped in the image, so the Web side does not depend on the CLI backup tools).
+
+- **Driver**: supports sqlite / mysql, exports per the current `DB_DRIVER`.
+- **Output**: when CD is enabled (the shared database has `cd_*` tables), two zips are produced — `devops-glue_<driver>_<datetime>.zip` (app tables) + `devops-cd_<driver>_<datetime>.zip` (`cd_*` tables); when CD is not enabled, only one is produced. Each zip contains a same-named `.sql` pure-data file (`INSERT` statements, no DDL), excluding `cache` / `ci_platform_versions`; backup only, no Web restore (restore / migration still use `bin/backup.php` and `bin/restore.php`).
+- **Directory resolution** (`backupDir()`): the `BACKUP_DIR` env var takes priority; defaults to `/data/backups` in Docker (the compose volume maps host `./data/backups`); falls back to the repo-root `backups/` when not in Docker and unset (same as the CLI default). The directory is auto-created and rolls over the latest 10 files per driver prefix.
+- **Endpoint & audit**: `POST /api/admin/backup` (super_admin gated), records a `backup_database` entry in the operation log on success.
+- **Privileges required**: same as 4.4 — the MySQL account must hold database-level (or global) `SELECT`/`ALL` on the shared database, otherwise `cd_*` tables are silently skipped (a pre-backup self-check logs a WARN).
+
+### 4.4 Database Backup (Container Cron, CI/CD Split)
+
+`cli/backup-db.php` (shipped in the image, scheduled by supervisord's `db-backup` loop) reuses the Web-side `DataBackupService` — the same logic as the admin "Backup Database" button. When CD is enabled (the shared database has `cd_*` tables) it produces **two independent zips** (CI app tables + the CD system's `cd_*` tables), so restoring one never touches the other; when CD is not enabled, only one zip is produced.
+
+- **Switch**: `DB_BACKUP_ENABLED` in the root `.env` (default off; when off it prints a skip message and exits 0, avoiding surprising existing deployments with extra disk writes); the interval is overridden by `DB_BACKUP_INTERVAL`, default 86400 seconds. You can also run `php cli/backup-db.php --force` manually.
+- **Output**: same as the Web side (reuses `DataBackupService`, "same logic") — when CD is enabled it produces `devops-glue_<driver>_<datetime>.zip` (mode=app, app tables) + `devops-cd_<driver>_<datetime>.zip` (mode=cd, `cd_*` tables; written only when `cd_*` tables exist); when CD is not enabled, only one zip is produced. Each zip contains a same-named `.sql` pure-data file; each prefix rolls over the latest 10 files. Both still unconditionally exclude `cache` (session tokens are ephemeral credentials) and `ci_platform_versions` (derived cache).
+- **Base tables only**: the enumeration filters `table_type='BASE TABLE'`, so views (e.g. `v_glue_deploy_logs`) are never exported as tables — otherwise a fake `INSERT` against the view would be generated and restore would inevitably fail.
+- **Privileges required**: `information_schema.tables` only returns tables the current account has some privilege on. The account must hold database-level (or global) `SELECT`/`ALL` on the shared database, otherwise `cd_*` tables are silently skipped — a pre-backup self-check logs a WARN for this (see `DataBackupService::mysqlVisibilityWarning()`). The Docker default `devops` account already gets database-level `ALL` at first init; bare-metal users must run `GRANT ALL PRIVILEGES ON devops_glue.* TO '<account>';` themselves.
+- **Restore**: `php bin/restore.php <devops-glue_*.zip> --yes` restores the CI app tables; `php bin/restore.php <devops-cd_*.zip> --yes --cd` restores the CD tables (both `.zip` and `.sql` inputs are supported). The file's META mode is validated, so a CI backup cannot be used for a CD restore and vice versa.
+
+> Note: `cli/backup-lib.php` is the shared backup/restore library (used by `bin/backup.php`, `bin/restore.php`, `cli/backup-db.php`), shipped in the image; the offline tools under `bin/` are not shipped but require this library.
+
 ---
 
 ## 5. Core Business Logic
 
-### 5.1 Health Check
+### 5.1 Liveness / Readiness Probe
+**Route:** `GET /healthz`  
+**Controller:** `MainController::healthz()`
 
+Unauthenticated external probe for Uptime Kuma / cloud LB / container orchestration. Only does a DB probe (`SELECT 1`) plus a schema-version read — it does not probe Jenkins/Git/Harbor and returns in milliseconds.
+
+```
+1. DB probe + schema version read
+   └─ SELECT 1 succeeds → read ci_app_settings.schema_version
+   └─ either step throws → db=false
+2. Summary
+   └─ db=true  → HTTP 200 + status=ok
+   └─ db=false → HTTP 503 + status=degraded (reported truthfully, not 500)
+```
+
+**Response structure:**
+```json
+{
+  "status": "ok",
+  "db": true,
+  "app_version": "2.8.8",
+  "schema_version": "2.8.8",
+  "time": 1760000000
+}
+```
+
+---
+
+### 5.2 Health Check
 **Route:** `GET /api/health`  
 **Controller:** `MainController::health()`
 
@@ -357,19 +407,16 @@ Controller → AppConfig::getXxxConfig()
 
 ---
 
-### 5.2 Mapping Management
-
+### 5.3 Mapping Management
 **Core table:** `ci_job_git_map`  
 **Admin endpoints:** `/api/admin/job_git_map` (GET/POST/PUT/DELETE)  
 **Authenticated endpoint:** `/api/main/map/list` (grouped by Git repository, requires Token)
 
-#### 5.2.1 Data Writing
-
+#### 5.3.1 Data Writing
 - **Manual add/edit:** Admin UI → AdminController CRUD
 - **Auto-discovery:** `POST /api/admin/discover` → `AutoDiscover::discover()` scans all Jenkins jobs, parses SCM config to extract Git URLs → `saveDiscovered()` writes to `ci_job_git_map`
 
-#### 5.2.2 Data Reading & Grouping
-
+#### 5.3.2 Data Reading & Grouping
 `MainController::mapList()` logic:
 
 1. Read `ci_job_git_map` → filter `status=active` → filter by `build_mode`
@@ -378,16 +425,14 @@ Controller → AppConfig::getXxxConfig()
 4. Write to `cache` table (30s TTL) to reduce repeated query overhead
 5. Skip cache in `gitlab_ci` mode (to avoid stale Jenkins data contamination)
 
-#### 5.2.3 MappingManager's Role
-
+#### 5.3.3 MappingManager's Role
 All business-layer queries must go through `MappingManager`:
 - `activeMaps()` — returns all active mappings under current `build_mode`
 - `resolveProject(path)` — resolves `[provider, projectId]` from project path
 - `usedGitPlatforms()` — collects Git platforms used in active mappings
 - `activeJobNames()` — returns list of active job names
 
-#### 5.2.4 Git Platform Auto-Detection
-
+#### 5.3.4 Git Platform Auto-Detection
 When `git_platform` is not explicitly specified, the system auto-detects:
 
 1. Extract domain from `git_remote` URL
@@ -396,13 +441,11 @@ When `git_platform` is not explicitly specified, the system auto-detects:
 
 ---
 
-### 5.3 Dual-Channel Build System
-
+### 5.4 Dual-Channel Build System
 **Modes:** jenkins / gitlab_ci / gitea_ci (multi-select set)  
 **Unified route entry:** `/api/build/{path}/...`
 
-#### 5.3.1 Project Resolution
-
+#### 5.4.1 Project Resolution
 First step of all Build operations is `resolve(path)`:
 
 ```
@@ -412,8 +455,7 @@ MappingManager::resolveProject(path)
 └─ Returns projectId (jenkins=path, gitlab_ci=project_id or path)
 ```
 
-#### 5.3.2 BuildProvider Interface
-
+#### 5.4.2 BuildProvider Interface
 ```php
 interface BuildProviderInterface {
     public function getName(): string;          // 'jenkins' or 'gitlab_ci'
@@ -427,15 +469,13 @@ interface BuildProviderInterface {
 }
 ```
 
-#### 5.3.3 Trigger Build
-
+#### 5.4.3 Trigger Build
 **Route:** `POST /api/build/{path}/trigger`
 
 Parameter merge priority: POST body root-level > POST body `variables` nested > Query String  
 If only `ref` is present without other parameters, auto-convert to `{branches: ref}`.
 
-#### 5.3.4 Pipeline List
-
+#### 5.4.4 Pipeline List
 **Route:** `GET /api/build/{path}/pipelines?list=id|build|time|success`
 
 `list` parameter options:
@@ -445,8 +485,7 @@ If only `ref` is present without other parameters, auto-convert to `{branches: r
 - `time` — returns `["#10 [2026-07-25]", "#9 [...]]"` success + timestamp
 - (not provided) — returns full JSON (with build_provider, project_id, pipelines array)
 
-#### 5.3.5 Failure Points
-
+#### 5.4.5 Failure Points
 | Issue | Cause | Symptom |
 |---|---|---|
 | `Build system 'xxx' not configured` | build_mode inconsistent with actual Provider availability | 400 |
@@ -455,8 +494,7 @@ If only `ref` is present without other parameters, auto-convert to `{branches: r
 
 ---
 
-### 5.4 Scan Sync (scan-sync)
-
+### 5.5 Scan Sync (scan-sync)
 **Route:** `POST /api/build/{path}/scan-sync`  
 **Method:** `BuildController::scanSync()`
 
@@ -486,8 +524,7 @@ If only `ref` is present without other parameters, auto-convert to `{branches: r
 
 ---
 
-### 5.5 Commit Status Writeback
-
+### 5.6 Commit Status Writeback
 **Route:** `POST /api/build/{path}/commit-status`  
 **Method:** `BuildController::commitStatus()`
 
@@ -532,8 +569,7 @@ If only `ref` is present without other parameters, auto-convert to `{branches: r
 
 ---
 
-### 5.6 Security Scan Audit
-
+### 5.7 Security Scan Audit
 **Route:** `GET /api/admin/security_checks?project=&check_type=&state=&writeback=&page=1&per_page=20`  
 **Method:** `AdminController::securityChecksList()`
 
@@ -567,8 +603,7 @@ If only `ref` is present without other parameters, auto-convert to `{branches: r
 
 ---
 
-### 5.7 Platform Version Management
-
+### 5.8 Platform Version Management
 **Route:** `GET/PUT /api/admin/platform_versions`  
 **Method:** `AdminController::platformVersionsList()` / `platformVersionsUpdate()`
 
@@ -581,8 +616,7 @@ If only `ref` is present without other parameters, auto-convert to `{branches: r
 
 ---
 
-### 5.8 Build Mode Switching
-
+### 5.9 Build Mode Switching
 **Route:** `GET /api/admin/build_mode` + `PUT /api/admin/build_mode`  
 **Method:** `AdminController::getBuildMode()` / `updateBuildMode()`
 
@@ -615,23 +649,20 @@ If only `ref` is present without other parameters, auto-convert to `{branches: r
 
 ---
 
-### 5.9 Authentication & Authorization
-
-#### 5.9.1 Login
-
+### 5.10 Authentication & Authorization
+#### 5.10.1 Login
 **Route:** `POST /api/admin/login`  
 **Method:** `AdminController::login()`
 
 **Verification Priority:**
 1. Query `admin_users` table, `password_verify()` to check bcrypt hash
-2. `app.env` fallback only in two cases: (a) DB totally inaccessible (disaster recovery); (b) DB accessible but `admin_users` is empty (first deployment). Otherwise the `app.env` password is never accepted; recover a forgotten password via an offline patch — contact the author to obtain it.
+2. `app.env` fallback only when `admin_users` is empty (first deployment); when the DB is unreachable the login endpoint errors out instead. Otherwise the `app.env` password is never accepted; recover a forgotten password via an offline patch — contact the author to obtain it.
 3. Auth success → generate 64-char hex token → write to `cache` table (`admin_token_{token}`, 24h TTL)
 4. Pre-load user permissions to request attribute via `TokenService::loadPermissions()`
 
 > **Note:** This `app.env` fallback only applies to the Devops-Glue API global admin login flow. To create a CD-specific account, create the account in the admin backend and assign CD permissions first, then write it into the CD service's own `app.env` if that service supports it.
 
-#### 5.9.2 Token Verification (AuthMiddleware + TokenService)
-
+#### 5.10.2 Token Verification (AuthMiddleware + TokenService)
 **Middleware:** `AuthMiddleware` (applied to `/api/admin`, `/api/build`, `/api/git`, `/api/harbor` route groups)
 **Service:** `TokenService` (encapsulates token validation, permission loading, token revocation)
 
@@ -647,15 +678,13 @@ If only `ref` is present without other parameters, auto-convert to `{branches: r
 
 **On password change:** `TokenService::revoke()` deletes all old tokens from cache table, forces re-login.
 
-#### 5.9.3 Docs Page Authentication
-
+#### 5.10.3 Docs Page Authentication
 **Swagger UI (`/api/docs`) and OpenAPI JSON (`/api/openapi.json`):**
 - Uses routes.php closure `$checkAuth`, independent of `AuthMiddleware`
 - If `app.env` `ADMIN_PASSWORD` is empty → allow directly
 - Otherwise verify token (supports Bearer or Query String `?token=`)
 
-#### 5.9.4 Build/Git/Harbor Endpoint Authentication (new in v2.4.3)
-
+#### 5.10.4 Build/Git/Harbor Endpoint Authentication (new in v2.4.3)
 The `/api/build`, `/api/git`, and `/api/harbor` route groups are now protected by `AuthMiddleware`. All requests to these endpoints must include the `Authorization: Bearer <token>` header.
 
 **Authentication chain:**
@@ -668,8 +697,7 @@ CI → Jenkins: Basic Auth: user:api_token               ← CI's own service to
 
 > Downstream services (GitLab/Harbor/Jenkins) use independent service-account authentication and never receive CI user tokens. This is a standard BFF/Gateway pattern that prevents user tokens from leaking into downstream logs.
 
-#### 5.9.5 RBAC Permission System (v2.4, Data-Driven)
-
+#### 5.10.5 RBAC Permission System (v2.4, Data-Driven)
 The system uses a role-based access control (RBAC) model with **all tables stored in the database and fully manageable from the admin UI** (no code changes required when CD adds new menus/modules).
 
 | Table | Purpose |
@@ -762,12 +790,10 @@ The expanded permission array is loaded once in AuthMiddleware and cached in `$t
 
 ---
 
-### 5.10 Custom_Push CI Mode
-
+### 5.11 Custom_Push CI Mode
 Custom_Push is a **push-based CI** mode that complements the **pull-based CI** (Jenkins/GitLab CI). Users push build status, log URL, and image tags to Devops-Glue via their own CI scripts. Devops-Glue only stores metadata and log URL pointers; it does not participate in build execution nor store log content.
 
-#### 5.10.1 Orthogonal Design
-
+#### 5.11.1 Orthogonal Design
 | Dimension | build_mode | custom_push_enabled |
 |---|---|---|
 | Type | Pull-based CI | Push-based CI |
@@ -777,14 +803,12 @@ Custom_Push is a **push-based CI** mode that complements the **pull-based CI** (
 
 For example: `build_mode=jenkins,gitea_ci` + `custom_push_enabled=true` means Jenkins + Gitea Actions pull-based CI and Custom_Push push-based CI are active simultaneously.
 
-#### 5.10.2 Core Components
-
+#### 5.11.2 Core Components
 - **`CustomPushBuildProvider`** (`src/Service/Build/CustomPushBuildProvider.php`): Implements `BuildProviderInterface`, handles `trigger`, `getPipelines`, `updateStatus`, and other methods.
 - **`ci_custom_builds` table**: Stores build metadata with `(job_name, pipeline_iid)` as the unique key; `pipeline_iid` is an integer type.
 - **`ci_pipeline_artifacts` table**: Canonical pipeline-artifact facts; the CD layer reads via `GET /api/build/{path}/tag`.
 
-#### 5.10.3 Configuration & Registration
-
+#### 5.11.3 Configuration & Registration
 Configured via the `build.custom_providers` array in `settings.php`. CustomPushBuildProvider is configured by default:
 
 ```php
@@ -805,8 +829,7 @@ Configured via the `build.custom_providers` array in `settings.php`. CustomPushB
 
 The DI container (`container.php`) automatically registers all custom providers by iterating over the `build.custom_providers` configuration.
 
-#### 5.10.4 Report API
-
+#### 5.11.4 Report API
 **Result report: `POST /api/build/{path}/report`**
 
 | Field | Type | Required | Description |
@@ -828,20 +851,30 @@ The DI container (`container.php`) automatically registers all custom providers 
 > When `status=success`, `tag` and a resolvable `harbor_repository` are mandatory, and `ci_pipeline_artifacts` is written (provider, project_id, pipeline_iid, project_key, repository, tag, status); duplicate reports overwrite (UPDATE) the existing record.
 > All JSON keys use lowercase snake_case.
 
-#### 5.10.5 Log Proxy
-
+#### 5.11.5 Log Proxy
 Devops-Glue does not store log content, only `log_url` pointers. When accessing build logs, the system proxies log content via 302 redirect, ensuring the evidence chain is held by the executor (user CI).
 
-#### 5.10.6 Admin Panel
-
+#### 5.11.6 Admin Panel
 - **Status card**: System monitoring page shows Custom_Push status ✅ (configured) or ⚪ (not configured)
 - **Auto-discovery**: `AutoDiscover` scans Git platforms and automatically identifies projects with `build_provider=custom_push` when `custom_push_enabled=true`
 - **Multi-select checkboxes**: `build_mode` checkboxes (jenkins/gitlab_ci/gitea_ci + Select All) show only configured CIs
 - **Refresh requirements**: Frontend changes require browser hard refresh (Ctrl+F5); config/controller changes require backend restart
 
-#### 5.10.7 Permissions & Scope
-
+#### 5.11.7 Permissions & Scope
 The report endpoint reuses the `build.report` scope, authenticated via API Token `Authorization: Bearer <token>` header.
+
+### 5.12 Security Hardening (Response Headers / Audit Log)
+**Unified security response headers** (`config/docker/nginx.conf`): `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Permissions-Policy` (disables camera/microphone/geolocation etc.), plus CSP:
+
+```
+default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';
+img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self';
+object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+```
+
+- `'unsafe-inline'` cannot be removed for now: `admin.html` has many inline `onclick` and inline `style`. First-party JS has been verified to contain no `eval` / `new Function`, so `unsafe-eval` is not enabled. Once inline handlers are extracted to external event bindings, this can be narrowed to `script-src 'self'; style-src 'self'`.
+- ⚠️ **Mind the inheritance semantics when editing nginx headers**: a child block (`location` / `if`) containing **any** `add_header` discards all inherited parent `server`-level `add_header` directives — they are not additive. Because the static-asset location already has `add_header Cache-Control`, the 5 security headers must be repeated verbatim there (marked in the file as a "security header group"; change one, change the other).
+- HSTS stays commented inside the HTTPS block; enable it after HTTPS is turned on.
 
 ---
 
@@ -1007,6 +1040,9 @@ DB_USER=root
 DB_PASS=your_password
 DB_PATH=config/data/data.db        # SQLite only
 DB_AUTO_MIGRATE=true               # Auto-create tables; false requires manual scripts in database/
+BACKUP_DIR=/data/backups           # Backup output directory (shared by Web backup zip and CLI backup .sql)
+DB_BACKUP_ENABLED=0                # Docker: container cron backup loop (CI/CD split) switch (0=off, 1=on)
+DB_BACKUP_INTERVAL=86400           # Loop interval (seconds), default 86400 (daily)
 
 # ============ Application ============
 APP_ENV=production                 # production / staging / development
@@ -1014,6 +1050,7 @@ APP_DEBUG=false
 APP_LOCALE=zh_CN                   # Default locale (zh_CN / en)
 API_BASE_URL=http://127.0.0.1:8080 # Swagger / OpenAPI external address
 LOG_PATH=/applogs/                 # Log directory
+LOG_RETAIN_DAYS=30                 # App log retention days; Logger self-cleans old app-*.log (0=keep forever)
 ```
 
 ### 8.2 Complete Route Table
@@ -1022,6 +1059,7 @@ LOG_PATH=/applogs/                 # Log directory
 |---|---|---|---|
 | GET | `/` | No | Homepage HTML |
 | GET | `/admin` | No | Admin page HTML |
+| GET | `/healthz` | No | Liveness/readiness probe (DB + schema version only) |
 | GET | `/api/health` | No | Health check |
 | GET | `/api/docs` | Yes | Swagger UI |
 | GET | `/api/openapi.json` | Yes | OpenAPI 3.0 spec |

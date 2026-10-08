@@ -268,6 +268,15 @@ class Settings
     }
 
     /**
+     * 是否允许旧版 base64(user:password) 文档令牌（默认关，仅影响 /docs 文档鉴权的兼容回退）。
+     * 登录/API 鉴权早已不认此格式；现代随机 token 已覆盖文档访问，此开关默认禁用。
+     */
+    public function isLegacyTokenEnabled(): bool
+    {
+        return (bool)($this->config['admin']['legacy_token'] ?? false);
+    }
+
+    /**
      * LDAP 身份源配置。
      * 仅在 settings.php 的 ldap.enabled=true 时启用；密码源、DN 模板、过滤等均从 app.env 读取。
      *

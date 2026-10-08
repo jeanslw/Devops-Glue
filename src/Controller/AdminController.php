@@ -17,6 +17,7 @@ use App\Service\JenkinsService;
 use App\Service\DeployLogRepository;
 use App\Service\MappingManager;
 use App\Service\OperationLogRepository;
+use App\Service\PasswordHasher;
 use App\Service\PlatformVersionRepository;
 use App\Service\Settings;
 use App\Service\TokenService;
@@ -270,7 +271,7 @@ class AdminController extends BaseController
             $this->pdo->prepare("DELETE FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key LIKE ? AND expires_at <= ?")
                 ->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . '%', time()]);
             $sql = \App\Service\Database::sqlUpsert(AppConfig::TABLE_CACHE, 'cache_key, value, expires_at', '?, ?, ?');
-            $this->pdo->prepare($sql)->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . $token, $user . '|' . $loginRole, time() + AppConfig::TTL_TOKEN]);
+            $this->pdo->prepare($sql)->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . TokenService::hashAdminToken($token), $user . '|' . $loginRole, time() + AppConfig::TTL_TOKEN]);
         } catch (\Exception $e) {
             return $this->jsonError($response, 'auth.token_store_failed', 500);
         }
@@ -320,7 +321,7 @@ class AdminController extends BaseController
     {
         try {
             $stmt = $this->pdo->prepare("SELECT value FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key = ?");
-            $stmt->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . $token]);
+            $stmt->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . TokenService::hashAdminToken($token)]);
             $value = $stmt->fetchColumn();
             if ($value !== false && $value !== '') {
                 return (string)explode('|', (string)($value ?? ''), 2)[0];
@@ -358,7 +359,7 @@ class AdminController extends BaseController
                 return $this->jsonError($response, 'auth.old_password_wrong', 403);
             }
 
-            $hash = password_hash($newPass, PASSWORD_BCRYPT);
+            $hash = PasswordHasher::hash($newPass);
             $repository = new \App\Service\AdminUserRepository($this->pdo);
             $repository->updatePassword($username, $hash);
 
@@ -927,7 +928,7 @@ class AdminController extends BaseController
                 return $this->jsonError($response, 'user.username_exists', 409);
             }
 
-            $hash = password_hash($password, PASSWORD_BCRYPT);
+            $hash = PasswordHasher::hash($password);
             $this->adminUserRepository->createUser($username, $hash, $role, $systems, $email);
 
             $this->opLog()->record($this->currentUser, 'create_user', $username, ['role' => $role, 'systems' => $systems], $this->clientIp($request), 'success');
@@ -1010,7 +1011,7 @@ class AdminController extends BaseController
                 if (strlen($password) < 8) {
                     return $this->jsonError($response, 'auth.new_password_short', 400);
                 }
-                $passwordHash = password_hash($password, PASSWORD_BCRYPT);
+                $passwordHash = PasswordHasher::hash($password);
             }
 
             if ($role === null && $passwordHash === null && $email === null) {
@@ -1065,7 +1066,7 @@ class AdminController extends BaseController
                 return $this->jsonError($response, 'user.cannot_edit_root', 403);
             }
 
-            $this->adminUserRepository->updatePassword($targetUser, password_hash($newPass, PASSWORD_BCRYPT));
+            $this->adminUserRepository->updatePassword($targetUser, PasswordHasher::hash($newPass));
 
             $this->opLog()->record($this->currentUser, 'reset_user_password', $targetUser, [], $this->clientIp($request), 'success');
             return $this->output($response, ['success' => true, 'username' => $targetUser], $request);
@@ -1980,7 +1981,8 @@ class AdminController extends BaseController
 
     /**
      * POST /api/admin/backup — 手动执行数据库备份，仅备份、不提供恢复。
-     * 支持 sqlite / mysql 两种驱动，产物为 zip 归档，命名 devops-glue_<driver>_<datetime>.zip
+     * 支持 sqlite / mysql 两种驱动，产物为 zip 归档，命名 devops-glue_<driver>_<datetime>.zip；
+     * 启用 CD（共享库存在 cd_* 表）时额外产出一份 devops-cd_<driver>_<datetime>.zip。
      * 权限：仅 super_admin（与迁移同级，属敏感运维操作）。
      *
      * 备份目录：Docker 内 BACKUP_DIR=/data/backups（compose 卷映射宿主 ./data/backups）；
@@ -1996,22 +1998,36 @@ class AdminController extends BaseController
         }
         try {
             $service = new \App\Service\DataBackupService($this->pdo);
-            [$zipFile, $counts] = $service->backup(10);
+            $files   = $service->backup(10);
+            $warning = $service->lastWarning();
 
+            $detail = ['driver' => $service->driver(), 'files' => count($files)];
+            if ($warning !== '') {
+                $detail['warning'] = $warning;
+            }
             $this->opLog()->record(
                 $this->currentUser,
                 'backup_database',
-                $zipFile,
-                ['driver' => $service->driver(), 'tables' => count($counts), 'rows' => array_sum($counts)],
+                implode(', ', array_column($files, 'name')),
+                $detail,
                 $this->clientIp($request),
                 'success'
             );
 
+            $out = [];
+            foreach ($files as $f) {
+                $out[] = [
+                    'name'   => $f['name'],
+                    'mode'   => $f['mode'],
+                    'tables' => count($f['counts']),
+                    'rows'   => array_sum($f['counts']),
+                ];
+            }
+
             return $this->output($response, [
-                'success' => true,
-                'file'    => $zipFile,
-                'tables'  => count($counts),
-                'rows'    => array_sum($counts),
+                'success'  => true,
+                'files'    => $out,
+                'warnings' => $warning !== '' ? [$warning] : [],
             ], $request);
         } catch (\Throwable $e) {
             if ($this->currentUser !== '') {

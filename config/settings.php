@@ -121,6 +121,9 @@ return [
     'admin' => [
         'user'     => env('ADMIN_USER', 'admin'),
         'password' => env('ADMIN_PASSWORD', ''),
+        // 旧版 base64(user:password) 文档令牌兼容开关（默认关）。
+        // 该格式无过期/无吊销且等价于明文凭证；现代随机 token 已覆盖 /docs 访问，此兼容仅按需开启。
+        'legacy_token' => env('ADMIN_LEGACY_TOKEN', 'false') === 'true',
     ],
 
     // ==================== LDAP 外部身份源登录 ====================
@@ -162,6 +165,8 @@ return [
         'debug'         => env('APP_DEBUG') === 'true',
         'build_timeout' => (int) env('BUILD_TIMEOUT', '300'),
         'log_path'      => env('LOG_PATH', '/data/logs/ci-platform/'),
+        // 应用日志保留天数：Logger 按此清理旧的 app-*.log（0=不清理）；裸机/Docker 通吃
+        'log_retain_days' => max(0, (int) env('LOG_RETAIN_DAYS', '30')),
         'api_base_url'  => env('API_BASE_URL', ''),
         // 当前实例类型：ci / cd / both（影响登录权限校验）
         'system_type'   => env('SYSTEM_TYPE', 'ci'),

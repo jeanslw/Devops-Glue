@@ -56,7 +56,8 @@ class Log
             //   APP_DEBUG=true  -> 'debug'：debug/info/warning/error 全记（开发联调用）
             //   APP_DEBUG=false -> 'info'：保留 info/warning/error（生产诊断信息不丢，仅过滤 debug 噪声）
             $level = !empty($settings['app']['debug']) ? 'debug' : 'info';
-            self::$logger = new Logger($logPath, $level);
+            $retainDays = (int) ($settings['app']['log_retain_days'] ?? 30);
+            self::$logger = new Logger($logPath, $level, $retainDays);
         } catch (\Throwable $e) {
             // Logger 初始化失败，保持 null，后续调用走 error_log 分支
             self::$logger = null;

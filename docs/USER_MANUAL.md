@@ -303,7 +303,7 @@ Besides built-in accounts, the system supports logging in with enterprise **LDAP
 Once LDAP is enabled, the login check order is: **local account → LDAP → config fallback**. That is:
 1. The local `admin_users` table is checked first;
 2. If the local check fails / no such account, LDAP is checked next;
-3. Only in extreme cases (e.g. the DB is unreachable) does it fall back to the `app.env` fallback account.
+3. Only on first deployment (the `admin_users` table is empty) does it fall back to the `app.env` fallback account.
 
 ### 8.2 Prerequisites
 

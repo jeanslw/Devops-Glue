@@ -23,8 +23,8 @@ class Database
         return self::$pdo;
     }
 
-    /** ci_app_settings 中记录「已应用的 schema/种子版本」的 key */
-    private const SCHEMA_VERSION_KEY = 'schema_version';
+    /** ci_app_settings 中记录「已应用的 schema/种子版本」的 key（/healthz 探针也引用，故公开） */
+    public const SCHEMA_VERSION_KEY = 'schema_version';
 
     // ── 初始化 ──
 
@@ -524,7 +524,6 @@ class Database
             result {$VARCHAR} DEFAULT 'success',
             created_at {$TS_TYPE} DEFAULT ({$NOW})
         ){$ENGINE}");
-
         // ci_api_access_logs（API token 调用审计日志，append-only + 定时清理）
         // 安全约束：只记 token 展示名，不记 token/hash/body/query；route 存路由模板。
         // 列宽显式声明并与 database/*_init.sql 保持一致（route/scopes/error_reason 需 500）。

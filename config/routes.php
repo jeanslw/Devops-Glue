@@ -2,6 +2,7 @@
 use Slim\App;
 use Slim\Routing\RouteCollectorProxy;
 use App\Controller\GitController;
+use App\Controller\HealthzController;
 use App\Controller\MainController;
 use App\Controller\HarborController;
 use App\Controller\AdminController;
@@ -25,6 +26,11 @@ $app->get('/admin', function ($request, $response) {
         : '<h1>Page Not Found / 页面丢失</h1>');
     return $response->withHeader('Content-Type', 'text/html; charset=utf-8');
 });
+
+// 存活/就绪探针（无需鉴权）：供 Uptime Kuma / 云 LB / 容器编排抓取。
+// 只探 DB 可达性 + schema 版本，DB 不可访问时返回 503（而非 500）。
+// 独立 HealthzController（零构造依赖），避免经 MainController 的 \PDO DI 解析在 DB 宕机时先抛 500。
+$app->get('/healthz', [HealthzController::class, '__invoke']);
 
 $app->group('/api', function (RouteCollectorProxy $api) {
 
