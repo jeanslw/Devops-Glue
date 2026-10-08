@@ -21,9 +21,7 @@ x-web-common: &web-common
     #- ./config/certs:/etc/nginx/certs:ro
     #- ./config/data:/app/config/data
     - ./logs/ci-platform:/data/logs/ci-platform
-    # PHP 引擎层原生错误日志（php-error.log，fpm error_log + catch_workers_output）。
-    # 与应用业务日志 app-*.log 分开；若无需在宿主机留存，可删除此行。
-    - ./logs/php_log:/data/logs/php_log
+    # PHP 引擎错误日志已改走容器 stderr（见 php-fpm.conf），由 json-file 日志驱动滚动，不再落盘宿主机。
     # 运行时数据持久化到宿主机（分类挂载，互不覆盖）：
     #   /data/db       — SQLite（DB_PATH=/data/db/data.db）。
     #   /data/cache    — OIDC 私钥 + GitLab ID 缓存。
@@ -32,6 +30,29 @@ x-web-common: &web-common
     - ./data/cache:/data/cache
     - ./data/backups:/data/backups
   restart: unless-stopped
+  # ── 容器加固 ──
+  # supervisord 仍以 root 启动（需管理 nginx/php-fpm 子进程），但收缩 capabilities 到最小集：
+  # 全量 cap_drop: ALL 后仅重授下列真实需要的项，其余（NET_RAW/SYS_CHROOT/MKNOD/SETFCAP 等）一律剥离。
+  security_opt:
+    - no-new-privileges:true   # 禁止任何进程再提升权限（setuid 二进制 / file caps 失效）
+  cap_drop:
+    - ALL
+  cap_add:
+    - NET_BIND_SERVICE  # nginx 监听 :80（<1024 特权端口）
+    - CHOWN             # entrypoint 把运行时目录 chown 给 www-data
+    - SETUID            # nginx/php-fpm master(root) → worker(www-data) 降权
+    - SETGID
+    - DAC_OVERRIDE      # root 建目录/chmod 运行目录（/run、/data 等）
+    - FOWNER            # chmod 非本人属主文件（OIDC 私钥 0600 等）
+    - KILL              # master 优雅重启/回收 www-data worker（跨 UID 发信号）
+  # 容器 stdout/stderr 滚动：json-file 驱动按大小切分，单容器最多 max-size x max-file。
+  # 覆盖 PHP 引擎错误（已改走 stderr）、php-fpm master、nginx error_log 等全部容器输出。
+  # 裸机无此机制，应用层已用 LOG_RETAIN_DAYS 自清理 app-*.log。
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
   # 健康检查：
   #   1) nginx 在容器内 80 端口可接受 TCP 连接；
   #   2) php-fpm unix socket 存在（fpm 进程存活且监听就绪）。
@@ -82,7 +103,6 @@ services:
       - ./config/app.env:/app/config/app.env:ro
       - ./config/docker/supervisord-worker.conf:/etc/supervisor/conf.d/supervisord.conf:ro
       - ./logs/ci-platform:/data/logs/ci-platform
-      - ./logs/php_log:/data/logs/php_log
       # 运行时数据与 Web 容器共享（分类挂载，互不覆盖）：
       #   /data/db       — SQLite（DB_PATH=/data/db/data.db），worker 与 Web 共用同一库文件。
       #   /data/cache    — OIDC 私钥 + GitLab ID 缓存。

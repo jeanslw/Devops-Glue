@@ -13,7 +13,7 @@ use PHPUnit\Framework\TestCase;
  * AdminAuthService 回归测试（内存 SQLite）
  *
  * 锁定 #4 修复：Web 登录以 DB 为唯一权威，砍掉「root 3 次失败后 .env 密码兜底」的明文旁路。
- * 仅剩两种场景允许 .env 根密码：DB 不可访问（灾难恢复）、DB 可访问但尚无任何账号（首次部署）。
+ * 仅剩一种场景允许 .env 根密码：DB 可访问但尚无任何账号（首次部署）。DB 不可访问时直接抛异常。
  */
 class AdminAuthServiceTest extends TestCase
 {
@@ -76,9 +76,10 @@ class AdminAuthServiceTest extends TestCase
         $this->assertTrue($result['isRoot']);
     }
 
-    public function testEnvFallbackWhenDbDown(): void
+    public function testDbDownThrowsInsteadOfEnvFallback(): void
     {
-        // 覆盖 repository：findByUsername 抛异常 → 模拟 DB 完全不可访问（灾难恢复仍允许 .env 根密码）
+        // DB 完全不可访问：findByUsername 抛异常 → 直接向上传播（上层转 500），
+        // 不再降级到 .env 根密码兜底登录。
         $brokenRepo = new class($this->pdo) extends AdminUserRepository {
             public function findByUsername(string $username): ?array
             {
@@ -87,9 +88,8 @@ class AdminAuthServiceTest extends TestCase
         };
         $service = $this->makeService(['admin' => ['user' => 'admin', 'password' => 'envpass1234']], $brokenRepo);
 
-        $result = $service->authenticate('admin', 'envpass1234', AppConfig::SYSTEM_CI);
-        $this->assertTrue($result['success'], 'DB 不可访问时应允许 .env 根密码灾难恢复');
-        $this->assertSame(AppConfig::ROLE_SUPER_ADMIN, $result['role']);
+        $this->expectException(\RuntimeException::class);
+        $service->authenticate('admin', 'envpass1234', AppConfig::SYSTEM_CI);
     }
 
     public function testWrongCredentialsStillRejected(): void

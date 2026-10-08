@@ -8,6 +8,7 @@ use App\Helper\Log;
 use App\Service\AdminUserRepository;
 use App\Service\Database;
 use App\Service\I18nService;
+use App\Service\PasswordHasher;
 use App\Service\Settings;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -19,7 +20,7 @@ use Psr\Http\Message\ServerRequestInterface as Request;
  *   - 鉴权：仅 API token。AuthMiddleware 已按 resolveRequiredScope() 校验 `rbac.user.write`
  *     scope；此处再兜一道 `currentRole === api_token`，把「不走 scope 校验」的登录态用户
  *     （cache token）挡在门外，避免跳过 requirePermission 后任何登录用户都能建/删号。
- *   - 不变量：strtolower 归一化、password_hash(PASSWORD_BCRYPT)、root 账号保护、
+ *   - 不变量：strtolower 归一化、PasswordHasher::hash()、root 账号保护、
  *     super_admin 唯一性/禁止创建、密码最短 8 位。systems 恒为 'cd'（不接受入参）。
  *   - 跳过：requirePermission(ci.users.manage_admin) 与 currentRole===super_admin 判断
  *     （服务账号 currentRole 是 api_token，走角色校验会连 admin 都建不了）。
@@ -103,7 +104,7 @@ class RbacController extends BaseController
             if ($this->adminUserRepository->userExists($username)) {
                 return $this->jsonError($response, 'user.username_exists', 409);
             }
-            $hash = password_hash($password, PASSWORD_BCRYPT);
+            $hash = PasswordHasher::hash($password);
             $this->adminUserRepository->createUser($username, $hash, $role, AppConfig::SYSTEM_CD);
             return $this->output($response, ['success' => true, 'username' => $username], $request);
         } catch (\Exception $e) {
@@ -148,7 +149,7 @@ class RbacController extends BaseController
             if (strlen((string) $password) < 8) {
                 return $this->jsonError($response, 'auth.new_password_short', 400);
             }
-            $passwordHash = password_hash((string) $password, PASSWORD_BCRYPT);
+            $passwordHash = PasswordHasher::hash((string) $password);
         }
 
         if ($role === null && $passwordHash === null) {

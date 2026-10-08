@@ -296,7 +296,8 @@ export async function activateMap(jobName, item) {
         return;
     }
     if (bp === 'custom_push' && !currentCpEnabled) {
-        toast(__.t('js.cp_disabled_hint'), false);
+        const itemLabel = pullProviderMeta(bp).label;
+        toast(__.t('js.cannot_activate_mode', {item: itemLabel}), false);
         return;
     }
     if (!await confirmDialog({

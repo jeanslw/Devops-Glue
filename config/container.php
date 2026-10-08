@@ -113,10 +113,13 @@ return [
         );
     },
 
-    // CORS 中间件
-    CorsMiddleware::class => function (\Psr\Container\ContainerInterface $c) {
-        $config = $c->get(Settings::class);
-        return new CorsMiddleware($config->getCorsConfig());
+    // CORS 中间件：只读纯配置，不经过 Settings —— Settings 构造会连带解析
+    // PlatformVersionRepository → \PDO → 建立 DB 连接。若 DB 宕机，全局中间件
+    // 在每请求解析阶段就抛异常，/healthz 这类无鉴权探针自己的 try/catch 根本进不去，
+    // 会先被兜成 500。这里直接读 $settings['cors']（与 Settings::getCorsConfig() 同源），
+    // 彻底断开 DB 依赖链。
+    CorsMiddleware::class => function () use ($settings) {
+        return new CorsMiddleware($settings['cors'] ?? ['allowed_origins' => ['*']]);
     },
 
     // Token 验证服务（统一封装 cache token / 旧版 base64 token / API token 验证逻辑）

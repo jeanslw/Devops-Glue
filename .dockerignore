@@ -5,8 +5,8 @@
 .laragon
 .idea
 config/app.env
+config/app.env.local
 .env
-app.env.local
 .editorconfig
 vendor/
 Dockerfile

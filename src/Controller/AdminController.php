@@ -17,6 +17,7 @@ use App\Service\JenkinsService;
 use App\Service\DeployLogRepository;
 use App\Service\MappingManager;
 use App\Service\OperationLogRepository;
+use App\Service\PasswordHasher;
 use App\Service\PlatformVersionRepository;
 use App\Service\Settings;
 use App\Service\TokenService;
@@ -270,7 +271,7 @@ class AdminController extends BaseController
             $this->pdo->prepare("DELETE FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key LIKE ? AND expires_at <= ?")
                 ->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . '%', time()]);
             $sql = \App\Service\Database::sqlUpsert(AppConfig::TABLE_CACHE, 'cache_key, value, expires_at', '?, ?, ?');
-            $this->pdo->prepare($sql)->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . $token, $user . '|' . $loginRole, time() + AppConfig::TTL_TOKEN]);
+            $this->pdo->prepare($sql)->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . TokenService::hashAdminToken($token), $user . '|' . $loginRole, time() + AppConfig::TTL_TOKEN]);
         } catch (\Exception $e) {
             return $this->jsonError($response, 'auth.token_store_failed', 500);
         }
@@ -320,7 +321,7 @@ class AdminController extends BaseController
     {
         try {
             $stmt = $this->pdo->prepare("SELECT value FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key = ?");
-            $stmt->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . $token]);
+            $stmt->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . TokenService::hashAdminToken($token)]);
             $value = $stmt->fetchColumn();
             if ($value !== false && $value !== '') {
                 return (string)explode('|', (string)($value ?? ''), 2)[0];
@@ -358,7 +359,7 @@ class AdminController extends BaseController
                 return $this->jsonError($response, 'auth.old_password_wrong', 403);
             }
 
-            $hash = password_hash($newPass, PASSWORD_BCRYPT);
+            $hash = PasswordHasher::hash($newPass);
             $repository = new \App\Service\AdminUserRepository($this->pdo);
             $repository->updatePassword($username, $hash);
 
@@ -927,7 +928,7 @@ class AdminController extends BaseController
                 return $this->jsonError($response, 'user.username_exists', 409);
             }
 
-            $hash = password_hash($password, PASSWORD_BCRYPT);
+            $hash = PasswordHasher::hash($password);
             $this->adminUserRepository->createUser($username, $hash, $role, $systems, $email);
 
             $this->opLog()->record($this->currentUser, 'create_user', $username, ['role' => $role, 'systems' => $systems], $this->clientIp($request), 'success');
@@ -1010,7 +1011,7 @@ class AdminController extends BaseController
                 if (strlen($password) < 8) {
                     return $this->jsonError($response, 'auth.new_password_short', 400);
                 }
-                $passwordHash = password_hash($password, PASSWORD_BCRYPT);
+                $passwordHash = PasswordHasher::hash($password);
             }
 
             if ($role === null && $passwordHash === null && $email === null) {
@@ -1065,7 +1066,7 @@ class AdminController extends BaseController
                 return $this->jsonError($response, 'user.cannot_edit_root', 403);
             }
 
-            $this->adminUserRepository->updatePassword($targetUser, password_hash($newPass, PASSWORD_BCRYPT));
+            $this->adminUserRepository->updatePassword($targetUser, PasswordHasher::hash($newPass));
 
             $this->opLog()->record($this->currentUser, 'reset_user_password', $targetUser, [], $this->clientIp($request), 'success');
             return $this->output($response, ['success' => true, 'username' => $targetUser], $request);

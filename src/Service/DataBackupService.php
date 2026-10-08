@@ -11,7 +11,7 @@ use PDO;
  *   - 纯数据 .sql（INSERT，不含 DDL），排除易失/派生缓存表（cache、ci_platform_versions）；
  *   - 产物 zip 命名 devops-glue_<driver>_<datetime>.zip，保存到 BACKUP_DIR；
  *   - 目录：Docker 内 BACKUP_DIR=/data/backups（compose 卷映射宿主 ./data/backups）；
- *     非 Docker / 未设 BACKUP_DIR 时落仓库根 backups/（与 CLI 备份 bin/backup_lib.php 一致）；
+ *     非 Docker / 未设 BACKUP_DIR 时落仓库根 backups/（与 CLI 备份 cli/backup-lib.php 一致）；
  *     目录不存在则自动创建，并滚动留存最近 $keep 份。
  */
 class DataBackupService
@@ -141,7 +141,7 @@ class DataBackupService
             $dir = (string) $v;
         }
         if ($dir === '') {
-            // 非 Docker / 未设 BACKUP_DIR 时落仓库根 backups/（bin/backup_lib.php 的 CLI 默认一致）
+            // 非 Docker / 未设 BACKUP_DIR 时落仓库根 backups/（与 cli/backup-lib.php 的 CLI 默认一致）
             $dir = dirname(__DIR__, 2) . '/backups';
         }
         $dir = rtrim($dir, '/');

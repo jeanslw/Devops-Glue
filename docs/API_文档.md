@@ -57,6 +57,7 @@
 
 | 接口 | 方法 | 说明 |
 |---|---|---|
+| `/healthz` | GET | 存活/就绪探针（无需认证，只探数据库） |
 | `/api/health` | GET | 健康检查 |
 | `/api/i18n/{locale}` | GET | 获取语言包（`zh_CN` 或 `en`） |
 | `/api/docs` | GET | Swagger UI 文档页面（未登录时同页显示登录框） |
@@ -65,6 +66,32 @@
 | `/api/admin/logout` | POST | 登出，撤销 Token |
 | `/.well-known/openid-configuration` | GET | OIDC 发现文档（公开；详见[单点登录](单点登录.md)） |
 | `/.well-known/jwks.json` | GET | OIDC 签名公钥（公开） |
+
+---
+
+## 存活/就绪探针
+
+```
+GET /healthz
+```
+
+无需认证的外部探针，供 Uptime Kuma / 云负载均衡 / 容器编排抓取。只检测数据库可达性与已应用的 schema 版本，不探测 Jenkins/Git/Harbor，毫秒级返回。
+
+```json
+{
+  "status": "ok",
+  "db": true,
+  "app_version": "2.8.8",
+  "schema_version": "2.8.8",
+  "time": 1760000000
+}
+```
+
+- `status`: `ok`（数据库可达） | `degraded`（数据库不可达）
+- `db`: `true` / `false`
+- `schema_version`: 已应用的 schema/种子版本；首次部署尚未标记时为 `null`
+- `time`: Unix 时间戳（秒）
+- HTTP 200（正常）/ 503（数据库不可达，探针如实上报而非 500）
 
 ---
 

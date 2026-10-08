@@ -57,6 +57,7 @@ To restrict origins, edit `config/settings.php`:
 
 | Endpoint | Method | Description |
 |---|---|---|
+| `/healthz` | GET | Liveness / readiness probe (no auth, DB only) |
 | `/api/health` | GET | Health check |
 | `/api/i18n/{locale}` | GET | Get language pack (`zh_CN` or `en`) |
 | `/api/docs` | GET | Swagger UI page (shows the embedded login form when unauthenticated) |
@@ -65,6 +66,32 @@ To restrict origins, edit `config/settings.php`:
 | `/api/admin/logout` | POST | Logout, revoke token |
 | `/.well-known/openid-configuration` | GET | OIDC discovery document (public; see [Single-Sign-On](Single-Sign-On.md)) |
 | `/.well-known/jwks.json` | GET | OIDC signing keys (public) |
+
+---
+
+## Liveness / Readiness Probe
+
+```
+GET /healthz
+```
+
+Unauthenticated external probe for Uptime Kuma / cloud load balancers / container orchestration. It only checks database reachability and the applied schema version — it does not probe Jenkins/Git/Harbor and returns in milliseconds.
+
+```json
+{
+  "status": "ok",
+  "db": true,
+  "app_version": "2.8.8",
+  "schema_version": "2.8.8",
+  "time": 1760000000
+}
+```
+
+- `status`: `ok` (database reachable) | `degraded` (database unreachable)
+- `db`: `true` / `false`
+- `schema_version`: applied schema/seed version; `null` until first deployment marks it
+- `time`: Unix timestamp (seconds)
+- HTTP 200 (ok) / 503 (database unreachable — reported truthfully, not 500)
 
 ---
 

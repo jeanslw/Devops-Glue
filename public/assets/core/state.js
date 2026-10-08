@@ -19,9 +19,10 @@ export function isPullProvider(bp) { return PULL_PROVIDERS.includes(bp); }
 
 export function pullProviderMeta(bp) {
     switch (bp) {
-        case 'jenkins':   return { icon: '⚡', label: __.t('js.mode_jenkins_name'),   cls: 'jenkins' };
-        case 'gitlab_ci': return { icon: '🐺', label: __.t('js.mode_gitlab_ci_name'), cls: 'gitlab' };
-        case 'gitea_ci':  return { icon: '🦎', label: __.t('js.mode_gitea_ci_name'),  cls: 'gitea' };
-        default:          return { icon: '🔧', label: bp, cls: '' };
+        case 'jenkins':    return { icon: '⚡', label: __.t('js.mode_jenkins_name'),   cls: 'jenkins' };
+        case 'gitlab_ci':  return { icon: '🐺', label: __.t('js.mode_gitlab_ci_name'), cls: 'gitlab' };
+        case 'gitea_ci':   return { icon: '🦎', label: __.t('js.mode_gitea_ci_name'),  cls: 'gitea' };
+        case 'custom_push':return { icon: '📤', label: __.t('js.mode_custom_push_name'), cls: 'custom-push' };
+        default:           return { icon: '🔧', label: bp, cls: '' };
     }
 }

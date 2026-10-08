@@ -11,7 +11,7 @@ jobs:
   security:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: PHP Lint
         run: |
@@ -21,11 +21,12 @@ jobs:
 
       - name: Check Hardcoded Secrets
         run: |
-          # 检查源码中是否误提交了真实凭证（排除 .env 和 vendor）
-          if grep -rE "(glpat-|1165125392|Admin12345)" . \
-            --include="*.php" --include="*.json" \
-            --exclude-dir=vendor --exclude-dir=.git \
-            --exclude="*.env*" --exclude="*/.env"; then
+          # 扫描所有已跟踪文件（含 .env / .env.example / *.yml / *.sh / Dockerfile）是否误提交真实凭证。
+          # 用 git grep：只扫 .gitignore 之外的已提交文件，自动跳过 vendor、node_modules、
+          # 以及本地真实配置 config/app.env、app.env.local —— 不再排除 .env。
+          # glpat- 限定至少 8 位令牌串，避免误报文档里的占位符 glpat-xxxx；
+          # 数字用 [x] 打断字面量，避免扫到本文件自身的模式定义。
+          if git grep -nE "(glpat-[A-Za-z0-9_-]{8,}|116512539[2]|Admin1234[5])" -- .; then
             echo "❌ 发现硬编码的敏感信息！"
             exit 1
           fi

@@ -38,6 +38,7 @@ Devops-Glue API is a Slim4-based unified API layer that provides a single manage
 
 | Devops-Glue API | Devops-Glue CD |
 |:---:|:---:|
+| v2.8.9 | v1.5.7 |
 | v2.8.8 | v1.5.6 |
 | v2.8.7 | v1.5.x |
 | v2.8.6 | v1.5.x |
@@ -114,6 +115,8 @@ Two databases are supported, selected by `DB_DRIVER`:
 - `true` (default): auto-create tables and seed data on first boot.
 - `false`: manually run the init scripts under `database/` (`mysql_init.sql` or `sqlite_init.sql`); seed data is still applied on boot.
 
+> **Database backup**: after logging in, click **Back up database** on the "System Settings → Data Management → Database" card (visible to `super_admin` only) to generate a backup on demand. Both SQLite and MySQL are supported; the artifact is `devops-glue_<driver>_<datetime>.zip` (containing a pure-data `.sql` export with the same name, excluding the `cache` / `ci_platform_versions` tables) saved to `BACKUP_DIR`. Under Docker the volume `./data/backups:/data/backups` lands backups in the host `./data/backups`; outside Docker without `BACKUP_DIR` they go to the repo-root `backups/` (auto-created), rolling over the latest 10 files. Backup is **export-only — there is intentionally no online restore**: restoring a database is a high-risk, high-impact event that must be performed by an administrator in person, with an audit trail, so no online restore entry is exposed. To restore, use an offline patch — contact the author to obtain it.
+
 ---
 
 ## 6. Start the Service
@@ -153,7 +156,7 @@ Open `http://localhost:8080/admin` and log in with `ADMIN_USER` / `ADMIN_PASSWOR
 
 - Switch the UI language (Chinese / English) at the top right.
 - Change your password under "User Management → Change Password".
-- Admin authentication is validated against the database first; the `app.env` password only serves as a fallback when the database is totally inaccessible (disaster recovery) or the `admin_users` table is empty (first deployment). For a forgotten password, use an offline patch — contact the author to obtain it.
+- Admin authentication is validated against the database first; the `app.env` password only serves as a fallback when the `admin_users` table is empty (first deployment). **There is intentionally no self-service "forgot password" feature**: resetting a password is a high-risk, high-impact event that must be performed by an administrator in person, with an audit trail, so no online recovery entry is exposed. To recover a forgotten password, use an offline patch — contact the author to obtain it.
 
 The admin panel sidebar contains the following modules:
 
@@ -195,7 +198,7 @@ VALUES ('zhangsan', 'ldap', 'uid=zhangsan,ou=users,dc=example,dc=com', 'zhangsan
 ```
 
   Authorization (role, allowed systems, email, etc.) always follows the matching `admin_users` row — LDAP is only the identity source. After a successful LDAP login the stored email and latest LDAP attributes are refreshed automatically; an account disabled in the admin panel (`status=0`) cannot sign in through LDAP either.
-- **Failure semantics**: a failed bind (wrong password / unknown user) is reported as a generic credentials error. If the LDAP server itself is unreachable (connection failure, missing extension, …), login falls through to the `app.env` fallback, exactly like the disaster-recovery path — the system stays usable.
+- **Failure semantics**: a failed bind (wrong password / unknown user) is reported as a generic credentials error. If the LDAP server itself is unreachable (connection failure, missing extension, …), login falls through to the `app.env` fallback — the system stays usable.
 - **Security**: usernames are escaped before being interpolated into `LDAP_USER_FILTER` / `LDAP_USER_DN_PATTERN`, so it is safe to embed user input in these templates.
 
 Environment variables: see [Appendix A](#appendix-a-environment-variables-reference).
@@ -784,7 +787,7 @@ ADMIN_PASSWORD=               # Created on first boot; DB takes precedence after
 
 # Note:
 #   - For super_admin login, the system first validates against the admin_users DB record.
-#   - The system falls back to app.env ADMIN_USER/ADMIN_PASSWORD only when the DB is totally inaccessible (disaster recovery) or the admin_users table is empty (first deployment).
+#   - The system falls back to app.env ADMIN_USER/ADMIN_PASSWORD only when the admin_users table is empty (first deployment).
 #   - This ADMIN_USER/ADMIN_PASSWORD pair is only used by the Devops-Glue API global admin fallback logic.
 #   - To create a CD-specific account, create the account in the admin backend, assign Devops-Glue CD permissions, and then write it into the Devops-Glue CD's own app.env if that service supports it.
 
