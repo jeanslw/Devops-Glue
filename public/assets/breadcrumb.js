@@ -23,7 +23,7 @@ export function renderBreadcrumb(tab) {
     const parts = [];
 
     // 首页指向后台入口（adminRootPath：根域 -> /admin，子路径 -> /{prefix}/admin），避免 / 落到宣传页。
-    parts.push(`<a href="${adminRootPath()}" class="bc-item bc-home">🏠 ${__.t('admin.console')}</a>`);
+    parts.push(`<a href="${esc(adminRootPath())}" class="bc-item bc-home">🏠 ${esc(__.t('admin.console'))}</a>`);
 
     trail.forEach((node, i) => {
         const isLast = i === trail.length - 1;
@@ -32,11 +32,11 @@ export function renderBreadcrumb(tab) {
         // 点击会落到 doSwitch('<分组>') 导致所有 tab 隐藏 -> 空白页，因此一律渲染为静态文本。
         const isGroup = /-group$/.test(node.key);
         if (isLast) {
-            parts.push(`<span class="bc-item bc-current">${node.icon ? node.icon + ' ' : ''}${esc(label)}</span>`);
+            parts.push(`<span class="bc-item bc-current">${node.icon ? esc(node.icon) + ' ' : ''}${esc(label)}</span>`);
         } else if (isGroup) {
-            parts.push(`<span class="bc-item">${node.icon ? node.icon + ' ' : ''}${esc(label)}</span>`);
+            parts.push(`<span class="bc-item">${node.icon ? esc(node.icon) + ' ' : ''}${esc(label)}</span>`);
         } else {
-            parts.push(`<a href="#/${node.key}" class="bc-item">${node.icon ? node.icon + ' ' : ''}${esc(label)}</a>`);
+            parts.push(`<a href="#/${esc(node.key)}" class="bc-item">${node.icon ? esc(node.icon) + ' ' : ''}${esc(label)}</a>`);
         }
     });
 
