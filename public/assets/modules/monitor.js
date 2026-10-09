@@ -20,7 +20,7 @@ export async function loadMonitor() {
             else stat.removeAttribute('data-i18n');
         }
         if (dot) dot.className = 'dot ' + (ok===true?'dot-ok':ok===null?'dot-off':'dot-err');
-        if (name && ver) name.innerHTML = (name.dataset.base || name.textContent) + ' <span class="svc-ver">' + esc(ver) + '</span>';
+        if (name && ver) name.innerHTML = esc(name.dataset.base || name.textContent) + ' <span class="svc-ver">' + esc(ver) + '</span>';
     }
 
     const staticReq = fetch(HEALTH_STATIC_API, { headers: authHeaders() });
