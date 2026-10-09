@@ -39,7 +39,7 @@ class ApiScopeResolver
             return null;
         }
 
-        // RBAC（CD 服务账号专用）：用户读写（建/读/改/删/校验密码）+ 角色目录，统一 scope。
+        // RBAC（CD 服务账号专用）：用户读写（建/读/改/删）+ 角色目录，统一 scope。
         // 复用 rbac.user.write 而非新增 read scope：CD 是单一 trusted 消费方，token 本就有写权限，
         // 读操作不构成额外提权，也避免为读接口再重签 token。不落入 /api/admin fail-closed。
         if (preg_match('#^/api/rbac($|/)#', $path)) {

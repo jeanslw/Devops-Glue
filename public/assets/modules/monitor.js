@@ -38,8 +38,7 @@ export async function loadMonitor() {
         document.getElementById('stat-platforms').textContent = st.git_platforms ?? '—';
         document.getElementById('stat-repos').textContent = st.harbor_repos ?? '—';
 
-        const dbMap = { 'mysql': 'system.db_mysql', 'sqlite': 'system.db_sqlite' };
-        const dbKey = dbMap[(data.db_driver || '').toLowerCase()] || 'common.unknown';
+        // DB 驱动展示：优先原始驱动名，缺失时回退「未知」翻译（__.t 签名只有 (key, params)，不支持默认值第三参）
         const bmLabel = (Array.isArray(data.build_modes) && data.build_modes.length > 0)
             ? data.build_modes.map(m => {
                 switch (m) {
@@ -56,7 +55,7 @@ export async function loadMonitor() {
         const sysEnvType   = document.getElementById('sys-env-type');
         const sysTime      = document.getElementById('sys-system-time');
         if (sysBuildMode) sysBuildMode.textContent = bmLabel;
-        if (sysDbType)    sysDbType.textContent    = __.t(dbKey, null, data.db_driver || '—');
+        if (sysDbType)    sysDbType.textContent    = data.db_driver ? data.db_driver : __.t('common.unknown');
         if (sysAppVer)    sysAppVer.textContent    = data.app_version ? 'v' + data.app_version : '—';
         if (sysEnvType)   sysEnvType.textContent   = data.app_env || '—';
         if (sysTime)      sysTime.textContent      = (data.time ? String(data.time).substring(0, 16) : '—');

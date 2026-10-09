@@ -106,7 +106,6 @@ class ApiTokenScopeTest extends TestCase
             'rbac 用户删'             => ['DELETE', '/api/rbac/users/alice', AppConfig::API_SCOPE_RBAC_USER_WRITE],
             'rbac 用户列表读'          => ['GET', '/api/rbac/users', AppConfig::API_SCOPE_RBAC_USER_WRITE],
             'rbac 单用户读'           => ['GET', '/api/rbac/users/alice', AppConfig::API_SCOPE_RBAC_USER_WRITE],
-            'rbac 校验密码'           => ['POST', '/api/rbac/users/alice/verify-password', AppConfig::API_SCOPE_RBAC_USER_WRITE],
             'rbac 角色目录'           => ['GET', '/api/rbac/roles', AppConfig::API_SCOPE_RBAC_USER_WRITE],
             '未知路径 fail-closed'     => ['GET', '/api/unknown/thing', null],
         ];

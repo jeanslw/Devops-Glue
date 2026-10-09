@@ -7,7 +7,10 @@ function isAdminRole(role) { return role === 'admin' || role === 'super_admin'; 
 
 function roleLabel(user) {
     if (user.role === 'super_admin') return '👑 ' + __.t('user.role_super_admin');
-    return __.t('user.role_' + user.role) || user.role;
+    // __.t 未命中返回 key 本身，需比对 key 判断是否命中，命中失败回退原始 role
+    const key = 'user.role_' + user.role;
+    const t = __.t(key);
+    return t === key ? user.role : t;
 }
 
 let _rolesCache = null;
@@ -153,7 +156,11 @@ async function populateRoleSelect(selected) {
     const canManageAdmin = hasPermission('ci.users.manage_admin');
     roles.forEach(function(r) {
         if (r.name === 'super_admin' && !canManageAdmin) return;
-        sel.add(new Option(r.description || __.t('user.role_' + r.name) || r.name, r.name));
+        // 翻译命中用翻译，否则用服务端 description，最后回退 role name
+        const roleKey = 'user.role_' + r.name;
+        const translated = __.t(roleKey);
+        const label = translated !== roleKey ? translated : (r.description || r.name);
+        sel.add(new Option(label, r.name));
     });
     const found = Array.from(sel.options).some(o => o.value === selected);
     if (found) sel.value = selected;

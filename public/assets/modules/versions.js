@@ -55,7 +55,7 @@ export async function loadVersions() {
                 <td><strong>${info.label}</strong> <span style="color:#9ca3af;font-size:11px;">(${key})</span></td>
                 <td><code style="font-size:12px;color:#6b7280;">${esc(defVer)}</code></td>
                 <td>${srcBadge}</td>
-                <td><input data-platform="${key}" value="${esc(displayVal)}" placeholder="${esc(ph)}"
+                <td><input data-platform="${key}" value="${esc(displayVal)}" data-initial="${esc(displayVal)}" placeholder="${esc(ph)}"
                       style="${inputStyle}" ${readonly ? 'readonly title="' + esc(__.t('js.version_config_readonly_title')) + '"' : ''}></td>
                 <td style="font-size:12px;color:#6b7280;">${info.desc()}</td>
             </tr>`;
@@ -122,12 +122,16 @@ function getDefaultVer(key) {
 }
 
 export async function saveVersions() {
+    // 后端 saveAll 语义：先清空覆盖表，空串/等于默认值的不落库 → 提交空串即「清空恢复默认」。
+    // 因此必须收集所有输入框的值（含空串）；仅当本次没有任何改动时才跳过提交。
     const versions = {};
+    let changed = false;
     document.querySelectorAll('#ver-tbody input').forEach(inp => {
         const val = inp.value.trim();
-        if (val) versions[inp.dataset.platform] = val;
+        versions[inp.dataset.platform] = val;
+        if (val !== (inp.dataset.initial || '').trim()) changed = true;
     });
-    if (Object.keys(versions).length === 0) { toast(__.t('js.no_version_changes'), true); return; }
+    if (!changed) { toast(__.t('js.no_version_changes'), true); return; }
     try {
         const res = await fetch(VERSIONS_API, {
             method: 'PUT',
