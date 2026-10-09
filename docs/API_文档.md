@@ -379,7 +379,7 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 
 > **CD 服务账号专用**：供 Devops-Glue CD 等可信服务管理 CD 用户与角色，不面向浏览器后台。鉴权仅接受 **API Token**（需包含 `rbac.user.write` scope，创建方式见下文「API Token 管理」）；使用登录态 Token 调用一律返回 403。与 `/api/admin/users` 交互式后台的差异：本模块创建 / 更新的用户 `systems` 恒为 `cd`，禁止创建或删除 `super_admin`，密码最短 8 位。
 >
-> **v2.8.1 起的安全边界**：更新 / 删除接口只允许操作 `systems` 含 `cd` 的账号（非 CD 账号返回 403）；`verify-password` 同样拒绝 `root` / `super_admin` 及非 CD 账号，并按 **IP + 用户名 5 次失败 / 15 分钟**限流，超限返回 429。
+> **v2.8.1 起的安全边界**：更新 / 删除接口只允许操作 `systems` 含 `cd` 的账号（非 CD 账号返回 403）。原 `verify-password` 校验密码接口已移除——CD 侧登录改为本地校验自有账号密码，无需再经 CI 验密。
 
 | 接口 | 方法 | 说明 |
 |---|---|---|
@@ -388,7 +388,6 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 | `/api/rbac/users/{username}` | GET | 查询单个账号 |
 | `/api/rbac/users/{username}` | PUT | 更新账号（body: `password` 和/或 `role`） |
 | `/api/rbac/users/{username}` | DELETE | 删除账号（root 与 super_admin 受保护） |
-| `/api/rbac/users/{username}/verify-password` | POST | 校验账号密码（body: `password`；供 CD 侧登录校验） |
 | `/api/rbac/roles` | GET | 可用角色列表 |
 
 ---

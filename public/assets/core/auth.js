@@ -39,6 +39,7 @@ export function setSession(data) {
 export async function refreshPermissions() {
     try {
         const res = await fetch('/api/admin/me/permissions', { headers: authHeaders() });
+        if (res.status === 401) { doLogout(); return; }
         if (res.ok) {
             const data = await res.json();
             currentPermissions = normalizePerms(data.permissions);

@@ -121,7 +121,6 @@ $app->group('/api', function (RouteCollectorProxy $api) {
         // 读
         $rbac->map(['GET'], '/users', [RbacController::class, 'userList']);
         $rbac->map(['GET'], '/users/{username}', [RbacController::class, 'userGet']);
-        $rbac->map(['POST'], '/users/{username}/verify-password', [RbacController::class, 'userVerifyPassword']);
         $rbac->map(['GET'], '/roles', [RbacController::class, 'roleList']);
     })->add(AuthMiddleware::class);
 

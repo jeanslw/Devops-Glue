@@ -78,7 +78,7 @@ export async function loadSettings() {
         const arrow = '<div class="mf-arrow">→</div>';
         const split = '<div class="mf-arrow">/</div>';
         const customBadge = (cpEnabled && hasCustom)
-            ? '<span class="badge" style="background:#fef3c7;color:#d97706;font-size:11px;margin-left:6px;">📤 ' + customNames.join(', ') + ' ✓</span>'
+            ? '<span class="badge" style="background:#fef3c7;color:#d97706;font-size:11px;margin-left:6px;">📤 ' + customNames.map(esc).join(', ') + ' ✓</span>'
             : '';
 
         const enabledPull = PULL_PROVIDERS.filter(bp => availability[bp] && modes.includes(bp));

@@ -4,6 +4,12 @@ import { toast, confirmDialog } from '../core/toast.js';
 
 let _apiScopes = [];
 let _apiTokenCreated = '';
+let _tokenRows = [];
+
+function tokenNameById(id) {
+    const t = _tokenRows.find(function(x) { return x.id === id; });
+    return (t && t.name) ? t.name : ('#' + id);
+}
 
 export async function loadApiTokens() {
     const loading = document.getElementById('api-token-loading');
@@ -15,6 +21,7 @@ export async function loadApiTokens() {
         if (handle401(res)) return;
         const data = await res.json();
         const rows = data.tokens || [];
+        _tokenRows = rows;
         const tbody = document.getElementById('api-token-tbody');
         if (!rows.length) {
             empty.style.display = 'block';
@@ -143,7 +150,7 @@ export function copyApiToken() {
 }
 
 export async function revokeApiToken(id) {
-    if (!await confirmDialog({ title: '⛔ ' + __.t('api_token.confirm_revoke'), message: __.t('api_token.confirm_revoke'), confirmText: __.t('common.confirm') })) return;
+    if (!await confirmDialog({ title: '⛔ ' + __.t('api_token.revoke_title'), message: __.t('api_token.confirm_revoke') + ' [' + tokenNameById(id) + ']', confirmText: __.t('common.confirm') })) return;
     try {
         const res = await fetch('/api/admin/api_tokens/' + id + '/revoke', { method: 'POST', headers: authHeaders() });
         if (handle401(res)) return;
@@ -154,7 +161,7 @@ export async function revokeApiToken(id) {
 }
 
 export async function deleteApiToken(id) {
-    if (!await confirmDialog({ title: '🗑️ ' + __.t('api_token.confirm_delete'), message: __.t('api_token.confirm_delete'), confirmText: __.t('common.confirm') })) return;
+    if (!await confirmDialog({ title: '🗑️ ' + __.t('api_token.delete_title'), message: __.t('api_token.confirm_delete') + ' [' + tokenNameById(id) + ']', confirmText: __.t('common.confirm') })) return;
     try {
         const res = await fetch('/api/admin/api_tokens/' + id, { method: 'DELETE', headers: authHeaders() });
         if (handle401(res)) return;
