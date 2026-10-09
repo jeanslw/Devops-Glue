@@ -378,7 +378,7 @@ Token expires in 24 hours. `super_admin` role returns `"*"` for permissions.
 
 > **For CD service accounts only**: lets trusted services such as Devops-Glue CD manage CD users and roles; not intended for the browser-based admin panel. Authentication accepts **API tokens only** (must carry the `rbac.user.write` scope — see "API Token Management" below); calls made with a logged-in session token always return 403. Unlike the interactive `/api/admin/users` backend, users created / updated here always get `systems: cd`, and creating or deleting `super_admin` is forbidden; passwords must be at least 8 characters.
 >
-> **Security boundaries since v2.8.1**: update / delete endpoints only operate on accounts whose `systems` contains `cd` (non-CD accounts return 403); `verify-password` likewise rejects `root` / `super_admin` and non-CD accounts, and is rate-limited to **5 failures / 15 minutes per IP + username**, returning 429 when exceeded.
+> **Security boundaries since v2.8.1**: update / delete endpoints only operate on accounts whose `systems` contains `cd` (non-CD accounts return 403). The former `verify-password` endpoint has been removed — CD now verifies its own account passwords locally and no longer needs CI-side password checks.
 
 | Endpoint | Method | Description |
 |---|---|---|
@@ -387,7 +387,6 @@ Token expires in 24 hours. `super_admin` role returns `"*"` for permissions.
 | `/api/rbac/users/{username}` | GET | Get one account |
 | `/api/rbac/users/{username}` | PUT | Update an account (body: `password` and/or `role`) |
 | `/api/rbac/users/{username}` | DELETE | Delete an account (root / super_admin protected) |
-| `/api/rbac/users/{username}/verify-password` | POST | Verify an account password (body: `password`; for CD-side login checks) |
 | `/api/rbac/roles` | GET | List available roles |
 
 ---

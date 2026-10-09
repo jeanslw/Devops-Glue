@@ -76,14 +76,23 @@ export function renderTopology() {
         else if (method === 'exact') detectBadge = '<span class="badge" style="background:#ecfdf5;color:#065f46;">' + __.t('js.topo_exact') + '</span>';
 
         const gitUrl = p.git_remote || '';
+        // 仅 http(s):// 或 / 开头才渲染为链接：safeUrl 会把 git@host:path 这类无 scheme 的
+        // SCP 格式当站内相对路径放行，形成坏链接；其余（含 safeUrl 拒绝值）纯文本展示
+        const safeGitUrl = (/^https?:\/\//i.test(gitUrl) || gitUrl.startsWith('/')) ? safeUrl(gitUrl) : '';
         const gitDisplay = gitUrl
-            ? `<a href="${safeUrl(gitUrl)}" target="_blank" title="${esc(gitUrl)}">${esc(truncateUrl(gitUrl))}</a>`
+            ? (safeGitUrl
+                ? `<a href="${esc(safeGitUrl)}" target="_blank" title="${esc(gitUrl)}">${esc(truncateUrl(gitUrl))}</a>`
+                : `<span class="topo-empty-field">${esc(gitUrl)}</span>`)
             : '<span class="topo-empty-field">' + __.t('js.topo_not_configured') + '</span>';
 
         const harbor = p.harbor_repository || '';
         const harborUrl = topoPlatformUrls.harbor_url || '';
+        // Harbor 未配置或 safeUrl 拒绝时回退纯文本，避免 href 为空/站内坏链接
+        const safeHarborUrl = harborUrl ? safeUrl(harborUrl + '/harbor') : '';
         const harborDisplay = harbor
-            ? `<a href="${safeUrl(harborUrl + '/harbor')}" target="_blank" title="${esc(__.t('js.topo_open_harbor'))}">${esc(harbor)}</a>`
+            ? (safeHarborUrl
+                ? `<a href="${esc(safeHarborUrl)}" target="_blank" title="${esc(__.t('js.topo_open_harbor'))}">${esc(harbor)}</a>`
+                : esc(harbor))
             : '<span class="topo-empty-field">' + __.t('js.topo_not_linked') + '</span>';
 
         const build = p.build_provider || 'jenkins';
@@ -98,8 +107,9 @@ export function renderTopology() {
         const jenkinsPath = projectPath
             ? '/' + projectPath.split('/').map(s => 'job/' + encodeURIComponent(s)).join('/') + '/'
             : '';
-        const buildDisplay = buildUrl
-            ? `<a href="${safeUrl(buildUrl + jenkinsPath)}" target="_blank" title="${esc(__.t('js.topo_open_jenkins'))}">${esc(p.project || p.current_path || __.t('js.topo_unnamed'))}</a>`
+        const safeBuildUrl = buildUrl ? safeUrl(buildUrl + jenkinsPath) : '';
+        const buildDisplay = (buildUrl && safeBuildUrl)
+            ? `<a href="${esc(safeBuildUrl)}" target="_blank" title="${esc(__.t('js.topo_open_jenkins'))}">${esc(p.project || p.current_path || __.t('js.topo_unnamed'))}</a>`
             : `<span class="node-main">${esc(p.project || p.current_path || __.t('js.topo_unnamed'))}</span>`;
         const platformCls = platform !== '—' && platforms.includes(platform) ? 'badge-' + platform : 'badge-default';
         const buildBadgeCls = build === 'gitlab_ci' ? 'badge-gitlab' : build === 'gitea_ci' ? 'badge-gitea' : build === 'custom_push' ? 'badge-cus' : 'badge-default';

@@ -441,8 +441,7 @@ return [
         return new RbacController(
             $c->get(I18nService::class),
             $c->get(Settings::class),
-            $c->get(AdminUserRepository::class),
-            $c->get(\PDO::class)
+            $c->get(AdminUserRepository::class)
         );
     },
 

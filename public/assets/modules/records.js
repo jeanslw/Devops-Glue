@@ -12,6 +12,9 @@ let pullPage = 1;
 const pullPageSize = 20;
 // 拉取式记录是否成功渲染过：静默刷新失败时保留上一次表格，不闪错误行
 let pullLoadOk = false;
+// 静默加载连续失败计数：达到上限后停止自动轮询并提示一次（成功即清零）
+let pullFailCount = 0;
+const PULL_FAIL_LIMIT = 3;
 let pushPage = 1, pushTotalPages = 1;
 
 /**
@@ -30,6 +33,7 @@ async function readErrorMessage(res) {
 
 export function startPullAutoRefresh() {
     stopPullAutoRefresh();
+    pullFailCount = 0;
     pullTimer = setInterval(() => {
         const sel = document.getElementById('pull-project-select');
         if (sel && sel.value) loadPullRecords(true);
@@ -114,6 +118,7 @@ export async function loadPullRecords(silent) {
             _runId: provider === 'gitlab_ci' ? (r.iid || r.id || 0) : (r.id || 0)
         }));
         pullLoadOk = true;
+        pullFailCount = 0;
         if (!records.length) {
             if (pagination) pagination.style.display = 'none';
             tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#9ca3af;padding:30px;">' + esc(__.t('pull.no_records')) + '</td></tr>';
@@ -180,8 +185,16 @@ export async function loadPullRecords(silent) {
             }
         }
     } catch (e) {
-        // 静默自动刷新失败：保留上一次成功渲染的表格（含空态），不打断用户阅读
-        if (silent && pullLoadOk) return;
+        // 静默自动刷新连续失败达到上限：停止轮询并提示一次，避免无限空转
+        if (silent) {
+            pullFailCount++;
+            if (pullFailCount >= PULL_FAIL_LIMIT && pullTimer) {
+                stopPullAutoRefresh();
+                toast(__.t('pull.auto_refresh_stopped'), false);
+            }
+            // 静默刷新失败：保留上一次成功渲染的表格（含空态），不打断用户阅读
+            if (pullLoadOk) return;
+        }
         if (pagination) pagination.style.display = 'none';
         tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#dc2626;padding:20px;">' + esc(__.t('pull.load_failed')) + ': ' + esc(e.message) + '</td></tr>';
     }
@@ -295,6 +308,7 @@ export async function loadPushRecords() {
     try {
         const res = await fetch('/api/admin/custom_builds?page=' + pushPage + '&per_page=20', { headers: authHeaders() });
         if (handle401(res)) return;
+        if (!res.ok) throw new Error(await readErrorMessage(res));
         const data = await res.json();
         const records = data.records || [];
         const total = data.total || 0;

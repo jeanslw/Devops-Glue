@@ -175,6 +175,8 @@ function toggleSettingsMenu() { document.getElementById('menu-group-settings')?.
 const TAB_LIST = ['monitor','mapping','security','versions','mode','pull-records','push-records','users','roles','password','perm-list','perm-register','implied-rules','api-tokens','operation-logs','deploy-logs','api-access-logs','platform-config','system-info'];
 
 function doSwitch(name) {
+    // hash 可被手工改成 #/任意值：不在白名单时回退到首个 tab，避免主区全空白
+    if (!TAB_LIST.includes(name)) name = 'monitor';
     stopPullAutoRefresh();
     document.querySelectorAll('.sidebar .menu-item').forEach(el => el.classList.remove('active'));
     const mi = document.querySelector('.menu-item[data-tab="' + name + '"]');

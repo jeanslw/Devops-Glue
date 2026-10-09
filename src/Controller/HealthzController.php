@@ -28,10 +28,11 @@ final class HealthzController
         try {
             $pdo = Database::createPdo();
             $pdo->query('SELECT 1');
-            $row = $pdo->query(
-                'SELECT value FROM ' . AppConfig::TABLE_APP_SETTINGS
-                . " WHERE setting_key = '" . Database::SCHEMA_VERSION_KEY . "'"
-            )->fetchColumn();
+            $stmt = $pdo->prepare(
+                'SELECT value FROM ' . AppConfig::TABLE_APP_SETTINGS . ' WHERE setting_key = ?'
+            );
+            $stmt->execute([Database::SCHEMA_VERSION_KEY]);
+            $row = $stmt->fetchColumn();
             $schemaVersion = ($row === false) ? null : (string) $row;
         } catch (\Throwable $e) {
             $db = false;

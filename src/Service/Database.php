@@ -80,10 +80,10 @@ class Database
     private static function isSchemaCurrent(): bool
     {
         try {
-            $stmt = self::pdo()->query(
-                "SELECT value FROM " . \App\Config\AppConfig::TABLE_APP_SETTINGS
-                . " WHERE setting_key = '" . self::SCHEMA_VERSION_KEY . "'"
+            $stmt = self::pdo()->prepare(
+                "SELECT value FROM " . \App\Config\AppConfig::TABLE_APP_SETTINGS . " WHERE setting_key = ?"
             );
+            $stmt->execute([self::SCHEMA_VERSION_KEY]);
             $row = $stmt->fetch();
             return $row !== false && ($row['value'] ?? '') === \App\Config\AppConfig::APP_VERSION;
         } catch (\Throwable $e) {
@@ -142,10 +142,11 @@ class Database
         }
         $recorded = null;
         try {
-            $row = self::pdo()->query(
-                "SELECT value FROM " . \App\Config\AppConfig::TABLE_APP_SETTINGS
-                . " WHERE setting_key = '" . self::SCHEMA_VERSION_KEY . "'"
-            )->fetchColumn();
+            $stmt = self::pdo()->prepare(
+                "SELECT value FROM " . \App\Config\AppConfig::TABLE_APP_SETTINGS . " WHERE setting_key = ?"
+            );
+            $stmt->execute([self::SCHEMA_VERSION_KEY]);
+            $row = $stmt->fetchColumn();
             $recorded = ($row === false) ? null : (string) $row;
         } catch (\Throwable $e) {
             $recorded = null;
