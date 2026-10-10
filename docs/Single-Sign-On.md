@@ -31,6 +31,7 @@ Glue exposes the following endpoints (`<issuer>` is Glue's externally reachable 
 | Authorization | `<issuer>/oauth/authorize` | Browser redirect entry point, renders the login form |
 | Token | `<issuer>/oauth/token` | Exchanges code for `access_token` (plus `id_token` for OIDC) |
 | UserInfo | `<issuer>/oauth/userinfo` | Returns user info for a Bearer token |
+| Emails sub-endpoint | `<issuer>/oauth/userinfo/emails` | GitHub-style emails endpoint (fallback for clients like Grafana that still fetch email via the GitHub emails flow; not listed in the discovery document) |
 | Discovery | `<issuer>/.well-known/openid-configuration` | OIDC discovery document |
 | JWKS | `<issuer>/.well-known/jwks.json` | Publishes the RS256 public key (`n`/`e`/`kid`, never the private key) |
 

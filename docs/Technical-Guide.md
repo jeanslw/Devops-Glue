@@ -1,4 +1,4 @@
-# Devops-Glue API Technical Guide v2.8
+# Devops-Glue API Technical Guide v2.8.9
 
 > This document is intended for developers, operations engineers, and troubleshooting. It covers all business logic, data flows, database table structures, and common issues.
 
@@ -360,14 +360,15 @@ Unauthenticated external probe for Uptime Kuma / cloud LB / container orchestrat
 ---
 
 ### 5.2 Health Check
-**Route:** `GET /api/health`  
-**Controller:** `MainController::health()`
+**Route:** `GET /api/health`
+**Controller:** `MainController::healthDetail()`
+**Auth:** Requires a Bearer token (admin login token or any valid API token; no specific scope)
 
 **Check Process:**
 
 ```
-1. Jenkins check (only in jenkins/both mode)
-   ├─ Calls getAllJobs() to verify connectivity
+1. Jenkins check (only when build_mode includes jenkins; pure-CI modes return null and skip)
+   ├─ Short-timeout client GET /api/json to verify connectivity (retried once after 0.5s on failure)
    └─ Calls getVersion() to get version number
 
 2. Git platform check
@@ -400,10 +401,15 @@ Unauthenticated external probe for Uptime Kuma / cloud LB / container orchestrat
   "checks": { "jenkins": true, "jenkins_version": "2.555.3", "git": [...], "harbor": true, "harbor_components": {...} },
   "stats": { "total_maps": 4, "active_maps": 4, "git_platforms": 2, "harbor_repos": 4 },
   "build_mode": "jenkins,gitlab_ci,gitea_ci", "build_modes": ["jenkins","gitlab_ci","gitea_ci"], "build_mode_source": "database",
-  "db_driver": "mysql", "app_version": "2.7.0", "app_env": "production",
+  "db_driver": "mysql", "app_version": "2.8.9", "app_env": "production",
   "time": "2026-07-25 12:00:00"
 }
 ```
+
+**Supplement: quick health info (health/static)**
+
+**Route:** `GET /api/health/static` (Controller: `MainController::healthStatic()`)
+Performs no external probing; returns the stats cards + system info + Custom_Push status from `buildHealthStaticData()` in milliseconds so the frontend can render the non-probe cards first. Detailed probing is done by `/api/health`. **Admin login tokens only; API tokens always get 403 (fail-closed).**
 
 ---
 
@@ -663,17 +669,22 @@ If only `ref` is present without other parameters, auto-convert to `{branches: r
 > **Note:** This `app.env` fallback only applies to the Devops-Glue API global admin login flow. To create a CD-specific account, create the account in the admin backend and assign CD permissions first, then write it into the CD service's own `app.env` if that service supports it.
 
 #### 5.10.2 Token Verification (AuthMiddleware + TokenService)
-**Middleware:** `AuthMiddleware` (applied to `/api/admin`, `/api/build`, `/api/git`, `/api/harbor` route groups)
+**Middleware:** `AuthMiddleware` (applied to the `/api/health`, `/api/health/static`, `/api/main`, `/api/admin` (except login/logout), `/api/build`, `/api/git`, `/api/harbor` route groups)
 **Service:** `TokenService` (encapsulates token validation, permission loading, token revocation)
 
 ```
 1. Extract token from Authorization: Bearer xxx
 2. Call TokenService::validate() to verify token in cache table (key=admin_token_{token}, expires_at > now)
-3. Call TokenService::loadPermissions() to query role permissions
-4. Write currentUser, currentRole, userPermissions to request attribute
-5. If DB unavailable AND app.env ADMIN_PASSWORD empty → allow (first-start no-password scenario)
-6. If DB unavailable AND admin_users table empty → allow
-7. Otherwise → 401
+   ├─ Hit (interactive login session) → call TokenService::loadPermissions() to query role permissions
+   └─ Miss → fall back to TokenService::validateApiToken() to verify an API token;
+      on hit, ApiScopeResolver resolves the scope required by the route:
+      ├─ null (e.g. /api/admin/*) → 403 (fail-closed; admin endpoints reject API tokens)
+      ├─ required scope missing → 403 (recorded in the API access audit log)
+      └─ pass → the scope maps to the permission used for in-controller secondary checks
+3. Write currentUser, currentRole, userPermissions to request attribute
+4. If DB unavailable AND app.env ADMIN_PASSWORD empty → allow (first-start no-password scenario)
+5. If DB unavailable AND admin_users table empty → allow
+6. Otherwise → 401
 ```
 
 **On password change:** `TokenService::revoke()` deletes all old tokens from cache table, forces re-login.
@@ -1060,7 +1071,8 @@ LOG_RETAIN_DAYS=30                 # App log retention days; Logger self-cleans 
 | GET | `/` | No | Homepage HTML |
 | GET | `/admin` | No | Admin page HTML |
 | GET | `/healthz` | No | Liveness/readiness probe (DB + schema version only) |
-| GET | `/api/health` | No | Health check |
+| GET | `/api/health` | Token | Health check (detailed probing; any valid token) |
+| GET | `/api/health/static` | Token | Quick health info (no external probing; admin login tokens only, API tokens get 403) |
 | GET | `/api/docs` | Yes | Swagger UI |
 | GET | `/api/openapi.json` | Yes | OpenAPI 3.0 spec |
 | GET | `/api/i18n/{locale}` | No | i18n language pack |
@@ -1078,14 +1090,18 @@ LOG_RETAIN_DAYS=30                 # App log retention days; Logger self-cleans 
 | PUT | `/api/admin/job_git_map` | Token | Update mapping |
 | DELETE | `/api/admin/job_git_map` | Token | Delete mapping |
 | GET | `/api/admin/platform_versions` | Token | Platform version list |
+| GET | `/api/admin/platform_versions/probe` | Token | Actually probe Harbor / Jenkins versions (slow standalone endpoint) |
 | PUT | `/api/admin/platform_versions` | Token | Update platform version |
 | POST | `/api/admin/discover` | Token | Auto-discover projects |
 | GET | `/api/admin/security_checks` | Token | Security scan list (filter/pagination, incl. writeback status) |
 | GET | `/api/admin/build_mode` | Token | Get build mode |
 | PUT | `/api/admin/build_mode` | Token | Update build mode |
+| GET | `/api/admin/custom_builds` | Token | Custom_Push build metadata list (filter/pagination) |
 | GET | `/api/admin/users` | Token | User list |
 | POST | `/api/admin/users` | Token | Create user |
 | PUT | `/api/admin/users/{username}` | Token | Update user |
+| PUT | `/api/admin/users/{username}/password` | Token | Reset user password |
+| PUT | `/api/admin/users/{username}/status` | Token | Enable/disable user |
 | DELETE | `/api/admin/users/{username}` | Token | Delete user |
 | GET | `/api/admin/roles` | Token | Role list |
 | POST | `/api/admin/roles` | Token | Create role |
@@ -1097,6 +1113,17 @@ LOG_RETAIN_DAYS=30                 # App log retention days; Logger self-cleans 
 | POST | `/api/admin/implied_rules` | Token | Add implied rule |
 | DELETE | `/api/admin/implied_rules` | Token | Delete implied rule |
 | GET | `/api/admin/me/permissions` | Token | Get current user permissions |
+| GET | `/api/admin/operation_logs` | Token | Operation audit log (filter/pagination) |
+| GET | `/api/admin/deploy_logs` | Token | CD deployment record audit list (via the v_glue_deploy_logs view, filter/pagination) |
+| GET | `/api/admin/api_access_logs` | Token | API token call audit list (filter/pagination) |
+| GET | `/api/admin/platform_config` | Token | Platform access status (sanitized) + per-platform tag / API call log settings |
+| PUT | `/api/admin/platform_config` | Token | Update per-platform tag / API call log settings (only keys explicitly provided) |
+| POST | `/api/admin/tag_cleanup` | Token | Manually trigger the expired-tag cleanup cron |
+| POST | `/api/admin/tag_backfill` | Token | Manually trigger the historical-tag backfill cron |
+| GET | `/api/admin/system_info` | Token | System info (version/env/DB driver/Custom_Push) |
+| POST | `/api/admin/migrate` | Token | Manually trigger database migration (super_admin only) |
+| POST | `/api/admin/backup` | Token | Manually run a database backup (super_admin only) |
+| GET | `/api/admin/backups` | Token | List database backup files (super_admin only) |
 | GET | `/api/admin/api_tokens/scopes` | Token | API token scope catalog |
 | GET | `/api/admin/api_tokens` | Token | API token list |
 | POST | `/api/admin/api_tokens` | Token | Create API token |
@@ -1105,8 +1132,11 @@ LOG_RETAIN_DAYS=30                 # App log retention days; Logger self-cleans 
 | **Build** | | | |
 | GET/POST | `/api/build/jobs/list` | Token | Job list (with ci_provider) |
 | GET | `/api/build/config-mode` | Token | Build mode status |
+| GET/POST | `/api/build/projects` | Token | Build provider project list |
 | GET/POST | `/api/build/{path}/pipelines` | Token | Pipeline list |
 | GET/POST | `/api/build/{path}/pipelines/{id}` | Token | Pipeline details + jobs |
+| GET/POST | `/api/build/{path}/pipelines/{id}/logs` | Token | Pipeline logs (Gitea CI only; `id`=run id) |
+| POST | `/api/build/{path}/pipelines/{id}/resolve-tag` | Token | Lazy fallback resolution of image tag from logs (sha cache + force re-resolve) |
 | POST | `/api/build/{path}/pipelines/{id}/retry` | Token | Retry pipeline (GitLab CI only) |
 | POST | `/api/build/{path}/pipelines/{id}/cancel` | Token | Cancel pipeline (GitLab CI only) |
 | GET/POST | `/api/build/{path}/logs/{id}` | Token | Build logs (`id`=job id, not run id) |
@@ -1115,7 +1145,9 @@ LOG_RETAIN_DAYS=30                 # App log retention days; Logger self-cleans 
 | GET/POST | `/api/build/{path}/branches` | Token | Git branch list |
 | POST | `/api/build/{path}/scan-sync` | Token | Harbor scan sync |
 | POST | `/api/build/{path}/commit-status` | Token | Commit status writeback |
+| POST | `/api/build/{path}/report` | Token | Custom_Push CI result report |
 | GET/POST | `/api/build/{path}/tag` | Token | Pipeline → tag query |
+| GET/POST | `/api/build/{path}/tags` | Token | Pipeline → tag batch list |
 | **Git** | | | |
 | GET/POST | `/api/git/{path}/branches` | Token | Branch list |
 | **Harbor** | | | |
@@ -1124,6 +1156,20 @@ LOG_RETAIN_DAYS=30                 # App log retention days; Logger self-cleans 
 | GET/POST | `/api/harbor/{project}/repositories/{repo}/tags` | Token | Tag list |
 | POST | `/api/harbor/{project}/repositories/{repo}/tags/{tag}/scan` | Token | Trigger scan |
 | GET | `/api/harbor/{project}/repositories/{repo}/tags/{tag}/scan` | Token | Scan report |
+| **RBAC** (API token + rbac.user.write scope only) | | | |
+| POST | `/api/rbac/users` | API Token | Create CD service account |
+| PUT | `/api/rbac/users/{username}` | API Token | Update CD service account |
+| DELETE | `/api/rbac/users/{username}` | API Token | Delete CD service account |
+| GET | `/api/rbac/users` | API Token | CD service account list |
+| GET | `/api/rbac/users/{username}` | API Token | CD service account detail |
+| GET | `/api/rbac/roles` | API Token | Available role list |
+| **OAuth2 / OIDC** | | | |
+| GET/POST | `/oauth/authorize` | No* | Authorization-code flow: consent page / submit consent (*submission verifies account credentials, shares the login rate limiter) |
+| POST | `/oauth/token` | No* | Exchange authorization code for access token (*validates client credentials and the one-time code) |
+| GET/POST | `/oauth/userinfo` | access token | OAuth2 user info |
+| GET | `/oauth/userinfo/emails` | access token | GitHub-style emails sub-endpoint (Grafana fallback) |
+| GET | `/.well-known/openid-configuration` | No | OIDC discovery document |
+| GET | `/.well-known/jwks.json` | No | OIDC signing public keys |
 
 ### 8.3 Database Migration Checklist
 
@@ -1138,4 +1184,4 @@ When adding/modifying table structures, update the following files and **bump `A
 
 ---
 
-*Document version: v2.7.0 | Last updated: 2026-08-31*
+*Document version: v2.8.9 | Last updated: 2026-10-10*
