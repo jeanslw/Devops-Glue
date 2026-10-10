@@ -1,4 +1,4 @@
-# Devops-Glue API Admin Manual v2.8.0
+# Devops-Glue API Admin Manual v2.8.9
 
 > This manual is organized in a "from zero to usable" order, covering the installation, initialization, and full configuration of Devops-Glue API. Once you complete it in order, you will be able to: log in to the admin panel, connect CI / Git / Harbor platforms, configure build mode and mapping, manage permissions and roles, issue API tokens, and have the companion Devops-Glue CD call it correctly.
 
@@ -165,13 +165,16 @@ The admin panel sidebar contains the following modules:
 | Monitor | Data overview and service status |
 | Mapping | Job ↔ Git ↔ Harbor mapping configuration |
 | Security Audit | SAST / secret / dependency vulnerability scan results and write-back records |
+| Build Records | Pull records (CI pipelines) and push records (Custom_Push reports); shown per `ci.build-records` permission (with pull/push sub-permissions) |
 | Platform Versions | API versions of each connected platform |
 | Build Mode | Build mode (jenkins / gitlab_ci / gitea_ci, multi-select) |
 | User Management | User list, role management, change password |
 | Permission Management | Permission list, permission registration, implied rules |
-| API Management | Create / revoke / delete API tokens (only shown with the required permission) |
-| Operation Log | Admin operation audit log (paginated + filterable) |
-| System Settings | Platform access status (read-only) + database schema info & manual migration |
+| API Management | Create / revoke / delete API tokens (visible to `super_admin` only) |
+| Operation Log | Admin operation audit log (paginated + filterable, permission `ci.operation-logs`) |
+| Deploy Log | CD-side deployment record audit (paginated + filterable, permission `ci.deploy-logs`) |
+| API Access Log | API token invocation audit (paginated + filterable, permission `ci.api-logs`) |
+| System Settings | Platform Config (sanitized access status + tag auto-cleanup/backfill and API access log toggles, permission `ci.platform-config`); System Info (version/environment/schema/data management & backup, permission `ci.system`, backup visible to `super_admin` only) |
 
 ### 8.1 External LDAP / AD Logins (Optional)
 
@@ -701,6 +704,7 @@ Go to "API Management" (requires the relevant permission) and choose the require
 | `build.read` | Read-only: build pipelines / logs / branches |
 | `build.write` | Write: trigger / retry / cancel builds |
 | `build.report` | Report: scan-sync / commit-status / report |
+| `rbac.user.write` | CD service-account management: create/read/update/delete users and list roles via `/api/rbac/*` |
 
 > **Note:**
 > - The token is shown in plaintext only once at creation; save it immediately.

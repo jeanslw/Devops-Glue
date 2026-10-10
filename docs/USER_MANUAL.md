@@ -253,6 +253,7 @@ Steps:
 | `build.read` | Read-only: build pipelines / logs / branches |
 | `build.write` | Write: trigger / retry / cancel builds |
 | `build.report` | Write-back: scan-sync / commit-status / report |
+| `rbac.user.write` | CD service-account management: create/read/update/delete users and list roles via `/api/rbac/*` |
 
 > **Recommendations**
 > - When authorizing a third-party service (especially CD), check the minimal set of scopes it actually needs — don't select everything.

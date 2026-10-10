@@ -1,4 +1,4 @@
-# Devops-Glue API FAQ v2.8.0
+# Devops-Glue API FAQ v2.8.9
 
 ## Table of Contents
 
@@ -533,7 +533,10 @@ This was an i18n gap in earlier versions, fixed in v2.5.1 (now translated lazily
 
 The default timeout for external services is 3-5 seconds. Slow external services can make the overall health check exceed 3 seconds.
 
-**Solution:** Check network connectivity and verify all configured `BASE_URL` values are reachable.
+**Solution:**
+
+- Switch to `GET /api/health/static` (login token required; API tokens get 403): it performs no external probing and returns stats and system info in milliseconds. The admin panel renders these non-probe cards first, then waits for the detailed `/api/health` results.
+- Check network connectivity and verify all configured `BASE_URL` values are reachable; failed probes retry once automatically, so transient hiccups won't immediately mark the service degraded.
 
 ### Q: MySQL connection fails / Access denied?
 
@@ -678,4 +681,4 @@ No. API responses always return raw data. i18n only affects the frontend UI and 
 
 ---
 
-*Document version: v2.8.0 | Last updated: 2026-09-31*
+*Document version: v2.8.9 | Last updated: 2026-10-10*

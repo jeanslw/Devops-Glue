@@ -1,4 +1,4 @@
-# Devops-Glue API Reference v2.8.0
+# Devops-Glue API Reference v2.8.9
 
 Base URL: `http://your-domain.com/api`
 
@@ -58,14 +58,20 @@ To restrict origins, edit `config/settings.php`:
 | Endpoint | Method | Description |
 |---|---|---|
 | `/healthz` | GET | Liveness / readiness probe (no auth, DB only) |
-| `/api/health` | GET | Health check |
 | `/api/i18n/{locale}` | GET | Get language pack (`zh_CN` or `en`) |
 | `/api/docs` | GET | Swagger UI page (shows the embedded login form when unauthenticated) |
 | `/api/openapi.json` | GET | OpenAPI spec (requires credentials) |
 | `/api/admin/login` | POST | Login, returns Bearer token |
 | `/api/admin/logout` | POST | Logout, revoke token |
+| `/admin` | GET | Admin panel page (HTML, not a JSON API) |
+| `/oauth/authorize` | GET/POST | OAuth2 authorization code flow: consent page / submit authorization |
+| `/oauth/token` | POST | Exchange authorization code for an access token |
+| `/oauth/userinfo` | GET/POST | OAuth2 user info |
+| `/oauth/userinfo/emails` | GET | GitHub-style emails sub-endpoint (Grafana fallback) |
 | `/.well-known/openid-configuration` | GET | OIDC discovery document (public; see [Single-Sign-On](Single-Sign-On.md)) |
 | `/.well-known/jwks.json` | GET | OIDC signing keys (public) |
+
+> **Note:** `GET /api/health` and `GET /api/health/static` **require a Bearer token** (see the "Health Check" section below) — they are not public endpoints.
 
 ---
 
@@ -81,8 +87,8 @@ Unauthenticated external probe for Uptime Kuma / cloud load balancers / containe
 {
   "status": "ok",
   "db": true,
-  "app_version": "2.8.8",
-  "schema_version": "2.8.8",
+  "app_version": "2.8.9",
+  "schema_version": "2.8.9",
   "time": 1760000000
 }
 ```
@@ -96,6 +102,8 @@ Unauthenticated external probe for Uptime Kuma / cloud load balancers / containe
 ---
 
 ## Health Check
+
+> **Auth:** `/api/health` requires a Bearer token (either an admin login token or any valid API token — no specific scope needed).
 
 ```
 GET /api/health
@@ -119,7 +127,7 @@ Returns connectivity status of Jenkins, Git platforms, and Harbor, plus system s
   "build_modes": ["jenkins", "gitlab_ci", "gitea_ci"],
   "build_mode_source": "database",
   "db_driver": "mysql",
-  "app_version": "2.7.0",
+  "app_version": "2.8.9",
   "app_env": "production",
   "time": "2026-08-10 12:00:00"
 }
@@ -129,6 +137,32 @@ Returns connectivity status of Jenkins, Git platforms, and Harbor, plus system s
 - `jenkins`: `true` / `false` / `null` (null = gitlab_ci mode, Jenkins not checked)
 - `harbor`: `true` / `false` / `null` (null = Harbor not configured)
 - HTTP 200 (ok) / 503 (degraded)
+
+### Static Health Info
+
+```
+GET /api/health/static
+```
+
+Does not probe external platforms (Jenkins / Git / Harbor). Returns stats + system info + Custom_Push state in milliseconds, so the front end can render non-probe cards first without being slowed down by external probes:
+
+```json
+{
+  "status": "ok",
+  "stats": {"total_maps": 15, "active_maps": 12, "git_platforms": 2, "harbor_repos": 8},
+  "build_mode": "jenkins,gitlab_ci,gitea_ci",
+  "build_modes": ["jenkins", "gitlab_ci", "gitea_ci"],
+  "build_mode_source": "database",
+  "custom_push_enabled": true,
+  "custom_push_providers": ["custom_push"],
+  "db_driver": "mysql",
+  "app_version": "2.8.9",
+  "app_env": "production",
+  "time": "2026-08-10 12:00:00"
+}
+```
+
+> **Note:** `/api/health/static` accepts admin login tokens only; API tokens always get 403 (fail-closed).
 
 ---
 
@@ -205,6 +239,7 @@ Returns configured and unconfigured Git platform list.
 | `/api/build/{path}/pipelines` | GET/POST | Pipeline list (`?list=id\|build\|time\|success`) |
 | `/api/build/{path}/pipelines/{id}` | GET/POST | Pipeline detail + Jobs (each job has `id` + `log_url`) — Gitea CI only |
 | `/api/build/{path}/pipelines/{id}/logs` | GET/POST | Pipeline logs (text/plain; `id`=run id, returns all job logs combined) — Gitea CI only |
+| `/api/build/{path}/pipelines/{id}/resolve-tag` | POST | Lazy fallback resolution of the image tag: for a successful pipeline that missed the harbor-scan writeback, walks job logs to extract the tag and caches it in the DB (body may carry `sha` to hit the cache, or `force=1` to force re-resolution and overwrite) |
 | `/api/build/{path}/logs/{id}` | GET/POST | Build logs (text/plain; `id`=job id from `jobs[].id` of `/pipelines/{runId}`, not the run id) |
 | `/api/build/{path}/pipelines/{id}/retry` | POST | Retry pipeline (GitLab CI only) |
 | `/api/build/{path}/pipelines/{id}/cancel` | POST | Cancel pipeline (GitLab CI only) |
@@ -342,13 +377,18 @@ Token expires in 24 hours. `super_admin` role returns `"*"` for permissions.
 | `/api/admin/custom_builds` | GET | Custom_Push build records (supports `?page=&per_page=`; requires `ci.mode.edit`) |
 | `/api/admin/security_checks` | GET | Security scan audit records (supports `?project=&check_type=&state=&writeback=&exclude=&page=&per_page=`) |
 | `/api/admin/platform_versions` | GET/PUT | Platform API version config |
+| `/api/admin/platform_versions/probe` | GET | Actually probe Harbor / Jenkins versions (slow, separate endpoint — kept apart from the millisecond config-state list so an unreachable platform doesn't stall the whole page; requires `ci.platform-edit`) |
 | `/api/admin/build_mode` | GET/PUT | Build mode (enabled CI source set, e.g. jenkins,gitlab_ci,gitea_ci) |
-| `/api/admin/platform_config` | GET | Platform access status (masked — only returns each platform's `configured` boolean, never URL/account/credential; requires `ci.system`) |
+| `/api/admin/platform_config` | GET/PUT | Platform access status (masked — only each platform's `configured` boolean, never URL/account/credential) + platform-level tag settings (cleanup/backfill switches, log keyword) and API access log settings; PUT updates only keys explicitly present in the body to avoid clobbering each other (requires `ci.platform-config`) |
 | `/api/admin/system_info` | GET | Database schema status (driver / schema version / is_current / PHP version / core table presence; requires `ci.system`) |
 | `/api/admin/migrate` | POST | Manually trigger database migration (create missing tables + seed permissions + mark schema current; super_admin only) |
+| `/api/admin/backup` | POST | Manually run a database backup (zip archive, keeps the most recent 10; when CD is enabled an extra CD-library archive is produced; super_admin only) |
+| `/api/admin/backups` | GET | List generated database backup files (super_admin only) |
 | `/api/admin/tag_cleanup` | POST | Run stale tag cleanup once, on demand (equivalent to `cli/cleanup-pipeline-tags.php`; returns 409 and skips safely when the switch is off or Harbor is unconfigured; requires `ci.platform-config`) |
 | `/api/admin/tag_backfill` | POST | Run image tag log backfill once, on demand (equivalent to `cli/backfill-pipeline-tags.php`; same guards, fills missing tags only and never overwrites scan results; requires `ci.platform-config`) |
 | `/api/admin/operation_logs` | GET | Operation audit log (filter by `?username=&action=&result=&operator_type=&date_from=&date_to=&page=&per_page=`; requires `ci.operation-logs`) |
+| `/api/admin/deploy_logs` | GET | CD deploy record audit list (read-only, via the `v_glue_deploy_logs` contract view, never reading CD tables directly; filter by `?project=&status=&deploy_type=&date_from=&date_to=&page=&per_page=`; requires `ci.deploy-logs`) |
+| `/api/admin/api_access_logs` | GET | API token access audit list (returns only audit fields such as the token display name — never token plaintext/hash/body/query; filter by `?result=&method=&token_name=&route=&date_from=&date_to=&page=&per_page=`; requires `ci.api-logs`) |
 | `/api/admin/users` | GET | User list (admin sees all; non-admin cannot see admin users) |
 | `/api/admin/users` | POST | Create user (body: `username`, `password`, `role`, `systems`) |
 | `/api/admin/users/{username}` | PUT | Update user (body: `password` and/or `role`) |
@@ -391,6 +431,22 @@ Token expires in 24 hours. `super_admin` role returns `"*"` for permissions.
 
 ---
 
+## OAuth2 / OIDC Module (`/oauth`, `/.well-known`)
+
+> Lets external systems such as Grafana log in with Glue accounts (OAuth2 authorization code flow), and provides OIDC auto-discovery for Jenkins oic-auth / Harbor OIDC / GitLab OmniAuth. See [Single-Sign-On](Single-Sign-On.md) for full configuration and flow details.
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/oauth/authorize` | GET | Authorization code flow: render the consent page (browser redirect) |
+| `/oauth/authorize` | POST | Submit authorization (username/password login + approve/deny; shares the 5-attempts/15-minutes login lockout with the login endpoint) |
+| `/oauth/token` | POST | Exchange authorization code for an access token |
+| `/oauth/userinfo` | GET/POST | User info (access-token authenticated; both GET and POST are registered for Grafana-style clients) |
+| `/oauth/userinfo/emails` | GET | GitHub-style emails sub-endpoint (Grafana fallback) |
+| `/.well-known/openid-configuration` | GET | OIDC discovery document (public) |
+| `/.well-known/jwks.json` | GET | OIDC signing keys (public keys only, no private key) |
+
+---
+
 ## API Token Management (Service Accounts / Third-Party)
 
 > For CD system service accounts (Jenkins / GitLab CI scripts) or third-party systems. API tokens are **independent of the RBAC permission system** — they carry an endpoint permission list (scope) directly and are not tied to any user or role.
@@ -415,9 +471,10 @@ Token expires in 24 hours. `super_admin` role returns `"*"` for permissions.
 | `build.read` | Build read | `/api/build/*` (except write/report below) |
 | `build.write` | Build execution | `trigger` / `retry` / `cancel` |
 | `build.report` | Build report | `scan-sync` / `commit-status` / `report` (CI script callbacks) |
+| `rbac.user.write` | CD service-account management | create/read/update/delete users and list roles via `/api/rbac/*` |
 
 > **Notes:**
-> - `/api/health` needs no scope — any valid token works.
+> - `/api/health` needs no scope — any valid token works; `/api/health/static` is likewise forbidden for API tokens (fail-closed, 403).
 > - `/api/admin/*` (admin endpoints) are **always forbidden** for API tokens (fail-closed), returning 403 regardless of scopes.
 > - Unknown paths are also fail-closed (403).
 > - A token may hold multiple scopes; scopes do not imply each other.
@@ -507,13 +564,18 @@ curl -X DELETE "http://URL/api/admin/api_tokens/1" \
 ## Quick Test Commands
 
 ```bash
-# Health check (no auth required)
-curl "http://URL/api/health"
-
 # Login and get token
 TOKEN=$(curl -s -X POST "http://URL/api/admin/login" \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"your_password"}' | jq -r '.data.token')
+
+# Health check (requires auth; admin login token or any valid API token)
+curl "http://URL/api/health" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Static health info (no external probing; admin login token only)
+curl "http://URL/api/health/static" \
+  -H "Authorization: Bearer $TOKEN"
 
 # Trigger build (POST JSON, requires auth)
 curl -X POST "http://URL/api/build/static/trigger" \

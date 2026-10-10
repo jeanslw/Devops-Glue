@@ -1,4 +1,4 @@
-# Devops-Glue API 参考 v2.8.0
+# Devops-Glue API 参考 v2.8.9
 
 基础 URL: `http://your-domain.com/api`
 
@@ -58,14 +58,20 @@
 | 接口 | 方法 | 说明 |
 |---|---|---|
 | `/healthz` | GET | 存活/就绪探针（无需认证，只探数据库） |
-| `/api/health` | GET | 健康检查 |
 | `/api/i18n/{locale}` | GET | 获取语言包（`zh_CN` 或 `en`） |
 | `/api/docs` | GET | Swagger UI 文档页面（未登录时同页显示登录框） |
 | `/api/openapi.json` | GET | OpenAPI 规范（需登录凭证） |
 | `/api/admin/login` | POST | 登录，返回 Bearer Token |
 | `/api/admin/logout` | POST | 登出，撤销 Token |
+| `/admin` | GET | 管理后台页面（HTML，非 JSON API） |
+| `/oauth/authorize` | GET/POST | OAuth2 授权码流程：授权确认页 / 提交授权 |
+| `/oauth/token` | POST | OAuth2 授权码换取 access token |
+| `/oauth/userinfo` | GET/POST | OAuth2 用户信息 |
+| `/oauth/userinfo/emails` | GET | GitHub 风格邮箱子端点（Grafana 兜底请求） |
 | `/.well-known/openid-configuration` | GET | OIDC 发现文档（公开；详见[单点登录](单点登录.md)） |
 | `/.well-known/jwks.json` | GET | OIDC 签名公钥（公开） |
+
+> **注意：** `GET /api/health` 与 `GET /api/health/static` **需要 Bearer Token**（详见下文「健康检查」章节），不属于公开接口。
 
 ---
 
@@ -81,8 +87,8 @@ GET /healthz
 {
   "status": "ok",
   "db": true,
-  "app_version": "2.8.8",
-  "schema_version": "2.8.8",
+  "app_version": "2.8.9",
+  "schema_version": "2.8.9",
   "time": 1760000000
 }
 ```
@@ -96,6 +102,8 @@ GET /healthz
 ---
 
 ## 健康检查
+
+> **认证：** `/api/health` 需要 Bearer Token（管理员登录 Token 或任意有效 API Token 均可，无需特定 scope）。
 
 ```
 GET /api/health
@@ -119,7 +127,7 @@ GET /api/health
   "build_modes": ["jenkins", "gitlab_ci", "gitea_ci"],
   "build_mode_source": "database",
   "db_driver": "mysql",
-  "app_version": "2.7.0",
+  "app_version": "2.8.9",
   "app_env": "production",
   "time": "2026-08-10 12:00:00"
 }
@@ -129,6 +137,32 @@ GET /api/health
 - `jenkins`: `true` / `false` / `null`（null = gitlab_ci 模式，不检查 Jenkins）
 - `harbor`: `true` / `false` / `null`（null = 未配置 Harbor）
 - HTTP 200 (正常) / 503 (降级)
+
+### 快速健康信息
+
+```
+GET /api/health/static
+```
+
+不探测 Jenkins / Git / Harbor 等外部平台，毫秒级返回数据统计 + 系统信息 + Custom_Push 状态，供前端先渲染非探测卡片，避免被外部探测拖慢整个页面：
+
+```json
+{
+  "status": "ok",
+  "stats": {"total_maps": 15, "active_maps": 12, "git_platforms": 2, "harbor_repos": 8},
+  "build_mode": "jenkins,gitlab_ci,gitea_ci",
+  "build_modes": ["jenkins", "gitlab_ci", "gitea_ci"],
+  "build_mode_source": "database",
+  "custom_push_enabled": true,
+  "custom_push_providers": ["custom_push"],
+  "db_driver": "mysql",
+  "app_version": "2.8.9",
+  "app_env": "production",
+  "time": "2026-08-10 12:00:00"
+}
+```
+
+> **注意：** `/api/health/static` 仅接受管理员登录 Token；API Token 访问一律返回 403（fail-closed）。
 
 ---
 
@@ -205,6 +239,7 @@ GET /api/main/git/discovery
 | `/api/build/{path}/pipelines` | GET/POST | 流水线列表（`?list=id\|build\|time\|success`） |
 | `/api/build/{path}/pipelines/{id}` | GET/POST | 流水线详情 + Jobs（每项含 `id` + `log_url`）—— 仅 Gitea CI |
 | `/api/build/{path}/pipelines/{id}/logs` | GET/POST | 流水线日志（text/plain；`id`=run id，返回该 run 下全部 job 日志拼接）—— 仅 Gitea CI |
+| `/api/build/{path}/pipelines/{id}/resolve-tag` | POST | 镜像 Tag 日志兜底懒解析：对 success 且未命中 harbor-scan 回写的流水线，遍历 job 日志提取 tag 并落库缓存（body 可带 `sha` 命中缓存、`force=1` 强制重解析覆盖旧值） |
 | `/api/build/{path}/logs/{id}` | GET/POST | 构建日志（text/plain；`id`=job id，取自 `/pipelines/{runId}` 返回的 `jobs[].id`，非 run id） |
 | `/api/build/{path}/pipelines/{id}/retry` | POST | 重试流水线（仅 GitLab CI） |
 | `/api/build/{path}/pipelines/{id}/cancel` | POST | 取消流水线（仅 GitLab CI） |
@@ -343,13 +378,18 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 | `/api/admin/custom_builds` | GET | Custom_Push 上报的构建记录（支持 `?page=&per_page=` 分页；需 `ci.mode.edit`） |
 | `/api/admin/security_checks` | GET | 安全扫描审计记录（支持 `?project=&check_type=&state=&writeback=&exclude=&page=&per_page=` 筛选） |
 | `/api/admin/platform_versions` | GET/PUT | 平台 API 版本配置 |
+| `/api/admin/platform_versions/probe` | GET | 实际探测 Harbor / Jenkins 版本（慢速探测独立端点，与毫秒级返回配置态的列表分离，避免平台不可达时整页卡住；需 `ci.platform-edit`） |
 | `/api/admin/build_mode` | GET/PUT | 构建模式（启用的 CI 源集合，如 jenkins,gitlab_ci,gitea_ci） |
-| `/api/admin/platform_config` | GET | 平台接入状态（脱敏，仅返回各平台 `configured` 布尔，不返回 URL/账号/凭证；需 `ci.system`） |
+| `/api/admin/platform_config` | GET/PUT | 平台接入状态（脱敏，仅返回各平台 `configured` 布尔，不返回 URL/账号/凭证）+ 平台级 tag 设置（清理/回填开关、日志关键字）与 API 调用日志设置；PUT 仅更新请求体显式携带的键，避免互相覆盖（需 `ci.platform-config`） |
 | `/api/admin/system_info` | GET | 数据库 schema 状态（驱动 / schema 版本 / 是否当前 / PHP 版本 / 核心表存在性；需 `ci.system`） |
 | `/api/admin/migrate` | POST | 手动触发数据库迁移（补建缺失表 + 种子权限 + 标记 schema 当前；仅 super_admin） |
+| `/api/admin/backup` | POST | 手动执行数据库备份（zip 归档，滚动留存最近 10 份；启用 CD 时额外产出一份 CD 库归档；仅 super_admin） |
+| `/api/admin/backups` | GET | 列出已生成的数据库备份文件（仅 super_admin） |
 | `/api/admin/tag_cleanup` | POST | 手动立即执行一次过期 tag 清理（等价 `cli/cleanup-pipeline-tags.php`；对应开关未开启或 Harbor 未配置时返回 409 安全跳过；需 `ci.platform-config`） |
 | `/api/admin/tag_backfill` | POST | 手动立即执行一次镜像 Tag 日志回填（等价 `cli/backfill-pipeline-tags.php`；同上，仅补缺失 tag 不覆盖扫描结果；需 `ci.platform-config`） |
 | `/api/admin/operation_logs` | GET | 操作审计日志（支持 `?username=&action=&result=&operator_type=&date_from=&date_to=&page=&per_page=` 筛选；需 `ci.operation-logs`） |
+| `/api/admin/deploy_logs` | GET | CD 部署记录审计列表（只读，经 `v_glue_deploy_logs` 契约视图，不直读 CD 表；支持 `?project=&status=&deploy_type=&date_from=&date_to=&page=&per_page=` 筛选；需 `ci.deploy-logs`） |
+| `/api/admin/api_access_logs` | GET | API Token 调用审计列表（只返回 token 展示名等审计字段，绝无 token 原文/hash/body/query；支持 `?result=&method=&token_name=&route=&date_from=&date_to=&page=&per_page=` 筛选；需 `ci.api-logs`） |
 | `/api/admin/users` | GET | 用户列表（admin 可见全部；非 admin 看不到 admin 用户） |
 | `/api/admin/users` | POST | 创建用户（body: `username`、`password`、`role`、`systems`） |
 | `/api/admin/users/{username}` | PUT | 更新用户（body: `password` 和/或 `role`） |
@@ -392,6 +432,22 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 
 ---
 
+## OAuth2 / OIDC 模块 (`/oauth`、`/.well-known`)
+
+> 供 Grafana 等外部系统用 Glue 账号登录（OAuth2 授权码流程），并为 Jenkins oic-auth / Harbor OIDC / GitLab OmniAuth 提供自动发现。完整配置与流程说明见[单点登录](单点登录.md)。
+
+| 接口 | 方法 | 说明 |
+|---|---|---|
+| `/oauth/authorize` | GET | 授权码流程：展示授权确认页（浏览器跳转） |
+| `/oauth/authorize` | POST | 提交授权（账号密码登录 + 允许/拒绝；与登录接口共用 5 次/15 分钟失败限流） |
+| `/oauth/token` | POST | 授权码换取 access token |
+| `/oauth/userinfo` | GET/POST | 用户信息（access token 鉴权；GET/POST 均注册，兼容 Grafana 等客户端） |
+| `/oauth/userinfo/emails` | GET | GitHub 风格邮箱子端点（Grafana 兜底请求） |
+| `/.well-known/openid-configuration` | GET | OIDC 发现文档（公开） |
+| `/.well-known/jwks.json` | GET | OIDC 签名公钥（仅公钥，不泄露私钥） |
+
+---
+
 ## API Token 管理（服务账号 / 第三方调用）
 
 > 供 CD 系统服务账号（Jenkins / GitLab CI 脚本）或第三方系统调用。API Token **独立于 RBAC 权限体系**，直接携带接口权限清单（scope），不关联任何用户或角色。
@@ -416,9 +472,10 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 | `build.read` | 构建查询 | `/api/build/*`（除下方写/回写接口外） |
 | `build.write` | 构建执行 | `trigger` / `retry` / `cancel` |
 | `build.report` | 构建回写 | `scan-sync` / `commit-status` / `report`（CI 脚本回调） |
+| `rbac.user.write` | CD 服务账号管理 | `/api/rbac/*` 用户与角色的建/读/改/删 |
 
 > **说明：**
-> - `/api/health` 无需 scope，任意有效 Token 即可访问。
+> - `/api/health` 无需 scope，任意有效 Token 即可访问；`/api/health/static` 对 API Token 同样禁止（fail-closed，403）。
 > - `/api/admin/*`（含管理接口）对 API Token **一律禁止**（fail-closed），即使持有任意 scope 也返回 403。
 > - 未知路径同样 fail-closed，返回 403。
 > - 每个 Token 可同时勾选多个 scope；scope 之间无包含关系。
@@ -508,13 +565,18 @@ curl -X DELETE "http://URL/api/admin/api_tokens/1" \
 ## 快速测试命令
 
 ```bash
-# 健康检查（无需认证）
-curl "http://URL/api/health"
-
 # 登录获取 Token
 TOKEN=$(curl -s -X POST "http://URL/api/admin/login" \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"your_password"}' | jq -r '.data.token')
+
+# 健康检查（需要认证；登录 Token 或任意有效 API Token 均可）
+curl "http://URL/api/health" \
+  -H "Authorization: Bearer $TOKEN"
+
+# 快速健康信息（不探测外部平台；仅接受管理员登录 Token）
+curl "http://URL/api/health/static" \
+  -H "Authorization: Bearer $TOKEN"
 
 # 触发构建（POST JSON，需要认证）
 curl -X POST "http://URL/api/build/static/trigger" \
