@@ -339,7 +339,7 @@ $tc = apiT('/healthz 探针（无认证）', "{$baseUrl}/healthz");
 $tc->assertHttpIs(200, '/healthz 返回 200');
 $tc->assertJson();
 $hz = json_decode($tc->rawBody, true) ?? [];
-$tc->assertHasKeys($hz, ['status', 'db', 'app_version', 'schema_version', 'seed_version', 'schema_current', 'auto_migrate', 'time'], '含 status/db/app_version/schema_version/seed_version/schema_current/auto_migrate/time');
+$tc->assertHasKeys($hz, ['status', 'db', 'app_version', 'schema_version', 'seed_version', 'schema_current', 'schema_ahead', 'auto_migrate', 'time'], '含 status/db/app_version/schema_version/seed_version/schema_current/schema_ahead/auto_migrate/time');
 if (isset($hz['status'])) {
     $tc->assertIn($hz['status'], ['ok', 'degraded'], "status 是 ok 或 degraded");
 }
@@ -352,6 +352,9 @@ if (isset($hz['app_version'])) {
 }
 if (array_key_exists('schema_current', $hz)) {
     $tc->assertIn($hz['schema_current'], [true, false, null], 'schema_current 是 bool 或 null（无版本记录时未知）');
+}
+if (isset($hz['schema_ahead'])) {
+    $tc->assertIsType('bool', $hz['schema_ahead'], 'schema_ahead 是布尔方向位（true=库比代码新，疑似回滚降级）');
 }
 if (isset($hz['auto_migrate'])) {
     $tc->assertIsType('bool', $hz['auto_migrate'], 'auto_migrate 是布尔值');

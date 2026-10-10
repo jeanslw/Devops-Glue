@@ -91,17 +91,19 @@ Unauthenticated external probe for Uptime Kuma / cloud load balancers / containe
   "schema_version": "2.8.9",
   "seed_version": "2.8.9",
   "schema_current": true,
+  "schema_ahead": false,
   "auto_migrate": true,
   "time": 1760000000
 }
 ```
 
-- **HTTP 200 + `status=ok`**: the database is reachable and `schema_current=true`.
-- **HTTP 200 + `status=degraded`**: the database is reachable but the version is stale (`schema_current=false`, e.g. the code was upgraded before the migration ran); when tables really are missing, `tables_missing` (the missing core tables) is emitted as well. **This does not return 503** — during a rolling upgrade "new code + old schema" is an expected intermediate state, and returning 503 as well would make the LB / K8s pull every replica.
-- **HTTP 503 + `status=degraded`**: the database is unreachable (including core tables missing so the query fails).
-- `schema_current`: the result of comparing `schema_version` (auto-migrate mode) or `seed_version` (with `DB_AUTO_MIGRATE=false` no `schema_version` is written) against the current `APP_VERSION`; `null` when neither record exists (unknown, never treated as degraded).
-- `seed_version`: recorded only with `DB_AUTO_MIGRATE=false` (`null` in auto-migrate mode, where `schema_version` is authoritative).
-- Fix: after running `php cli/migrate.php` or clicking the "Sync Schema" button on the "Data Management → 🗄️ Database" card, `schema_current` returns to `true`.
+- **HTTP 200 + `status=ok`**: the database is reachable and `schema_current` is `true`, or `null` (manual mode where the structural migration never ran = unknown: neither degraded nor falsely aligned).
+- **HTTP 200 + `status=degraded`**: the database is reachable but the version is unaligned (`schema_current=false`) — either **the code was upgraded before the migration ran** (`schema_ahead=false`) or **the code was rolled back** (`schema_ahead=true`); when tables really are missing, `tables_missing` (the missing core tables) is emitted as well. **This does not return 503**: during a rolling upgrade ("new code + old schema") and during a rollback ("old code + new database") the unaligned state is expected; returning 503 as well would make the LB / K8s pull every replica.
+- **HTTP 503 + `status=degraded`**: not ready — the database connection failed (`db=false`), or it connected but the version table is missing (empty/uninitialized database, in which case `db=true`, so monitoring can tell it from a real outage).
+- `schema_current`: **only `schema_version` is authoritative** (written exclusively by paths that actually ran DDL) compared against the current `APP_VERSION`; `null` when there is no `schema_version` (unknown, never treated as degraded). It deliberately does not fall back to `seed_version` — a refreshed seed says nothing about new business columns.
+- `seed_version`: recorded only with `DB_AUTO_MIGRATE=false` (`null` in auto-migrate mode); it drives the seeding short-circuit and observation.
+- `schema_ahead`: direction flag. `true` when `schema_version` is higher than `APP_VERSION` (the database is newer than the code = a likely **downgrade/rollback**); `false` when nothing is recorded. Combined with `schema_current=false` it distinguishes "the structural migration never ran" from "the code was rolled back".
+- Fix: after a code upgrade without migrating → run `php cli/migrate.php` or click the "Sync Schema" button on the "Data Management → 🗄️ Database" card, and `schema_current` returns to `true`; after a **rollback/downgrade** → follow the FAQ "Rollback / downgrade" entry first, then align the marker.
 
 - `status`: `ok` (database reachable) | `degraded` (database unreachable)
 - `db`: `true` / `false`

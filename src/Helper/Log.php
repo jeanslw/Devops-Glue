@@ -26,12 +26,39 @@ class Log
      */
     public static function error(string $message, array $context = []): void
     {
+        self::write('error', $message, $context);
+    }
+
+    /**
+     * 记录一条警告日志（「需要人关注但非故障」的事件，如检测到代码降级回滚）。
+     * 日志级别按 APP_DEBUG 门控：true=debug / false=info，两种级别都会保留 warning。
+     *
+     * @param array<string,mixed> $context 日志上下文
+     */
+    public static function warning(string $message, array $context = []): void
+    {
+        self::write('warning', $message, $context);
+    }
+
+    /**
+     * 统一写日志：Logger 未启用 / 初始化失败 / 写入失败时一律回退 error_log，
+     * 绝不因日志问题阻塞调用方（迁移、引导这些关键路径都依赖本方法）。
+     *
+     * @param string              $level   'error' | 'warning'
+     * @param array<string,mixed> $context 日志上下文
+     */
+    private static function write(string $level, string $message, array $context = []): void
+    {
         try {
             if (!self::$initialized) {
                 self::initLogger();
             }
             if (self::$logger !== null) {
-                self::$logger->error($message, $context);
+                if ($level === 'warning') {
+                    self::$logger->warning($message, $context);
+                } else {
+                    self::$logger->error($message, $context);
+                }
                 return;
             }
             // 若 Logger 初始化失败或未启用，回退到 error_log

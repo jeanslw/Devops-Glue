@@ -255,6 +255,11 @@
             "description": "Whether the schema is aligned with the current code version; null when there is no schema_version (the structural migration never ran, e.g. manual-provisioning mode without php cli/migrate.php, even if a seed_version exists) — unknown: never treated as degraded and never falsely reported as aligned",
             "example": true
           },
+          "schema_ahead": {
+            "type": "boolean",
+            "description": "Direction flag: true when schema_version is higher than the current APP_VERSION, i.e. the database is newer than the code — typically after a code downgrade/rollback. Combined with schema_current=false it distinguishes \"the structural migration never ran\" (ahead=false) from \"the code was rolled back\" (ahead=true); false when no version is recorded",
+            "example": false
+          },
           "auto_migrate": {
             "type": "boolean",
             "description": "Whether auto-migrate mode is on (DB_AUTO_MIGRATE not explicitly disabled)",
@@ -1337,7 +1342,7 @@
           "Health"
         ],
         "summary": "Liveness / readiness probe",
-        "description": "Unauthenticated external probe: checks database reachability, the applied versions and schema alignment only; it does not probe Jenkins/Git/Harbor. DB reachable and aligned → 200 + status=ok; DB reachable but stale (schema_current=false, e.g. code upgraded before the migration ran) → 200 + status=degraded (a stale version never pulls traffic, so a rolling upgrade cannot make the LB/K8s drop every replica) with the missing core tables listed in tables_missing; in manual-provisioning mode where the structural migration never ran, schema_current=null (unknown) → 200 + status=ok (neither degraded nor falsely reported aligned); a failed DB connection, or a successful connection whose version table is missing (empty/uninitialized database, in which case db=true) → 503 + status=degraded. The db field expresses connectivity only, to distinguish a real outage from a reachable-but-uninitialized database.",
+        "description": "Unauthenticated external probe: checks database reachability, the applied versions and schema alignment only; it does not probe Jenkins/Git/Harbor. DB reachable and aligned → 200 + status=ok; DB reachable but stale (schema_current=false, e.g. code upgraded before the migration ran) → 200 + status=degraded (a stale version never pulls traffic, so a rolling upgrade cannot make the LB/K8s drop every replica) with the missing core tables listed in tables_missing; in manual-provisioning mode where the structural migration never ran, schema_current=null (unknown) → 200 + status=ok (neither degraded nor falsely reported aligned); a failed DB connection, or a successful connection whose version table is missing (empty/uninitialized database, in which case db=true) → 503 + status=degraded. The db field expresses connectivity only, to distinguish a real outage from a reachable-but-uninitialized database. schema_ahead=true means the database schema version is higher than the current code (a likely downgrade/rollback), and combined with schema_current=false it separates \"the structural migration never ran\" from \"the code was rolled back\".",
         "operationId": "healthz",
         "responses": {
           "200": {
