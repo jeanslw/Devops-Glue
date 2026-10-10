@@ -255,6 +255,11 @@
             "description": "库结构是否对齐当前代码版本；无 schema_version（结构迁移未执行，如手动建库模式未跑 cli/migrate.php，即使有 seed_version）时为 null（未知：不降级也不谎报对齐）",
             "example": true
           },
+          "schema_ahead": {
+            "type": "boolean",
+            "description": "方向位：schema_version 高于当前 APP_VERSION 时为 true，即「库比代码新」——典型场景是代码降级/回滚。与 schema_current=false 组合可区分「没跑结构迁移」（ahead=false）与「已回滚」（ahead=true）；无版本记录时为 false",
+            "example": false
+          },
           "auto_migrate": {
             "type": "boolean",
             "description": "当前是否自动建表模式（DB_AUTO_MIGRATE 未显式关闭）",
@@ -1352,7 +1357,7 @@
           "Health"
         ],
         "summary": "存活/就绪探针",
-        "description": "无需鉴权的外部探针：只检测数据库可达性、已应用版本与 schema 对齐状态，不探测 Jenkins/Git/Harbor。数据库可达且版本对齐 → 200 + status=ok；数据库可达但版本未对齐（schema_current=false，如升级了代码还没跑迁移）→ 200 + status=degraded（版本落后不摘流，避免滚动升级期 LB/K8s 摘掉全部副本），并在 tables_missing 中列出缺失的核心表；手动建库模式从未跑过结构迁移时 schema_current=null（未知），返回 200 + status=ok，不降级也不谎报对齐；数据库连接失败、或连接正常但版本表缺失（空库未初始化，此时 db=true）→ 503 + status=degraded。db 字段仅表示连接性，便于区分「真宕机」与「连上但未初始化」。",
+        "description": "无需鉴权的外部探针：只检测数据库可达性、已应用版本与 schema 对齐状态，不探测 Jenkins/Git/Harbor。数据库可达且版本对齐 → 200 + status=ok；数据库可达但版本未对齐（schema_current=false，如升级了代码还没跑迁移）→ 200 + status=degraded（版本落后不摘流，避免滚动升级期 LB/K8s 摘掉全部副本），并在 tables_missing 中列出缺失的核心表；手动建库模式从未跑过结构迁移时 schema_current=null（未知），返回 200 + status=ok，不降级也不谎报对齐；数据库连接失败、或连接正常但版本表缺失（空库未初始化，此时 db=true）→ 503 + status=degraded。db 字段仅表示连接性，便于区分「真宕机」与「连上但未初始化」。schema_ahead=true 表示库结构版本高于当前代码（疑似代码降级/回滚），与 schema_current=false 组合可区分「没跑结构迁移」与「已回滚降级」。",
         "operationId": "healthz",
         "responses": {
           "200": {

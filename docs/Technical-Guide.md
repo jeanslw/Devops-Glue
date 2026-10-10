@@ -332,10 +332,16 @@ The admin panel's "System Settings → Data Management → Database" card provid
 The **🔧 Sync Schema** button on the "Data Management → 🗄️ Database" card (`super_admin` only) takes the very same `Database::migrateNow()` path as `cli/migrate.php`: it aligns the schema and the built-in seed with the **current code version**.
 
 - **What it does**: `ensureTables()` (missing tables via `CREATE TABLE IF NOT EXISTS`, per-column `ALTER ADD COLUMN` from `$columnMigrations`, missing indexes via `createIndex()`, dropping the retired legacy table `ci_pipeline_tags`) → `seedRbac()` / `seedAdmin()` → `markSchemaCurrent()` + `markSeedCurrent()` once `verifySeed()` passes.
-- **What it never does**: no column renames/drops, no changes to column types or primary keys (e.g. `admin_users.id`), no versioned up/down, no dry-run, no cross-database migration — those are "manual migrations", to be run offline with database tools after a backup.
-- **The two entry points differ**: the Web button executes DDL with the **application's own database account**; when that account lacks `CREATE`/`ALTER` it answers **409** + `sys.migrate_denied` (explicitly pointing at the CLI) and records a failed `migrate_schema` operation-log entry. `cli/migrate.php` ignores `DB_AUTO_MIGRATE` and can be run with a privileged account from a deployment pipeline (K8s Job / initContainer, Helm pre-upgrade hook, one-shot Compose service).
+- **What it never does**: no column renames/drops, no changes to column types or primary keys (e.g. `admin_users.id`), no versioned up/down, no cross-database migration — those are "manual migrations", to be run offline with database tools after a backup (use `--dry-run` for a read-only pre-check; nothing is written).
+- **The two entry points differ**: the Web button executes DDL with the **application's own database account**; when that account lacks `CREATE`/`ALTER` it answers **409** + `sys.migrate_denied` (explicitly pointing at the CLI) and records a failed `migrate_schema` operation-log entry. `cli/migrate.php` ignores `DB_AUTO_MIGRATE` and can be run with a privileged account from a deployment pipeline (K8s Job / initContainer, Helm pre-upgrade hook, one-shot Compose service). Run `php cli/migrate.php --dry-run` first for a read-only pre-check: it prints the **tables/columns that would be added** plus the version state and **writes nothing** (exit codes: 0 = no migration needed, 2 = migration needed, 1 = fatal), so a pipeline can decide before it acts.
 - **Login prerequisite**: the button requires a login, and a missing table makes login itself fail with a 500 — for empty/partial databases use `php cli/db-init.php` and `php cli/migrate.php`; the button is for "already logged in, just need to align the schema".
 - **Terminology**: "Sync Schema" = this button (and `cli/migrate.php`); "Database Migration" = the CLI phrasing of the same action; "Manual Migration" = renames, type changes, column drops, primary-key changes, cross-database moves.
+- **Seeding semantics on a downgrade (rollback)**: when the recorded version is higher than the code version, `seedRbac()` automatically switches to **merge mode (`seed_mode=merge`, add-only)** — mappings the current code expects are added and mappings the new version granted are **kept**, so a rollback never silently narrows permissions; an explicit `cli/migrate.php` / button run always **converges** to the current code definitions (`seed_mode=prune`) — "an explicit action is the authoritative seed". Both modes leave a warning in the log (the merge one also tells you how to converge).
+- **Version-transition audit (`ci_operation_logs`)**: two non-overlapping channels, one row per event —
+  - the **automatic bootstrap path** (no human action) records by direction: first provisioning `schema_init`, version advanced `schema_upgrade`, rollback `schema_downgrade` (`result` = `success`/`success`/`failure`), with `username`/`operator_type`=`system`, `target` = the previous version and `detail={key,scope(schema|seed),previous,current,seed_mode}`;
+  - the **explicit path** (button, `cli/migrate.php`) records the action itself: `migrate_schema` (with `from → to`).
+  The same `(action,target)` is deduplicated within a 10-minute window (web / worker processes starting up do not spam it); a genuine repeat outside the window is recorded normally.
+- **Partial seed failure = fail-fast**: any failed row write inside `seedRbac()` (permissions / implied rules / roles / role-permission inserts or pruning) is **collected and thrown** (the same mechanism as `verifySeed()`) — the version marker is not advanced, the next boot retries, and both the file log (carrying the first 5 failures) and the operation log (`rbac_seed_failed`, deduplicated for 10 minutes) are written. It deliberately does **not** "log and continue": a half-seeded RBAC shows up as "a button that should be there is missing" — the hardest class of bug to track down.
 
 ---
 
@@ -348,15 +354,15 @@ The **🔧 Sync Schema** button on the "Data Management → 🗄️ Database" ca
 Unauthenticated external probe for Uptime Kuma / cloud LB / container orchestration. It only does a DB probe, an applied-version read and a schema-alignment check — it does not probe Jenkins/Git/Harbor and returns in milliseconds.
 
 ```
-1. DB probe (Database::createPdo() + SELECT 1)
-   └─ on success Database::schemaState(): one SQL reads schema_version / seed_version and decides schema_current
-   └─ either step throws (including a missing ci_app_settings) → db=false
+1. DB probe (Database::createPdo() + SELECT 1) — db expresses connectivity only
+   └─ on success Database::schemaState(): one SQL reads schema_version / seed_version and decides schema_current + schema_ahead
+   └─ either step throws → ready=false (a failed connection and a reachable-but-uninitialized database are logged separately)
 2. Only when schema_current=false: Database::missingTables() probes the core tables one by one
    (the happy path never pays for these N queries, keeping the probe in the millisecond range)
 3. Summary
-   └─ db=true  + schema_current≠false → HTTP 200 + status=ok
-   └─ db=true  + schema_current=false → HTTP 200 + status=degraded (stale version, no traffic pulled)
-   └─ db=false                        → HTTP 503 + status=degraded (reported truthfully, not 500)
+   └─ ready=true  + schema_current≠false → HTTP 200 + status=ok
+   └─ ready=true  + schema_current=false → HTTP 200 + status=degraded (stale schema, or a database newer than the code — never pulls traffic)
+   └─ ready=false                        → HTTP 503 + status=degraded (the db field separates a real outage from a reachable-but-empty database)
 ```
 
 **Response structure:**
@@ -366,18 +372,22 @@ Unauthenticated external probe for Uptime Kuma / cloud LB / container orchestrat
   "db": true,
   "app_version": "2.8.9",
   "schema_version": "2.8.9",
-  "seed_version": "2.8.9",
+  "seed_version": null,
   "schema_current": true,
+  "schema_ahead": false,
   "auto_migrate": true,
   "time": 1760000000
 }
 ```
 
-- `schema_current`: the result of comparing `schema_version` (auto-migrate mode) or `seed_version` (with `DB_AUTO_MIGRATE=false` no `schema_version` is written — otherwise a pure manual deployment would report degraded forever) against `APP_VERSION`; `null` when neither record exists (unknown, never treated as degraded).
-- `seed_version`: recorded only with `DB_AUTO_MIGRATE=false` (`null` in auto-migrate mode, where `schema_version` is authoritative).
+- `schema_current`: **only `schema_version` is authoritative** (it is written exclusively by paths that actually ran DDL: `ensureTables()` succeeding in auto-migrate mode, or `cli/migrate.php` / the "Sync Schema" button in manual mode); `null` when there is no `schema_version` (unknown — neither degraded nor falsely aligned). It deliberately does **not** fall back to `seed_version`: a refreshed RBAC seed proves the seed `INSERT`s ran, not that new business columns exist — a manual-mode upgrade that skipped DDL still seeds fine, so falling back to `true` would report "new code + old schema" as healthy.
+- `seed_version`: recorded only with `DB_AUTO_MIGRATE=false` (`null` in auto-migrate mode); it drives the "don't re-seed on every request" short-circuit and is useful for observation.
+- `schema_ahead`: **direction flag**. `true` when `schema_version` is higher than `APP_VERSION` (via `version_compare`, not lexicographic order) — the database is newer than the code, typically after a **code downgrade/rollback**; `false` when nothing is recorded.
+  - `schema_current=false` + `schema_ahead=false` → the code is newer than the database (**the structural migration never ran**): run `cli/migrate.php` or click "Sync Schema".
+  - `schema_current=false` + `schema_ahead=true` → the database is newer than the code (**the code was rolled back**): first decide whether running the old code against the new database is acceptable, then align the marker and review the seed roll-back side effects (see the FAQ "Rollback / downgrade" entry).
 - `tables_missing`: **only present when `schema_current=false` and tables really are missing**, listing the missing core tables; not probed and not emitted when `schema_current` is `true`/`null`.
-- `auto_migrate`: whether auto-migrate mode is on, so a probe reader can spot the "manual mode + stale version" combination directly.
-- **Why a stale version does not return 503**: during a rolling upgrade "new code + old schema" is an expected intermediate state; returning 503 as well would make the LB / K8s pull every replica, far more harmful than the degraded state itself. Monitoring should alert on the `status` / `schema_current` fields instead.
+- `auto_migrate`: whether auto-migrate mode is on (`DB_AUTO_MIGRATE` not explicitly disabled).
+- **Why an unaligned version does not return 503**: during a rolling upgrade "new code + old schema" is an expected intermediate state, and so is a rollback (a database newer than the code) — returning 503 as well would make the LB / K8s pull every replica, far more harmful than the degraded state itself. Monitoring should alert on the `status` / `schema_current` / `schema_ahead` fields instead.
 
 ---
 

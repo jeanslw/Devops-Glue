@@ -330,6 +330,56 @@ class DatabaseBootstrapTest extends TestCase
         $this->assertNull($state['schema_current'], '无版本记录应为未知（null），不判降级');
     }
 
+    /**
+     * 方向位 schema_ahead：库结构版本**高于**代码版本 = 代码被降级（回滚）→ current=false + ahead=true。
+     * 方向必须用 version_compare 判定（'2.10.0' > '2.8.9'）；字符串比较会得出相反结论，故专门锁住该用例。
+     */
+    public function testSchemaStateReportsAheadOnCodeDowngrade(): void
+    {
+        Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
+        $pdo = $this->createMemoryPdo();
+        Database::bootstrap($pdo);
+
+        $pdo->exec('UPDATE ' . AppConfig::TABLE_APP_SETTINGS . " SET value = '2.10.0' WHERE setting_key = 'schema_version'");
+        $state = Database::schemaState($pdo);
+        $this->assertFalse($state['schema_current'], '版本不一致 → 未对齐');
+        $this->assertTrue($state['schema_ahead'], '库版本高于代码 → 疑似降级回滚（须用 version_compare，非字典序）');
+
+        // 反向：版本低于代码 → 属于「没跑结构迁移」，不是「代码回滚」
+        $pdo->exec('UPDATE ' . AppConfig::TABLE_APP_SETTINGS . " SET value = '0.0.0' WHERE setting_key = 'schema_version'");
+        $this->assertFalse(Database::schemaState($pdo)['schema_ahead'], '库版本低于代码不算 ahead');
+    }
+
+    /** 无版本记录（未知）时 ahead 必须为 false：没有记录可判定为「更高」，避免监控误报降级。 */
+    public function testSchemaStateReportsAheadFalseWhenNoVersionRecorded(): void
+    {
+        Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
+        $pdo = $this->createMemoryPdo();
+        Database::bootstrap($pdo);
+        $pdo->exec('DELETE FROM ' . AppConfig::TABLE_APP_SETTINGS . " WHERE setting_key = 'schema_version'");
+
+        $state = Database::schemaState($pdo);
+        $this->assertNull($state['schema_current']);
+        $this->assertFalse($state['schema_ahead'], '无记录 → 非 ahead');
+    }
+
+    /**
+     * 降级后 migrateNow() 会把「更新」的标记改写回当前（旧）版本（自动模式 bootstrap 走同一 markSchemaCurrent 路径），
+     * 且改写前先经 warnOnVersionDowngrade() 留 warning 日志——本用例锁住「不抛异常且标记被对齐」。
+     */
+    public function testMigrateNowRewritesAheadMarkerToCurrentVersion(): void
+    {
+        Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
+        $pdo = $this->createMemoryPdo();
+        Database::bootstrap($pdo);
+        $pdo->exec('UPDATE ' . AppConfig::TABLE_APP_SETTINGS . " SET value = '99.0.0' WHERE setting_key = 'schema_version'");
+
+        $status = Database::migrateNow();
+        $this->assertSame(AppConfig::APP_VERSION, $status['schema_version'], '降级后迁移应把标记对齐到当前代码版本');
+        $this->assertTrue($status['is_current']);
+        $this->assertFalse(Database::schemaState($pdo)['schema_ahead'], '标记已对齐后 ahead 归零');
+    }
+
     /** 空库：missingTables() 列出全部核心表（/healthz 用它解释 schema_current=false 的原因）。 */
     public function testMissingTablesListsEveryCoreTableOnEmptyDatabase(): void
     {
@@ -339,6 +389,88 @@ class DatabaseBootstrapTest extends TestCase
         $this->assertNotEmpty($missing);
         $this->assertContains(AppConfig::TABLE_APP_SETTINGS, $missing);
         $this->assertContains(AppConfig::TABLE_ADMIN_USERS, $missing);
+    }
+
+    /**
+     * 只读预检（cli/migrate.php --dry-run 的数据源）：空库 → 列出全部缺失表，
+     * 且**确实没写库**（ci_app_settings 仍不存在，证明未触发建表/种子）。
+     */
+    public function testPendingChangesOnEmptyDatabaseReportsTablesAndStaysReadOnly(): void
+    {
+        Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
+        $pdo = $this->createMemoryPdo();
+
+        $pending = Database::pendingChanges($pdo);
+
+        $this->assertNotEmpty($pending['missing_tables']);
+        $this->assertContains(AppConfig::TABLE_APP_SETTINGS, $pending['missing_tables']);
+        $this->assertSame([], $pending['missing_columns'], '整表缺失时不逐列报告（避免与「缺失表」重复）');
+
+        // 只读证明：预检后 ci_app_settings 依然不存在
+        $this->expectException(\PDOException::class);
+        $pdo->query('SELECT 1 FROM ' . AppConfig::TABLE_APP_SETTINGS . ' LIMIT 1');
+    }
+
+    /** 只读预检：已建全的库 → 表与列都没有待补项（与 CLI「迁移后仍缺表」的校验口径一致）。 */
+    public function testPendingChangesAfterBootstrapIsEmpty(): void
+    {
+        Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
+        $pdo = $this->createMemoryPdo();
+        Database::bootstrap($pdo);
+
+        $pending = Database::pendingChanges($pdo);
+        $this->assertSame([], $pending['missing_tables']);
+        $this->assertSame([], $pending['missing_columns']);
+    }
+
+    /**
+     * 只读预检：存量旧表（缺 columnMigrations 中的列）→ 该表出现在「缺失列」而非「缺失表」，
+     * 并逐列列出待补字段。这正对应 --dry-run 最有用的场景：存量库升级前先看清会 ALTER 什么。
+     */
+    public function testPendingChangesReportsLegacyColumnsOfExistingTable(): void
+    {
+        Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
+        $pdo = $this->createMemoryPdo();
+        // 手工造一张「旧版」表：存在，但没有 status 列（status 在 columnMigrations 映射里）
+        $pdo->exec('CREATE TABLE ' . AppConfig::TABLE_JOB_GIT_MAP . ' (job_name TEXT PRIMARY KEY, git_platform TEXT)');
+
+        $pending = Database::pendingChanges($pdo);
+
+        $this->assertNotContains(AppConfig::TABLE_JOB_GIT_MAP, $pending['missing_tables'], '已存在的表不算缺失表');
+        $this->assertArrayHasKey(AppConfig::TABLE_JOB_GIT_MAP, $pending['missing_columns'], '存在的旧表应逐列报告');
+        $this->assertContains('status', $pending['missing_columns'][AppConfig::TABLE_JOB_GIT_MAP]);
+    }
+
+    /**
+     * 预检与实跑同源：pendingChanges() 报出的缺列，跑一次迁移后必须全部补齐（否则预检会误导运维）。
+     *
+     * 用真实 SQLite 库文件 + Database::connect() 注入连接：migrateNow() 自带 connect()，
+     * 只有让 self::$pdo 指向同一个库，才能验证「预检结果 == 迁移实际补齐的内容」。
+     */
+    public function testPendingChangesMatchesWhatMigrateNowFix(): void
+    {
+        $dbPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'glue_dryrun_' . getmypid() . '.db';
+        @unlink($dbPath);
+        Database::reset();
+        Database::init(['driver' => 'sqlite', 'path' => $dbPath, 'auto_migrate' => true]);
+
+        $pdo = Database::connect(); // 只建连：起一个真实库文件并注入 self::$pdo
+        // 手工造一张「旧版」表：存在，但缺 status 列
+        $pdo->exec('CREATE TABLE ' . AppConfig::TABLE_JOB_GIT_MAP . ' (job_name TEXT PRIMARY KEY, git_platform TEXT)');
+
+        $before = Database::pendingChanges($pdo);
+        $this->assertNotEmpty($before['missing_columns'], '预检应报出待补列');
+
+        Database::migrateNow();
+
+        $after = Database::pendingChanges($pdo);
+        $this->assertSame([], $after['missing_tables']);
+        $this->assertSame([], $after['missing_columns'], '迁移后预检必须清零（预检与实跑同源）');
+
+        Database::reset();
+        @unlink($dbPath);
+        @unlink($dbPath . '-wal');
+        @unlink($dbPath . '-shm');
     }
 
     /**
@@ -353,7 +485,318 @@ class DatabaseBootstrapTest extends TestCase
         Database::schemaState($pdo);
     }
 
+    // ────────────── 降级（回滚）时的播种语义：merge（只补不删）vs prune（按当前代码收敛） ──────────────
+
     /**
+     * 降级走「合并播种」：新版本授予系统角色的映射必须**保留**（不得被回滚顺手收窄），
+     * 版本标记仍自愈为当前代码版本，并在改写前留 warning 痕迹。
+     */
+    public function testDowngradeUsesMergeSeedingAndKeepsNewerMappings(): void
+    {
+        Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
+        $pdo = $this->createMemoryPdo();
+        Database::bootstrap($pdo);
+
+        // 模拟「新版本」：给系统角色 viewer 多授一个权限
+        $extra = $this->firstPermissionNotGrantedToViewer();
+        $this->grantRolePermission($pdo, AppConfig::ROLE_VIEWER, $extra);
+
+        // 模拟「代码被降级」：记录版本高于当前代码版本
+        $this->setVersion($pdo, 'schema_version', '99.0.0');
+
+        $this->reBootstrap($pdo, true); // 降级后的首个请求（自动建库模式）
+
+        $this->assertTrue(
+            $this->roleHasPermission($pdo, AppConfig::ROLE_VIEWER, $extra),
+            '降级走合并播种：新版本授予的映射必须保留，而不是被清空重建'
+        );
+        $this->assertSame(
+            AppConfig::APP_VERSION,
+            $this->version($pdo, 'schema_version'),
+            '降级后版本标记仍会自愈为当前代码版本'
+        );
+    }
+
+    /** 合并播种的另一半是「补」：当前代码期望的映射即使被删，降级后也要补回来（只补不删的两个方向）。 */
+    public function testDowngradeMergeStillRestoresMappingsExpectedByCurrentCode(): void
+    {
+        Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
+        $pdo = $this->createMemoryPdo();
+        Database::bootstrap($pdo);
+
+        $expected = AppConfig::DEFAULT_ROLES[AppConfig::ROLE_VIEWER][0];
+        $this->revokeRolePermission($pdo, AppConfig::ROLE_VIEWER, $expected);
+        $this->assertFalse($this->roleHasPermission($pdo, AppConfig::ROLE_VIEWER, $expected), '前置：先制造缺失');
+
+        $this->setVersion($pdo, 'schema_version', '99.0.0');
+        $this->reBootstrap($pdo, true);
+
+        $this->assertTrue(
+            $this->roleHasPermission($pdo, AppConfig::ROLE_VIEWER, $expected),
+            '合并播种仍要把当前代码期望的映射补上'
+        );
+    }
+
+    /** 正常升级方向不受影响：仍是 prune —— 系统角色的多余映射会被清理，权限以代码为准。 */
+    public function testUpgradeStillPrunesToCurrentDefinitions(): void
+    {
+        Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
+        $pdo = $this->createMemoryPdo();
+        Database::bootstrap($pdo);
+
+        $extra = $this->firstPermissionNotGrantedToViewer();
+        $this->grantRolePermission($pdo, AppConfig::ROLE_VIEWER, $extra);
+
+        $this->setVersion($pdo, 'schema_version', '0.0.0'); // 老版本标记 → 升级方向
+        $this->reBootstrap($pdo, true);
+
+        $this->assertFalse(
+            $this->roleHasPermission($pdo, AppConfig::ROLE_VIEWER, $extra),
+            '升级方向必须保持 prune：多余映射按当前代码清理'
+        );
+    }
+
+    /** 显式迁移（cli/migrate.php / 后台「同步库结构」）在降级场景下仍按当前代码收敛，避免「合并」被永久化。 */
+    public function testExplicitMigrateOnDowngradeStillPrunes(): void
+    {
+        Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
+        $pdo = $this->createMemoryPdo();
+        Database::bootstrap($pdo);
+
+        $extra = $this->firstPermissionNotGrantedToViewer();
+        $this->grantRolePermission($pdo, AppConfig::ROLE_VIEWER, $extra);
+        $this->setVersion($pdo, 'schema_version', '99.0.0');
+
+        Database::migrateNow(); // 显式动作 = 权威种子
+
+        $this->assertFalse(
+            $this->roleHasPermission($pdo, AppConfig::ROLE_VIEWER, $extra),
+            '显式迁移应把权限收敛到当前代码定义（prune），而不是沿用合并结果'
+        );
+        $this->assertSame(AppConfig::APP_VERSION, $this->version($pdo, 'schema_version'));
+    }
+
+    /** 手动建库模式（DB_AUTO_MIGRATE=false）的降级同样走合并播种，并把 seed_version 自愈为当前版本。 */
+    public function testManualModeDowngradeAlsoUsesMergeSeeding(): void
+    {
+        Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
+        $pdo = $this->createMemoryPdo();
+        Database::bootstrap($pdo);
+
+        $extra = $this->firstPermissionNotGrantedToViewer();
+        $this->grantRolePermission($pdo, AppConfig::ROLE_VIEWER, $extra);
+        $this->setVersion($pdo, 'seed_version', '99.0.0'); // 手动模式以 seed_version 判定
+
+        $this->reBootstrap($pdo, false);
+
+        $this->assertTrue(
+            $this->roleHasPermission($pdo, AppConfig::ROLE_VIEWER, $extra),
+            '手动模式的降级同样只补不删'
+        );
+        $this->assertSame(AppConfig::APP_VERSION, $this->version($pdo, 'seed_version'));
+    }
+
+
+    // ────────────── 降级事件的审计留痕：写进操作日志（后台「操作日志」可见） ──────────────
+
+    /** 降级必须落一条操作日志：动作 schema_downgrade、操作人 system、结果 failure、target=被降级到的版本。 */
+    public function testDowngradeIsRecordedInOperationLog(): void
+    {
+        Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
+        $pdo = $this->createMemoryPdo();
+        Database::bootstrap($pdo);
+
+        $this->setVersion($pdo, 'schema_version', '99.0.0');
+        $this->reBootstrap($pdo, true);
+
+        $rows = $this->operationLogRows($pdo, 'schema_downgrade');
+        $this->assertCount(1, $rows, '降级必须写一条操作日志（文件日志会轮转，审计表可供后台查看）');
+        $this->assertSame('system', $rows[0]['username'], '系统级事件以 system 记录');
+        $this->assertSame('system', $rows[0]['operator_type'], '操作人类型 system（与 cli/backup-db.php 约定一致）');
+        $this->assertSame('failure', $rows[0]['result'], '「检测到异常」记为失败，便于按结果筛选');
+        $this->assertSame('99.0.0', $rows[0]['target'], 'target=被降级到的版本（同时作为去重键）');
+
+        $detail = json_decode((string)$rows[0]['detail'], true);
+        $this->assertSame('merge', $detail['seed_mode'] ?? null, 'detail 记录本次播种模式，便于事后审计');
+        $this->assertSame(AppConfig::APP_VERSION, $detail['current'] ?? null);
+    }
+
+    /** 同一个「被降级到的版本」只记一条：分布式部署下多进程各自检测不应刷屏；不同版本各记一条。 */
+    public function testDowngradeOperationLogIsDeduplicatedPerVersion(): void
+    {
+        Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
+        $pdo = $this->createMemoryPdo();
+        Database::bootstrap($pdo);
+
+        $this->setVersion($pdo, 'schema_version', '99.0.0');
+        $this->reBootstrap($pdo, true);
+        $this->setVersion($pdo, 'schema_version', '99.0.0'); // 同一降级事件被再次检测
+        $this->reBootstrap($pdo, true);
+        $this->assertCount(1, $this->operationLogRows($pdo, 'schema_downgrade'), '同一 previous 版本不重复记录');
+
+        $this->setVersion($pdo, 'schema_version', '98.0.0'); // 另一版本 = 另一事件
+        $this->reBootstrap($pdo, true);
+        $this->assertCount(2, $this->operationLogRows($pdo, 'schema_downgrade'), '不同 previous 版本各记一条');
+    }
+
+    /** 正常升级方向绝不能留下"降级"审计（否则操作日志会被误报污染）。 */
+    public function testNormalUpgradeIsNotRecordedAsDowngrade(): void
+    {
+        Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
+        $pdo = $this->createMemoryPdo();
+        Database::bootstrap($pdo);
+
+        $this->setVersion($pdo, 'schema_version', '0.0.0'); // 老版本标记 → 升级方向
+        $this->reBootstrap($pdo, true);
+
+        $this->assertCount(0, $this->operationLogRows($pdo, 'schema_downgrade'), '升级不应记为降级');
+    }
+
+    // ────────────── 升 / 首次 也要留痕：版本跃迁审计（降级已有，见上一组） ──────────────
+
+    /** 首次初始化建库 → schema_init（success，target 为空表示"此前无版本记录"）。 */
+    public function testFirstBootIsRecordedAsSchemaInit(): void
+    {
+        Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
+        $pdo = $this->createMemoryPdo();
+        Database::bootstrap($pdo); // 空库首启
+
+        $rows = $this->operationLogRows($pdo, 'schema_init');
+        $this->assertCount(1, $rows, '首次建库应记一条 schema_init');
+        $this->assertSame('system', $rows[0]['username']);
+        $this->assertSame('system', $rows[0]['operator_type']);
+        $this->assertSame('success', $rows[0]['result']);
+        $this->assertSame('', $rows[0]['target'], '此前无版本记录 → target 为空');
+
+        $detail = json_decode((string)$rows[0]['detail'], true);
+        $this->assertSame('schema', $detail['scope'] ?? null, '自动模式是"结构+种子"');
+        $this->assertNull($detail['previous'] ?? null);
+        $this->assertSame(AppConfig::APP_VERSION, $detail['current'] ?? null);
+    }
+
+    /** 自动引导里的版本向前推进 → schema_upgrade（success，target=跃迁前版本）。 */
+    public function testUpgradeIsRecordedAsSchemaUpgrade(): void
+    {
+        Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
+        $pdo = $this->createMemoryPdo();
+        Database::bootstrap($pdo);
+
+        $this->setVersion($pdo, 'schema_version', '0.0.0'); // 老版本标记 = 升级方向
+        $this->reBootstrap($pdo, true);
+
+        $rows = $this->operationLogRows($pdo, 'schema_upgrade');
+        $this->assertCount(1, $rows, '升级应记一条 schema_upgrade');
+        $this->assertSame('success', $rows[0]['result'], '升级是正常运维 → success');
+        $this->assertSame('0.0.0', $rows[0]['target'], 'target=跃迁前版本');
+
+        $detail = json_decode((string)$rows[0]['detail'], true);
+        $this->assertSame('0.0.0', $detail['previous'] ?? null);
+        $this->assertSame(AppConfig::APP_VERSION, $detail['current'] ?? null);
+    }
+
+    /** 手动建库模式：引导只补种子（seed_version 跃迁）→ 同样记 schema_upgrade，但 scope=seed 以示区分。 */
+    public function testManualModeSeedTransitionIsRecordedWithSeedScope(): void
+    {
+        Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
+        $pdo = $this->createMemoryPdo();
+        Database::bootstrap($pdo);
+
+        $this->setVersion($pdo, 'seed_version', '0.0.0');
+        $this->reBootstrap($pdo, false); // 手动建库模式
+
+        $rows = $this->operationLogRows($pdo, 'schema_upgrade');
+        $this->assertCount(1, $rows);
+        $detail = json_decode((string)$rows[0]['detail'], true);
+        $this->assertSame('seed', $detail['scope'] ?? null, '手动模式引导只补种子 → scope=seed');
+        $this->assertSame('seed_version', $detail['key'] ?? null);
+    }
+
+    /**
+     * 显式迁移（`cli/migrate.php` / 后台按钮）**不写**版本跃迁记录——它记录的是"操作"本身
+     * （`migrate_schema`，按钮路径在 AdminController、CLI 路径在 cli/migrate.php），避免一次操作两行日志。
+     */
+    public function testExplicitMigrateDoesNotRecordTransition(): void
+    {
+        Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
+        $pdo = $this->createMemoryPdo();
+        Database::bootstrap($pdo);
+
+        $this->setVersion($pdo, 'schema_version', '0.0.0');
+        Database::migrateNow(); // 显式动作
+
+        $this->assertCount(0, $this->operationLogRows($pdo, 'schema_upgrade'), '显式迁移不该再记跃迁');
+        $this->assertCount(0, $this->operationLogRows($pdo, 'schema_downgrade'));
+        $this->assertSame(AppConfig::APP_VERSION, $this->version($pdo, 'schema_version'), '但标记仍要对齐');
+    }
+
+    // ────────────── seedRbac 部分失败必须 fail-fast（不能再"记日志继续"） ──────────────
+
+    /**
+     * 部分失败必须 fail-fast：用 SQLite 触发器让角色权限的清理（prune DELETE）必然失败，
+     * 断言 ①抛异常 ②版本标记未被推进（下次引导重试）③文件日志 + 操作日志（`rbac_seed_failed`）都留痕
+     * ④同一次失败在去重窗口内不重复写审计（否则失败期间每个请求都会刷一行）。
+     */
+    public function testPartialSeedFailureThrowsAndKeepsVersionMarker(): void
+    {
+        Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
+        $pdo = $this->createMemoryPdo();
+        Database::bootstrap($pdo);
+
+        // 让 role_permissions 的任何删除都失败 → prune 阶段产生部分失败（模拟"种子只播了一半"）
+        $pdo->exec(
+            'CREATE TRIGGER fail_rp_delete BEFORE DELETE ON ' . AppConfig::TABLE_ROLE_PERMISSIONS
+            . " BEGIN SELECT RAISE(ABORT, 'forced seed failure'); END"
+        );
+        $this->setVersion($pdo, 'schema_version', '0.0.0'); // 制造"需要重新播种"
+
+        $caught = null;
+        try {
+            $this->reBootstrap($pdo, true);
+        } catch (\RuntimeException $e) {
+            $caught = $e;
+        }
+
+        $this->assertNotNull($caught, '部分失败必须抛异常，而不是静默继续');
+        $this->assertStringContainsString('RBAC 种子部分失败', $caught->getMessage());
+        $this->assertSame('0.0.0', $this->version($pdo, 'schema_version'), '失败后不得推进版本标记');
+
+        $rows = $this->operationLogRows($pdo, 'rbac_seed_failed');
+        $this->assertCount(1, $rows, '部分失败要写进操作日志');
+        $this->assertSame('failure', $rows[0]['result']);
+        $this->assertSame('system', $rows[0]['username']);
+        $detail = json_decode((string)$rows[0]['detail'], true);
+        $this->assertGreaterThanOrEqual(1, (int)($detail['count'] ?? 0), 'detail.count 记录失败项数');
+        $this->assertStringContainsString('forced', (string)($detail['sample'][0]['error'] ?? ''), 'sample 带真实错误便于排障');
+
+        // 去重：失败持续存在时（每个请求都会重试）审计表不能被刷爆
+        try {
+            $this->reBootstrap($pdo, true);
+        } catch (\RuntimeException $e) {
+            // 预期再次失败
+        }
+        $this->assertCount(1, $this->operationLogRows($pdo, 'rbac_seed_failed'), '去重窗口内同一次失败只记一条');
+    }
+
+    /**
+     * 读某个 action 的操作日志行（按 id 正序）。
+     *
+     * @param \PDO   $pdo
+     * @param string $action
+     * @return list<array<string,mixed>>
+     */
+    private function operationLogRows(\PDO $pdo, string $action): array
+    {
+        $stmt = $pdo->prepare(
+            'SELECT username, action, target, detail, result, operator_type'
+            . ' FROM ' . AppConfig::TABLE_OPERATION_LOGS . ' WHERE action = ? ORDER BY id'
+        );
+        $stmt->execute([$action]);
+        return $stmt->fetchAll();
+    }
+
+
+    /**
+     * 构造「纯手工建库 + DB_AUTO_MIGRATE=false」的库：先用自动模式建全表，
      * 再清掉 schema_version，等价于运维只跑了 database/*.sql（脚本不含该键），
      * 最后按手动模式引导一次。
      */
@@ -370,8 +813,74 @@ class DatabaseBootstrapTest extends TestCase
 
     private function bootstrapManualMode(\PDO $pdo): void
     {
+        $this->reBootstrap($pdo, false);
+    }
+
+    /** viewer 未被授予的某个权限键（用于模拟「新版本多授的权限」）。 */
+    private function firstPermissionNotGrantedToViewer(): string
+    {
+        foreach (array_keys(AppConfig::DEFAULT_PERMISSIONS) as $key) {
+            if (!in_array($key, AppConfig::DEFAULT_ROLES[AppConfig::ROLE_VIEWER], true)) {
+                return $key;
+            }
+        }
+        $this->fail('DEFAULT_ROLES[viewer] 不应覆盖全部权限');
+    }
+
+    private function grantRolePermission(\PDO $pdo, string $role, string $permKey): void
+    {
+        $pdo->prepare(
+            'INSERT OR IGNORE INTO ' . AppConfig::TABLE_ROLE_PERMISSIONS . ' (role_id, perm_key)'
+            . ' SELECT id, ? FROM ' . AppConfig::TABLE_ROLES . ' WHERE name = ?'
+        )->execute([$permKey, $role]);
+    }
+
+    private function revokeRolePermission(\PDO $pdo, string $role, string $permKey): void
+    {
+        $pdo->prepare(
+            'DELETE FROM ' . AppConfig::TABLE_ROLE_PERMISSIONS
+            . ' WHERE perm_key = ? AND role_id = (SELECT id FROM ' . AppConfig::TABLE_ROLES . ' WHERE name = ?)'
+        )->execute([$permKey, $role]);
+    }
+
+    private function roleHasPermission(\PDO $pdo, string $role, string $permKey): bool
+    {
+        $stmt = $pdo->prepare(
+            'SELECT 1 FROM ' . AppConfig::TABLE_ROLE_PERMISSIONS . ' rp'
+            . ' JOIN ' . AppConfig::TABLE_ROLES . ' r ON r.id = rp.role_id'
+            . ' WHERE r.name = ? AND rp.perm_key = ? LIMIT 1'
+        );
+        $stmt->execute([$role, $permKey]);
+        return $stmt->fetchColumn() !== false;
+    }
+
+    /**
+     * 设置某个版本键的值（**upsert**，不是 UPDATE）。
+     *
+     * 必须用 upsert：自动建库模式只写 `schema_version`、不写 `seed_version`，
+     * 若用 UPDATE 去改 seed_version 会匹配 0 行，手动模式就会把它当成"升级"而不是"降级"。
+     */
+    private function setVersion(\PDO $pdo, string $key, string $value): void
+    {
+        $pdo->prepare(
+            'INSERT OR REPLACE INTO ' . AppConfig::TABLE_APP_SETTINGS . ' (setting_key, value, updated_at)'
+            . ' VALUES (?, ?, 0)'
+        )->execute([$key, $value]);
+    }
+
+    private function version(\PDO $pdo, string $key): ?string
+    {
+        $stmt = $pdo->prepare('SELECT value FROM ' . AppConfig::TABLE_APP_SETTINGS . ' WHERE setting_key = ?');
+        $stmt->execute([$key]);
+        $row = $stmt->fetchColumn();
+        return ($row === false) ? null : (string) $row;
+    }
+
+    /** 模拟「新进程再引导一次」：同一 PDO，清掉进程内幂等守卫。 */
+    private function reBootstrap(\PDO $pdo, bool $autoMigrate): void
+    {
         Database::reset();
-        Database::init(['driver' => 'sqlite', 'auto_migrate' => false]);
+        Database::init(['driver' => 'sqlite', 'auto_migrate' => $autoMigrate]);
         Database::bootstrap($pdo);
     }
 

@@ -23,6 +23,11 @@ use Psr\Http\Message\ServerRequestInterface as Request;
  *  - `schema_current=null`（手动建库模式从未跑过结构迁移）→ 200 + `status=ok`：不降级也不谎称对齐。
  * 各失败分支都写 error 日志，不再静默吞掉异常。
  *
+ * `schema_ahead` 是方向位，用于区分两种"未对齐"（处置完全不同）：
+ *  - `schema_current=false` + `schema_ahead=false` → 代码比库新（**没跑结构迁移**，跑 cli/migrate.php）；
+ *  - `schema_current=false` + `schema_ahead=true`  → 库比代码新（**代码已回滚降级**，先确认是否接受旧代码
+ *    跑新库，再对齐并复核种子被回退覆盖的影响；详见 FAQ「回滚/降级指引」）。
+ *
  * 为什么单独成类、不挂在 MainController：
  * MainController 的构造器强依赖 \PDO（DI 解析时即走 Database::getPdo() 建立连接），
  * 一旦 DB 宕机，DI 解析 MainController 就会抛异常 → Slim 兜成 500，探针的 try/catch 根本进不去。
@@ -36,6 +41,7 @@ final class HealthzController
         $schemaVersion = null;
         $seedVersion   = null;
         $schemaCurrent = null;
+        $schemaAhead   = false; // 方向位：库结构版本高于当前代码（疑似回滚降级）
         $missing       = [];
         $connected     = false; // 连接性：createPdo() + SELECT 1 成功
         $ready         = false; // 就绪：能读到版本状态（ci_app_settings 可查）
@@ -47,6 +53,7 @@ final class HealthzController
             $schemaVersion = $state['schema_version'];
             $seedVersion   = $state['seed_version'];
             $schemaCurrent = $state['schema_current'];
+            $schemaAhead   = $state['schema_ahead'];
             $ready         = true;
             if ($schemaCurrent === false) {
                 // 仅在已判定未对齐时逐表探测（N 次查询），正常路径不付这个成本
@@ -72,6 +79,7 @@ final class HealthzController
             'schema_version' => $schemaVersion,
             'seed_version'   => $seedVersion,
             'schema_current' => $schemaCurrent,
+            'schema_ahead'   => $schemaAhead,
             'auto_migrate'   => Database::isAutoMigrateEnabled(),
             'time'           => time(),
         ];

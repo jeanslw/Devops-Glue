@@ -91,17 +91,19 @@ GET /healthz
   "schema_version": "2.8.9",
   "seed_version": "2.8.9",
   "schema_current": true,
+  "schema_ahead": false,
   "auto_migrate": true,
   "time": 1760000000
 }
 ```
 
-- **HTTP 200 + `status=ok`**：数据库可达且 `schema_current=true`。
-- **HTTP 200 + `status=degraded`**：数据库可达但版本未对齐（`schema_current=false`，如升级了代码还没跑迁移）；若确实缺表，同时下发 `tables_missing`（缺失的核心表名）。**这种情况不返回 503**——滚动升级期「新代码 + 旧 schema」是预期中间态，若一并 503，LB / K8s 会把全部副本摘掉。
-- **HTTP 503 + `status=degraded`**：数据库不可达（含核心表缺失导致查询失败）。
-- `schema_current`：`schema_version`（自动建库模式）或 `seed_version`（`DB_AUTO_MIGRATE=false` 手动建库模式不写 `schema_version`）与当前 `APP_VERSION` 比较的结果；两者都无记录时为 `null`（未知，不判降级）。
-- `seed_version`：仅 `DB_AUTO_MIGRATE=false` 手动建库模式会记录（自动建库模式为 `null`，以 `schema_version` 为准）。
-- 修复：执行 `php cli/migrate.php` 或点后台「数据管理 → 🗄️ 数据库」卡片的「同步库结构」按钮后，`schema_current` 会回到 `true`。
+- **HTTP 200 + `status=ok`**：数据库可达且 `schema_current` 为 `true`，或为 `null`（手动建库模式从未跑过结构迁移＝未知：不降级也不谎报对齐）。
+- **HTTP 200 + `status=degraded`**：数据库可达但版本未对齐（`schema_current=false`）——可能是**升级了代码还没跑迁移**（`schema_ahead=false`），也可能是**代码回滚降级**（`schema_ahead=true`）；若确实缺表，同时下发 `tables_missing`（缺失的核心表名）。**这种情况不返回 503**：滚动升级期「新代码 + 旧 schema」与回滚期「旧代码 + 新库」都是预期中间态，若一并 503，LB / K8s 会把全部副本摘掉。
+- **HTTP 503 + `status=degraded`**：未就绪——数据库连接失败（`db=false`），或连接正常但版本表缺失（空库未初始化，此时 `db=true`，便于与「真宕机」区分）。
+- `schema_current`：**只认 `schema_version`**（仅由执行过 DDL 的路径写入）与当前 `APP_VERSION` 比较的结果；无 `schema_version` 时为 `null`（未知，不判降级）。刻意不用 `seed_version` 回落——种子补齐不代表业务表新增列已就绪。
+- `seed_version`：仅 `DB_AUTO_MIGRATE=false` 手动建库模式会记录（自动建库模式为 `null`），服务于播种短路与观测。
+- `schema_ahead`：方向位。`schema_version` 高于 `APP_VERSION` 时为 `true`（库比代码新＝疑似**代码降级/回滚**）；无记录时为 `false`。与 `schema_current=false` 组合可区分「没跑结构迁移」与「已回滚降级」。
+- 修复：升级后没跑迁移 → 执行 `php cli/migrate.php` 或点后台「数据管理 → 🗄️ 数据库」卡片的「同步库结构」按钮，`schema_current` 会回到 `true`；**回滚降级** → 先按「常见问题 → 回滚/降级指引」处理，再对齐标记。
 
 - `status`: `ok`（数据库可达） | `degraded`（数据库不可达）
 - `db`: `true` / `false`

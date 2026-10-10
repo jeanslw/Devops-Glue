@@ -531,7 +531,7 @@ Such changes are a "manual migration": **stop the service → back up (the "Back
 
 It means the application's own database account has no `CREATE` / `ALTER` privileges (very common in `DB_AUTO_MIGRATE=false` minimal-privilege deployments, where the app account only gets DML). The button answers **409** instead of a vague "migration failed", and there are two ways out:
 
-- Run `php cli/migrate.php` with an account that has DDL privileges (recommended; ideally a step in your deployment pipeline);
+- Run `php cli/migrate.php` with an account that has DDL privileges (recommended; ideally a step in your deployment pipeline); the **read-only pre-check needs no DDL privileges** — any account can run `php cli/migrate.php --dry-run` first to see which tables/columns would be added (nothing is written; exit codes 0 = nothing to do, 2 = migration needed);
 - Or temporarily set `DB_AUTO_MIGRATE=true` and restart once (auto-migrate mode runs DDL with the app account, which only works if that account was granted database-level `ALL`).
 
 ### Q: `/healthz` returns `status: degraded` or `schema_current: false` — what does that mean?
@@ -539,7 +539,49 @@ It means the application's own database account has no `CREATE` / `ALTER` privil
 - **HTTP 200 + `status=degraded`**: the database **is reachable**, but the schema version is older than the code (`schema_current=false`, e.g. the image was upgraded before the migration ran); when tables really are missing the response also carries a `tables_missing` array (the missing core table names). Running `php cli/migrate.php` or clicking "Sync Schema" restores `ok`.
 - **HTTP 503 + `status=degraded`**: the database is unreachable (or core tables are missing so the query fails) — the service really is unavailable.
 - **Why a stale version does not return 503**: during a rolling upgrade "new code + old schema" is an expected intermediate state; returning 503 as well would make the load balancer / K8s pull every replica, far more harmful than the degraded state itself. Monitoring should alert on the `status` / `schema_current` fields.
-- A pure manual deployment with `DB_AUTO_MIGRATE=false` never writes `schema_version` (the app runs no DDL), so the probe falls back to `seed_version`; when neither record exists, `schema_current` is `null` (unknown) and never degraded.
+- A pure manual deployment with `DB_AUTO_MIGRATE=false` writes no `schema_version` (the app runs no DDL), so `schema_current` stays `null` (unknown) — the probe deliberately does **not** fall back to `seed_version` (a refreshed seed proves nothing about new business columns): it neither degrades nor falsely claims alignment, even when `seed_version` matches the current version.
+- `schema_ahead=true` means the database schema version is **higher** than the code (decided via `version_compare`) = a likely **code downgrade/rollback**; combined with `schema_current=false` it separates "upgraded without migrating" from "the code was rolled back", and the two need different handling (see the next question).
+
+### Q: Startup fails with "RBAC seed partially failed (N items…)" — what now?
+
+It means **at least one row failed while seeding RBAC** (permission definitions / implied rules / system roles / role-permission inserts or pruning). The system deliberately **refuses to start half-broken**: the exception is thrown → the version marker is not advanced → the next boot retries the whole seed (self-healing).
+
+How to diagnose:
+
+1. Search the file log for `seedRbac 部分失败：种子未播全` — `sample` carries the first 5 failures (step, key, real error);
+2. In "Log Center → Operation Log", filter by action `rbac_seed_failed` (`detail.sample` has the same content; deduplicated for 10 minutes so retries do not spam it).
+
+Typical causes: the table was changed by hand to disagree with the code (a dropped column, an added `NOT NULL`), insufficient database privileges, or a lock timeout. Fix the root cause and restart (or run `php cli/migrate.php`); a successful retry advances the marker normally and leaves a `schema_upgrade` / `schema_init` row in the operation log.
+
+> Why fail-fast instead of "log and continue": a half-seeded RBAC shows up as "a button/endpoint that should be there is missing", which gets investigated as a feature bug for a long time — far harder to pinpoint than a failed startup.
+
+### Q: I need to roll back (downgrade) to an older version after an upgrade — how?
+
+First decide whether the old code can run against the current database. Migrations here are **additive only and there are no down scripts** (`ensureTables()` only does `CREATE TABLE IF NOT EXISTS` and `ALTER ADD COLUMN`):
+
+**1. Back up first**: the "Back up database" button or `php cli/backup-db.php --force` (zip export; restoring is the offline `bin/restore.php`, which is not shipped in the image).
+
+**2. Decide whether an in-place rollback is possible**: did this upgrade include a "manual migration" (changing a column type, dropping a column, changing a primary key, renaming)? (run `php cli/migrate.php --dry-run` for a read-only pre-check first — it shows which tables/columns the old code would add and writes nothing)
+- Yes → **it will hard-fail**: the old code's SQL no longer matches the old structure, so you must write reverse SQL by hand and rehearse it (no down script is generated).
+- No (only "Sync Schema" / `cli/migrate.php`, purely additive) → an in-place rollback usually works: tables/columns added by the new version **stay** in the database and the old code simply ignores them.
+
+**3. Roll back the code/image** (via the old Docker tag; **do not touch the data volume**). `GET /healthz` will now report `schema_current=false`; use `schema_ahead` for the direction: `true` = the database is newer than the code (i.e. a completed rollback), `false` = the code is newer than the database.
+
+**4. Align the version marker**: run `php cli/migrate.php` (or click "Sync Schema"). Note the two modes differ:
+- **auto-migrate mode**: the first request after the rollback (`bootstrap()`) runs `ensureTables()` (seeding in **merge mode**, see step 5) and rewrites the marker back to the old version, leaving a warning in the log (`… seeding in merge mode … run php cli/migrate.php to converge permissions to the old definitions if you plan to stay downgraded`);
+- **manual mode**: `schema_version` is not rewritten automatically, so the probe stays `degraded` until you explicitly run the migration.
+- **Audit trail (every path, all in the operation log)**: filter by action name in "Log Center → Operation Log":
+  - **automatic bootstrap** (no human action): first provisioning `schema_init`, version advanced `schema_upgrade`, **downgrade `schema_downgrade`** — results `success` / `success` / `failure`; `detail` carries `scope` (`schema` = structure + seed, `seed` = seed only) and `seed_mode`;
+  - **explicit migration**: both the button and `php cli/migrate.php` record `migrate_schema` (with `from → to`; the CLI previously left **no trace at all** in the UI);
+  - the user is always `system` (operator type `system`); the same transition is recorded **once per 10-minute window** (multi-process startups do not spam it). A downgrade additionally writes a file WARNING.
+
+**5. Review RBAC (nothing is lost, but decide whether to converge)**: during a downgrade the seed automatically switches to **merge mode (add-only)** — permissions the new version granted to system roles (e.g. `viewer`) are **kept**, and mappings the current code expects are added back, so a rollback never silently narrows permissions; new `permissions` / `implied_rules` keys are likewise kept (residual rows, no functional impact); **custom roles are untouched**. If you intend to **stay** on the old version and want permissions converged to the old semantics, run `php cli/migrate.php` (or click "Sync Schema") once — an explicit action always **converges** to the current code definitions (prune).
+
+**6. Spot-check data-level forward compatibility**: new status values / column semantics written by the new version (build status, tag source, scan write-back status, etc.) may be misread by the old code — check by hand and restore from backup if necessary.
+
+**7. CD coordination and front-end cache**: `cd_*` tables and permissions registered by CD via the API are not deleted by a CI downgrade; if CD is newer than CI, confirm the columns CD expects still exist (or downgrade CD too). Hard-refresh the browser if it cached newer front-end JS.
+
+> In one line: **additive migrations usually make an in-place rollback feasible, and a downgrade never revokes permissions the new version granted (merge seeding); still watch out for the old code misreading data written by the new version, and a rollback after a manual structural change requires reverse SQL first.**
 
 ### Q: What data is cached and for how long?
 

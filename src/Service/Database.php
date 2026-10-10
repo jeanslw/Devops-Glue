@@ -35,6 +35,31 @@ class Database
      */
     private const SEED_VERSION_KEY = 'seed_version';
 
+    /** 播种模式：按当前代码定义收敛——清掉系统角色的多余映射（正常升级、显式 cli/migrate.php / 按钮走这条） */
+    private const SEED_MODE_PRUNE = 'prune';
+
+    /**
+     * 播种模式：只补不删——保留新版本授予的映射，同时补上当前代码期望的映射。
+     * 专用于**降级回滚**：避免"回滚顺手把系统角色权限收窄"这类意外（可用显式迁移收敛回 prune 语义）。
+     */
+    private const SEED_MODE_MERGE = 'merge';
+
+    /** 操作日志中记录「版本跃迁」的三个动作名；i18n 键分别为 oplog.act_schema_init / _upgrade / _downgrade */
+    private const ACTION_SCHEMA_INIT      = 'schema_init';
+    private const ACTION_SCHEMA_UPGRADE   = 'schema_upgrade';
+    private const ACTION_SCHEMA_DOWNGRADE = 'schema_downgrade';
+
+    /** 操作日志中记录「RBAC 种子部分失败」的动作名；i18n 键为 oplog.act_rbac_seed_failed */
+    private const ACTION_RBAC_SEED_FAILED = 'rbac_seed_failed';
+
+    /**
+     * 系统级审计（版本跃迁、种子失败等）在操作日志里的去重时间窗（秒）。
+     *
+     * 这些记录来自**自动路径**（引导 / 建表 / 播种），多进程同时启动、或条件持续不满足时每个请求
+     * 都会重试一次：同 (action, target) 在窗口内只记一条，避免把审计表刷爆；窗口外再次发生是真事件，照记。
+     */
+    private const SYSTEM_AUDIT_DEDUPE_WINDOW = 600;
+
     // ── 初始化 ──
 
     /**
@@ -64,13 +89,20 @@ class Database
         if (empty(self::$config)) {
             self::init();
         }
-        $needMark = false;
+        // 一次读取同时判定「是否当前版本」与「是否降级回滚」：后者决定播种模式，无需为此多跑一次查询。
+        $needMark     = false;
         $needSeedMark = false;
+        $seedMode     = self::SEED_MODE_PRUNE;
+        $recorded     = null; // 跃迁前的记录值（null = 首次初始化），供跃迁留痕使用
         if (self::$config['auto_migrate'] ?? true) {
             // 仅在 schema/种子版本与当前代码版本不一致时执行建表 + 种子，
             // 避免每个请求都重复跑 ensureTables/seedRbac 的写库操作。
-            if (!self::isSchemaCurrent()) {
-                self::ensureTables(); // 建表 + RBAC 种子 + 索引 + JSON 迁移
+            $recorded = self::recordedVersion(self::SCHEMA_VERSION_KEY);
+            if (!self::isVersionCurrent($recorded)) {
+                // 降级（记录版本 > 代码版本）走「合并播种」：只补不删、保留新版本授予的权限映射，
+                // 避免"回滚顺手把系统角色权限收窄"；显式 cli/migrate.php / 按钮仍走 prune 收敛。
+                $seedMode = self::isVersionAhead($recorded) ? self::SEED_MODE_MERGE : self::SEED_MODE_PRUNE;
+                self::ensureTables($seedMode); // 建表 + RBAC 种子 + 索引 + JSON 迁移
                 $needMark = true;
             }
         } else {
@@ -78,40 +110,55 @@ class Database
             // 用独立 key（seed_version）短路，避免 php-fpm 每请求重复跑 seedRbac 的写库；
             // 不复用 schema_version —— 本模式 DDL（含存量库补列）归运维，标「schema 当前」
             // 会谎报表结构已升级。需要补表/补列请跑 cli/migrate.php 或后台「同步库结构」。
-            if (!self::isSeedCurrent()) {
-                self::seedRbac(); // 表已存在，补/同步种子数据
+            $recorded = self::recordedVersion(self::SEED_VERSION_KEY);
+            if (!self::isVersionCurrent($recorded)) {
+                $seedMode = self::isVersionAhead($recorded) ? self::SEED_MODE_MERGE : self::SEED_MODE_PRUNE;
+                self::seedRbac($seedMode); // 表已存在，补/同步种子数据
                 $needSeedMark = true;
             }
         }
         self::seedAdmin();
         self::verifySeed();
-        // 自检通过后才标记版本（与 migrateNow() 一致）：若自检抛异常，版本号保持旧值，
-        // 下次引导会重新走 ensureTables()/seedRbac() 自愈，而非「版本已标记当前但种子其实坏了」的假象。
+        // 自检通过后才标记版本，并留一条「版本跃迁」审计（升级 / 降级 / 首次初始化共用一条通道）：
+        // 若自检抛异常则版本号保持旧值、审计也不写，下次引导重新自愈，不会留下"已跃迁"的假象。
         if ($needMark) {
             self::markSchemaCurrent();
+            self::noteVersionTransition(self::SCHEMA_VERSION_KEY, $recorded, $seedMode, 'schema');
         }
         if ($needSeedMark) {
             self::markSeedCurrent();
+            self::noteVersionTransition(self::SEED_VERSION_KEY, $recorded, $seedMode, 'seed');
         }
         self::$bootstrapped = true;
     }
 
-    /** 判断 schema/种子是否已应用到当前代码版本（首次启动或版本升级时返回 false） */
-    private static function isSchemaCurrent(): bool
+    /**
+     * 读取某个版本键的已记录值（`ci_app_settings` 缺表/缺键 → null）。
+     *
+     * bootstrap() 用**一次读取**同时判定「是否当前版本」与「是否降级回滚」，故本方法只取值、不做判断，
+     * 避免为了判方向再多跑一次查询。
+     */
+    private static function recordedVersion(string $key): ?string
     {
         try {
             $stmt = self::pdo()->prepare(
-                "SELECT value FROM " . \App\Config\AppConfig::TABLE_APP_SETTINGS . " WHERE setting_key = ?"
+                'SELECT value FROM ' . \App\Config\AppConfig::TABLE_APP_SETTINGS . ' WHERE setting_key = ?'
             );
-            $stmt->execute([self::SCHEMA_VERSION_KEY]);
-            $row = $stmt->fetch();
-            return $row !== false && ($row['value'] ?? '') === \App\Config\AppConfig::APP_VERSION;
+            $stmt->execute([$key]);
+            $row = $stmt->fetchColumn();
+            return ($row === false) ? null : (string) $row;
         } catch (\Throwable $e) {
-            return false; // ci_app_settings 表尚未创建 → 视为未初始化
+            return null; // ci_app_settings 表尚未创建 → 视为未记录
         }
     }
 
-    /** 记录当前代码版本已应用的 schema/种子版本 */
+    /** 已记录版本是否就是当前代码版本（未记录或不同 → false：需要建表 / 补种子） */
+    private static function isVersionCurrent(?string $recorded): bool
+    {
+        return $recorded === \App\Config\AppConfig::APP_VERSION;
+    }
+
+    /** 记录「表结构已应用到当前代码版本」（跃迁留痕由 bootstrap() 在标记写完后统一处理） */
     private static function markSchemaCurrent(): void
     {
         $sql = self::sqlUpsert(
@@ -122,22 +169,7 @@ class Database
         self::pdo()->prepare($sql)->execute([self::SCHEMA_VERSION_KEY, \App\Config\AppConfig::APP_VERSION]);
     }
 
-    /** 手动建库模式下判断「种子是否已应用到当前代码版本」（ci_app_settings 缺表/缺键时返回 false，视为需补种子） */
-    private static function isSeedCurrent(): bool
-    {
-        try {
-            $stmt = self::pdo()->prepare(
-                "SELECT value FROM " . \App\Config\AppConfig::TABLE_APP_SETTINGS . " WHERE setting_key = ?"
-            );
-            $stmt->execute([self::SEED_VERSION_KEY]);
-            $row = $stmt->fetch();
-            return $row !== false && ($row['value'] ?? '') === \App\Config\AppConfig::APP_VERSION;
-        } catch (\Throwable $e) {
-            return false; // ci_app_settings 表尚未创建 → 视为未补种子
-        }
-    }
-
-    /** 记录手动建库模式下「当前代码版本的种子已应用」（仅内部 key，不影响系统信息面板的 schema 版本展示） */
+    /** 记录手动建库模式下「当前代码版本的种子已应用」（独立 key，不影响系统信息面板的 schema 版本展示） */
     private static function markSeedCurrent(): void
     {
         $sql = self::sqlUpsert(
@@ -146,6 +178,104 @@ class Database
             '?, ?, ' . self::sqlNow()
         );
         self::pdo()->prepare($sql)->execute([self::SEED_VERSION_KEY, \App\Config\AppConfig::APP_VERSION]);
+    }
+
+    /**
+     * 版本跃迁留痕（由 bootstrap() 在标记写完后调用，一次跃迁一次）——「升级 / 降级 / 首次初始化」共用一条通道。
+     *
+     * 两件事：
+     *  1. **降级**→ 额外写一条文件 WARNING（这是异常，需要人关注；含合并播种与收敛办法）；
+     *  2. **一律写操作日志**（`ci_operation_logs`）：文件日志按天轮转，而审计表可在后台
+     *     「日志中心 → 操作日志」按操作名筛选，也是 cron / CLI 等无前端场景唯一 web 可见的途径
+     *     （约定与 `cli/backup-db.php` 的系统级事件一致：username=`system`、operator_type=`system`）。
+     *
+     * 显式路径（后台「同步库结构」按钮、`cli/migrate.php`）**不走这里**——它们记录的是「操作」本身
+     * （`migrate_schema`），避免一次点击产生两行；本方法只覆盖「没有人工操作」的自动引导副作用。
+     *
+     * @param string      $key      被改写的版本键（schema_version / seed_version）
+     * @param string|null $before   跃迁前的记录值；null = 此前无记录（首次初始化）
+     * @param string      $seedMode 本次播种模式（merge 时提示"未撤销新版本授予的权限"）
+     * @param string      $scope    'schema'（结构+种子）/ 'seed'（手动建库模式，仅补种子）
+     */
+    private static function noteVersionTransition(string $key, ?string $before, string $seedMode, string $scope): void
+    {
+        $isDowngrade = $before !== null && self::isVersionAhead($before);
+        $action      = $isDowngrade
+            ? self::ACTION_SCHEMA_DOWNGRADE
+            : ($before === null ? self::ACTION_SCHEMA_INIT : self::ACTION_SCHEMA_UPGRADE);
+
+        if ($isDowngrade) {
+            try {
+                \App\Helper\Log::warning(
+                    $seedMode === self::SEED_MODE_MERGE
+                        ? '检测到数据库版本高于当前代码版本（疑似代码降级回滚）：本次按「合并模式」补种子——'
+                          . '补齐当前代码期望的权限映射，但保留新版本授予的映射（不撤销）。'
+                          . '若将长期停留在旧版本，请执行 php cli/migrate.php 按旧定义收敛权限。'
+                        : '检测到数据库版本高于当前代码版本（疑似代码降级回滚），本次将把版本标记改写为当前代码版本。',
+                    [
+                        'key'       => $key,
+                        'previous'  => $before,
+                        'current'   => \App\Config\AppConfig::APP_VERSION,
+                        'seed_mode' => $seedMode,
+                    ]
+                );
+            } catch (\Throwable $e) {
+                // 纯诊断信息，失败不影响迁移
+            }
+        }
+
+        self::recordVersionTransition($action, $key, $before, $seedMode, $scope, $isDowngrade ? 'failure' : 'success');
+    }
+
+    /**
+     * 把一次版本跃迁写进操作日志（`ci_operation_logs`）。
+     *
+     * 结果：首次初始化 / 升级 → success；降级回滚 → failure（"检测到异常"不是成功操作，界面渲染 ❌、
+     * 也便于按结果筛选）。`detail` 带 `scope`（schema=结构+种子 / seed=仅种子）与 `seed_mode`（merge/prune），
+     * 便于事后审计"当时权限是怎么处理的"。
+     */
+    private static function recordVersionTransition(
+        string $action,
+        string $key,
+        ?string $before,
+        string $seedMode,
+        string $scope,
+        string $result
+    ): void {
+        self::recordSystemAudit($action, $before ?? '', [
+            'key'       => $key,
+            'scope'     => $scope,
+            'previous'  => $before,
+            'current'   => \App\Config\AppConfig::APP_VERSION,
+            'seed_mode' => $seedMode,
+        ], $result);
+    }
+
+    /**
+     * 写一条「系统级」操作日志（操作人 = system），按 (action, target) 在 SYSTEM_AUDIT_DEDUPE_WINDOW
+     * 秒内去重；审计失败绝不影响主流程（引导 / 迁移必须照常进行）。
+     *
+     * @param array<string,mixed> $detail
+     */
+    private static function recordSystemAudit(string $action, string $target, array $detail, string $result): void
+    {
+        try {
+            $pdo   = self::pdo();
+            $since = date('Y-m-d H:i:s', time() - self::SYSTEM_AUDIT_DEDUPE_WINDOW);
+
+            $exists = $pdo->prepare(
+                'SELECT 1 FROM ' . \App\Config\AppConfig::TABLE_OPERATION_LOGS
+                . ' WHERE action = ? AND target = ? AND created_at >= ? LIMIT 1'
+            );
+            $exists->execute([$action, $target, $since]);
+            if ($exists->fetchColumn() !== false) {
+                return; // 去重窗口内已记录过同类事件
+            }
+
+            (new OperationLogRepository($pdo))->record('system', $action, $target, $detail, '', $result, 'system');
+        } catch (\Throwable $e) {
+            // 审计写入失败绝不能影响引导 / 迁移
+        }
     }
 
     /**
@@ -220,8 +350,17 @@ class Database
      *    能补齐，若据此判 true 会把「新代码 + 旧表结构」谎报成健康，故留作「未知」而非「已对齐」。
      *  - seed_version 仍在返回体给出（用于观测/排障；其「避免重复播种」的短路逻辑在 bootstrap() 内）。
      *
+     * `schema_ahead` 是**方向位**（schema_current 只做等值比较，不区分方向）：
+     *  - true  ⇒ `schema_version` **高于** `APP_VERSION`：库比代码新，典型场景是**代码降级/回滚**
+     *    （旧代码 + 新库）；
+     *  - false ⇒ 无记录，或记录等于/低于当前代码版本。
+     * 与 schema_current 组合即可区分两种"未对齐"，因为二者处置完全不同：
+     *  - `schema_current=false` + `schema_ahead=false` → 代码比库新（**没跑结构迁移**：跑 cli/migrate.php 或点按钮）；
+     *  - `schema_current=false` + `schema_ahead=true`  → 库比代码新（**代码回滚了**：先确认是否接受旧代码
+     *    跑新库，再跑迁移把标记对齐，并复核种子被回退覆盖的影响）。
+     *
      * @param \PDO $pdo 调用方自建连接
-     * @return array{schema_version:string|null, seed_version:string|null, schema_current:bool|null}
+     * @return array{schema_version:string|null, seed_version:string|null, schema_current:bool|null, schema_ahead:bool}
      */
     public static function schemaState(\PDO $pdo): array
     {
@@ -245,7 +384,21 @@ class Database
             'schema_version' => $schemaVersion,
             'seed_version'   => $seedVersion,
             'schema_current' => self::isVersionAligned($schemaVersion),
+            'schema_ahead'   => self::isVersionAhead($schemaVersion),
         ];
+    }
+
+    /**
+     * 已记录的结构版本是否**高于**当前代码版本（方向位，供 /healthz 与 bootstrap() 共用）。
+     *
+     * 无记录（未知）→ false：没有任何记录可判定为「更高」。
+     * 用 version_compare 而非字符串比较，避免 '2.10.0' < '2.9.0' 这类字典序陷阱
+     * （HarborService 判断 API 版本时已用同一函数）。
+     */
+    private static function isVersionAhead(?string $recorded): bool
+    {
+        return $recorded !== null
+            && version_compare($recorded, \App\Config\AppConfig::APP_VERSION, '>');
     }
 
     /**
@@ -281,6 +434,89 @@ class Database
             }
         }
         return $missing;
+    }
+
+    /**
+     * 只读预检：计算「若现在跑一次迁移，会补哪些表 / 哪些列」（**不建连、不 bootstrap、不写库**）。
+     *
+     * 与 ensureTables() 同源（都用 columnMigrations() 与 schemaTables()），因此预检结论与实跑一致；
+     * 供 `cli/migrate.php --dry-run` 在正式迁移前"先看一眼"。
+     *
+     * 覆盖范围：缺失表 + 缺失列（结构层面）。**不覆盖**索引与一次性数据搬迁——它们随迁移幂等执行，
+     * 重复执行无副作用，无需预检；已在库中的表按映射逐列探测，表不存在时整表会被新建（含这些列），
+     * 故不再逐列报告（否则同一张表会同时出现在"缺失表"与"缺失列"里，产生误导）。
+     *
+     * @param \PDO $pdo 调用方自建连接
+     * @return array{missing_tables: list<string>, missing_columns: array<string, list<string>>}
+     */
+    public static function pendingChanges(\PDO $pdo): array
+    {
+        $missingColumns = [];
+        foreach (self::columnMigrations() as $table => $columns) {
+            if (!self::tableExists($pdo, $table)) {
+                continue; // 整表缺失：由「缺失表」兜住，不必逐列报告
+            }
+            foreach (array_keys($columns) as $column) {
+                if (!self::columnExists($pdo, $table, $column)) {
+                    $missingColumns[$table][] = $column;
+                }
+            }
+        }
+
+        return [
+            'missing_tables'  => self::missingTables($pdo),
+            'missing_columns' => $missingColumns,
+        ];
+    }
+
+    /**
+     * 存量库「增列」映射：表 => 列 => 该驱动的列定义。**新增列时只需在此追加一项**。
+     *
+     * 从 ensureTables() 抽出，使补列循环（写）与 pendingChanges()（只读预检）共用同一份事实，
+     * 避免预检与实跑两处各维护一份列清单而漂移。定义里的类型按驱动解析（SQLite 无 VARCHAR 概念）。
+     *
+     * @return array<string, array<string, string>>
+     */
+    private static function columnMigrations(): array
+    {
+        $isMySQL = self::$driver === 'mysql';
+        $VARCHAR = $isMySQL ? 'VARCHAR(255)' : 'TEXT';  // DEFAULT / INDEX 的列不能用 TEXT
+        $TS_TYPE = $isMySQL ? 'DATETIME' : 'TEXT';      // MySQL < 8.0.13 不允许 TEXT/BLOB 设 DEFAULT
+
+        return [
+            \App\Config\AppConfig::TABLE_JOB_GIT_MAP => [
+                'status' => "{$VARCHAR} DEFAULT '" . \App\Config\AppConfig::STATUS_ACTIVE . "'",
+            ],
+            \App\Config\AppConfig::TABLE_SECURITY_CHECKS => [
+                'tag'               => "{$VARCHAR} DEFAULT ''", // 关联 tag
+                'writeback_status'  => "{$VARCHAR} DEFAULT ''", // commit status 回写结果（success/failed/skipped，空=历史）
+                'writeback_message' => 'TEXT',
+            ],
+            \App\Config\AppConfig::TABLE_PIPELINE_BUILD_LOG => [
+                'provider'   => "{$VARCHAR} DEFAULT ''", // canonical identity (provider)，回填用
+                'project_id' => "{$VARCHAR} DEFAULT ''", // canonical identity (project_id)，回填用
+                'repository' => "{$VARCHAR} DEFAULT ''", // harbor 仓库，回填用
+            ],
+            \App\Config\AppConfig::TABLE_PERMISSIONS => [
+                'parent_key' => $isMySQL ? 'VARCHAR(128)' : 'TEXT', // 权限层级
+                'created_at' => "{$TS_TYPE} DEFAULT NULL",          // 注册时间：内置为 NULL
+            ],
+            \App\Config\AppConfig::TABLE_OPERATION_LOGS => [
+                'operator_type' => "{$VARCHAR} DEFAULT 'admin'", // 操作人类型：admin / api_token
+            ],
+            \App\Config\AppConfig::TABLE_ADMIN_USERS => [
+                'email'      => "{$VARCHAR} NOT NULL DEFAULT ''", // 用户邮箱（OAuth userinfo 用，空则占位兜底）
+                'avatar_url' => 'TEXT',                                        // 头像 URL
+                'status'     => ($isMySQL ? 'TINYINT' : 'INTEGER') . " NOT NULL DEFAULT 1", // 1=启用 0=停用
+                'created_at' => "{$TS_TYPE} NULL DEFAULT NULL",                // 注册时间（存量行为 NULL，新行为 NOW）
+                // 注：id 主键不通过此 ALTER 自动补——MySQL 中 AUTO_INCREMENT 主键列无法幂等补加、
+                // 且涉及旧主键（username）变更风险；存量库 id 主键由部署方手动迁移。
+            ],
+
+            // user_identities 为 v2.6.3 新增整表，不存在存量列；若后续给该表新加列再据此追加
+            \App\Config\AppConfig::TABLE_USER_IDENTITIES => [
+            ],
+        ];
     }
 
     /**
@@ -525,10 +761,9 @@ class Database
             : "INSERT OR IGNORE INTO {$table} ({$columns}) VALUES ({$values})";
     }
 
-    /** 判断列是否已存在（MySQL/SQLite 双驱动），用于幂等 ALTER TABLE 迁移 */
-    private static function columnExists(string $table, string $column): bool
+    /** 判断列是否已存在（MySQL/SQLite 双驱动）；PDO 显式传入，使只读预检（pendingChanges）可复用同一实现 */
+    private static function columnExists(\PDO $pdo, string $table, string $column): bool
     {
-        $pdo = self::pdo();
         if (self::$driver === 'mysql') {
             $stmt = $pdo->prepare(
                 "SELECT 1 FROM information_schema.COLUMNS "
@@ -568,7 +803,7 @@ class Database
 
     // ── 建表 ──
 
-    private static function ensureTables(): void
+    private static function ensureTables(string $seedMode = self::SEED_MODE_PRUNE): void
     {
         $pdo = self::pdo();
         $isMySQL = self::$driver === 'mysql';
@@ -862,56 +1097,21 @@ class Database
         ){$ENGINE}");
 
         // ── 通用列迁移 ──
-        // 存量库增量补列的唯一来源：新增列时只需在此追加一项（类型按驱动解析），
-        // 配合 columnExists 幂等检查，无需再为每列手写 if/ALTER。
-        // 新库由上方 CREATE TABLE 直接建全，此映射保证存量库也能补齐同名列。
-        $columnMigrations = [
-            \App\Config\AppConfig::TABLE_JOB_GIT_MAP => [
-                'status' => "{$VARCHAR} DEFAULT '" . \App\Config\AppConfig::STATUS_ACTIVE . "'",
-            ],
-            \App\Config\AppConfig::TABLE_SECURITY_CHECKS => [
-                'tag'               => "{$VARCHAR} DEFAULT ''", // 关联 tag
-                'writeback_status'  => "{$VARCHAR} DEFAULT ''", // commit status 回写结果（success/failed/skipped，空=历史）
-                'writeback_message' => 'TEXT',
-            ],
-            \App\Config\AppConfig::TABLE_PIPELINE_BUILD_LOG => [
-                'provider'   => "{$VARCHAR} DEFAULT ''", // canonical identity (provider)，回填用
-                'project_id' => "{$VARCHAR} DEFAULT ''", // canonical identity (project_id)，回填用
-                'repository' => "{$VARCHAR} DEFAULT ''", // harbor 仓库，回填用
-            ],
-            \App\Config\AppConfig::TABLE_PERMISSIONS => [
-                'parent_key' => $isMySQL ? 'VARCHAR(128)' : 'TEXT', // 权限层级
-                'created_at' => "{$TS_TYPE} DEFAULT NULL",          // 注册时间：内置为 NULL
-            ],
-            \App\Config\AppConfig::TABLE_OPERATION_LOGS => [
-                'operator_type' => "{$VARCHAR} DEFAULT 'admin'", // 操作人类型：admin / api_token
-            ],
-            \App\Config\AppConfig::TABLE_ADMIN_USERS => [
-                'email'      => "{$VARCHAR} NOT NULL DEFAULT ''", // 用户邮箱（OAuth userinfo 用，空则占位兜底）
-                'avatar_url' => 'TEXT',                                        // 头像 URL
-                'status'     => ($isMySQL ? 'TINYINT' : 'INTEGER') . " NOT NULL DEFAULT 1", // 1=启用 0=停用
-                'created_at' => "{$TS_TYPE} NULL DEFAULT NULL",                // 注册时间（存量行为 NULL，新行为 NOW）
-                // 注：id 主键不通过此 ALTER 自动补——MySQL 中 AUTO_INCREMENT 主键列无法幂等补加、
-                // 且涉及旧主键（username）变更风险；存量库 id 主键由部署方手动迁移。
-            ],
-
-            // user_identities 为 v2.6.3 新增整表，不存在存量列；若后续给该表新加列再据此追加
-            \App\Config\AppConfig::TABLE_USER_IDENTITIES => [
-            ],
-        ];
+        // 列清单统一由 columnMigrations() 提供（写路径与只读预检 pendingChanges() 共用同一份事实，避免两处漂移）。
         // 补列循环：遍历有限映射，天然有界、必然终止（无 while/递归，无需显式 break）。
         // 任一列检测/ALTER 失败会抛 PDOException 一路向上（fail-fast，与上方 CREATE TABLE 一致），
         // 应用启动失败；但因 columnExists 幂等 + 尚未 markSchemaCurrent，下次启动会重跑补齐剩余列，不留半成品。
-        foreach ($columnMigrations as $table => $columns) {
+        foreach (self::columnMigrations() as $table => $columns) {
             foreach ($columns as $column => $definition) {
-                if (!self::columnExists($table, $column)) {
+                if (!self::columnExists($pdo, $table, $column)) {
                     $pdo->exec("ALTER TABLE {$table} ADD COLUMN {$column} {$definition}");
                 }
             }
         }
 
         // 种子数据：RBAC（权限定义 / 隐含规则 / 系统角色 / 角色↔权限），幂等可重复执行
-        self::seedRbac();
+        // seedMode 透传：降级回滚时用 merge（只补不删），避免回滚把系统角色权限收窄。
+        self::seedRbac($seedMode);
 
         // ── 索引（跨驱动幂等：MySQL 无 IF NOT EXISTS，先查 information_schema）──
         self::createIndex('idx_pipeline_artifacts_project_key', \App\Config\AppConfig::TABLE_PIPELINE_ARTIFACTS, 'project_key');
@@ -987,9 +1187,12 @@ class Database
 
     // ── RBAC 种子 ──
 
-    private static function seedRbac(): void
+    private static function seedRbac(string $seedMode = self::SEED_MODE_PRUNE): void
     {
         $pdo = self::pdo();
+
+        /** @var list<array{step:string,key:string,error:string}> $failures 收集部分失败项；循环结束后统一 fail-fast */
+        $failures = [];
 
         // 种子数据：权限定义（含 parent_key）
         $permUpsert = self::sqlUpsert(\App\Config\AppConfig::TABLE_PERMISSIONS, 'perm_key, description, parent_key', '?, ?, ?');
@@ -1001,6 +1204,7 @@ class Database
                 $permStmt->execute([$key, $desc, $parent]);
             } catch (\Exception $e) {
                 \App\Helper\Log::error('seedRbac 权限写入失败', ['perm_key' => $key, 'error' => $e->getMessage()]);
+                $failures[] = ['step' => 'permission', 'key' => (string)$key, 'error' => $e->getMessage()];
             }
         }
 
@@ -1013,6 +1217,7 @@ class Database
                     $ruleStmt->execute([$src, $tgt]);
                 } catch (\Exception $e) {
                     \App\Helper\Log::error('seedRbac 隐含规则写入失败', ['source' => $src, 'target' => $tgt, 'error' => $e->getMessage()]);
+                    $failures[] = ['step' => 'implied_rule', 'key' => $src . '→' . $tgt, 'error' => $e->getMessage()];
                 }
             }
         }
@@ -1049,12 +1254,17 @@ class Database
                 }
             } catch (\Exception $e) {
                 \App\Helper\Log::error('seedRbac 角色写入失败', ['role' => $roleName, 'error' => $e->getMessage()]);
+                $failures[] = ['step' => 'role', 'key' => $roleName, 'error' => $e->getMessage()];
             }
         }
 
         // 种子数据：角色↔权限（只同步系统角色，不碰自定义角色）
+        // 整段唯一的破坏性动作就是下面这条 DELETE：prune（默认）先清空该角色的映射再按当前代码重建；
+        // merge（降级回滚）跳过它——只补当前代码期望的映射（INSERT IGNORE 天然幂等），保留新版本授予的映射。
         $allPermKeys = array_keys(\App\Config\AppConfig::DEFAULT_PERMISSIONS);
-        $delRpStmt = $pdo->prepare("DELETE FROM " . \App\Config\AppConfig::TABLE_ROLE_PERMISSIONS . " WHERE role_id = (SELECT id FROM " . \App\Config\AppConfig::TABLE_ROLES . " WHERE name = ?)");
+        $delRpStmt = ($seedMode === self::SEED_MODE_PRUNE)
+            ? $pdo->prepare("DELETE FROM " . \App\Config\AppConfig::TABLE_ROLE_PERMISSIONS . " WHERE role_id = (SELECT id FROM " . \App\Config\AppConfig::TABLE_ROLES . " WHERE name = ?)")
+            : null;
         // INSERT 用 IGNORE 而非裸 INSERT：分布式部署下 web / worker 容器启动时并发跑 seedRbac，
         // 两个进程都先 DELETE 再 INSERT 同一批 (role_id, perm_key)，裸 INSERT 会撞 role_permissions
         // 联合主键报 1062 Duplicate entry。IGNORE 让后到者静默跳过，各进程结果收敛一致。
@@ -1064,10 +1274,13 @@ class Database
             '(SELECT id FROM ' . \App\Config\AppConfig::TABLE_ROLES . ' WHERE name = ?), ?'
         ));
         foreach (\App\Config\AppConfig::DEFAULT_ROLES as $roleName => $perms) {
-            try {
-                $delRpStmt->execute([$roleName]);
-            } catch (\Exception $e) {
-                \App\Helper\Log::error('seedRbac 角色权限清理失败', ['role' => $roleName, 'error' => $e->getMessage()]);
+            if ($delRpStmt !== null) {
+                try {
+                    $delRpStmt->execute([$roleName]);
+                } catch (\Exception $e) {
+                    \App\Helper\Log::error('seedRbac 角色权限清理失败', ['role' => $roleName, 'error' => $e->getMessage()]);
+                    $failures[] = ['step' => 'role_permissions_prune', 'key' => $roleName, 'error' => $e->getMessage()];
+                }
             }
             $permKeys = ($perms === '*') ? $allPermKeys : $perms;
             foreach ($permKeys as $permKey) {
@@ -1075,8 +1288,28 @@ class Database
                     $rpStmt->execute([$roleName, $permKey]);
                 } catch (\Exception $e) {
                     \App\Helper\Log::error('seedRbac 角色权限写入失败', ['role' => $roleName, 'perm_key' => $permKey, 'error' => $e->getMessage()]);
+                    $failures[] = ['step' => 'role_permission', 'key' => $roleName . ':' . $permKey, 'error' => $e->getMessage()];
                 }
             }
+        }
+
+        // 部分失败必须 **fail-fast**，而不是"记日志继续"：权限只播了一半的表现是「某个按钮该显示却没显示」，
+        // 极易被当成功能 bug 排查半天（这是唯一能掩盖真实问题的一条路径）。
+        // 这里与 verifySeed() 走同一条路——抛异常 → bootstrap() 不会 markSchemaCurrent()，版本标记保持旧值，
+        // 下次引导会重试整个 ensureTables()（自愈）；文件日志 + 操作日志双写留痕（去重窗口内不重复刷）。
+        if ($failures !== []) {
+            $sample = array_slice($failures, 0, 5);
+            \App\Helper\Log::error('seedRbac 部分失败：种子未播全', ['count' => count($failures), 'sample' => $sample]);
+            self::recordSystemAudit(
+                self::ACTION_RBAC_SEED_FAILED,
+                '',
+                ['count' => count($failures), 'sample' => $sample, 'seed_mode' => $seedMode],
+                'failure'
+            );
+            throw new \RuntimeException(
+                'RBAC 种子部分失败（' . count($failures) . ' 项，例如 ' . $sample[0]['step'] . ' ' . $sample[0]['key'] . '）：'
+                . '种子未播全，本次不标记版本，下次引导将重试'
+            );
         }
 
         // 防御：清扫孤儿行（旧版 REPLACE INTO 换 id 遗留的 role_id 悬空引用）。
