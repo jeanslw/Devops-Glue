@@ -240,8 +240,35 @@
           "schema_version": {
             "type": "string",
             "nullable": true,
-            "description": "已应用的 schema/种子版本（首次部署未标记时为 null）",
-            "example": "2.8.8"
+            "description": "已应用的 schema 版本（自动建库模式标记；首次部署未标记时为 null）",
+            "example": "2.8.9"
+          },
+          "seed_version": {
+            "type": "string",
+            "nullable": true,
+            "description": "已应用的种子版本（仅 DB_AUTO_MIGRATE=false 手动建库模式记录；自动建库模式为 null，以 schema_version 为准）",
+            "example": "2.8.9"
+          },
+          "schema_current": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "库结构是否对齐当前代码版本；无 schema_version（结构迁移未执行，如手动建库模式未跑 cli/migrate.php，即使有 seed_version）时为 null（未知：不降级也不谎报对齐）",
+            "example": true
+          },
+          "auto_migrate": {
+            "type": "boolean",
+            "description": "当前是否自动建表模式（DB_AUTO_MIGRATE 未显式关闭）",
+            "example": true
+          },
+          "tables_missing": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "缺失的核心表名（仅在 schema_current=false 且确实缺表时出现）",
+            "example": [
+              "ci_job_git_map"
+            ]
           },
           "time": {
             "type": "integer",
@@ -1325,11 +1352,11 @@
           "Health"
         ],
         "summary": "存活/就绪探针",
-        "description": "无需鉴权的外部探针：只检测数据库可达性与 schema 版本，不探测 Jenkins/Git/Harbor。数据库可达返回 200 + status=ok，不可达返回 503 + status=degraded。",
+        "description": "无需鉴权的外部探针：只检测数据库可达性、已应用版本与 schema 对齐状态，不探测 Jenkins/Git/Harbor。数据库可达且版本对齐 → 200 + status=ok；数据库可达但版本未对齐（schema_current=false，如升级了代码还没跑迁移）→ 200 + status=degraded（版本落后不摘流，避免滚动升级期 LB/K8s 摘掉全部副本），并在 tables_missing 中列出缺失的核心表；手动建库模式从未跑过结构迁移时 schema_current=null（未知），返回 200 + status=ok，不降级也不谎报对齐；数据库连接失败、或连接正常但版本表缺失（空库未初始化，此时 db=true）→ 503 + status=degraded。db 字段仅表示连接性，便于区分「真宕机」与「连上但未初始化」。",
         "operationId": "healthz",
         "responses": {
           "200": {
-            "description": "数据库可达",
+            "description": "数据库可达（schema 版本未对齐时为 200 + status=degraded）",
             "content": {
               "application/json": {
                 "schema": {
@@ -1339,7 +1366,7 @@
             }
           },
           "503": {
-            "description": "数据库不可达（降级）",
+            "description": "数据库连接失败，或已连接但版本表缺失（空库未初始化）；区分见 status 与 db 字段",
             "content": {
               "application/json": {
                 "schema": {

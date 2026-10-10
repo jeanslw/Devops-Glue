@@ -81,7 +81,7 @@ To restrict origins, edit `config/settings.php`:
 GET /healthz
 ```
 
-Unauthenticated external probe for Uptime Kuma / cloud load balancers / container orchestration. It only checks database reachability and the applied schema version — it does not probe Jenkins/Git/Harbor and returns in milliseconds.
+Unauthenticated external probe for Uptime Kuma / cloud load balancers / container orchestration. It only checks database reachability, the applied versions and schema alignment — it does not probe Jenkins/Git/Harbor and returns in milliseconds.
 
 ```json
 {
@@ -89,9 +89,19 @@ Unauthenticated external probe for Uptime Kuma / cloud load balancers / containe
   "db": true,
   "app_version": "2.8.9",
   "schema_version": "2.8.9",
+  "seed_version": "2.8.9",
+  "schema_current": true,
+  "auto_migrate": true,
   "time": 1760000000
 }
 ```
+
+- **HTTP 200 + `status=ok`**: the database is reachable and `schema_current=true`.
+- **HTTP 200 + `status=degraded`**: the database is reachable but the version is stale (`schema_current=false`, e.g. the code was upgraded before the migration ran); when tables really are missing, `tables_missing` (the missing core tables) is emitted as well. **This does not return 503** — during a rolling upgrade "new code + old schema" is an expected intermediate state, and returning 503 as well would make the LB / K8s pull every replica.
+- **HTTP 503 + `status=degraded`**: the database is unreachable (including core tables missing so the query fails).
+- `schema_current`: the result of comparing `schema_version` (auto-migrate mode) or `seed_version` (with `DB_AUTO_MIGRATE=false` no `schema_version` is written) against the current `APP_VERSION`; `null` when neither record exists (unknown, never treated as degraded).
+- `seed_version`: recorded only with `DB_AUTO_MIGRATE=false` (`null` in auto-migrate mode, where `schema_version` is authoritative).
+- Fix: after running `php cli/migrate.php` or clicking the "Sync Schema" button on the "Data Management → 🗄️ Database" card, `schema_current` returns to `true`.
 
 - `status`: `ok` (database reachable) | `degraded` (database unreachable)
 - `db`: `true` / `false`
@@ -381,7 +391,7 @@ Token expires in 24 hours. `super_admin` role returns `"*"` for permissions.
 | `/api/admin/build_mode` | GET/PUT | Build mode (enabled CI source set, e.g. jenkins,gitlab_ci,gitea_ci) |
 | `/api/admin/platform_config` | GET/PUT | Platform access status (masked — only each platform's `configured` boolean, never URL/account/credential) + platform-level tag settings (cleanup/backfill switches, log keyword) and API access log settings; PUT updates only keys explicitly present in the body to avoid clobbering each other (requires `ci.platform-config`) |
 | `/api/admin/system_info` | GET | Database schema status (driver / schema version / is_current / PHP version / core table presence; requires `ci.system`) |
-| `/api/admin/migrate` | POST | Manually trigger database migration (create missing tables + seed permissions + mark schema current; super_admin only) |
+| `/api/admin/migrate` | POST | Manually sync the schema (create missing tables + back-fill columns/indexes + seed permissions + mark schema current; answers 409 pointing at `php cli/migrate.php` when the account lacks DDL privileges; super_admin only) |
 | `/api/admin/backup` | POST | Manually run a database backup (zip archive, keeps the most recent 10; when CD is enabled an extra CD-library archive is produced; super_admin only) |
 | `/api/admin/backups` | GET | List generated database backup files (super_admin only) |
 | `/api/admin/tag_cleanup` | POST | Run stale tag cleanup once, on demand (equivalent to `cli/cleanup-pipeline-tags.php`; returns 409 and skips safely when the switch is off or Harbor is unconfigured; requires `ci.platform-config`) |

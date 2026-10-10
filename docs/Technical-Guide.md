@@ -327,23 +327,36 @@ The admin panel's "System Settings → Data Management → Database" card provid
 
 > Note: `cli/backup-lib.php` is the shared backup/restore library (used by `bin/backup.php`, `bin/restore.php`, `cli/backup-db.php`), shipped in the image; the offline tools under `bin/` are not shipped but require this library.
 
+### 4.5 Sync Schema (Web Button / CLI)
+
+The **🔧 Sync Schema** button on the "Data Management → 🗄️ Database" card (`super_admin` only) takes the very same `Database::migrateNow()` path as `cli/migrate.php`: it aligns the schema and the built-in seed with the **current code version**.
+
+- **What it does**: `ensureTables()` (missing tables via `CREATE TABLE IF NOT EXISTS`, per-column `ALTER ADD COLUMN` from `$columnMigrations`, missing indexes via `createIndex()`, dropping the retired legacy table `ci_pipeline_tags`) → `seedRbac()` / `seedAdmin()` → `markSchemaCurrent()` + `markSeedCurrent()` once `verifySeed()` passes.
+- **What it never does**: no column renames/drops, no changes to column types or primary keys (e.g. `admin_users.id`), no versioned up/down, no dry-run, no cross-database migration — those are "manual migrations", to be run offline with database tools after a backup.
+- **The two entry points differ**: the Web button executes DDL with the **application's own database account**; when that account lacks `CREATE`/`ALTER` it answers **409** + `sys.migrate_denied` (explicitly pointing at the CLI) and records a failed `migrate_schema` operation-log entry. `cli/migrate.php` ignores `DB_AUTO_MIGRATE` and can be run with a privileged account from a deployment pipeline (K8s Job / initContainer, Helm pre-upgrade hook, one-shot Compose service).
+- **Login prerequisite**: the button requires a login, and a missing table makes login itself fail with a 500 — for empty/partial databases use `php cli/db-init.php` and `php cli/migrate.php`; the button is for "already logged in, just need to align the schema".
+- **Terminology**: "Sync Schema" = this button (and `cli/migrate.php`); "Database Migration" = the CLI phrasing of the same action; "Manual Migration" = renames, type changes, column drops, primary-key changes, cross-database moves.
+
 ---
 
 ## 5. Core Business Logic
 
 ### 5.1 Liveness / Readiness Probe
 **Route:** `GET /healthz`  
-**Controller:** `MainController::healthz()`
+**Controller:** `HealthzController::__invoke()`
 
-Unauthenticated external probe for Uptime Kuma / cloud LB / container orchestration. Only does a DB probe (`SELECT 1`) plus a schema-version read — it does not probe Jenkins/Git/Harbor and returns in milliseconds.
+Unauthenticated external probe for Uptime Kuma / cloud LB / container orchestration. It only does a DB probe, an applied-version read and a schema-alignment check — it does not probe Jenkins/Git/Harbor and returns in milliseconds.
 
 ```
-1. DB probe + schema version read
-   └─ SELECT 1 succeeds → read ci_app_settings.schema_version
-   └─ either step throws → db=false
-2. Summary
-   └─ db=true  → HTTP 200 + status=ok
-   └─ db=false → HTTP 503 + status=degraded (reported truthfully, not 500)
+1. DB probe (Database::createPdo() + SELECT 1)
+   └─ on success Database::schemaState(): one SQL reads schema_version / seed_version and decides schema_current
+   └─ either step throws (including a missing ci_app_settings) → db=false
+2. Only when schema_current=false: Database::missingTables() probes the core tables one by one
+   (the happy path never pays for these N queries, keeping the probe in the millisecond range)
+3. Summary
+   └─ db=true  + schema_current≠false → HTTP 200 + status=ok
+   └─ db=true  + schema_current=false → HTTP 200 + status=degraded (stale version, no traffic pulled)
+   └─ db=false                        → HTTP 503 + status=degraded (reported truthfully, not 500)
 ```
 
 **Response structure:**
@@ -351,11 +364,20 @@ Unauthenticated external probe for Uptime Kuma / cloud LB / container orchestrat
 {
   "status": "ok",
   "db": true,
-  "app_version": "2.8.8",
-  "schema_version": "2.8.8",
+  "app_version": "2.8.9",
+  "schema_version": "2.8.9",
+  "seed_version": "2.8.9",
+  "schema_current": true,
+  "auto_migrate": true,
   "time": 1760000000
 }
 ```
+
+- `schema_current`: the result of comparing `schema_version` (auto-migrate mode) or `seed_version` (with `DB_AUTO_MIGRATE=false` no `schema_version` is written — otherwise a pure manual deployment would report degraded forever) against `APP_VERSION`; `null` when neither record exists (unknown, never treated as degraded).
+- `seed_version`: recorded only with `DB_AUTO_MIGRATE=false` (`null` in auto-migrate mode, where `schema_version` is authoritative).
+- `tables_missing`: **only present when `schema_current=false` and tables really are missing**, listing the missing core tables; not probed and not emitted when `schema_current` is `true`/`null`.
+- `auto_migrate`: whether auto-migrate mode is on, so a probe reader can spot the "manual mode + stale version" combination directly.
+- **Why a stale version does not return 503**: during a rolling upgrade "new code + old schema" is an expected intermediate state; returning 503 as well would make the LB / K8s pull every replica, far more harmful than the degraded state itself. Monitoring should alert on the `status` / `schema_current` fields instead.
 
 ---
 
@@ -1121,7 +1143,7 @@ LOG_RETAIN_DAYS=30                 # App log retention days; Logger self-cleans 
 | POST | `/api/admin/tag_cleanup` | Token | Manually trigger the expired-tag cleanup cron |
 | POST | `/api/admin/tag_backfill` | Token | Manually trigger the historical-tag backfill cron |
 | GET | `/api/admin/system_info` | Token | System info (version/env/DB driver/Custom_Push) |
-| POST | `/api/admin/migrate` | Token | Manually trigger database migration (super_admin only) |
+| POST | `/api/admin/migrate` | Token | Manually sync the schema (missing tables + columns + indexes + seed; answers 409 pointing at the CLI when the account lacks DDL privileges; super_admin only) |
 | POST | `/api/admin/backup` | Token | Manually run a database backup (super_admin only) |
 | GET | `/api/admin/backups` | Token | List database backup files (super_admin only) |
 | GET | `/api/admin/api_tokens/scopes` | Token | API token scope catalog |

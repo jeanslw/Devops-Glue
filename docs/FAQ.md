@@ -521,6 +521,26 @@ This was an i18n gap in earlier versions, fixed in v2.5.1 (now translated lazily
 
 > Note: `$columnMigrations` is the single source for back-filling columns on existing databases (`columnExists` → `ALTER ADD COLUMN`); `CREATE TABLE` and the init scripts only serve fresh databases. Column types are resolved per driver (`$VARCHAR` / `$TS_TYPE`, etc.).
 
+### Q: I clicked "Sync Schema" but nothing happened — can it change column types or drop columns?
+
+No, by design. The **🔧 Sync Schema** button on the "Data Management → 🗄️ Database" card (equivalent to `php cli/migrate.php`) is **idempotent and additive plus legacy cleanup only**: missing tables via `CREATE TABLE IF NOT EXISTS`, missing columns via `$columnMigrations` (`columnExists` → `ALTER ADD COLUMN`), missing indexes, the retired legacy table dropped, the built-in permission/role seed refreshed, and `schema_version` marked current once `verifySeed()` passes. It **never** renames or drops columns and never changes column types or primary keys — so after changing a column type, dropping a column or changing a primary key, clicking the button changes nothing. The button is not broken.
+
+Such changes are a "manual migration": **stop the service → back up (the "Back up database" button or `cli/backup-db.php`) → run the SQL with database tools → run `php cli/migrate.php` (or click the button) to re-verify**, then check that the Schema status on the "Data Management" page is back to "current" (or read `schema_current` from `GET /healthz`).
+
+### Q: "Sync Schema" says the database account lacks DDL privileges — what now?
+
+It means the application's own database account has no `CREATE` / `ALTER` privileges (very common in `DB_AUTO_MIGRATE=false` minimal-privilege deployments, where the app account only gets DML). The button answers **409** instead of a vague "migration failed", and there are two ways out:
+
+- Run `php cli/migrate.php` with an account that has DDL privileges (recommended; ideally a step in your deployment pipeline);
+- Or temporarily set `DB_AUTO_MIGRATE=true` and restart once (auto-migrate mode runs DDL with the app account, which only works if that account was granted database-level `ALL`).
+
+### Q: `/healthz` returns `status: degraded` or `schema_current: false` — what does that mean?
+
+- **HTTP 200 + `status=degraded`**: the database **is reachable**, but the schema version is older than the code (`schema_current=false`, e.g. the image was upgraded before the migration ran); when tables really are missing the response also carries a `tables_missing` array (the missing core table names). Running `php cli/migrate.php` or clicking "Sync Schema" restores `ok`.
+- **HTTP 503 + `status=degraded`**: the database is unreachable (or core tables are missing so the query fails) — the service really is unavailable.
+- **Why a stale version does not return 503**: during a rolling upgrade "new code + old schema" is an expected intermediate state; returning 503 as well would make the load balancer / K8s pull every replica, far more harmful than the degraded state itself. Monitoring should alert on the `status` / `schema_current` fields.
+- A pure manual deployment with `DB_AUTO_MIGRATE=false` never writes `schema_version` (the app runs no DDL), so the probe falls back to `seed_version`; when neither record exists, `schema_current` is `null` (unknown) and never degraded.
+
 ### Q: What data is cached and for how long?
 
 | Cache Item | TTL |
@@ -544,9 +564,15 @@ The default timeout for external services is 3-5 seconds. Slow external services
 - Ensure the MySQL user has table creation privileges (when `DB_AUTO_MIGRATE=true`)
 - In Docker, note that `127.0.0.1` inside the container points to the container itself, not the host
 
-### Q: "Table not found" error?
+### Q: "Table not found" error, or unable to log in after setting `DB_AUTO_MIGRATE=false`?
 
-`DB_AUTO_MIGRATE=false` and you haven't run the init scripts manually. Run `database/mysql_init.sql` or `database/sqlite_init.sql`, or set `DB_AUTO_MIGRATE=true`.
+`DB_AUTO_MIGRATE=false` and the init scripts were never run: this mode does not create tables, so the login endpoint fails with a 500 while applying seed data because the tables are missing (`php cli/db-init.php` prints the exact cause and the next step). Three ways out:
+
+1. Run `database/mysql_init.sql` or `database/sqlite_init.sql`;
+2. Use an account with DDL privileges to run `php cli/migrate.php` (it ignores `DB_AUTO_MIGRATE` and can build an empty database in one shot);
+3. Or set `DB_AUTO_MIGRATE=true` and let the app create the tables.
+
+Note: re-running `database/*.sql` cannot add new columns to **existing** tables (the scripts contain only `CREATE TABLE IF NOT EXISTS`) — after an upgrade, use option 2.
 
 ---
 

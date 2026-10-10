@@ -240,8 +240,35 @@
           "schema_version": {
             "type": "string",
             "nullable": true,
-            "description": "Applied schema/seed version (null until first deployment marks it)",
-            "example": "2.8.8"
+            "description": "Applied schema version (marked in auto-migrate mode; null until first deployment marks it)",
+            "example": "2.8.9"
+          },
+          "seed_version": {
+            "type": "string",
+            "nullable": true,
+            "description": "Applied seed version (recorded only with DB_AUTO_MIGRATE=false; null in auto-migrate mode, where schema_version is authoritative)",
+            "example": "2.8.9"
+          },
+          "schema_current": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "Whether the schema is aligned with the current code version; null when there is no schema_version (the structural migration never ran, e.g. manual-provisioning mode without php cli/migrate.php, even if a seed_version exists) — unknown: never treated as degraded and never falsely reported as aligned",
+            "example": true
+          },
+          "auto_migrate": {
+            "type": "boolean",
+            "description": "Whether auto-migrate mode is on (DB_AUTO_MIGRATE not explicitly disabled)",
+            "example": true
+          },
+          "tables_missing": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Missing core tables (present only when schema_current=false and tables really are missing)",
+            "example": [
+              "ci_job_git_map"
+            ]
           },
           "time": {
             "type": "integer",
@@ -1310,11 +1337,11 @@
           "Health"
         ],
         "summary": "Liveness / readiness probe",
-        "description": "Unauthenticated external probe: only checks database reachability and schema version; does not probe Jenkins/Git/Harbor. Returns 200 + status=ok when the DB is reachable, 503 + status=degraded when it is not.",
+        "description": "Unauthenticated external probe: checks database reachability, the applied versions and schema alignment only; it does not probe Jenkins/Git/Harbor. DB reachable and aligned → 200 + status=ok; DB reachable but stale (schema_current=false, e.g. code upgraded before the migration ran) → 200 + status=degraded (a stale version never pulls traffic, so a rolling upgrade cannot make the LB/K8s drop every replica) with the missing core tables listed in tables_missing; in manual-provisioning mode where the structural migration never ran, schema_current=null (unknown) → 200 + status=ok (neither degraded nor falsely reported aligned); a failed DB connection, or a successful connection whose version table is missing (empty/uninitialized database, in which case db=true) → 503 + status=degraded. The db field expresses connectivity only, to distinguish a real outage from a reachable-but-uninitialized database.",
         "operationId": "healthz",
         "responses": {
           "200": {
-            "description": "Database reachable",
+            "description": "Database reachable (200 + status=degraded when the schema version is stale)",
             "content": {
               "application/json": {
                 "schema": {
@@ -1324,7 +1351,7 @@
             }
           },
           "503": {
-            "description": "Database unreachable (degraded)",
+            "description": "Database connection failed, or connected but the version table is missing (empty/uninitialized database); see status and db",
             "content": {
               "application/json": {
                 "schema": {

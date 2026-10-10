@@ -333,12 +333,13 @@ if (isset($health['db_driver'])) {
 
 echo "  [Infra] 健康检查 ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
 
-// /healthz 外部探针（无需鉴权）：DB 可达时应 200 + status=ok，含 db/app_version/schema_version/time
+// /healthz 外部探针（无需鉴权）：DB 可达时应 200；含 db/app_version/schema_version/seed_version/schema_current/auto_migrate/time
+// schema 版本未对齐（如升级了代码还没跑迁移）时为 200 + status=degraded（不摘流），503 只留给 DB 不可达
 $tc = apiT('/healthz 探针（无认证）', "{$baseUrl}/healthz");
 $tc->assertHttpIs(200, '/healthz 返回 200');
 $tc->assertJson();
 $hz = json_decode($tc->rawBody, true) ?? [];
-$tc->assertHasKeys($hz, ['status', 'db', 'app_version', 'schema_version', 'time'], '含 status/db/app_version/schema_version/time');
+$tc->assertHasKeys($hz, ['status', 'db', 'app_version', 'schema_version', 'seed_version', 'schema_current', 'auto_migrate', 'time'], '含 status/db/app_version/schema_version/seed_version/schema_current/auto_migrate/time');
 if (isset($hz['status'])) {
     $tc->assertIn($hz['status'], ['ok', 'degraded'], "status 是 ok 或 degraded");
 }
@@ -348,6 +349,15 @@ if (isset($hz['db'])) {
 if (isset($hz['app_version'])) {
     $tc->assertNotEmpty($hz['app_version'], 'app_version 非空');
     $tc->assertIsType('string', $hz['app_version'], 'app_version 是字符串');
+}
+if (array_key_exists('schema_current', $hz)) {
+    $tc->assertIn($hz['schema_current'], [true, false, null], 'schema_current 是 bool 或 null（无版本记录时未知）');
+}
+if (isset($hz['auto_migrate'])) {
+    $tc->assertIsType('bool', $hz['auto_migrate'], 'auto_migrate 是布尔值');
+}
+if (isset($hz['tables_missing'])) {
+    $tc->assertIsType('array', $hz['tables_missing'], 'tables_missing 是数组（仅 schema_current=false 时出现）');
 }
 echo "  [Infra] /healthz 探针 ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
 

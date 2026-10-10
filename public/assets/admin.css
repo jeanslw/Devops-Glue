@@ -349,6 +349,7 @@
         .toast.show { opacity:1; transform:translateX(0); }
         .toast-ok  { background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; }
         .toast-err { background:#fef2f2; color:#991b1b; border:1px solid #fecaca; }
+        .toast-warn{ background:#fffbeb; color:#92400e; border:1px solid #fde68a; }
         /* Toast 居中变体 */
         .toast.toast-center {
             top:50%; left:50%; right:auto;

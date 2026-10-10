@@ -23,8 +23,17 @@ class Database
         return self::$pdo;
     }
 
-    /** ci_app_settings 中记录「已应用的 schema/种子版本」的 key（/healthz 探针也引用，故公开） */
+    /** ci_app_settings 中记录「已应用的 schema 版本」的 key（/healthz 探针经 schemaState() 读取，故保持公开） */
     public const SCHEMA_VERSION_KEY = 'schema_version';
+
+    /**
+     * 手动建库模式（DB_AUTO_MIGRATE=false）下记录「种子已应用版本」的 key。
+     *
+     * 刻意与 SCHEMA_VERSION_KEY 分开：该模式的 DDL（含存量库补列）由运维负责
+     * （database/*.sql 只有 CREATE TABLE IF NOT EXISTS，对已有表是空操作），
+     * 若复用 schema_version 会把「种子已补齐」谎报成「表结构已是最新」。
+     */
+    private const SEED_VERSION_KEY = 'seed_version';
 
     // ── 初始化 ──
 
@@ -56,6 +65,7 @@ class Database
             self::init();
         }
         $needMark = false;
+        $needSeedMark = false;
         if (self::$config['auto_migrate'] ?? true) {
             // 仅在 schema/种子版本与当前代码版本不一致时执行建表 + 种子，
             // 避免每个请求都重复跑 ensureTables/seedRbac 的写库操作。
@@ -64,14 +74,24 @@ class Database
                 $needMark = true;
             }
         } else {
-            self::seedRbac(); // 手动建库脚本模式：表已存在，仍补种子数据
+            // 手动建库脚本模式（DB_AUTO_MIGRATE=false）：表由运维脚本创建，应用只补种子。
+            // 用独立 key（seed_version）短路，避免 php-fpm 每请求重复跑 seedRbac 的写库；
+            // 不复用 schema_version —— 本模式 DDL（含存量库补列）归运维，标「schema 当前」
+            // 会谎报表结构已升级。需要补表/补列请跑 cli/migrate.php 或后台「同步库结构」。
+            if (!self::isSeedCurrent()) {
+                self::seedRbac(); // 表已存在，补/同步种子数据
+                $needSeedMark = true;
+            }
         }
         self::seedAdmin();
         self::verifySeed();
-        // 自检通过后才标记 schema 当前（与 migrateNow() 一致）：若自检抛异常，版本号保持旧值，
-        // 下次引导会重新走 ensureTables() 自愈，而非「版本已标记当前但种子其实坏了」的假象。
+        // 自检通过后才标记版本（与 migrateNow() 一致）：若自检抛异常，版本号保持旧值，
+        // 下次引导会重新走 ensureTables()/seedRbac() 自愈，而非「版本已标记当前但种子其实坏了」的假象。
         if ($needMark) {
             self::markSchemaCurrent();
+        }
+        if ($needSeedMark) {
+            self::markSeedCurrent();
         }
         self::$bootstrapped = true;
     }
@@ -100,6 +120,32 @@ class Database
             '?, ?, ' . self::sqlNow()
         );
         self::pdo()->prepare($sql)->execute([self::SCHEMA_VERSION_KEY, \App\Config\AppConfig::APP_VERSION]);
+    }
+
+    /** 手动建库模式下判断「种子是否已应用到当前代码版本」（ci_app_settings 缺表/缺键时返回 false，视为需补种子） */
+    private static function isSeedCurrent(): bool
+    {
+        try {
+            $stmt = self::pdo()->prepare(
+                "SELECT value FROM " . \App\Config\AppConfig::TABLE_APP_SETTINGS . " WHERE setting_key = ?"
+            );
+            $stmt->execute([self::SEED_VERSION_KEY]);
+            $row = $stmt->fetch();
+            return $row !== false && ($row['value'] ?? '') === \App\Config\AppConfig::APP_VERSION;
+        } catch (\Throwable $e) {
+            return false; // ci_app_settings 表尚未创建 → 视为未补种子
+        }
+    }
+
+    /** 记录手动建库模式下「当前代码版本的种子已应用」（仅内部 key，不影响系统信息面板的 schema 版本展示） */
+    private static function markSeedCurrent(): void
+    {
+        $sql = self::sqlUpsert(
+            \App\Config\AppConfig::TABLE_APP_SETTINGS,
+            'setting_key, value, updated_at',
+            '?, ?, ' . self::sqlNow()
+        );
+        self::pdo()->prepare($sql)->execute([self::SEED_VERSION_KEY, \App\Config\AppConfig::APP_VERSION]);
     }
 
     /**
@@ -161,17 +207,150 @@ class Database
     }
 
     /**
-     * 手动触发迁移：建缺失表 + RBAC/管理员种子 + 自检 + 标记 schema 当前（后台「迁移数据库」按钮，super_admin 专用）。
+     * 读取「已应用的 schema / 种子版本」并判定是否对齐当前代码（供 /healthz 探针一次查询拿到全部版本语义）。
+     *
+     * 与 schemaStatus() 的分工：本方法**不建连、不 bootstrap**（PDO 由调用方传入），且把「是否对齐」的
+     * 判定集中在此，避免探针里散落版本规则。ci_app_settings 缺失时本方法会抛异常，由调用方判定「库不可用」。
+     *
+     * 判定规则（schema_current 只反映**表结构**是否对齐，不看 seed_version）：
+     *  - 有 schema_version → 与 APP_VERSION 比较（schema_version 只由执行过 DDL 的路径写入：自动模式
+     *    ensureTables 成功，或手动模式跑过 cli/migrate.php / 后台「同步库结构」）；
+     *  - 无 schema_version → null（未知）。DB_AUTO_MIGRATE=false 的常态即是如此：seed_version 仅证明
+     *    RBAC 种子数据已播（INSERT），不证明业务表的新增列已就绪——手动模式升级漏跑 DDL 时种子照样
+     *    能补齐，若据此判 true 会把「新代码 + 旧表结构」谎报成健康，故留作「未知」而非「已对齐」。
+     *  - seed_version 仍在返回体给出（用于观测/排障；其「避免重复播种」的短路逻辑在 bootstrap() 内）。
+     *
+     * @param \PDO $pdo 调用方自建连接
+     * @return array{schema_version:string|null, seed_version:string|null, schema_current:bool|null}
+     */
+    public static function schemaState(\PDO $pdo): array
+    {
+        $stmt = $pdo->prepare(
+            'SELECT setting_key, value FROM ' . \App\Config\AppConfig::TABLE_APP_SETTINGS . ' WHERE setting_key IN (?, ?)'
+        );
+        $stmt->execute([self::SCHEMA_VERSION_KEY, self::SEED_VERSION_KEY]);
+
+        $schemaVersion = null;
+        $seedVersion   = null;
+        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $row) {
+            $key = (string)($row['setting_key'] ?? '');
+            if ($key === self::SCHEMA_VERSION_KEY) {
+                $schemaVersion = (string)($row['value'] ?? '');
+            } elseif ($key === self::SEED_VERSION_KEY) {
+                $seedVersion = (string)($row['value'] ?? '');
+            }
+        }
+
+        return [
+            'schema_version' => $schemaVersion,
+            'seed_version'   => $seedVersion,
+            'schema_current' => self::isVersionAligned($schemaVersion),
+        ];
+    }
+
+    /**
+     * 已应用的**表结构**是否对齐当前代码版本。
+     *
+     * 只认 schema_version：它只由「执行过 DDL」的路径写入（自动模式 ensureTables 成功，或手动模式
+     * 跑过 cli/migrate.php / 后台同步）。刻意不接收 seed_version——后者仅证明 RBAC 种子已播（INSERT），
+     * 不能证明业务表新增列已就绪；手动模式升级漏跑 DDL 时种子仍会补齐，若据此判 true 会谎报健康。
+     * 无 schema_version 时返回 null（未知）：探针不降级也不宣称对齐，是否迁移过由 schema_version 表达。
+     */
+    private static function isVersionAligned(?string $schemaVersion): ?bool
+    {
+        if ($schemaVersion !== null) {
+            return $schemaVersion === \App\Config\AppConfig::APP_VERSION;
+        }
+        return null;
+    }
+
+    /**
+     * 缺失的核心表清单（/healthz 在判定版本未对齐时用它定位原因）。
+     *
+     * 逐表探测要跑 N 次查询，故正常路径不调用，只在已降级时调用一次，保持探针毫秒级。
+     *
+     * @param \PDO $pdo 调用方自建连接
+     * @return list<string>
+     */
+    public static function missingTables(\PDO $pdo): array
+    {
+        $missing = [];
+        foreach (self::schemaTables() as $table) {
+            if (!self::tableExists($pdo, $table)) {
+                $missing[] = $table;
+            }
+        }
+        return $missing;
+    }
+
+    /**
+     * 手动触发迁移：建缺失表 + 补列 + RBAC/管理员种子 + 自检 + 标记 schema 当前。
+     *
+     * 入口：后台「同步库结构」按钮（super_admin 专用）、`cli/migrate.php`（发布流水线，无视 DB_AUTO_MIGRATE）。
+     * 自带连接（connect()），因此空库 / 手动建库模式漏跑脚本时也能一次建全，不依赖既有 bootstrap 状态。
      *
      * @return array{driver:string, schema_version:string|null, app_version:string, is_current:bool, tables:array<string,bool>}
      */
     public static function migrateNow(): array
     {
+        self::connect();           // 迁移入口自带连接：不依赖既有 bootstrap 状态（空库/手动模式也能直接迁移）
         self::ensureTables();      // 建表 + RBAC 种子 + 索引 + JSON 迁移
         self::seedAdmin();          // 补管理员种子（与 bootstrap() 一致，缺管理员时自愈）
         self::verifySeed();         // 自检种子不变量，缺失直接抛异常，不标记当前
         self::markSchemaCurrent();  // 自检通过后才标记当前版本
+        self::markSeedCurrent();    // 同步种子版本：手动模式随后的首次引导即短路，不再重复播种
         return self::schemaStatus();
+    }
+
+    /**
+     * 迁移失败归因：让调用方把「账号无 DDL 权限」与其它失败区分开，给出可操作的提示而不是裸驱动错误。
+     *
+     * 纯函数（无 IO）便于单测；调用方传 PDOException 的 getMessage() / getCode()（SQLSTATE）/ errorInfo[1]（驱动错误码）。
+     *
+     * @param string $message    驱动错误消息（大小写不敏感匹配）
+     * @param string $sqlState   SQLSTATE（`\PDOException::getCode()`）
+     * @param int    $driverCode 驱动特有错误码（`\PDOException::errorInfo[1]`）
+     * @return string 'ddl_denied'（账号无 DDL 权限）| 'unreachable'（库不可达/不存在，或连接凭据被拒）| 'other'
+     */
+    public static function classifyMigrationError(string $message, string $sqlState = '', int $driverCode = 0): string
+    {
+        // MySQL 驱动错误码优先：1044 = 库级拒绝，1142 = 语句级拒绝（CREATE/ALTER command denied），1227 = 权限不足
+        if (in_array($driverCode, [1044, 1142, 1227], true)) {
+            return 'ddl_denied';
+        }
+        // 连接层：1045 = 账号/口令被拒，1049 = 库不存在，2002/2003 = 连不上
+        if (in_array($driverCode, [1045, 1049, 2002, 2003], true)) {
+            return 'unreachable';
+        }
+        $lower = strtolower($message);
+        // SQLite：只读库 / 只读文件（应用账号无写权限，与「缺 DDL 权限」同类处置）
+        if (str_contains($lower, 'readonly') || str_contains($lower, 'attempt to write')) {
+            return 'ddl_denied';
+        }
+        if (
+            str_contains($lower, 'unable to open database file')
+            || str_contains($lower, 'open_basedir')          // PHP open_basedir 限制导致 SQLite 打不开库文件
+            || str_contains($lower, 'connection refused')
+            || str_contains($lower, 'unknown database')
+            || str_contains($lower, 'no such file')
+            || str_contains($lower, 'getaddrinfo')
+        ) {
+            return 'unreachable';
+        }
+        // 无驱动码时退回 SQLSTATE 兜底。注意 42000 是「语法错误或访问拒绝」大类：同时覆盖 MySQL
+        // 1064(语法错误)/1060(重复列)/1050(表已存在)/1146(表不存在) 与真正的权限拒绝，必须再用消息
+        // 关键字确认是权限类。否则迁移 SQL 本身语法失败、或部分成功后重跑撞「列已存在(1060)」这个
+        // 最常见的重试路径，都会被误导成「账号缺 DDL 权限，请换高权账号」，把排障引向错误方向。
+        if (str_starts_with($sqlState, '42000')) {
+            // 只认 denied（command denied / access denied ... need privilege）。不能用 'access violation'：
+            // PDO MySQL 标准异常前缀固定是 "Syntax error or access violation: <code>"，连 1064 语法错误也带
+            // 这串字，用它会把所有 42000 错误再次一律判成权限问题。
+            return str_contains($lower, 'denied') ? 'ddl_denied' : 'other';
+        }
+        if (str_starts_with($sqlState, '28000')) {
+            return 'unreachable';
+        }
+        return 'other';
     }
 
     /** 读取配置：优先 $_ENV（phpdotenv 填充），其次真实环境变量 getenv()，避免 variables_order 不含 E 时 shell 环境丢失。 */
@@ -182,6 +361,12 @@ class Database
         }
         $v = getenv($key);
         return $v === false ? $default : (string)$v;
+    }
+
+    /** 解析 DB_AUTO_MIGRATE：0/false/no/off/空 视为关闭，其余（含默认）视为开启 */
+    private static function parseAutoMigrate(): bool
+    {
+        return !in_array(strtolower(trim(self::envValue('DB_AUTO_MIGRATE', 'true'))), ['0', 'false', 'no', 'off', ''], true);
     }
 
     /**
@@ -202,7 +387,7 @@ class Database
             'username'     => self::envValue('DB_USER', 'root'),
             'password'     => self::envValue('DB_PASS'),
             'charset'      => self::envValue('DB_CHARSET', 'utf8mb4'),
-            'auto_migrate' => !in_array(strtolower(trim(self::envValue('DB_AUTO_MIGRATE', 'true'))), ['0', 'false', 'no', 'off', ''], true),
+            'auto_migrate' => self::parseAutoMigrate(),
         ];
     }
 
@@ -247,6 +432,22 @@ class Database
         return self::pdo();
     }
 
+    /**
+     * 仅建立连接并赋值给内部句柄，**不执行** bootstrap()（不建表/不补种子/不自检）。
+     *
+     * 供「迁移入口」使用：当表可能尚未就绪（空库 / 手动建库模式漏跑脚本）时，
+     * 必须先拿到连接才能建表；此时走 getPdo() 会在补种子阶段先抛异常，形成死结。
+     *
+     * 与 getPdo() 的关系：getPdo() = connect() + bootstrap()；本方法只做前半段。
+     */
+    public static function connect(): \PDO
+    {
+        if (self::$pdo === null) {
+            self::$pdo = self::createPdo();
+        }
+        return self::pdo();
+    }
+
     private static function connectSqlite(): \PDO
     {
         $path = self::$config['path'];
@@ -283,6 +484,19 @@ class Database
     public static function driver(): string
     {
         return self::$driver;
+    }
+
+    /**
+     * 当前是否为「自动建表」模式（DB_AUTO_MIGRATE 未显式关闭）。
+     * 供 CLI（cli/db-init.php）在初始化失败时判断是否处于手动建库模式，从而给出可操作提示。
+     * 优先取已解析的配置；配置尚未初始化时直接读环境变量，避免触发 defaultConfig() 抛错。
+     */
+    public static function isAutoMigrateEnabled(): bool
+    {
+        if (!empty(self::$config)) {
+            return (bool)(self::$config['auto_migrate'] ?? true);
+        }
+        return self::parseAutoMigrate();
     }
 
     // ── SQL helper（屏蔽 SQLite/MySQL 语法差异）──
