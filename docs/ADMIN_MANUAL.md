@@ -113,7 +113,13 @@ Two databases are supported, selected by `DB_DRIVER`:
 `DB_AUTO_MIGRATE` controls table creation:
 
 - `true` (default): auto-create tables and seed data on first boot.
-- `false`: manually run the init scripts under `database/` (`mysql_init.sql` or `sqlite_init.sql`); seed data is still applied on boot.
+- `false`: run the init scripts under `database/` (`mysql_init.sql` or `sqlite_init.sql`) yourself; seed data is still applied on boot (the applied version is recorded under `seed_version`, so re-seeding is skipped once it matches).
+
+> ⚠️ **Two things to know about `false` mode**:
+> 1. **Missing tables break login**: this mode never creates tables, so if the init scripts were never run (or the database is empty), `POST /api/admin/login` fails with a 500 while applying seed data — this is not a credential problem. Run `php cli/db-init.php` to get the explicit cause and the next step.
+> 2. **New columns are not back-filled**: the init scripts contain only `CREATE TABLE IF NOT EXISTS`, which is a no-op on existing tables, so re-running them cannot add new columns. Use an account with DDL privileges to run `php cli/migrate.php` (it ignores `DB_AUTO_MIGRATE` and is equivalent to the "Sync Schema" button on the "Data Management → 🗄️ Database" card), ideally as a step in your deployment pipeline.
+
+> 🔧 **About the "Sync Schema" button** ("Data Management → 🗄️ Database" card, `super_admin` only): it takes the very same `Database::migrateNow()` path as `php cli/migrate.php`, aligning the schema and the built-in seed with the **current code version** — creating missing tables, back-filling missing columns and indexes, dropping the retired legacy table (`ci_pipeline_tags`), refreshing the built-in permission/role seed, and marking `schema_version` as current (idempotent, re-runnable). **It is additive plus legacy cleanup only**: it never renames or drops columns and never changes column types or primary keys (e.g. the `admin_users.id` primary key must be changed by hand), nor does it migrate across databases — those are "manual migrations" to be performed offline with database tools, after a backup. The button executes DDL with the **application's own database account**: when that account lacks `CREATE`/`ALTER`, it answers 409 and explicitly points you to `php cli/migrate.php` (run with a privileged account) instead of a vague "migration failed".
 
 > **Database backup**: after logging in, click **Back up database** on the "System Settings → Data Management → Database" card (visible to `super_admin` only) to generate a backup on demand. Both SQLite and MySQL are supported; the artifact is `devops-glue_<driver>_<datetime>.zip` (containing a pure-data `.sql` export with the same name, excluding the `cache` / `ci_platform_versions` tables) saved to `BACKUP_DIR`. Under Docker the volume `./data/backups:/data/backups` lands backups in the host `./data/backups`; outside Docker without `BACKUP_DIR` they go to the repo-root `backups/` (auto-created), rolling over the latest 10 files. Backup is **export-only — there is intentionally no online restore**: restoring a database is a high-risk, high-impact event that must be performed by an administrator in person, with an audit trail, so no online restore entry is exposed. To restore, use an offline patch — contact the author to obtain it.
 
@@ -823,7 +829,7 @@ DB_NAME=devops_glue
 DB_USER=root
 DB_PASS=your_password
 DB_PATH=config/data/data.db   # SQLite only
-DB_AUTO_MIGRATE=true          # Auto-create tables; false = run scripts in database/ manually
+DB_AUTO_MIGRATE=true          # Auto-create tables; false = run scripts in database/ manually (use php cli/migrate.php to create tables / add columns)
 
 # ============ Application ============
 APP_ENV=production            # production / staging / development

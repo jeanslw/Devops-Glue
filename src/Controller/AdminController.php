@@ -1961,7 +1961,11 @@ class AdminController extends BaseController
     }
 
     /**
-     * POST /api/admin/migrate — 手动触发数据库迁移（建缺失表 + 种子 + 标记 schema 当前）
+     * POST /api/admin/migrate — 手动同步库结构（建缺失表 + 补列 + 索引 + 种子 + 标记 schema 当前）
+     *
+     * 与 `cli/migrate.php` 等价的入口，唯一区别：本入口用**应用自身的数据库账号**执行 DDL——
+     * 该账号缺 CREATE/ALTER 权限时（手动建库模式的最小权限部署很常见）返回 409 并提示改用 CLI，
+     * 而不是抛一个无从下手的 500。
      * 权限：仅 super_admin（DDL 敏感操作）
      */
     public function migrateSchema(Request $request, Response $response): Response
@@ -1975,7 +1979,43 @@ class AdminController extends BaseController
             $this->opLog()->record($this->currentUser, 'migrate_schema', '', ['driver' => $status['driver'], 'app_version' => $status['app_version']], $this->clientIp($request), 'success');
             return $this->output($response, ['success' => true, 'status' => $status], $request);
         } catch (\Exception $e) {
+            // 先归因再回话：把「账号无 DDL 权限」与其它失败区分开，给出可操作的下一步
+            $driverCode = $e instanceof \PDOException ? (int) ($e->errorInfo[1] ?? 0) : 0;
+            $kind       = \App\Service\Database::classifyMigrationError(
+                (string) $e->getMessage(),
+                (string) $e->getCode(),
+                $driverCode
+            );
+            $this->recordSchemaSyncFailure($request, $e->getMessage(), $kind);
+
+            if ($kind === 'ddl_denied') {
+                return $this->jsonError(
+                    $response,
+                    $this->__('sys.migrate_denied') . ' ' . $this->__('sys.migrate_denied_hint')
+                        . ' [' . mb_substr($e->getMessage(), 0, 300) . ']',
+                    409
+                );
+            }
             return $this->jsonError($response, $this->__('sys.migrate_failed') . ': ' . $e->getMessage(), 500);
+        }
+    }
+
+    /** 结构同步失败写操作日志（库本身不可用时记录同样会失败，故整体兜住，绝不覆盖原始错误） */
+    private function recordSchemaSyncFailure(Request $request, string $message, string $kind): void
+    {
+        if ($this->currentUser === '') {
+            return;
+        }
+        try {
+            $this->opLog()->record(
+                $this->currentUser,
+                'migrate_schema',
+                '',
+                ['error' => $message, 'kind' => $kind],
+                $this->clientIp($request),
+                'failure'
+            );
+        } catch (\Throwable $ignored) {
         }
     }
 

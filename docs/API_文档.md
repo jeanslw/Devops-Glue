@@ -81,7 +81,7 @@
 GET /healthz
 ```
 
-无需认证的外部探针，供 Uptime Kuma / 云负载均衡 / 容器编排抓取。只检测数据库可达性与已应用的 schema 版本，不探测 Jenkins/Git/Harbor，毫秒级返回。
+无需认证的外部探针，供 Uptime Kuma / 云负载均衡 / 容器编排抓取。只检测数据库可达性、已应用版本与 schema 对齐状态，不探测 Jenkins/Git/Harbor，毫秒级返回。
 
 ```json
 {
@@ -89,9 +89,19 @@ GET /healthz
   "db": true,
   "app_version": "2.8.9",
   "schema_version": "2.8.9",
+  "seed_version": "2.8.9",
+  "schema_current": true,
+  "auto_migrate": true,
   "time": 1760000000
 }
 ```
+
+- **HTTP 200 + `status=ok`**：数据库可达且 `schema_current=true`。
+- **HTTP 200 + `status=degraded`**：数据库可达但版本未对齐（`schema_current=false`，如升级了代码还没跑迁移）；若确实缺表，同时下发 `tables_missing`（缺失的核心表名）。**这种情况不返回 503**——滚动升级期「新代码 + 旧 schema」是预期中间态，若一并 503，LB / K8s 会把全部副本摘掉。
+- **HTTP 503 + `status=degraded`**：数据库不可达（含核心表缺失导致查询失败）。
+- `schema_current`：`schema_version`（自动建库模式）或 `seed_version`（`DB_AUTO_MIGRATE=false` 手动建库模式不写 `schema_version`）与当前 `APP_VERSION` 比较的结果；两者都无记录时为 `null`（未知，不判降级）。
+- `seed_version`：仅 `DB_AUTO_MIGRATE=false` 手动建库模式会记录（自动建库模式为 `null`，以 `schema_version` 为准）。
+- 修复：执行 `php cli/migrate.php` 或点后台「数据管理 → 🗄️ 数据库」卡片的「同步库结构」按钮后，`schema_current` 会回到 `true`。
 
 - `status`: `ok`（数据库可达） | `degraded`（数据库不可达）
 - `db`: `true` / `false`
@@ -382,7 +392,7 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 | `/api/admin/build_mode` | GET/PUT | 构建模式（启用的 CI 源集合，如 jenkins,gitlab_ci,gitea_ci） |
 | `/api/admin/platform_config` | GET/PUT | 平台接入状态（脱敏，仅返回各平台 `configured` 布尔，不返回 URL/账号/凭证）+ 平台级 tag 设置（清理/回填开关、日志关键字）与 API 调用日志设置；PUT 仅更新请求体显式携带的键，避免互相覆盖（需 `ci.platform-config`） |
 | `/api/admin/system_info` | GET | 数据库 schema 状态（驱动 / schema 版本 / 是否当前 / PHP 版本 / 核心表存在性；需 `ci.system`） |
-| `/api/admin/migrate` | POST | 手动触发数据库迁移（补建缺失表 + 种子权限 + 标记 schema 当前；仅 super_admin） |
+| `/api/admin/migrate` | POST | 手动同步库结构（补建缺失表 + 补齐字段/索引 + 种子权限 + 标记 schema 当前；账号无 DDL 权限时返回 409 并提示改用 `php cli/migrate.php`；仅 super_admin） |
 | `/api/admin/backup` | POST | 手动执行数据库备份（zip 归档，滚动留存最近 10 份；启用 CD 时额外产出一份 CD 库归档；仅 super_admin） |
 | `/api/admin/backups` | GET | 列出已生成的数据库备份文件（仅 super_admin） |
 | `/api/admin/tag_cleanup` | POST | 手动立即执行一次过期 tag 清理（等价 `cli/cleanup-pipeline-tags.php`；对应开关未开启或 Harbor 未配置时返回 409 安全跳过；需 `ci.platform-config`） |

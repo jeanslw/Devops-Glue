@@ -3,7 +3,7 @@ let _toastTimer = null;
 
 /**
  * @param {string} msg  文案
- * @param {boolean} ok  true=绿色（成功），false=红色（错误）
+ * @param {boolean|'warn'} ok  true=绿色（成功），false=红色（错误），'warn'=橙色（可操作警示，非故障）
  * @param {boolean} center 居中显示
  * @param {number} [duration=2500] 自动消失毫秒数；0 = 常驻（由下一个 toast 替换）
  */
@@ -12,7 +12,8 @@ export function toast(msg, ok, center, duration = 2500) {
     // 先取消上一个 toast 的自灭定时器，否则旧定时器会把新提示一起关掉
     if (_toastTimer) { clearTimeout(_toastTimer); _toastTimer = null; }
     el.textContent = msg;
-    el.className = 'toast ' + (ok ? 'toast-ok' : 'toast-err') + ' show' + (center ? ' toast-center' : '');
+    const cls = ok === 'warn' ? 'toast-warn' : (ok ? 'toast-ok' : 'toast-err');
+    el.className = 'toast ' + cls + ' show' + (center ? ' toast-center' : '');
     if (duration > 0) _toastTimer = setTimeout(() => el.classList.remove('show'), duration);
 }
 

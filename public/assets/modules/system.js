@@ -62,9 +62,11 @@ export async function doMigrate() {
             toast(__.t('sys.migrated'), true);
             loadSystemInfo();
         } else {
-            st.textContent = '❌ ' + (d.message || __.t('sys.migrate_failed'));
-            st.style.color = '#dc2626';
-            toast(d.message || __.t('sys.migrate_failed'), false);
+            const denied = res.status === 409;
+            // 409 = 账号无 DDL 权限（可操作提示，非故障）：橙色 + ⚠️ + warn 级 toast，与真正的失败(红)区分
+            st.textContent = (denied ? '⚠️ ' : '❌ ') + (d.message || __.t('sys.migrate_failed'));
+            st.style.color = denied ? '#d97706' : '#dc2626';
+            toast(d.message || __.t('sys.migrate_failed'), denied ? 'warn' : false);
         }
     } catch(e) {
         st.textContent = '❌ ' + e.message;
