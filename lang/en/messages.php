@@ -682,6 +682,12 @@ return [
     'api_token.scope_forbidden' => 'API token lacks permission for this endpoint',
     'api_token.service_unavailable' => 'API token service unavailable',
 
+    // Integrated services (integrated_services contract)
+    'integrated.unknown_service'   => 'Unknown integrated service',
+    'integrated.already_enabled'   => 'This integrated service is already enabled. To rotate credentials, disable it first and enable again',
+    'integrated.not_enabled'       => 'This integrated service is not enabled',
+    'integrated.invalid_provision' => 'Invalid provision mode; only auto or manual is accepted',
+
     // API Token Scope catalog
     'api.scope.main'            => 'MAIN (read-only)',
     'api.scope.git'             => 'GIT (read-only)',
@@ -868,4 +874,32 @@ return [
     'sys.backup_done'     => 'Backup complete',
     'sys.backup_failed'   => 'Backup failed',
     'sys.backup_no_tables' => 'No application tables available to back up (database not initialized?)',
+
+    // Integrated services card (integrated_services contract)
+    'sys.panel_integrated'      => '🔌 Integrated services',
+    'sys.isvc_intro'            => 'Integrated services share this platform database. Enabling authorizes table creation and service access; disabling only freezes the service, data is retained.',
+    'sys.isvc_cd_name'          => 'CD deployment service',
+    'sys.isvc_off'              => '⚪ Not enabled',
+    'sys.isvc_on_auto'          => '✅ Enabled (auto provision)',
+    'sys.isvc_on_manual'        => '✅ Enabled (manual provision)',
+    'sys.isvc_enable'           => 'Enable',
+    'sys.isvc_disable'          => 'Disable (freeze)',
+    'sys.isvc_provision'        => 'Provision mode',
+    'sys.isvc_provision_auto'   => 'Auto provision (CD may create/upgrade its tables automatically)',
+    'sys.isvc_provision_manual' => 'Manual provision (CD never creates tables; pre-created tables required)',
+    'sys.isvc_will_provision'   => 'Provision mode when enabled',
+    'sys.isvc_token'            => 'Service credential',
+    'sys.isvc_token_active'     => 'active',
+    'sys.isvc_token_invalid'    => 'invalid (revoked or deleted); disable and re-enable to rotate',
+    'sys.isvc_updated'          => 'Last changed',
+    'sys.isvc_enable_confirm'   => 'Enable "{name}"?',
+    'sys.isvc_enable_step1'     => 'A restricted service token will be issued automatically (read builds, report builds, write RBAC users); the plaintext is shown only once;',
+    'sys.isvc_enable_step2'     => 'CD starts serving once it reads this integrated-service flag from the shared database;',
+    'sys.isvc_enable_step3'     => 'Provision mode is captured from this platform current migration mode at enable time (it will not follow later mode changes).',
+    'sys.isvc_enabled'          => 'Enabled — copy the service token now',
+    'sys.isvc_disable_confirm'  => 'Disable "{name}"? CD will immediately reject all requests and its service token will be revoked. CD tables and data are retained; re-enabling restores service (a new token is issued).',
+    'sys.isvc_disabled'         => 'Disabled (service frozen, data retained)',
+    'sys.isvc_token_title'      => '✅ CD service enabled — copy the service token now',
+    'sys.isvc_token_hint'       => 'This plaintext token is shown only once (only its digest is stored). Paste it into the CD configuration (CI_API_TOKEN); it cannot be viewed again after closing.',
+    'sys.isvc_token_saved'      => 'I have saved it',
 ];

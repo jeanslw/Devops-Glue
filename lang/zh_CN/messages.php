@@ -680,6 +680,12 @@ return [
     'api_token.scope_forbidden' => 'API Token 无权访问此接口',
     'api_token.service_unavailable' => 'API Token 服务不可用',
 
+    // 集成服务（integrated_services 契约）
+    'integrated.unknown_service'   => '未知的集成服务',
+    'integrated.already_enabled'   => '该集成服务已启用，无需重复启用；如需更换凭据请先禁用后重新启用',
+    'integrated.not_enabled'       => '该集成服务尚未启用',
+    'integrated.invalid_provision' => '建表方式无效，仅接受 auto 或 manual',
+
     // API Token Scope 目录
     'api.scope.main'            => 'MAIN（只读）',
     'api.scope.git'             => 'GIT（只读）',
@@ -866,5 +872,33 @@ return [
     'sys.backup_done'     => '备份完成',
     'sys.backup_failed'   => '备份失败',
     'sys.backup_no_tables' => '没有任何应用表可备份（数据库未初始化？）',
+
+    // 集成服务卡片（integrated_services 契约）
+    'sys.panel_integrated'      => '🔌 集成服务',
+    'sys.isvc_intro'            => '集成服务与本平台共享数据库。启用即代表授权其建表并提供服务；关闭仅冻结，数据保留。',
+    'sys.isvc_cd_name'          => 'CD 部署服务',
+    'sys.isvc_off'              => '⚪ 未启用',
+    'sys.isvc_on_auto'          => '✅ 已启用（自动建表）',
+    'sys.isvc_on_manual'        => '✅ 已启用（手动建表）',
+    'sys.isvc_enable'           => '启用',
+    'sys.isvc_disable'          => '禁用（冻结）',
+    'sys.isvc_provision'        => '建表方式',
+    'sys.isvc_provision_auto'   => '自动建表（授权 CD 自动创建/升级其数据表）',
+    'sys.isvc_provision_manual' => '手动建表（CD 不建表，只认运维预建表）',
+    'sys.isvc_will_provision'   => '启用后建表方式',
+    'sys.isvc_token'            => '服务凭据',
+    'sys.isvc_token_active'     => '有效',
+    'sys.isvc_token_invalid'    => '已失效（被撤销或删除），请禁用后重新启用',
+    'sys.isvc_updated'          => '最近操作',
+    'sys.isvc_enable_confirm'   => '确定启用「{name}」吗？',
+    'sys.isvc_enable_step1'     => '将自动签发一枚限定权限的服务 Token（读取构建、上报构建、写 RBAC 用户），明文仅展示一次；',
+    'sys.isvc_enable_step2'     => 'CD 读取本库中的集成服务标志后即开始提供服务；',
+    'sys.isvc_enable_step3'     => '建表方式在启用瞬间按本平台当前迁移模式写入（之后不再随模式自动改变）。',
+    'sys.isvc_enabled'          => '已启用，请立即复制服务 Token',
+    'sys.isvc_disable_confirm'  => '确定禁用「{name}」吗？CD 将立即拒绝所有请求，配套服务 Token 一并撤销；CD 的数据表与数据保留，重新启用即恢复（将签发新 Token）。',
+    'sys.isvc_disabled'         => '已禁用（服务冻结，数据保留）',
+    'sys.isvc_token_title'      => '✅ CD 服务已启用 — 请立即复制服务 Token',
+    'sys.isvc_token_hint'       => '此明文 Token 仅显示这一次（平台仅保存其摘要）。请粘贴到 CD 的配置（CI_API_TOKEN），关闭后将无法再次查看。',
+    'sys.isvc_token_saved'      => '我已保存',
 ];
 

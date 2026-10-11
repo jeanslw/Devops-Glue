@@ -58,6 +58,7 @@ export async function loadSystemInfo() {
         if (getRole() === 'super_admin') { loadBackups(); }
         loading.style.display = 'none';
         body.style.display = 'block';
+        loadIntegratedServices();
     } catch(e) {
         toast(__.t('js.network_error') + ': ' + e.message, false);
         loading.style.display = 'none';
@@ -227,4 +228,149 @@ export function toggleSysTables() {
     const hidden = tb.style.display === 'none';
     tb.style.display = hidden ? 'block' : 'none';
     if (arrow) arrow.textContent = hidden ? '▼' : '▶';
+}
+
+// ═══════════ 集成服务（integrated_services 契约；CI 唯一写入方）═══════════
+// 当前仅一个服务 cd；页面只展示状态 + 启停，启用向导一次性展示自动签发的服务 token。
+let _isvcTokenPlain = '';
+
+export async function loadIntegratedServices() {
+    const loading = document.getElementById('isvc-loading');
+    const body = document.getElementById('isvc-body');
+    if (!loading || !body) return;
+    loading.style.display = '';
+    body.style.display = 'none';
+    try {
+        const res = await fetch('/api/admin/integrated_services/cd', { headers: authHeaders() });
+        if (handle401(res)) return;
+        const d = await res.json();
+        if (!res.ok) { toast(d.message || 'load failed', false); loading.style.display = 'none'; return; }
+        renderCdService(d);
+        loading.style.display = 'none';
+        body.style.display = 'block';
+    } catch (e) {
+        toast(__.t('js.network_error') + ': ' + e.message, false);
+        loading.style.display = 'none';
+    }
+}
+
+function renderCdService(d) {
+    const dot = document.getElementById('isvc-cd-dot');
+    const status = document.getElementById('isvc-cd-status');
+    const meta = document.getElementById('isvc-cd-meta');
+    const btnEnable = document.getElementById('isvc-cd-enable');
+    const btnDisable = document.getElementById('isvc-cd-disable');
+    if (!dot || !status || !meta) return;
+
+    const enabled = d.enabled === true;
+    const isAuto = d.provision !== 'manual'; // 缺省/未知按 auto 语义（行不存在时后端给 auto）
+    const isSuper = getRole() === 'super_admin';
+
+    dot.style.background = !enabled ? '#9ca3af' : (isAuto ? '#16a34a' : '#2563eb');
+    status.textContent = !enabled
+        ? __.t('sys.isvc_off')
+        : (isAuto ? __.t('sys.isvc_on_auto') : __.t('sys.isvc_on_manual'));
+    status.style.color = !enabled ? '#9ca3af' : (isAuto ? '#16a34a' : '#2563eb');
+
+    const lines = [];
+    lines.push('<span>' + esc(__.t('sys.isvc_provision')) + '：'
+        + (isAuto ? esc(__.t('sys.isvc_provision_auto')) : esc(__.t('sys.isvc_provision_manual'))) + '</span>');
+    if (enabled) {
+        const tokenLabel = d.token_name ? (esc(d.token_name) + (d.token_id ? ' (#' + d.token_id + ')' : '')) : '-';
+        const tokenState = d.token_active
+            ? '<span style="color:#16a34a;">' + esc(__.t('sys.isvc_token_active')) + '</span>'
+            : '<span style="color:#dc2626;">' + esc(__.t('sys.isvc_token_invalid')) + '</span>';
+        lines.push('<span>' + esc(__.t('sys.isvc_token')) + '：' + tokenLabel + ' · ' + tokenState + '</span>');
+        if (d.updated_by || d.updated_at) {
+            lines.push('<span>' + esc(__.t('sys.isvc_updated')) + '：'
+                + esc(d.updated_by || '-') + ' · ' + esc(d.updated_at || '') + '</span>');
+        }
+    } else if (d.default_provision) {
+        // 启用前提示：点启用那一刻将按哪种方式写入契约
+        lines.push('<span style="color:#9ca3af;">' + esc(__.t('sys.isvc_will_provision')) + '：'
+            + (d.default_provision === 'manual' ? esc(__.t('sys.isvc_provision_manual')) : esc(__.t('sys.isvc_provision_auto')))
+            + '</span>');
+    }
+    meta.innerHTML = lines.join('');
+
+    if (btnEnable) btnEnable.style.display = (isSuper && !enabled) ? '' : 'none';
+    if (btnDisable) btnDisable.style.display = (isSuper && enabled) ? '' : 'none';
+}
+
+export async function enableIntegratedService(service) {
+    // provision 不传：后端在点启用那一刻按 CI 当前 DB_AUTO_MIGRATE 模式写入（auto/manual）
+    const note = '<div style="text-align:left;line-height:1.7;margin-top:6px;">'
+        + '<div>① ' + esc(__.t('sys.isvc_enable_step1')) + '</div>'
+        + '<div>② ' + esc(__.t('sys.isvc_enable_step2')) + '</div>'
+        + '<div>③ ' + esc(__.t('sys.isvc_enable_step3')) + '</div>'
+        + '</div>';
+    if (!await confirmDialog({
+        title: __.t('sys.isvc_enable'),
+        message: __.t('sys.isvc_enable_confirm', { name: __.t('sys.isvc_cd_name') }),
+        note: note,
+        confirmText: __.t('sys.isvc_enable')
+    })) return;
+    try {
+        const res = await fetch('/api/admin/integrated_services/' + encodeURIComponent(service) + '/enable', {
+            method: 'POST',
+            headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+            body: '{}'
+        });
+        if (handle401(res)) return;
+        const d = await res.json();
+        if (res.ok && d.token) {
+            _isvcTokenPlain = d.token;
+            const box = document.getElementById('isvc-token-box');
+            const val = document.getElementById('isvc-token-value');
+            if (box) box.style.display = 'block';
+            if (val) val.textContent = d.token;
+            toast(__.t('sys.isvc_enabled'), true);
+            loadIntegratedServices();
+        } else {
+            toast(d.message || __.t('js.network_error'), false, false, 6000);
+        }
+    } catch (e) {
+        toast(__.t('js.network_error') + ': ' + e.message, false);
+    }
+}
+
+export async function disableIntegratedService(service) {
+    if (!await confirmDialog({
+        title: __.t('sys.isvc_disable'),
+        message: __.t('sys.isvc_disable_confirm', { name: __.t('sys.isvc_cd_name') }),
+        confirmText: __.t('sys.isvc_disable')
+    })) return;
+    try {
+        const res = await fetch('/api/admin/integrated_services/' + encodeURIComponent(service) + '/disable', {
+            method: 'POST',
+            headers: authHeaders()
+        });
+        if (handle401(res)) return;
+        const d = await res.json();
+        if (res.ok) {
+            hideIntegratedTokenBox();
+            toast(__.t('sys.isvc_disabled'), true);
+            loadIntegratedServices();
+        } else {
+            toast(d.message || __.t('js.network_error'), false, false, 6000);
+        }
+    } catch (e) {
+        toast(__.t('js.network_error') + ': ' + e.message, false);
+    }
+}
+
+export function copyIntegratedToken() {
+    if (!_isvcTokenPlain) return;
+    navigator.clipboard.writeText(_isvcTokenPlain).then(
+        function () { toast(__.t('api_token.copied'), true); },
+        function () { toast(__.t('api_token.copy_failed'), false); }
+    );
+}
+
+export function hideIntegratedTokenBox() {
+    const box = document.getElementById('isvc-token-box');
+    if (box) box.style.display = 'none';
+    _isvcTokenPlain = '';
+    const val = document.getElementById('isvc-token-value');
+    if (val) val.textContent = '';
 }

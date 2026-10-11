@@ -1260,6 +1260,35 @@
                     </div>
                 </div>
                 <div class="monitor-card">
+                    <h4 data-i18n="sys.panel_integrated">🔌 集成服务</h4>
+                    <p style="font-size:12px;color:#9ca3af;margin:4px 0 10px;" data-i18n="sys.isvc_intro">集成服务与本平台共享数据库。启用即代表授权其建表并提供服务；关闭仅冻结，数据保留。</p>
+                    <div id="isvc-loading" style="text-align:center;padding:30px;color:#9ca3af;" data-i18n="common.loading">加载中…</div>
+                    <div id="isvc-body" style="display:none;">
+                        <div style="border:1px solid #e5e7eb;border-radius:8px;padding:12px 14px;">
+                            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                                <span id="isvc-cd-dot" style="width:10px;height:10px;border-radius:50%;background:#9ca3af;flex-shrink:0;"></span>
+                                <strong>🚀 <span data-i18n="sys.isvc_cd_name">CD 部署服务</span></strong>
+                                <span id="isvc-cd-status" style="font-size:12px;font-weight:600;color:#9ca3af;"></span>
+                                <span style="margin-left:auto;display:flex;gap:6px;">
+                                    <button id="isvc-cd-enable" class="btn btn-sm btn-pri" onclick="enableIntegratedService('cd')" style="display:none;" data-i18n="sys.isvc_enable">启用</button>
+                                    <button id="isvc-cd-disable" class="btn btn-sm btn-warn" onclick="disableIntegratedService('cd')" style="display:none;" data-i18n="sys.isvc_disable">禁用（冻结）</button>
+                                </span>
+                            </div>
+                            <div id="isvc-cd-meta" style="margin-top:8px;font-size:12px;color:#6b7280;display:grid;gap:3px;"></div>
+                        </div>
+                        <!-- 启用成功：明文 token 仅展示这一次 -->
+                        <div id="isvc-token-box" style="display:none;margin-top:12px;border:1px solid #16a34a;border-radius:8px;padding:12px 14px;">
+                            <h4 style="margin:0 0 6px;color:#16a34a;font-size:14px;" data-i18n="sys.isvc_token_title">✅ CD 服务已启用 — 请立即复制服务 Token</h4>
+                            <p style="font-size:12px;color:#6b7280;margin:0 0 8px;" data-i18n="sys.isvc_token_hint">此明文 Token 仅显示这一次（平台仅保存其摘要）。请粘贴到 CD 的配置（CI_API_TOKEN），关闭后将无法再次查看。</p>
+                            <div style="display:flex;gap:8px;align-items:center;">
+                                <code id="isvc-token-value" style="flex:1;padding:10px;background:#f3f4f6;border-radius:6px;word-break:break-all;font-size:12px;"></code>
+                                <button class="btn btn-sm" onclick="copyIntegratedToken()" data-i18n="api_token.copy">复制</button>
+                                <button class="btn btn-sm" onclick="hideIntegratedTokenBox()" data-i18n="sys.isvc_token_saved">我已保存</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="monitor-card">
                     <h4 data-i18n="sys.panel_database">🗄️ 数据库</h4>
                     <div class="sys-actions">
                         <button id="sys-tables-toggle" class="btn btn-pri" onclick="toggleSysTables()" data-i18n="sys.tables_toggle">📋 数据表</button>

@@ -47,7 +47,7 @@ import {
 import { loadOperationLogs, resetOperationLogs } from './modules/oplog.js';
 import { loadDeployLogs, resetDeployLogs } from './modules/deploylog.js';
 import { loadApiAccessLogs, resetApiAccessLogs } from './modules/apiaccesslog.js';
-import { loadSystemInfo, doMigrate, doBackup, loadPlatformConfig, toggleSysTables, toggleSysBackups } from './modules/system.js';
+import { loadSystemInfo, doMigrate, doBackup, loadPlatformConfig, toggleSysTables, toggleSysBackups, loadIntegratedServices, enableIntegratedService, disableIntegratedService, copyIntegratedToken, hideIntegratedTokenBox } from './modules/system.js';
 
 const LOGIN_API = '/api/admin/login';
 
@@ -264,6 +264,7 @@ Object.assign(window, {
     loadOperationLogs, resetOperationLogs, loadDeployLogs, resetDeployLogs,
     loadApiAccessLogs, resetApiAccessLogs,
     loadSystemInfo, doMigrate, doBackup, loadPlatformConfig, toggleSysTables, toggleSysBackups,
+    loadIntegratedServices, enableIntegratedService, disableIntegratedService, copyIntegratedToken, hideIntegratedTokenBox,
     // 分页 / 视图
     getMapView, getMapPage, setMapPage, getMapTotalPages, setMapTotalPages,
     getTopoPage, setTopoPage, getTopoTotalPages,
