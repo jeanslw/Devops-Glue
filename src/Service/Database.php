@@ -190,7 +190,8 @@ class Database
      *     （约定与 `cli/backup-db.php` 的系统级事件一致：username=`system`、operator_type=`system`）。
      *
      * 显式路径（后台「同步库结构」按钮、`cli/migrate.php`）**不走这里**——它们记录的是「操作」本身
-     * （`migrate_schema`），避免一次点击产生两行；本方法只覆盖「没有人工操作」的自动引导副作用。
+     * （`migrate_schema`）；降级方向的显式迁移由 noteExplicitDowngrade() 单独留痕。本方法只覆盖
+     * 「没有人工操作」的自动引导副作用。
      *
      * @param string      $key      被改写的版本键（schema_version / seed_version）
      * @param string|null $before   跃迁前的记录值；null = 此前无记录（首次初始化）
@@ -248,26 +249,36 @@ class Database
             'previous'  => $before,
             'current'   => \App\Config\AppConfig::APP_VERSION,
             'seed_mode' => $seedMode,
-        ], $result);
+            'channel'   => 'bootstrap',
+        ], $result, 'bootstrap');
     }
 
     /**
-     * 写一条「系统级」操作日志（操作人 = system），按 (action, target) 在 SYSTEM_AUDIT_DEDUPE_WINDOW
+     * 写一条「系统级」操作日志（操作人 = system），按 (action, target, channel) 在 SYSTEM_AUDIT_DEDUPE_WINDOW
      * 秒内去重；审计失败绝不影响主流程（引导 / 迁移必须照常进行）。
+     *
+     * channel 参与去重键的原因：同一回滚事件里「自动引导降级」（merge，保留新版本权限）与「显式
+     * 迁移降级」（prune，收敛到旧定义）是**后果不同**的两类事件——若共用 (action, target) 去重，
+     * 先发生的自动引导行会把随后按钮 / CLI 的显式降级审计吞掉，后台就再也查不到「权限被 prune
+     * 收敛」这个事实。channel 同时写入 detail，便于区分来源；null = 不区分（按旧行为去重）。
      *
      * @param array<string,mixed> $detail
      */
-    private static function recordSystemAudit(string $action, string $target, array $detail, string $result): void
+    private static function recordSystemAudit(string $action, string $target, array $detail, string $result, ?string $channel = null): void
     {
         try {
             $pdo   = self::pdo();
             $since = date('Y-m-d H:i:s', time() - self::SYSTEM_AUDIT_DEDUPE_WINDOW);
 
-            $exists = $pdo->prepare(
-                'SELECT 1 FROM ' . \App\Config\AppConfig::TABLE_OPERATION_LOGS
-                . ' WHERE action = ? AND target = ? AND created_at >= ? LIMIT 1'
-            );
-            $exists->execute([$action, $target, $since]);
+            $sql    = 'SELECT 1 FROM ' . \App\Config\AppConfig::TABLE_OPERATION_LOGS
+                . ' WHERE action = ? AND target = ? AND created_at >= ?';
+            $params = [$action, $target, $since];
+            if ($channel !== null) {
+                $sql     .= ' AND detail LIKE ?';
+                $params[] = '%"channel":"' . $channel . '"%';
+            }
+            $exists = $pdo->prepare($sql);
+            $exists->execute($params);
             if ($exists->fetchColumn() !== false) {
                 return; // 去重窗口内已记录过同类事件
             }
@@ -276,6 +287,65 @@ class Database
         } catch (\Throwable $e) {
             // 审计写入失败绝不能影响引导 / 迁移
         }
+    }
+
+    /**
+     * 显式迁移（后台「同步库结构」按钮、`cli/migrate.php`）在**降级方向**的留痕。
+     *
+     * 触发场景：回滚后按 SOP 用旧代码执行迁移对齐标记——此时库里的版本标记高于当前代码版本，
+     * migrateNow() 会把它改写回旧版本，并按旧定义 prune 收敛系统角色权限。这是人为决策而非故障，
+     * 但「方向」必须可见：与自动引导的降级同一待遇（文件 WARNING + `schema_downgrade` 审计行，
+     * `detail.channel=explicit_migrate` 区分来源）。否则操作日志里只有一条「migrate_schema 成功」，
+     * 无法回答「标记是什么时候、被哪个动作拉回旧版本的」。
+     *
+     * 聚合为**一次事件一行**：`schema_version` 与 `seed_version` 可能同时领先（也可能是其中之一），
+     * 逐 key 记会被审计去重窗合并成一行且丢掉另一个 key；故先挑出所有领先的 key，
+     * 文件 WARNING 带 per-key 版本、审计行 `detail.keys` 列出全部涉及的 key、`target` 取最高版本。
+     *
+     * 与 `migrate_schema` 操作行的关系：操作行记「做了什么」，本行记「方向异常」——降级方向的一次
+     * 显式迁移因此会有两行（action 不同、语义不同）；去重窗口保证同一事件簇不会刷屏。
+     *
+     * @param array<string,string|null> $recorded key => 改写前的记录值（null = 此前无记录）
+     */
+    private static function noteExplicitDowngrade(array $recorded): void
+    {
+        $ahead = array_filter($recorded, static function ($v): bool {
+            return $v !== null && self::isVersionAhead($v);
+        });
+        if ($ahead === []) {
+            return; // 正向 / 平级 / 首次初始化：无方向异常，不留痕
+        }
+        \App\Helper\Log::warning(
+            '检测到数据库版本高于当前代码版本（疑似代码降级回滚）：本次显式迁移将把「'
+            . implode('、', array_keys($ahead)) . '」标记改写为当前代码版本，'
+            . '并按当前（旧）代码定义收敛系统角色权限（prune）。',
+            [
+                'previous' => $ahead, // per-key 的改写前值
+                'current'  => \App\Config\AppConfig::APP_VERSION,
+                'channel'  => 'explicit_migrate',
+            ]
+        );
+        // target 取「最高被降级版本」：既是去重键，也直观回答「从哪个版本被拉回来」
+        $maxAhead = array_reduce(
+            $ahead,
+            static function (string $carry, string $v): string {
+                return version_compare($v, $carry, '>') ? $v : $carry;
+            },
+            (string) reset($ahead)
+        );
+        self::recordSystemAudit(
+            self::ACTION_SCHEMA_DOWNGRADE,
+            $maxAhead,
+            [
+                'keys'      => array_keys($ahead),
+                'previous'  => $maxAhead,
+                'current'   => \App\Config\AppConfig::APP_VERSION,
+                'seed_mode' => self::SEED_MODE_PRUNE,
+                'channel'   => 'explicit_migrate',
+            ],
+            'failure',
+            'explicit_migrate'
+        );
     }
 
     /**
@@ -308,7 +378,7 @@ class Database
     /**
      * 系统信息：DB 驱动 + schema 版本 + 各核心表存在性（供后台「系统信息」面板只读查询）
      *
-     * @return array{driver:string, schema_version:string|null, app_version:string, is_current:bool, tables:array<string,bool>}
+     * @return array{driver:string, schema_version:string|null, app_version:string, is_current:bool, auto_migrate:bool, tables:array<string,bool>}
      */
     public static function schemaStatus(): array
     {
@@ -332,6 +402,8 @@ class Database
             'schema_version' => $recorded,
             'app_version'    => \App\Config\AppConfig::APP_VERSION,
             'is_current'     => ($recorded !== null && $recorded === \App\Config\AppConfig::APP_VERSION),
+            // 迁移模式（DB_AUTO_MIGRATE 实际生效值）：后台「系统信息 → 迁移模式」行按此渲染自动/手动语义
+            'auto_migrate'   => self::isAutoMigrateEnabled(),
             'tables'         => $status,
         ];
     }
@@ -525,16 +597,23 @@ class Database
      * 入口：后台「同步库结构」按钮（super_admin 专用）、`cli/migrate.php`（发布流水线，无视 DB_AUTO_MIGRATE）。
      * 自带连接（connect()），因此空库 / 手动建库模式漏跑脚本时也能一次建全，不依赖既有 bootstrap 状态。
      *
-     * @return array{driver:string, schema_version:string|null, app_version:string, is_current:bool, tables:array<string,bool>}
+     * @return array{driver:string, schema_version:string|null, app_version:string, is_current:bool, auto_migrate:bool, tables:array<string,bool>}
      */
     public static function migrateNow(): array
     {
         self::connect();           // 迁移入口自带连接：不依赖既有 bootstrap 状态（空库/手动模式也能直接迁移）
+        // 改写版本标记前先取「跃迁前」记录值：库标记高于当前代码版本时（回滚后按 SOP 用旧代码执行
+        // 显式迁移，正是最常见的触发场景），这是一次**降级方向**的显式动作——必须与自动引导同等留痕
+        // （WARNING + schema_downgrade 审计，detail.channel=explicit_migrate），否则后台只能看到
+        // 「同步库结构 成功」，看不出标记被拉回旧版本、系统角色权限被 prune 收敛到了旧定义。
+        $prevSchema = self::recordedVersion(self::SCHEMA_VERSION_KEY);
+        $prevSeed   = self::recordedVersion(self::SEED_VERSION_KEY);
         self::ensureTables();      // 建表 + RBAC 种子 + 索引 + JSON 迁移
         self::seedAdmin();          // 补管理员种子（与 bootstrap() 一致，缺管理员时自愈）
         self::verifySeed();         // 自检种子不变量，缺失直接抛异常，不标记当前
         self::markSchemaCurrent();  // 自检通过后才标记当前版本
         self::markSeedCurrent();    // 同步种子版本：手动模式随后的首次引导即短路，不再重复播种
+        self::noteExplicitDowngrade([self::SCHEMA_VERSION_KEY => $prevSchema, self::SEED_VERSION_KEY => $prevSeed]);
         return self::schemaStatus();
     }
 

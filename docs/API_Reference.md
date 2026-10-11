@@ -392,7 +392,7 @@ Token expires in 24 hours. `super_admin` role returns `"*"` for permissions.
 | `/api/admin/platform_versions/probe` | GET | Actually probe Harbor / Jenkins versions (slow, separate endpoint — kept apart from the millisecond config-state list so an unreachable platform doesn't stall the whole page; requires `ci.platform-edit`) |
 | `/api/admin/build_mode` | GET/PUT | Build mode (enabled CI source set, e.g. jenkins,gitlab_ci,gitea_ci) |
 | `/api/admin/platform_config` | GET/PUT | Platform access status (masked — only each platform's `configured` boolean, never URL/account/credential) + platform-level tag settings (cleanup/backfill switches, log keyword) and API access log settings; PUT updates only keys explicitly present in the body to avoid clobbering each other (requires `ci.platform-config`) |
-| `/api/admin/system_info` | GET | Database schema status (driver / schema version / is_current / PHP version / core table presence; requires `ci.system`) |
+| `/api/admin/system_info` | GET | Database schema status (driver / schema version / is_current / migration mode `auto_migrate` (the effective `DB_AUTO_MIGRATE` value) / PHP version / core table presence; requires `ci.system`) |
 | `/api/admin/migrate` | POST | Manually sync the schema (create missing tables + back-fill columns/indexes + seed permissions + mark schema current; answers 409 pointing at `php cli/migrate.php` when the account lacks DDL privileges; super_admin only) |
 | `/api/admin/backup` | POST | Manually run a database backup (zip archive, keeps the most recent 10; when CD is enabled an extra CD-library archive is produced; super_admin only) |
 | `/api/admin/backups` | GET | List generated database backup files (super_admin only) |

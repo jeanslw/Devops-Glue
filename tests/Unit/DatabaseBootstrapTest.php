@@ -729,6 +729,62 @@ class DatabaseBootstrapTest extends TestCase
         $this->assertSame(AppConfig::APP_VERSION, $this->version($pdo, 'schema_version'), '但标记仍要对齐');
     }
 
+    /**
+     * 显式迁移在**降级方向**必须留痕：回滚后用旧代码跑 migrateNow()（正是回滚 SOP 的对齐步骤），
+     * 要记一条 schema_downgrade（channel=explicit_migrate、seed_mode=prune）；正向 / 平级则一条都不记。
+     */
+    public function testExplicitMigrateDowngradeIsAudited(): void
+    {
+        Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
+        $pdo = $this->createMemoryPdo();
+        Database::bootstrap($pdo);
+
+        $this->setVersion($pdo, 'schema_version', '99.0.0'); // 模拟回滚：库标记高于当前代码
+        Database::migrateNow(); // 显式迁移（旧代码对齐标记）
+
+        $this->assertSame(AppConfig::APP_VERSION, $this->version($pdo, 'schema_version'), '标记被改写回当前代码版本');
+        $rows = $this->operationLogRows($pdo, 'schema_downgrade');
+        $this->assertCount(1, $rows, '降级方向的显式迁移必须留一条方向审计');
+        $this->assertSame('failure', $rows[0]['result']);
+        $this->assertSame('99.0.0', $rows[0]['target'], 'target=最高被降级版本（去重键）');
+        $detail = json_decode((string)$rows[0]['detail'], true);
+        $this->assertSame(['schema_version'], $detail['keys'] ?? null, 'detail.keys 列出被拉回旧版本的全部标记键');
+        $this->assertSame('99.0.0', $detail['previous'] ?? null);
+        $this->assertSame('prune', $detail['seed_mode'] ?? null, '显式迁移始终按当前代码定义收敛');
+        $this->assertSame('explicit_migrate', $detail['channel'] ?? null, 'channel 区分显式路径与自动引导');
+
+        Database::migrateNow(); // 再跑一次：标记已是当前版本 → 无降级可记
+        $this->assertCount(1, $this->operationLogRows($pdo, 'schema_downgrade'), '正向/平级迁移不产生降级审计');
+    }
+
+    /**
+     * 去重键必须按 channel 区分：同一回滚事件里，先发生的「自动引导降级」（merge）不得把随后
+     * 「显式迁移降级」（prune）的审计行吞掉——两者后果不同，后台都要能查到。
+     */
+    public function testExplicitDowngradeAuditIsNotSwallowedByBootstrapDedup(): void
+    {
+        Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
+        $pdo = $this->createMemoryPdo();
+        Database::bootstrap($pdo);
+
+        $this->setVersion($pdo, 'schema_version', '99.0.0');
+        $this->reBootstrap($pdo, true); // 自动引导降级（merge）→ 记 channel=bootstrap 行
+
+        $this->setVersion($pdo, 'schema_version', '99.0.0');
+        Database::migrateNow(); // 同一版本的显式迁移降级（prune）→ 必须有自己的一行
+
+        $rows = $this->operationLogRows($pdo, 'schema_downgrade');
+        $this->assertCount(2, $rows, '自动引导与显式迁移的降级审计互不去重（同一 target、后果不同）');
+        $channels = array_map(
+            static function (array $r): string {
+                return json_decode((string)$r['detail'], true)['channel'] ?? '(none)';
+            },
+            $rows
+        );
+        $this->assertContains('bootstrap', $channels, '自动引导降级行带 channel=bootstrap');
+        $this->assertContains('explicit_migrate', $channels, '显式迁移降级行带 channel=explicit_migrate');
+    }
+
     // ────────────── seedRbac 部分失败必须 fail-fast（不能再"记日志继续"） ──────────────
 
     /**
