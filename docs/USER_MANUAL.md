@@ -278,7 +278,7 @@ Example: a rule "checking `cd.bot` implies `cd.notification-manage`". When you c
 
 ## 6. API Management
 
-"API Management" issues **API Tokens** for third-party services / scripts (such as the Devops-Glue CD service or Jenkins scripts). An API token is independent of the backend account system and directly carries a set of interface scopes, so access is easy to grant and revoke. Only `super_admin` can create / revoke / delete tokens.
+"API Management" issues **API Tokens** for third-party services / scripts (such as the Devops-Glue CD service or Jenkins scripts). An API token is independent of the backend account system and directly carries a set of interface scopes, so access is easy to grant, adjust, and revoke at any time. Only `super_admin` can create / edit / revoke / delete tokens.
 
 ### 6.1 Creating an API token
 
@@ -308,7 +308,24 @@ Steps:
 > - To let the system do "scan write-back", check both `harbor.scan` and `build.report`.
 > - Set an expiry time as needed; never-expiring is convenient long-term but keep an eye on security.
 
-### 6.3 Revoking / Deleting a token
+### 6.3 Editing a token's scopes
+
+Authorization is not a one-off: **an already-issued token's scopes can be changed** without re-issuing it. Find the token in the "API Management" list, click "✏️ Edit Scopes" on its row, re-tick the scopes and save.
+
+1. List → **✏️ Edit Scopes** on the target token (revoked / expired tokens can be edited too).
+2. Tick / untick scopes (the form pre-ticks the **current** scopes).
+3. Click **Save**; the list refreshes with the new scopes.
+
+Key points:
+
+- **Scopes only, same token**: the plaintext token and its digest stay unchanged, so tokens already configured in CD / Jenkins scripts **keep working** — the **next request** is checked against the new scopes.
+- **Typical uses**: temporarily add `harbor.scan` / `build.report` to a write-back script and remove them afterwards; or trim an over-privileged token down to the minimum.
+- **At least one scope must remain**: clearing everything is rejected ("Select at least one scope"), and values outside the catalog are rejected too — no silent "I thought I had removed/granted that". Use **Revoke** to make a token unusable entirely.
+- Every edit is recorded in the **operation log** (action `update_api_token_scopes`, including the stored scope list).
+
+> Example: the token used by a Jenkins scan write-back script only has `main`; when it should also report scan results back to Git, edit that token, tick `harbor.scan` and `build.report`, and save — the script's token needs no change at all.
+
+### 6.4 Revoking / Deleting a token
 
 - **Revoke**: immediately disables the token while keeping the record (good when you suspect a leak or want a temporary pause). It can be re-enabled later.
 - **Delete**: removes the token record entirely; not recoverable.

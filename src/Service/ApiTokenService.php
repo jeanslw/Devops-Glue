@@ -61,6 +61,53 @@ class ApiTokenService
     }
 
     /**
+     * 编辑已有 token 的 scope 清单（不动明文与摘要，token 无需重新签发，下次请求即生效）。
+     *
+     * 与 createToken 刻意不同：创建时非法 scope 静默丢弃（宽松，避免表单噪音导致建号失败），
+     * 编辑时**严格报错**且拒绝空集合——scope 直接决定越权面，勾选界面上的笔误若被静默吞掉，
+     * 就会出现「以为已收回权限 / 以为已授权」的误解，宁可报错让人重选。
+     *
+     * @param mixed $scopes 数组或逗号分隔字符串；空串与非标量项会被忽略
+     * @return bool false 表示 token 不存在（此时不写入任何内容）
+     * @throws \InvalidArgumentException 含目录外的 scope，或清洗后为空集合
+     * @throws \PDOException 查询 / 写入失败（ERRMODE_EXCEPTION）
+     */
+    public function updateScopes(int $id, mixed $scopes): bool
+    {
+        if ($this->findById($id) === null) {
+            return false;
+        }
+
+        $items = is_string($scopes) ? explode(',', $scopes) : $scopes;
+        if (!is_array($items)) {
+            throw new \InvalidArgumentException('Scopes must be an array or a comma-separated string');
+        }
+
+        $normalized = [];
+        foreach ($items as $item) {
+            $key = is_scalar($item) ? trim((string)$item) : '';
+            if ($key === '') {
+                continue;
+            }
+            if (!isset(AppConfig::API_SCOPES[$key])) {
+                throw new \InvalidArgumentException('Unknown scope: ' . $key);
+            }
+            if (!in_array($key, $normalized, true)) {
+                $normalized[] = $key;
+            }
+        }
+        if ($normalized === []) {
+            throw new \InvalidArgumentException('At least one scope is required');
+        }
+
+        $stmt = $this->pdo->prepare(
+            'UPDATE ' . AppConfig::TABLE_API_TOKENS . ' SET scopes = ? WHERE id = ?'
+        );
+        $stmt->execute([implode(',', $normalized), $id]);
+        return true;
+    }
+
+    /**
      * 列出全部 token（不含明文）。
      * 附上 scope 数组与是否过期的派生字段，方便 UI 直接渲染。
      *
@@ -78,6 +125,21 @@ class ApiTokenService
             $result[] = $this->decorate($row);
         }
         return $result;
+    }
+
+    /**
+     * 按主键查找 token 记录（含摘要列，仅供管理端判断存在性；结果不得回写到 HTTP 响应）。
+     *
+     * @return array<string,mixed>|null
+     */
+    public function findById(int $id): ?array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT * FROM ' . AppConfig::TABLE_API_TOKENS . ' WHERE id = ? LIMIT 1'
+        );
+        $stmt->execute([$id]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        return $row ?: null;
     }
 
     /** 撤销（禁用）token */

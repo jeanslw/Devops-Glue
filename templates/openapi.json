@@ -1121,6 +1121,49 @@
           }
         }
       },
+      "ApiTokenUpdateScopesRequest": {
+        "type": "object",
+        "required": [
+          "scopes"
+        ],
+        "properties": {
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "新的接口权限 scope 列表（必须全部来自 scope 目录且至少一个；含未知 key 或清洗后为空集合返回 400）",
+            "example": [
+              "main",
+              "build.read"
+            ]
+          }
+        }
+      },
+      "ApiTokenUpdateScopesResult": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "id": {
+            "type": "integer",
+            "example": 1
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "保存后的 scope 列表（去空格、去重、保持提交顺序）",
+            "example": [
+              "main",
+              "build.read"
+            ]
+          }
+        }
+      },
       "OidcDiscovery": {
         "type": "object",
         "description": "OIDC Discovery 文档（RFC 8414）",
@@ -4486,6 +4529,70 @@
           },
           "500": {
             "$ref": "#/components/responses/500"
+          }
+        }
+      }
+    },
+    "/api/admin/api_tokens/{id}/scopes": {
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "编辑 API Token 的 Scope",
+        "description": "改写该 Token 的 scope 清单。只改元数据（明文与摘要不变），调用方无需更换 Token，下一次请求即按新 Scope 校验。仅 super_admin 可访问；scope 必须来自目录且至少一个（否则 400），Token 不存在返回 404。",
+        "operationId": "adminApiTokenUpdateScopes",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Token ID",
+            "example": 1
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiTokenUpdateScopesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "编辑成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiTokenUpdateScopesResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "非 super_admin"
+          },
+          "404": {
+            "description": "Token 不存在"
+          },
+          "503": {
+            "description": "API Token 服务不可用"
           }
         }
       }

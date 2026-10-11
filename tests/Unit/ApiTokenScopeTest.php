@@ -85,6 +85,7 @@ class ApiTokenScopeTest extends TestCase
             'health 任意 token'        => ['GET', '/api/health', '*'],
             'admin 禁止'               => ['GET', '/api/admin/users', null],
             'admin me 也禁止'          => ['GET', '/api/admin/me/permissions', null],
+            'admin 编辑 token scope 禁止' => ['PUT', '/api/admin/api_tokens/1/scopes', null],
             'main 只读'               => ['GET', '/api/main/map/list', AppConfig::API_SCOPE_MAIN],
             'main post 也只读'         => ['POST', '/api/main/jobs/list', AppConfig::API_SCOPE_MAIN],
             'git 只读'                => ['GET', '/api/git/group/proj/branches', AppConfig::API_SCOPE_GIT],

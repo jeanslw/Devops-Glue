@@ -1121,6 +1121,49 @@
           }
         }
       },
+      "ApiTokenUpdateScopesRequest": {
+        "type": "object",
+        "required": [
+          "scopes"
+        ],
+        "properties": {
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "New scope list (all entries must come from the scope catalog, at least one; an unknown key or an empty set returns 400)",
+            "example": [
+              "main",
+              "build.read"
+            ]
+          }
+        }
+      },
+      "ApiTokenUpdateScopesResult": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "id": {
+            "type": "integer",
+            "example": 1
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Stored scope list (trimmed, deduplicated, submission order kept)",
+            "example": [
+              "main",
+              "build.read"
+            ]
+          }
+        }
+      },
       "OidcDiscovery": {
         "type": "object",
         "description": "OIDC Discovery document (RFC 8414)",
@@ -4471,6 +4514,70 @@
           },
           "500": {
             "$ref": "#/components/responses/500"
+          }
+        }
+      }
+    },
+    "/api/admin/api_tokens/{id}/scopes": {
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Edit API token scopes",
+        "description": "Rewrites the token's scope list. Only metadata changes (plaintext and digest stay the same), so callers do not need a new token — the next request is checked against the new scopes. super_admin only; every scope must come from the catalog and at least one is required (otherwise 400), an unknown token returns 404.",
+        "operationId": "adminApiTokenUpdateScopes",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Token ID",
+            "example": 1
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiTokenUpdateScopesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Scopes updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiTokenUpdateScopesResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "Not super_admin"
+          },
+          "404": {
+            "description": "Token not found"
+          },
+          "503": {
+            "description": "API token service unavailable"
           }
         }
       }

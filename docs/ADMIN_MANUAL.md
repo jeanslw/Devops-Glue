@@ -178,7 +178,7 @@ The admin panel sidebar contains the following modules:
 | Build Mode | Build mode (jenkins / gitlab_ci / gitea_ci, multi-select) |
 | User Management | User list, role management, change password |
 | Permission Management | Permission list, permission registration, implied rules |
-| API Management | Create / revoke / delete API tokens (visible to `super_admin` only) |
+| API Management | Create / edit scopes / revoke / delete API tokens (visible to `super_admin` only) |
 | Operation Log | Admin operation audit log (paginated + filterable, permission `ci.operation-logs`) |
 | Deploy Log | CD-side deployment record audit (paginated + filterable, permission `ci.deploy-logs`) |
 | API Access Log | API token invocation audit (paginated + filterable, permission `ci.api-logs`) |
@@ -716,6 +716,8 @@ Go to "API Management" (requires the relevant permission) and choose the require
 
 > **Note:**
 > - The token is shown in plaintext only once at creation; save it immediately.
+> - **Scopes can be edited at any time**: click "✏️ Edit Scopes" on the token's row under "API Management", tick the new permission set and save. Only **metadata** changes — the plaintext token and its digest stay the same, **no token replacement is needed** (deployed scripts / CD keep working), and the **next request** is checked against the new scopes. That makes it the right tool for temporarily granting `build.report` writeback or withdrawing write permissions you no longer need. Unlike *revoke*, editing never invalidates the token; use *revoke* to stop it completely.
+> - Every scope must come from the table above and at least one must stay selected: unknown values or an empty selection are both rejected (unlike creation, which silently ignores invalid keys) so a mis-tick can never silently widen or narrow access. Each edit is recorded in the operation log as `update_api_token_scopes`.
 > - `/api/admin/*` management endpoints always reject API tokens (only super_admin interactive login may access them).
 > - Do **not** create the Devops-Glue CD service token manually: enabling "CD deployment service" under "Data Management → Integrated services" issues it automatically. See section 16.
 

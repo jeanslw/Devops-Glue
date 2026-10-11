@@ -42,7 +42,8 @@ import {
 } from './modules/permissions.js';
 import {
     loadApiTokens, showApiTokenForm, hideApiTokenForm, refreshApiTokenView,
-    submitApiTokenForm, copyApiToken, revokeApiToken, deleteApiToken
+    submitApiTokenForm, copyApiToken, revokeApiToken, deleteApiToken,
+    showApiTokenScopeForm, hideApiTokenScopeForm, submitApiTokenScopeForm
 } from './modules/apiTokens.js';
 import { loadOperationLogs, resetOperationLogs } from './modules/oplog.js';
 import { loadDeployLogs, resetDeployLogs } from './modules/deploylog.js';
@@ -261,6 +262,7 @@ Object.assign(window, {
     loadRoleList, showRoleForm, hideRoleForm, submitRoleForm, deleteRole, togglePermGroup,
     loadPermList, deletePermission, registerPermission, loadImpliedRules, showImpliedForm, hideImpliedForm, submitImpliedForm, deleteImpliedRule,
     loadApiTokens, showApiTokenForm, hideApiTokenForm, submitApiTokenForm, copyApiToken, revokeApiToken, deleteApiToken,
+    showApiTokenScopeForm, hideApiTokenScopeForm, submitApiTokenScopeForm,
     loadOperationLogs, resetOperationLogs, loadDeployLogs, resetDeployLogs,
     loadApiAccessLogs, resetApiAccessLogs,
     loadSystemInfo, doMigrate, doBackup, loadPlatformConfig, toggleSysTables, toggleSysBackups,

@@ -887,6 +887,24 @@
                     </div>
                 </div>
 
+                <!-- 编辑 Scope 表单（复用新增表单的勾选样式；只改元数据，明文 Token 不变） -->
+                <div id="api-token-scope-form" class="card" style="display:none;max-width:680px;margin-top:12px;">
+                    <form onsubmit="submitApiTokenScopeForm(event)">
+                        <h4 data-i18n="api_token.edit_title" style="margin-top:0;margin-bottom:14px;">✏️ 编辑 Scope</h4>
+                        <p style="font-size:13px;color:#6b7280;margin:0 0 10px 0;">
+                            <span data-i18n="api_token.edit_target">目标 Token：</span><b id="api-token-edit-name"></b>
+                        </p>
+                        <div style="margin-bottom:10px;">
+                            <label data-i18n="api_token.scopes">接口权限（Scope）</label>
+                            <div id="api-token-edit-scopes" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+                        </div>
+                        <p style="font-size:12px;color:#9ca3af;margin:0 0 10px 0;" data-i18n="api_token.edit_hint">保存后立即生效，无需重新签发；明文 Token 保持不变。</p>
+                        <button type="submit" class="btn btn-save">💾 <span data-i18n="common.save">保存</span></button>
+                        <button type="button" class="btn" onclick="hideApiTokenScopeForm()" data-i18n="common.cancel">取消</button>
+                        <span id="api-token-edit-msg" style="margin-left:12px;font-size:13px;"></span>
+                    </form>
+                </div>
+
                 <!-- 列表 -->
                 <div class="card" style="margin-top:12px;overflow-x:auto;">
                     <div id="api-token-loading" style="text-align:center;padding:40px;color:#9ca3af;" data-i18n="common.loading">加载中…</div>

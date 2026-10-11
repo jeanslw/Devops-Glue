@@ -500,6 +500,7 @@ Token expires in 24 hours. `super_admin` role returns `"*"` for permissions.
 | `/api/admin/api_tokens/scopes` | GET | Return the selectable scope catalog (`{"scopes":[{"key":"main","label":"MAIN (read-only)"},…]}`) |
 | `/api/admin/api_tokens` | GET | List tokens (**no plaintext**, returns `{"tokens":[…]}`) |
 | `/api/admin/api_tokens` | POST | Create a token, returns one-time plaintext |
+| `/api/admin/api_tokens/{id}/scopes` | PUT | **Edit scopes**: metadata only (plaintext and sha256 digest unchanged, **no need to replace the token**, the next request is checked against the new scopes); every scope must come from the catalog and at least one is required (otherwise 400); 404 when the token does not exist |
 | `/api/admin/api_tokens/{id}/revoke` | POST | Revoke (**disable**, keeps the record), returns `{"ok":true}` |
 | `/api/admin/api_tokens/{id}` | DELETE | Delete (**hard delete** the record), returns `{"ok":true}` |
 | `/api/admin/integrated_services/{service}/enable` | POST | Enable an integrated service: in one transaction upserts the contract row (provision defaults to auto/manual per the current `DB_AUTO_MIGRATE`, overridable via body) and auto-issues a service token restricted to build.read / build.write / rbac.user.write; the response returns the plaintext `token` once; 409 when already enabled; super_admin only |
@@ -526,6 +527,30 @@ Response (**plaintext shown only once**):
 {
   "id": 1,
   "token": "dg_8f3a4b1c…（64 hex chars）"
+}
+```
+
+#### Edit Token Scopes
+
+Request body:
+
+```json
+{
+  "scopes": ["main", "build.read"]
+}
+```
+
+- Only the `scopes` column changes (**metadata**): the plaintext token and its sha256 digest stay the same, so callers **do not need a new token** — the very **next request** is checked against the new scopes. Use it to grant or withdraw permissions on an already-issued token (writeback scopes such as `build.report` are a good fit for temporary grants).
+- `scopes` must **all** come from the catalog and contain **at least one** entry: an unknown key returns 400 ("Unknown scope selected, please re-select"), an empty set returns 400 ("Select at least one scope"). This deliberately differs from creation, where invalid keys are silently dropped: editing is a **permission grant/withdraw** action, so a mis-tick must fail loudly instead of silently widening or narrowing access. Use *revoke* to make a token unusable.
+- An unknown token returns 404 ("Token not found or already deleted"). super_admin only; every edit writes the `update_api_token_scopes` operation-log entry (including the stored scope list).
+
+Response:
+
+```json
+{
+  "ok": true,
+  "id": 1,
+  "scopes": ["main", "build.read"]
 }
 ```
 
@@ -564,11 +589,17 @@ curl -X POST "http://URL/api/build/php/myapp/report" \
   -H "Authorization: Bearer $NEW_TOKEN" \
   -d '{"pipeline_iid":123,"status":"success","finished_at":"2026-08-18T10:05:12+08:00","exit_code":0,"log_url":"https://ci.example.com/build/123/log","tag":"v1.0.0","env":"prod"}'
 
-# ④ Revoke a token (disable, keeps the record)
+# ④ Edit token scopes (metadata only: no token replacement needed, effective on the next request)
+curl -X PUT "http://URL/api/admin/api_tokens/1/scopes" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d '{"scopes":["main","build.read"]}'
+
+# ⑤ Revoke a token (disable, keeps the record)
 curl -X POST "http://URL/api/admin/api_tokens/1/revoke" \
   -H "Authorization: Bearer $ADMIN_TOKEN"
 
-# ⑤ Delete a token (hard delete the record)
+# ⑥ Delete a token (hard delete the record)
 curl -X DELETE "http://URL/api/admin/api_tokens/1" \
   -H "Authorization: Bearer $ADMIN_TOKEN"
 ```

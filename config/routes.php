@@ -111,6 +111,7 @@ $app->group('/api', function (RouteCollectorProxy $api) {
             $auth->map(['GET'], '/api_tokens/scopes', [AdminController::class, 'apiTokenScopes']);
             $auth->map(['GET'], '/api_tokens', [AdminController::class, 'apiTokenList']);
             $auth->map(['POST'], '/api_tokens', [AdminController::class, 'apiTokenCreate']);
+            $auth->map(['PUT'], '/api_tokens/{id}/scopes', [AdminController::class, 'apiTokenUpdateScopes']);
             $auth->map(['POST'], '/api_tokens/{id}/revoke', [AdminController::class, 'apiTokenRevoke']);
             $auth->map(['DELETE'], '/api_tokens/{id}', [AdminController::class, 'apiTokenDelete']);
             // 集成服务启停（integrated_services 契约表；读 ci.system，写仅 super_admin，启用自动签发限定 scope token）

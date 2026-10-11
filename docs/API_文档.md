@@ -501,6 +501,7 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 | `/api/admin/api_tokens/scopes` | GET | 返回可选 scope 目录（`{"scopes":[{"key":"main","label":"MAIN（只读）"},…]}`） |
 | `/api/admin/api_tokens` | GET | Token 列表（**不含明文**，返回 `{"tokens":[…]}`） |
 | `/api/admin/api_tokens` | POST | 创建 Token，返回一次性明文 |
+| `/api/admin/api_tokens/{id}/scopes` | PUT | **编辑 Scope**：只改元数据（明文与 sha256 摘要不变，**无需更换 Token**，下一个请求即按新 Scope 校验）；scope 须全部来自目录且至少一个（否则 400），Token 不存在 404 |
 | `/api/admin/api_tokens/{id}/revoke` | POST | 撤销（**禁用**，保留记录），返回 `{"ok":true}` |
 | `/api/admin/api_tokens/{id}` | DELETE | 删除（**硬删除**记录），返回 `{"ok":true}` |
 | `/api/admin/integrated_services/{service}/enable` | POST | 启用集成服务：事务内 upsert 契约行（provision 默认按当前 `DB_AUTO_MIGRATE` 取 auto/manual，可 body 显式覆盖）+ 自动签发限定 scope（build.read / build.write / rbac.user.write）服务 Token，响应一次性返回明文 `token`；已启用 409；仅 super_admin |
@@ -527,6 +528,30 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 {
   "id": 1,
   "token": "dg_8f3a4b1c…（64位十六进制）"
+}
+```
+
+#### 编辑 Token 的 Scope
+
+请求体：
+
+```json
+{
+  "scopes": ["main", "build.read"]
+}
+```
+
+- 只改 `scopes` 列（**元数据**）：明文 Token 与 sha256 摘要都不变，调用方**无需更换** Token，**下一个请求**即按新 Scope 校验——用于给已发出的 Token 补权限或收回权限（`build.report` 这类回写权限尤其适合按需临时补授）。
+- `scopes` 必须**全部**来自目录且**至少一个**：含目录外的 key 返回 400（「包含未知的 Scope，请重新选择」）、空集合返回 400（「请至少勾选一个接口权限」）。这与创建时「静默丢弃非法 key」刻意不同：编辑是**权限收放**动作，勾错了必须报错，不能静默掉权或增权。要彻底失效请用「撤销」。
+- Token 不存在返回 404（「Token 不存在或已被删除」）。仅 `super_admin`；每次编辑写入操作日志 `update_api_token_scopes`（含保存后的 scope 清单）。
+
+响应：
+
+```json
+{
+  "ok": true,
+  "id": 1,
+  "scopes": ["main", "build.read"]
 }
 ```
 
@@ -565,11 +590,17 @@ curl -X POST "http://URL/api/build/php/myapp/report" \
   -H "Authorization: Bearer $NEW_TOKEN" \
   -d '{"pipeline_iid":123,"status":"success","finished_at":"2026-08-18T10:05:12+08:00","exit_code":0,"log_url":"https://ci.example.com/build/123/log","tag":"v1.0.0","env":"prod"}'
 
-# ④ 撤销 Token（禁用，保留记录）
+# ④ 编辑 Token 的 Scope（只改元数据：Token 明文无需更换，下一个请求即生效）
+curl -X PUT "http://URL/api/admin/api_tokens/1/scopes" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d '{"scopes":["main","build.read"]}'
+
+# ⑤ 撤销 Token（禁用，保留记录）
 curl -X POST "http://URL/api/admin/api_tokens/1/revoke" \
   -H "Authorization: Bearer $ADMIN_TOKEN"
 
-# ⑤ 删除 Token（硬删除记录）
+# ⑥ 删除 Token（硬删除记录）
 curl -X DELETE "http://URL/api/admin/api_tokens/1" \
   -H "Authorization: Bearer $ADMIN_TOKEN"
 ```

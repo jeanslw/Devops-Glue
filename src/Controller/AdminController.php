@@ -1623,6 +1623,46 @@ class AdminController extends BaseController
     }
 
     /**
+     * PUT /api/admin/api_tokens/{id}/scopes — 编辑 scope（改库即时生效，明文 token 不变）
+     *
+     * 走「改写元数据」而非「重新签发」，因此调用方无需换 token；下一次请求即按新 scope 校验。
+     *
+     * @param array<string,string> $args
+     */
+    public function apiTokenUpdateScopes(Request $request, Response $response, array $args): Response
+    {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requireSuperAdmin($response)) {
+            return $resp;
+        }
+        if ($this->apiTokenService === null) {
+            return $this->jsonError($response, 'api_token.service_unavailable', 503);
+        }
+        $id   = (int)($args['id'] ?? 0);
+        $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
+        $payload = is_array($body) ? ($body['scopes'] ?? []) : [];
+
+        $scopes = $this->apiTokenService->normalizeScopes($payload);
+
+        try {
+            $updated = $this->apiTokenService->updateScopes($id, $payload);
+        } catch (\InvalidArgumentException $e) {
+            // 服务层有两类拒绝原因，这里按「目录内是否命中任何 scope」区分提示：
+            // 一个都没命中 = 空集合；命中了一部分 = 里面夹了目录外的 key。
+            return $this->jsonError($response, $scopes === [] ? 'api_token.scopes_required' : 'api_token.scopes_invalid', 400);
+        } catch (\Exception $e) {
+            return $this->jsonError($response, $this->__('build.query_failed') . ': ' . $e->getMessage(), 500);
+        }
+        if (!$updated) {
+            return $this->jsonError($response, 'api_token.not_found', 404);
+        }
+
+        $this->opLog()->record($this->currentUser, 'update_api_token_scopes', (string)$id, ['scopes' => $scopes], $this->clientIp($request), 'success');
+        $response->getBody()->write((string) json_encode(['ok' => true, 'id' => $id, 'scopes' => $scopes], JSON_UNESCAPED_UNICODE));
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
      * POST /api/admin/api_tokens/{id}/revoke — 撤销（禁用，保留记录）
      *
      * @param array<string,string> $args
