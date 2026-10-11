@@ -134,8 +134,8 @@ Visit `http://localhost:8080/api/docs` for interactive API docs (Swagger UI).
 | Jenkins | v2.60+ | Self-hosted |
 | GitLab | v9.0+ (API v4) | Self-hosted |
 | Gitea | v1.27.x (API v1) | Self-hosted |
-| GitHub | v9.0+ (API v3) | SaaS |
-| Gitee | (API v5) | SaaS |
+| GitHub | API v3 | SaaS |
+| Gitee | API v5 | SaaS |
 | Harbor | v1.10.1 / v2.x | Self-hosted |
 
 > **Harbor robot account:** calling the REST API via a robot account requires Harbor **v2.2.0+** (secret-based). On v1.x / v2.0.x / v2.1.x the robot token is a JWT (Docker/Helm CLI only) — use a normal account instead. See [docs/ADMIN_MANUAL.md](docs/ADMIN_MANUAL.md#11-connect-harbor).
