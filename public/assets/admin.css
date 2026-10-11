@@ -494,6 +494,9 @@
             display:none; margin-top:6px; padding:8px 10px; border-radius:10px;
             background:#f8fafc; border:1px solid #e2e8f0; color:#64748b;
             font-size:11px; line-height:1.6;
+            /* 弹窗正文（#confirm-message / #confirm-note）由 core/toast.js 用 textContent 渲染纯文本，
+               多行只能靠 \n —— 交给 pre-line 断行；传 <div>/<br> 只会原样显示成标签 */
+            white-space:pre-line;
         }
         .modal-hint b { color:#1f2937; font-weight:700; }
         .modal-body label { margin-top:12px; }

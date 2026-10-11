@@ -299,11 +299,13 @@ function renderCdService(d) {
 
 export async function enableIntegratedService(service) {
     // provision 不传：后端在点启用那一刻按 CI 当前 DB_AUTO_MIGRATE 模式写入（auto/manual）
-    const note = '<div style="text-align:left;line-height:1.7;margin-top:6px;">'
-        + '<div>① ' + esc(__.t('sys.isvc_enable_step1')) + '</div>'
-        + '<div>② ' + esc(__.t('sys.isvc_enable_step2')) + '</div>'
-        + '<div>③ ' + esc(__.t('sys.isvc_enable_step3')) + '</div>'
-        + '</div>';
+    // 提示走纯文本 + \n 换行：confirmDialog 的 message/note 由 core/toast.js 用 textContent 渲染，
+    // 这里塞 HTML 只会把 <div> 标签原样显示出来（曾如此），断行交给 .modal-note 的 white-space:pre-line。
+    const note = [
+        '① ' + __.t('sys.isvc_enable_step1'),
+        '② ' + __.t('sys.isvc_enable_step2'),
+        '③ ' + __.t('sys.isvc_enable_step3')
+    ].join('\n');
     if (!await confirmDialog({
         title: __.t('sys.isvc_enable'),
         message: __.t('sys.isvc_enable_confirm', { name: __.t('sys.isvc_cd_name') }),
