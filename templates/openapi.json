@@ -275,6 +275,16 @@
               "ci_job_git_map"
             ]
           },
+          "tables_list_drift": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "代码台账自检（Database::schemaListDrift()，纯反射、与库无关）：AppConfig 的 TABLE_* 表常量与 Database::schemaTables() 探测清单不一致时出现，列出「后台数据表清单 / 本探针的 tables_missing 会漏报的表名」，并计入 status=degraded（HTTP 仍 200，不摘流）。正常代码恒不出现；出现即该实例代码未同步清单（升级/手工打补丁绕过了 CI），同时会写一条 error 文件日志并在后台「数据表清单一致性」行红字点名",
+            "example": [
+              "ci_api_access_logs"
+            ]
+          },
           "time": {
             "type": "integer",
             "description": "Unix 时间戳（秒）",
@@ -1357,7 +1367,7 @@
           "Health"
         ],
         "summary": "存活/就绪探针",
-        "description": "无需鉴权的外部探针：只检测数据库可达性、已应用版本与 schema 对齐状态，不探测 Jenkins/Git/Harbor。数据库可达且版本对齐 → 200 + status=ok；数据库可达但版本未对齐（schema_current=false，如升级了代码还没跑迁移）→ 200 + status=degraded（版本落后不摘流，避免滚动升级期 LB/K8s 摘掉全部副本），并在 tables_missing 中列出缺失的核心表；手动建库模式从未跑过结构迁移时 schema_current=null（未知），返回 200 + status=ok，不降级也不谎报对齐；数据库连接失败、或连接正常但版本表缺失（空库未初始化，此时 db=true）→ 503 + status=degraded。db 字段仅表示连接性，便于区分「真宕机」与「连上但未初始化」。schema_ahead=true 表示库结构版本高于当前代码（疑似代码降级/回滚），与 schema_current=false 组合可区分「没跑结构迁移」与「已回滚降级」。",
+        "description": "无需鉴权的外部探针：只检测数据库可达性、已应用版本与 schema 对齐状态，不探测 Jenkins/Git/Harbor。数据库可达且版本对齐 → 200 + status=ok；数据库可达但版本未对齐（schema_current=false，如升级了代码还没跑迁移）→ 200 + status=degraded（版本落后不摘流，避免滚动升级期 LB/K8s 摘掉全部副本），并在 tables_missing 中列出缺失的核心表；手动建库模式从未跑过结构迁移时 schema_current=null（未知），返回 200 + status=ok，不降级也不谎报对齐；数据库连接失败、或连接正常但版本表缺失（空库未初始化，此时 db=true）→ 503 + status=degraded。db 字段仅表示连接性，便于区分「真宕机」与「连上但未初始化」。schema_ahead=true 表示库结构版本高于当前代码（疑似代码降级/回滚），与 schema_current=false 组合可区分「没跑结构迁移」与「已回滚降级」。代码台账自检发现探测清单漂移时（tables_list_drift）同样只降级不摘流（返回 200 + status=degraded）：坏的是台账，不是数据。",
         "operationId": "healthz",
         "responses": {
           "200": {

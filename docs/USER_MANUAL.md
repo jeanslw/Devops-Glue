@@ -385,7 +385,7 @@ This page centralizes "which external systems the CI platform integrates, and in
 
 The page has three blocks for three different kinds of operations — do not mix them up:
 
-**① System info card (read-only, `ci.system` permission)** — app version / schema version / seed version / **Migration Mode** (the effective `DB_AUTO_MIGRATE` value: auto = the app creates tables itself; manual = amber hint "tables are provisioned via database/*.sql or cli/migrate.php; the app only seeds") / database driver / time of the last schema sync. **This card is the first stop when deciding whether a migration is needed.**
+**① System info card (read-only, `ci.system` permission)** — app version / schema version / seed version / **Migration Mode** (the effective `DB_AUTO_MIGRATE` value: auto = the app creates tables itself; manual = amber hint "tables are provisioned via database/*.sql or cli/migrate.php; the app only seeds") / **Table List Consistency** (`schema_list_drift`: green "consistent with the table definitions in the code" normally; if it names tables in red, this instance's AppConfig table constants and the table-list probe list are out of sync (an upgrade or hand-patched build bypassed CI), which shows up as **the list missing tables / failing to report a missing table** — upgrade to a build with the fix; table creation and normal operation are unaffected) / database driver / time of the last schema sync. **This card is the first stop when deciding whether a migration is needed.**
 
 **② Table list (read-only)** — each of the 17 business tables is probed for existence and row count, quickly revealing "which table is missing" (the diagnostic entry for empty or half-initialized databases).
 

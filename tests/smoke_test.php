@@ -362,6 +362,10 @@ if (isset($hz['auto_migrate'])) {
 if (isset($hz['tables_missing'])) {
     $tc->assertIsType('array', $hz['tables_missing'], 'tables_missing 是数组（仅 schema_current=false 时出现）');
 }
+// 代码台账自检：正常代码恒不出现；出现即该实例的探测清单与 AppConfig 表常量不同步（探针同时置 degraded）
+if (isset($hz['tables_list_drift'])) {
+    $tc->assertIsType('array', $hz['tables_list_drift'], 'tables_list_drift 是数组（仅代码内表清单漂移时出现）');
+}
 echo "  [Infra] /healthz 探针 ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
 
 // OpenAPI 规范（无 token 应返回 401）
