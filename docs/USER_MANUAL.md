@@ -10,7 +10,7 @@
 4. [User Management](#4-user-management)
 5. [Permission Management](#5-permission-management)
 6. [API Management](#6-api-management)
-7. [Version Compatibility / Security Audit / Monitor Overview / Build Records](#7-version-compatibility--security-audit--monitor-overview--build-records)
+7. [Admin Pages Overview](#7-admin-pages-overview-version-compatibility--security-audit--monitor-overview--build-records--platform-management--log-center--data-management)
 8. [LDAP Login](#8-ldap-login)
 
 ---
@@ -316,7 +316,7 @@ Steps:
 For day-to-day: use **Revoke** for temporary suspension, **Delete** when it is clearly no longer used.
 
 ---
-## 7. Version Compatibility / Security Audit / Monitor Overview / Build Records
+## 7. Admin Pages Overview (Version Compatibility / Security Audit / Monitor Overview / Build Records / Platform Management / Log Center / Data Management)
 
 These pages are mostly **for viewing**. Here is a brief overview of each; details are in the Admin Configuration Manual.
 
@@ -340,6 +340,62 @@ The dashboard's home view: total mappings, active projects, number of git platfo
 - **Push records**: build records that your CI reports via Custom_Push.
 
 Use it to review the final results and artifacts (image tags) of historical builds — the place to answer "which image did this build produce?". The menu is visible only with the appropriate permission.
+
+### 7.5 Platform Management Page (System Settings)
+
+> Path: sidebar **System Settings → Platform Management** (page ID: `platform-config`). Cards on this page are shown or hidden by role: without the matching permission the card container is not rendered at all.
+
+This page centralizes "which external systems the CI platform integrates, and in which mode it runs". Each card's function and permission gate (matching the actual backend checks — don't guess from the UI):
+
+**① Build Mode (multi-select)** — `ci.mode.edit`
+- Choose which build providers are enabled: `Jenkins` / `GitLab CI` / `Gitea Actions` / `Custom_Push` (push-style CI where your pipeline reports the final build state once). Changes take effect immediately and are stored in `ci_app_settings.build_mode`; the `build_provider` field in mapping management follows this list.
+- **Problem it solves**: gradually migrating your CI system (e.g. Jenkins → GitLab CI) — old and new jobs coexist and can be switched one by one, with no downtime.
+
+**② Platform Connectivity Status** — `ci.platform.edit`
+- A table listing Git (GitLab/GitHub/Gitee/Gitea/custom) and Harbor integrations: base URL, whether a token is configured, connectivity verification. Each row has a "Test connection" button (probed live; the result is only displayed, not persisted).
+- **Problem it solves**: with several platforms in parallel, quickly answer "is this platform configured, and does it work". When a webhook / build trigger fails, look here first instead of digging through env files.
+
+**③ Other settings cards** — each with its own permission
+- **Build-record push allowlist** (`ci.build_records.push`): which jobs may report final states via `POST /api/build/{job}/report` — without an allowlist any job can report (the security boundary of push-style CI).
+- Security-related cards such as **OIDC / OAuth clients** and **login security policy** are covered in chapter 6 and are not repeated here.
+
+
+---
+
+### 7.6 The Three Log Pages (Log Center group)
+
+> Path: sidebar **Log Center**: Operation Logs / Build Logs / API Access Logs. The three pages have different data sources and field semantics. When troubleshooting, read them in order: first the operation log to pin down "who did what and when", then the build log or API access log for the technical detail around that timestamp.
+
+**① Operation Logs** — `ci.operation_logs`
+- **Data source**: the `ci_operation_logs` table, written automatically by backend management actions (not forgeable — the writers live in code, never in user-controlled parameters).
+- **Fields**: time / operator (`root` and other admins, or `system` for system-level events such as version-transition audits and cron jobs) / action (`migrate_schema`, `schema_upgrade`, `schema_downgrade`, `rbac_seed_failed`, `backup_database`, …; rendered as localized labels in the UI) / target / detail (JSON: version transitions carry `previous→current`, `seed_mode`, `channel`; backups carry filename and byte size) / IP / result (success ✅ / failure ❌).
+- **Filters**: operator type (admin / system), action name, time range. **Typical usage**: suspect the schema was touched → filter by `schema_downgrade` or `migrate_schema`; suspect the permission seed is incomplete → filter by `rbac_seed_failed`.
+
+**② Build Logs** — `ci.build_logs` (a different table from the operation log!)
+- Raw CI build output, aggregated per job and paginated. The retention days configured under "Log Settings" (section 3.7) control how much data lives here.
+- Image-tag backfill and keyword extraction (sections 3.5 / 3.6) also read from this table.
+
+**③ API Access Logs** — `ci.api_access_logs`
+- A call ledger for the public REST API: time / client / path / status code / duration / caller IP. It answers "have my downstream systems or bots been calling, and how many failed"; combined with rate limiting (429) it helps locate abuse.
+- Retention is likewise controlled by "Log Settings"; `cli/cleanup-api-access-logs.php` (a worker cron job in the distributed variant) performs the offline cleanup.
+
+### 7.7 Data Management Page (Backup / Tables / Migration Mode)
+
+> Path: sidebar **Data Management** (page ID: `system-info`). **Every button on this page is `super_admin` only**; a normal admin sees only the table list and statistics, not the action buttons.
+
+The page has three blocks for three different kinds of operations — do not mix them up:
+
+**① System info card (read-only, `ci.system` permission)** — app version / schema version / seed version / **Migration Mode** (the effective `DB_AUTO_MIGRATE` value: auto = the app creates tables itself; manual = amber hint "tables are provisioned via database/*.sql or cli/migrate.php; the app only seeds") / database driver / time of the last schema sync. **This card is the first stop when deciding whether a migration is needed.**
+
+**② Table list (read-only)** — each of the 16 business tables is probed for existence and row count, quickly revealing "which table is missing" (the diagnostic entry for empty or half-initialized databases).
+
+**③ Backup & restore (`super_admin`, write operations)**
+- "Backup Database": a full export-style backup (zip), recorded in the operation log; `php cli/backup-db.php --force` is the equivalent CLI (use it for cron).
+- "Restore" is an **offline operation** — restore is not an online button; the zip artifact must be applied with `bin/restore.php` on the server (not shipped in the image, to prevent accidental clicks). The UI only lists and downloads backup artifacts.
+
+**④ Sync Schema (`super_admin`)** — where the "Sync Schema" button from section 3.4 lives: it creates missing tables, adds missing columns and indexes, and converges the RBAC seed to the current code definitions (prune). If the app's DB account lacks DDL privileges the click returns 409 with an actionable hint (use `php cli/migrate.php` instead). **Do not** treat "Sync Schema" as a routine maintenance button — after a normal upgrade it happens automatically (in auto mode, on the first request); manual clicks are only for explicitly converging permissions or aligning after a rollback.
+
+
 
 ---
 
