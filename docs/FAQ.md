@@ -591,6 +591,14 @@ First decide whether the old code can run against the current database. Migratio
 | Admin Token (`admin_token_{token}`) | 24 hours |
 | Harbor API version detection (`harbor_api_version`) | 1 hour |
 
+### Q: A new admin feature is missing after an upgrade (e.g. "Migration Mode" stays `-`)?
+
+The browser has a strongly cached copy of the old JS/CSS. Before v2.8.9, nginx served `/assets/*.js|css` with `expires 30d` + `Cache-Control: public, immutable`, and asset filenames carry no content hash — so after upgrading the image, `admin.html` and the API are new while the browser still runs the old `system.js`, leaving the **"Migration Mode" row under Data Management → System Info at its inline placeholder `-`** (the old JS has no rendering code for it). Any other new front-end feature is equally invisible.
+
+v2.8.9 fixes this in two layers: JS/CSS are served with `no-cache` (revalidated on every request, 304 when unchanged), and every asset URL in the templates carries `?v={{APP_VERSION}}` (a new URL per release, so the new file is fetched directly). **If you cached the assets during an older release, one manual hard refresh (Ctrl+F5) is enough**; upgrades no longer need it afterwards.
+
+Troubleshooting: open the browser dev tools → Network and check the `Cache-Control` of the `system.js` response. If it still says `public, immutable` with an `Expires` 30 days out, you are either hitting a not-yet-expired cache entry (hard refresh once) or still running the old nginx config (the container mounts the copy from your **deployment directory** — check which path with `docker inspect devops-glue --format "{{range .Mounts}}{{println .Source}}{{end}}"`; after fixing the right file, `docker exec devops-glue nginx -s reload` applies it — no image rebuild needed).
+
 ### Q: Health check `/api/health` is slow?
 
 The default timeout for external services is 3-5 seconds. Slow external services can make the overall health check exceed 3 seconds.

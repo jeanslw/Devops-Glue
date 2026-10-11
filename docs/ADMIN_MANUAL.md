@@ -612,7 +612,7 @@ curl -X POST "http://glue:8080/api/build/tools/runner-ci/report" \
 
 - The Custom_Push status card on the "Monitor" page shows ✅ with provider names when configured, or ⚪ "Not configured" when unconfigured.
 - After enabling Custom_Push, auto-discovery scans Git platform project lists and generates a `build_provider=custom_push` mapping candidate (initially "pending", requires manual activation) for each project.
-- After frontend page changes, perform a **hard refresh (Ctrl+F5)** in the browser; restart the service after backend configuration changes.
+- **Restart the service after backend configuration changes.** Front-end assets no longer need a hard refresh as of v2.8.9: nginx serves JS/CSS with `Cache-Control: no-cache` (revalidated on every request, 304 when unchanged) and the URLs carry a `?v={{APP_VERSION}}` version string, so an upgrade picks up the new files automatically. A manual hard refresh (Ctrl+F5) is only needed when the browser cached the old JS during an older release (the 30-day immutable era) and it has not expired yet.
 
 ---
 

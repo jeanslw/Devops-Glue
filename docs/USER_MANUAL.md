@@ -387,7 +387,7 @@ The page has three blocks for three different kinds of operations — do not mix
 
 **① System info card (read-only, `ci.system` permission)** — app version / schema version / seed version / **Migration Mode** (the effective `DB_AUTO_MIGRATE` value: auto = the app creates tables itself; manual = amber hint "tables are provisioned via database/*.sql or cli/migrate.php; the app only seeds") / database driver / time of the last schema sync. **This card is the first stop when deciding whether a migration is needed.**
 
-**② Table list (read-only)** — each of the 16 business tables is probed for existence and row count, quickly revealing "which table is missing" (the diagnostic entry for empty or half-initialized databases).
+**② Table list (read-only)** — each of the 17 business tables is probed for existence and row count, quickly revealing "which table is missing" (the diagnostic entry for empty or half-initialized databases).
 
 **③ Backup & restore (`super_admin`, write operations)**
 - "Backup Database": a full export-style backup (zip), recorded in the operation log; `php cli/backup-db.php --force` is the equivalent CLI (use it for cron).

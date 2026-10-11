@@ -901,7 +901,7 @@ Devops-Glue does not store log content, only `log_url` pointers. When accessing 
 - **Status card**: System monitoring page shows Custom_Push status ✅ (configured) or ⚪ (not configured)
 - **Auto-discovery**: `AutoDiscover` scans Git platforms and automatically identifies projects with `build_provider=custom_push` when `custom_push_enabled=true`
 - **Multi-select checkboxes**: `build_mode` checkboxes (jenkins/gitlab_ci/gitea_ci + Select All) show only configured CIs
-- **Refresh requirements**: Frontend changes require browser hard refresh (Ctrl+F5); config/controller changes require backend restart
+- **Refresh requirements**: **Config / controller changes require a backend restart.** Front-end assets no longer need a manual hard refresh as of v2.8.9: nginx serves `/assets/*.js|css` with `Cache-Control: no-cache` (revalidated with `ETag`/`Last-Modified` on every request, 304 when unchanged), and every asset URL in the templates carries `?v={{APP_VERSION}}` (substituted with the current version by the `/`, `/admin` and `/api/docs` renderers), so an upgrade changes the URLs and fetches the new files. A manual hard refresh is only needed if the browser cached the old JS during an older release (the `expires 30d` + `immutable` era) and it has not expired yet.
 
 #### 5.11.7 Permissions & Scope
 The report endpoint reuses the `build.report` scope, authenticated via API Token `Authorization: Bearer <token>` header.
@@ -916,7 +916,7 @@ object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
 ```
 
 - `'unsafe-inline'` cannot be removed for now: `admin.html` has many inline `onclick` and inline `style`. First-party JS has been verified to contain no `eval` / `new Function`, so `unsafe-eval` is not enabled. Once inline handlers are extracted to external event bindings, this can be narrowed to `script-src 'self'; style-src 'self'`.
-- ⚠️ **Mind the inheritance semantics when editing nginx headers**: a child block (`location` / `if`) containing **any** `add_header` discards all inherited parent `server`-level `add_header` directives — they are not additive. Because the static-asset location already has `add_header Cache-Control`, the 5 security headers must be repeated verbatim there (marked in the file as a "security header group"; change one, change the other).
+- ⚠️ **Mind the inheritance semantics when editing nginx headers**: a child block (`location` / `if`) containing **any** `add_header` discards all inherited parent `server`-level `add_header` directives — they are not additive. There are **two** static-asset locations (① `.css` / `.js` with `Cache-Control: no-cache`; ② images / fonts with `expires 30d` + `immutable`), and both carry `add_header Cache-Control`, so **both** must repeat the 5 security headers verbatim (marked in the file as a "security header group"; change one, change the other two).
 - HSTS stays commented inside the HTTPS block; enable it after HTTPS is turned on.
 
 ---
