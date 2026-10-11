@@ -152,11 +152,59 @@ How to enable:
 
 ### 3.4 Cleaning up stale tags
 
+> **First, understand the two origins of image-tag records and their trust levels** — 3.4 / 3.5 / 3.6 are three stations on one pipeline:
+>
+> | Origin | Description | Trust |
+> |---|---|---|
+> | **Scan write-back (scan-sync)** | Tags written explicitly by the Harbor image-scan callback (see 3.2) | **Authoritative** (canonical); consumed directly by the deployment layer |
+> | **Log-derived** | Tags the system **guesses** from build logs using the "push-success keyword" while pulling build records (see 3.6) | **Candidate**; used for display and backfill only |
+>
+> The closed loop: **3.6 keyword** decides what counts as a successful push in a log and produces candidate tags → **3.5 backfill** verifies candidates against Harbor and promotes them to authoritative records (written only when Harbor explicitly confirms the tag exists; never overwrites scan-sync results) → **3.4 cleanup** removes authoritative records whose tags Harbor has already deleted, so the deployment layer never reads a dead tag. All three treat **Harbor as the single source of truth**; their switches are independent of one another.
+
 The **Build Mode** page has a **🧹 Enable stale tag cleanup** switch.
 
-- **What it does**: the system treats **Harbor as the source of truth** and removes internal image-tag records that no longer exist in Harbor, avoiding stale data and keeping the deployment layer from reading tags that are already gone.
-- **When to use**: when Harbor routinely prunes tags (e.g. a "keep last N tags" retention policy), enable this so internal records always stay in sync with Harbor's actual state.
-- **How to use**: turn the switch on and the system automatically compares and cleans at suitable times (e.g. while handling build records) — no manual, per-tag deletion needed. If Harbor is temporarily unreachable during a check, records are skipped rather than wrongly deleted.
+- **What problem it solves**: internal tag records go "stale" as Harbor prunes images (retention policies, manual deletion) — the record still exists but the image is gone. A stale tag read by the deployment layer is a release that is guaranteed to fail. This feature treats **Harbor as the source of truth** and removes internal tag records that no longer exist in Harbor (the authoritative tag table and the related build-log rows are deleted in one transaction — never half-way).
+- **When to use**: when Harbor prunes tags routinely (e.g. a "keep last N tags" retention policy) or images are deleted manually. **A static repository with no retention does not need it** — its internal records never go stale.
+- **How to use**:
+  - **Automatic**: with the switch on, the system compares and cleans at suitable moments (e.g. while handling build records) — no per-tag manual deletion;
+  - **Manual**: once the switch is on, the **▶ Clean up now** button runs a cleanup immediately (equivalent to running `php cli/cleanup-pipeline-tags.php`, for deployments without cron / CLI access); each run is recorded in the operation log under the action `cleanup_pipeline_tags`.
+- **Safety boundary**: if Harbor is temporarily unreachable during a comparison, the whole batch is **skipped, not deleted** (better stale data than acting on incomplete information); records with missing fields are skipped as unverifiable. The only way to wrongly delete is "Harbor itself returns a wrong tag list", which normal operations never produce.
+
+### 3.5 Backfilling image tags from build logs
+
+The **Build Mode** page has a **🔄 Enable image tag backfill** switch and a **▶ Backfill now** button.
+
+- **What problem it solves**: scan write-back (3.2) requires the Harbor scan callback to actually arrive — and real life has gaps: no callback configured, an unreachable callback URL, or the scanner being down at that moment. The result: **the image was pushed successfully but the authoritative record has no tag**, so the deployment layer cannot see that version. "Backfill" takes log-derived candidate tags (see 3.6), **verifies each one exists in Harbor**, and then writes them into the authoritative records — a safety net for scan write-back, so versions that were "pushed but whose callback was lost" do not vanish from the system.
+- **Trust boundary (why it is safe to promote into the authoritative table)**: a tag is written **only when Harbor explicitly reports it as existing** — the same trust level as scan-sync, never a blind trust in log regexes. It is also written **only when the pipeline has no authoritative tag yet**, never overwriting scan-sync results; safe to re-run (already-backfilled items are skipped naturally).
+- **When to use**: right after onboarding, when historical builds had no scan callbacks — enable the switch and click **Backfill now** once to bulk-recover historical versions. Afterwards you can leave it on for automatic coverage, or run it manually only when needed.
+- **Reading the result**: `Backfill complete: checked {checked} candidates, backfilled {promoted}; skipped {skipped} (already tagged), {unreachable} (Harbor unreachable), {unverifiable} (incomplete fields)` — `promoted` is what was actually written; `unreachable` usually means Harbor was briefly down, just re-run later; the run is recorded in the operation log under the action `tag_backfill`.
+- **Note**: backfill depends on candidate tags being derivable from build logs (a 3.6 keyword hit). If your CI log format is unusual and nothing is derived, adjust the 3.6 keyword and re-run the backfill.
+
+### 3.6 Build-log image keyword
+
+The **Build Mode** page has a **🔍 Build-log image keyword** input (default `digest`).
+
+- **What problem it solves**: the biggest risk of log-derived tags is "treating a failed build as a successful one" — a log line mentioning the image does not mean the push succeeded (it may be an echo right before a `docker push` error). The keyword is the **criterion for push success**: a candidate tag (`repo:tag` / `-t TAG`) is extracted only when the build log **first hits the keyword** (interpreted as "the push really succeeded") **and contains this project's Harbor repository path**. The default `digest` matches the characteristic line of a successful `docker push` output (`digest: sha256:...`).
+- **Configuration**: separate multiple keywords with `|` (any hit counts), case-insensitive; **empty = no filtering** (extract whenever the log contains the repository path — advisable only if your logs never echo failed pushes).
+- **When to adjust**: when your CI output differs from standard docker (e.g. a homegrown build tool prints `PUSH OK` on success), set the keyword to `digest|PUSH OK`; when backfill (3.5) keeps reporting `unverifiable` / finds no tags, check first whether this keyword matches your logs' success output.
+- **What it affects**: the keyword only governs the "Image Tag" column of **pull-mode** build records (the log-derived candidates); scan write-back (3.2) bypasses logs entirely and is unaffected.
+
+### 3.7 Log settings (API access logs / operation logs)
+
+The **Build Mode** page has a **📋 Log Settings** card with three items: **write level**, **retention days**, and **scheduled cleanup**.
+
+- **What problem it solves**: API access logs are stored per request (one row per API call); under heavy traffic the table grows without bound and eventually slows queries and fills the disk. Log settings turn "what to record" and "how long to keep" into adjustable policies, so log volume matches your audit needs instead of unconditionally keeping everything forever.
+- **Write level** (governs only what **API access logs** are persisted; file logs are always complete):
+  | Level | Persisted | Suited for |
+  |---|---|---|
+  | All (success + denied + failure) | every request | full audit trails (who called which API, when) |
+  | Denied + failure only | only 401/403/404-style rejections and 5xx | **recommended**: audits care about abnormal calls; successful traffic need not occupy the table |
+  | Failure only | only 5xx | caring only about the system's own faults |
+  | Off | nothing persisted | when no API-level audit is needed at all |
+- **Retention days**: 90 / 60 / 30 days or custom (1–3650). Expired rows are removed daily by **scheduled cleanup** — which applies **to both API access logs and operation logs** (they share this retention policy).
+- **Scheduled cleanup switch**: on by default. Turning it off keeps both kinds of logs **forever**; advisable only with external archiving (e.g. regular exports to a log platform).
+- **Not covered**: **deployment logs** (owned by the CD system) and **build logs** (owned by the CI source) are unaffected by these settings.
+- **Relation to the operation-log page**: retention / cleanup here decides how long the data **lives**; the admin "Log Center → Operation Log" page decides **how you query it** — query capability is unaffected by the write level (though under "Off" the API access log page naturally has no new data to show).
 
 ---
 ## 4. User Management
