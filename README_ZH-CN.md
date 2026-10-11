@@ -3,7 +3,7 @@ Devops-Glue API 是基于 Slim4 为小团队打造的 DevOps 工具链增强集�
 
 <p align="center">
   <strong>🔧 轻量级 CI 管理服务 | 小团队的瑞士军刀</strong><br/>
-  PHP + Slim4 构建，专为小团队设计的持续集成与 DevOps 数据聚合平台
+  PHP + Slim4 构建，专为小团队设计的持续集成/持续交付数据聚合平台
 </p>
 
 <p align="center">
@@ -20,15 +20,15 @@ Devops-Glue API 是基于 Slim4 为小团队打造的 DevOps 工具链增强集�
 
 ## 为什么选择 Devops-Glue + CD？
 
-> 🔧 **给 Jenkins / GitLab CI / Gitea CI / Custom CI 加一层统一管理控制台**
-> ✅ **分散不同的CI系统**： Jenkins 、 GitLab CI 项目、Gitea CI 、Custom CI 变得可管理、可视化、可审计
+> 🔧 **给 Jenkins / GitLab CI / Gitea CI / Custom CI 统一管理控制台**
+> ✅ **分散不同的CI系统**： Jenkins 、 GitLab CI 、Gitea CI 和自定义CI变得可管理、可视化、可审计
 
 - 🔍 **统一构建视图**：跨引擎聚合检索所有构建历史，告别多平台切换
 - 📝 **统一日志中心**：包含操作日志、API调用日志、部署日志
 - 🔧 **支持LDAP/SSO登录**：轻松融入企业内部管理体系，彻底告别信息孤岛，实现账户互通。
 - 📝 **Custom_Push**：新增的Custom_Push功能，正交设计让拉取式、推送式同时兼得 [\[**应用案例**\]](docs/管理员配置手册.md#12-配置构建模式)
 - 🔐 **细粒度 RBAC**：比原生插件更灵活的权限管控，精准匹配中小团队组织架构
-- 🚀 **非侵入式接入**：仅通过 API 对接，零修改现有 CI 配置，5 分钟完成纳管
+- 🚀 **非侵入式接入**：仅通过 API 对接，零修改现有 CI 配置，10分钟完成纳管
 
 > **[英文版](README.md)**
 
@@ -37,16 +37,19 @@ Devops-Glue API 是基于 Slim4 为小团队打造的 DevOps 工具链增强集�
 
 ## 功能特性
 
-- **自定义推送式 CI（Custom_Push）** — 用户 CI 推送构建状态、日志地址、镜像 tag，Devops-Glue 仅存元数据，与 pull-based CI 正交可同时启用
-- **多构建通道** — Jenkins + GitLab CI + Gitea CI + Custom_Push，随意切换或并存，统一 API
-- **统一日志** — 操作日志、API调用日志、部署日志
-- **多平台 Git** — GitLab · GitHub · Gitee · Gitea，企业内部自建 或 SaaS 均可
-- **全链路映射** — Job ↔ Git 仓库 ↔ Harbor 镜像，构建→代码→产物自动关联
-- **安全扫描审计** — SAST、密钥扫描、依赖漏洞检测，通过 Commit Status 回写
-- **角色权限（数据驱动 RBAC）** — 多级自定义角色，权限按角色可配置。仅 `super_admin` 为内置系统角色，其余角色及其权限由管理员在后台创建，权限键与隐含规则全部存数据库。
-- **国际化** — 中/英文双语界面，`?lang=` 即时切换，基于 `symfony/translation`
-- **管理面板** — 服务监控、映射配置、安全扫描、用户管理
-- **零配置启动** — 默认 SQLite，一键切换 MySQL / MariaDB
+- **自定义推送式 CI（Custom_Push）** — 用户 CI 推送 →  Devops-Glue 模式，仅存元数据，与 pull-based CI 正交可同时启用。
+- **多构建通道** — Jenkins + GitLab CI + Gitea CI + Custom_Push，随意切换或并存。
+- **统一日志** — 日志中心包括：操作日志、API调用日志、CD部署日志功能，供安全审计，日志审计。
+- **构建记录** - 拉取式构建记录、推送式构建记录，统一构建日志，一目了然，不再到处查看日志。
+- **多平台 Git** — GitLab · GitHub · Gitee · Gitea，企业内部自建 或 SaaS 均可。
+- **全链路映射** — Job/Pipeline/Actions ID ↔ Git 仓库 ↔ Harbor 镜像Tag ↔ CD 部署，代码→构建→产物自动关联,配合CD服务，构成完整链路。
+- **安全扫描审计** — SAST、密钥扫描、依赖漏洞检测，通过 Commit Status 回写。
+- **角色权限（RBAC）** — 多级自定义角色，权限按角色可配置。内置系统角色，其余角色及其权限由管理员在后台创建，权限键与隐含规则全部存数据库。
+- **统一API** — 提供安全token，token 撤销、删除，细粒度scope管控，供CD 服务等第三方安全调用。
+- **管理面板** — 服务监控/映射配置/安全扫描/用户管理/构建模式/构建记录/日志中心/API管理/系统设置。
+- **权威构建产物** — 正常构建流程通过scan-sync回写获取，失效记录自动安全清理，偶遇回写失败还可通过日志推导回填，所有构建产物都必须经过镜像仓库验证。
+- **零配置启动** — 默认 SQLite，一键切换 MySQL / MariaDB (推荐)。
+- **国际化** — 中/英文双语界面，`?lang=` 即时切换，基于 `symfony/translation`。
 
 ## 架构全景图
 <details>
@@ -124,11 +127,15 @@ curl http://localhost:8080/api/health
 
 | 组件 | 版本要求 |
 |---|---|
-| PHP | 8.1+ |
-| 数据库 | SQLite（默认）/ MySQL 8.0+ / MariaDB 10.4+ |
-| Jenkins | v2.60+ |
-| GitLab | v9.0+（API v4） |
-| Harbor | v1.10.1 / v2.x |
+| 语言| PHP | 8.1+ |
+| 项目管理 | Composer | v2.9.4 |
+| 数据库| SQLite / MySQL 8.0+ / MariaDB 10.4+ | 自建或SaaS |
+| Jenkins | v2.60+ | 自建 |
+| GitLab | v9.0+（API v4） | 自建 |
+| Gitea | v1.27.x（API v1） | 自建 |
+| GitHub | v9.0+（API v3） | SaaS |
+| Gitee | （API v5） | SaaS |
+| Harbor | v1.10.1 / v2.x | 自建 |
 
 > **Harbor 机器人账户：** 通过机器人账户调用 REST API 需 Harbor **v2.2.0+**（secret 制）。v1.x / v2.0.x / v2.1.x 的机器人令牌为 JWT（仅 Docker/Helm CLI），请改用普通账户。详见 [docs/管理员配置手册.md](docs/管理员配置手册.md#11-接入-harbor)。
 
@@ -153,18 +160,6 @@ curl http://localhost:8080/api/health
 
 - **Devops-CD** — 持续部署系统，依赖于本系统。
   https://gitee.com/jeanslw/devops_cd
-
-## 项目结构
-
-```
-config/         # 服务端配置（app.env、DI 容器、路由、设置）
-database/       # MySQL 和 SQLite 初始化脚本
-docker-compose.yml # Docker Compose（PHP + MySQL 8.4）
-public/         # Web 根目录（index.php、静态资源）
-src/            # 控制器与服务层
-templates/      # HTML 模板（admin、swagger、openapi）
-docs/           # 文档
-```
 
 ## 许可证
 
