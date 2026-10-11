@@ -1,6 +1,7 @@
 <?php
 use Slim\App;
 use Slim\Routing\RouteCollectorProxy;
+use App\Config\AppConfig;
 use App\Controller\GitController;
 use App\Controller\HealthzController;
 use App\Controller\MainController;
@@ -19,11 +20,13 @@ if (!isset($app) || !$app instanceof App) {
 }
 
 // 管理页面
+// ⚠️ admin.html 里的静态资源都写成 /assets/xxx.js?v={{APP_VERSION}}：资源文件名不带内容哈希，
+//    若 URL 不随版本变化，升级镜像后浏览器会继续用被强缓存的旧 JS/CSS（HTML 已是新版），
+//    表现为「某个新功能永远不出现」。故此处必须与 / 路由一致，把占位符替换为当前版本号。
 $app->get('/admin', function ($request, $response) {
     $htmlFile = __DIR__ . '/../templates/admin.html';
-    $response->getBody()->write(file_exists($htmlFile)
-        ? file_get_contents($htmlFile)
-        : '<h1>Page Not Found / 页面丢失</h1>');
+    $html = file_exists($htmlFile) ? (string) file_get_contents($htmlFile) : '<h1>Page Not Found / 页面丢失</h1>';
+    $response->getBody()->write(str_replace('{{APP_VERSION}}', AppConfig::APP_VERSION, $html));
     return $response->withHeader('Content-Type', 'text/html; charset=utf-8');
 });
 
