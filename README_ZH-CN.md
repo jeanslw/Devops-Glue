@@ -125,11 +125,11 @@ curl http://localhost:8080/api/health
 
 ## 运行环境
 
-| 组件 | 版本要求 |
-|---|---|
-| 语言| PHP | 8.1+ |
-| 项目管理 | Composer | v2.9.4 |
-| 数据库| SQLite / MySQL 8.0+ / MariaDB 10.4+ | 自建或SaaS |
+| 组件 | 版本要求 | 部署 |
+|---|---|---|
+| 语言 | PHP 8.1+ | — |
+| 项目管理 | Composer v2.9.4 | — |
+| 数据库 | SQLite / MySQL 8.0+ / MariaDB 10.4+ | 自建或 SaaS |
 | Jenkins | v2.60+ | 自建 |
 | GitLab | v9.0+（API v4） | 自建 |
 | Gitea | v1.27.x（API v1） | 自建 |

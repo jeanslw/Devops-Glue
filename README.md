@@ -3,7 +3,7 @@ DevOps-Glue API is a Slim 4–based integration platform designed to enhance Dev
 
 <p align="center">
   <strong>🔧 Lightweight CI Management Service | Swiss Army Knife for Small Teams</strong><br/>
-  Built with PHP + Slim4 — A CI & DevOps data aggregation platform designed for small teams
+  Built with PHP + Slim4 — A CI & CD data aggregation platform designed for small teams
 </p>
 
 <p align="center">
@@ -21,15 +21,15 @@ DevOps-Glue API is a Slim 4–based integration platform designed to enhance Dev
 
 ##  Why Devops-Glue + CD?
 
-> 🔧 **A Unified Management Console for Jenkins & GitLab CI & Gitea CI & Custom CI**
-> ✅ Make your distributed Jenkins instances, GitLab CI projects,Gitea CI projects and Custom CI manageable, observable, and auditable
+> 🔧 **A Unified Management Console for Jenkins / GitLab CI / Gitea CI / Custom CI**
+> ✅ Make your distributed Jenkins instances, GitLab CI projects, Gitea CI projects and custom CI manageable, visualizable, and auditable
 
 - 🔍 **Unified Build View**: Cross-engine search and aggregation of all build history — no more platform switching
 - 📝 **Unified Log Center**: Operation logs, API access logs, and deploy logs
 - 🔧 **Support LDAP/SSO Login**: Easily integrate into the company's internal management system, say goodbye to information silos, and achieve account connectivity
 - 📝 **Custom_Push**: Orthogonal push-based CI — pull and push coexist simultaneously. [\[**Use case**\]](docs/ADMIN_MANUAL.md#12-configure-build-mode)
 - 🔐 **Fine-grained RBAC**: More flexible access control than native plugins, tailored for team-scale organizations
-- 🚀 **Non-invasive Integration**: API-only connection with zero changes to existing CI configs — onboard in under 5 minutes
+- 🚀 **Non-invasive Integration**: API-only connection with zero changes to existing CI configs — onboard in about 10 minutes
 
 > **[Chinese](README_ZH-CN.md)**
 
@@ -38,17 +38,19 @@ DevOps-Glue API is a Slim 4–based integration platform designed to enhance Dev
 
 ## Features
 
-- **Custom Push CI (Custom_Push)** — User CI pushes build status, log URL, image tags; Devops-Glue only stores metadata without participating in builds. Orthogonal to pull-based CI, can be enabled simultaneously
-- **Multi-Build Pipeline** — Jenkins + GitLab CI + Gitea CI + Custom_Push, switch or coexist, unified API
-- **Unified Logs** — Operation logs, API access logs, deploy logs
-- **Multi-Platform Git** — GitLab · GitHub · Gitee · Gitea, Built in-house or SaaS
-- **Full-Chain Mapping** — Job ↔ Git repo ↔ Harbor image, build→code→artifact auto-association
-- **Security Scan Audit** — SAST, secret scanning, dependency vulns written back via Commit Status
-- **Role-Based Access (Data-Driven RBAC)** — custom multi-level roles with per-role permissions. Only `super_admin` is a built-in system role; every other role and its permission set is user-defined in the admin UI. Permission keys and implied rules are stored in DB; no code change required when new menus/modules are added.
-- **i18n** — Chinese / English bilingual interface, `?lang=` instant switching via `symfony/translation`
-- **Admin Dashboard** — service monitoring, mapping config, security scan, user management
-- **Zero-Config Startup** — SQLite by default, MySQL / MariaDB with one-click switch
-- 
+- **Custom Push CI (Custom_Push)** — Your CI pushes → Devops-Glue stores metadata only; orthogonal to pull-based CI, can be enabled simultaneously
+- **Multi-Build Channels** — Jenkins + GitLab CI + Gitea CI + Custom_Push, switch or coexist freely
+- **Unified Logs** — The Log Center includes operation logs, API access logs, and CD deployment logs — for security and log auditing
+- **Build Records** — Pull-based and push-based build records unified into one build log view; see everything at a glance instead of hunting across systems
+- **Multi-Platform Git** — GitLab · GitHub · Gitee · Gitea, built in-house or SaaS
+- **Full-Chain Mapping** — Job/Pipeline/Actions ID ↔ Git repo ↔ Harbor image tag ↔ CD deployment; code→build→artifact auto-association, forming a complete chain together with the CD service
+- **Security Scan Audit** — SAST, secret scanning, dependency vulnerability detection, written back via Commit Status
+- **Role-Based Access (RBAC)** — Multi-level custom roles with per-role permissions. Built-in system roles; every other role and its permissions are created by admins in the console, with permission keys and implied rules stored in the database
+- **Unified API** — Secure tokens with revocation & deletion and fine-grained scope control, for secure third-party calls such as the CD service
+- **Admin Dashboard** — Service monitoring / mapping config / security scan / user management / build modes / build records / log center / API management / system settings
+- **Authoritative Build Artifacts** — Obtained via scan-sync write-back in the normal build flow; stale records are safely auto-cleaned; on write-back failures they can be back-filled via log derivation; every build artifact must be verified through the image registry
+- **Zero-Config Startup** — SQLite by default, one-click switch to MySQL / MariaDB (recommended)
+- **i18n** — Chinese / English bilingual interface, `?lang=` instant switching via `symfony/translation` 
 
 ##  Architecture Overview
 <details>
@@ -124,13 +126,17 @@ Visit `http://localhost:8080/api/docs` for interactive API docs (Swagger UI).
 
 ## Requirements
 
-| Component | Version |
-|---|---|
-| PHP | 8.1+ |
-| Database | SQLite (default) / MySQL 8.0+ / MariaDB 10.4+ |
-| Jenkins | v2.60+ |
-| GitLab | v9.0+ (API v4) |
-| Harbor | v1.10.1 / v2.x |
+| Component | Version | Deployment |
+|---|---|---|
+| Language | PHP 8.1+ | — |
+| Package Manager | Composer v2.9.4 | — |
+| Database | SQLite / MySQL 8.0+ / MariaDB 10.4+ | Self-hosted or SaaS |
+| Jenkins | v2.60+ | Self-hosted |
+| GitLab | v9.0+ (API v4) | Self-hosted |
+| Gitea | v1.27.x (API v1) | Self-hosted |
+| GitHub | v9.0+ (API v3) | SaaS |
+| Gitee | (API v5) | SaaS |
+| Harbor | v1.10.1 / v2.x | Self-hosted |
 
 > **Harbor robot account:** calling the REST API via a robot account requires Harbor **v2.2.0+** (secret-based). On v1.x / v2.0.x / v2.1.x the robot token is a JWT (Docker/Helm CLI only) — use a normal account instead. See [docs/ADMIN_MANUAL.md](docs/ADMIN_MANUAL.md#11-connect-harbor).
 
@@ -155,18 +161,6 @@ See [docs/ADMIN_MANUAL.md](docs/ADMIN_MANUAL.md) for full environment variable r
 
 - **Devops-CD** — Continuous Deployment system that can be used alongside this system:  
   https://github.com/jeanslw/Devops_CD
-
-## Project Structure
-
-```
-config/         # Server config (app.env, DI container, routes, settings)
-database/       # MySQL & SQLite init scripts
-docker-compose.yml # Docker Compose (PHP + MySQL 8.4)
-public/         # Web root (index.php, static assets)
-src/            # Controllers & Services
-templates/      # HTML templates (admin, swagger, openapi)
-docs/           # Documentation
-```
 
 ## License
 
