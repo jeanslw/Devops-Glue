@@ -351,6 +351,14 @@ class Database
     /**
      * 当前代码版本定义的全部数据表（系统信息面板按此清单逐表探测存在性）
      *
+     * ⚠️ 这里是**显式清单**（不是反射 AppConfig），新增应用表时必须同步补一行——
+     * 漏加的表现是后台「数据管理 → 数据表清单」少一张表、`/healthz` 的 `tables_missing`
+     * 与该表的真实缺失状态不一致。`tests/Unit/DatabaseBootstrapTest.php`
+     * 的 testSchemaProbeListCoversEveryAppOwnedTable 会守着这个不变量。
+     *
+     * 不含 `TABLE_CD_DEPLOY_LOG_VIEW`（v_glue_deploy_logs）：那是 Devops-CD 侧建立的
+     * 只读契约视图，归 CD 所有，不由本应用的建表逻辑创建/探测。
+     *
      * @return list<string>
      */
     private static function schemaTables(): array
@@ -372,6 +380,9 @@ class Database
             \App\Config\AppConfig::TABLE_API_TOKENS,
             \App\Config\AppConfig::TABLE_USER_IDENTITIES,
             \App\Config\AppConfig::TABLE_OPERATION_LOGS,
+            // API token 调用审计日志（与 ci_operation_logs 同为 append-only 审计表，
+            // ensureTables() 会创建、cleanup-api-access-logs.php 会清理，故必须纳入探测清单）
+            \App\Config\AppConfig::TABLE_API_ACCESS_LOGS,
         ];
     }
 

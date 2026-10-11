@@ -392,6 +392,41 @@ class DatabaseBootstrapTest extends TestCase
     }
 
     /**
+     * 守卫不变量：Database::schemaTables() 是**显式清单**，必须覆盖 AppConfig 里全部应用自有表。
+     *
+     * 回归背景：`ci_api_access_logs` 曾被漏在这份清单之外 —— 该表由 ensureTables() 真实创建、
+     * 由 cli/cleanup-api-access-logs.php 定时清理，却不在探测清单里，表现为「新装实例的数据表卡片
+     * 比真实库少一张」以及 /healthz 的 tables_missing 感知不到它的缺失。
+     *
+     * 唯一合法例外是 TABLE_CD_DEPLOY_LOG_VIEW（v_glue_deploy_logs）：那是 Devops-CD 侧建立的
+     * 只读契约视图，不由本应用的建表逻辑创建，因此不予探测。
+     */
+    public function testSchemaProbeListCoversEveryAppOwnedTable(): void
+    {
+        // 空内存库 → missingTables() 返回的即 schemaTables() 的全量清单（顺序与定义一致）
+        $probed = Database::missingTables($this->createMemoryPdo());
+
+        $ref   = new \ReflectionClass(AppConfig::class);
+        $owned = [];
+        foreach ($ref->getConstants() as $name => $value) {
+            if (!str_starts_with($name, 'TABLE_') || !is_string($value)) {
+                continue;
+            }
+            if ($value === AppConfig::TABLE_CD_DEPLOY_LOG_VIEW) {
+                continue; // CD 侧契约视图，不归本应用的建表/探测逻辑管
+            }
+            $owned[] = $value;
+        }
+
+        $this->assertGreaterThan(10, count($owned), 'AppConfig 表常量反射结果异常（预期十几张应用表）');
+        $this->assertSame(
+            [],
+            array_values(array_diff($owned, $probed)),
+            'AppConfig 中的每张应用表都必须出现在 Database::schemaTables() 探测清单里（漏加会让后台表清单少表）'
+        );
+    }
+
+    /**
      * 只读预检（cli/migrate.php --dry-run 的数据源）：空库 → 列出全部缺失表，
      * 且**确实没写库**（ci_app_settings 仍不存在，证明未触发建表/种子）。
      */
