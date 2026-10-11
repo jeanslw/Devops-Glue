@@ -397,6 +397,7 @@ Token expires in 24 hours. `super_admin` role returns `"*"` for permissions.
 | `/api/admin/migrate` | POST | Manually sync the schema (create missing tables + back-fill columns/indexes + seed permissions + mark schema current; answers 409 pointing at `php cli/migrate.php` when the account lacks DDL privileges; super_admin only) |
 | `/api/admin/backup` | POST | Manually run a database backup (zip archive, keeps the most recent 10; when CD is enabled an extra CD-library archive is produced; super_admin only) |
 | `/api/admin/backups` | GET | List generated database backup files (super_admin only) |
+| `/api/admin/integrated_services/{service}` | GET | Integrated service enablement status (currently only `cd`; returns enabled / provision (auto|manual) / default_provision (derived from the current migration mode) / bound token soft reference and liveness / scopes that will be granted on enable; a missing row yields the enabled=false default state; requires `ci.system`) |
 | `/api/admin/tag_cleanup` | POST | Run stale tag cleanup once, on demand (equivalent to `cli/cleanup-pipeline-tags.php`; returns 409 and skips safely when the switch is off or Harbor is unconfigured; requires `ci.platform-config`) |
 | `/api/admin/tag_backfill` | POST | Run image tag log backfill once, on demand (equivalent to `cli/backfill-pipeline-tags.php`; same guards, fills missing tags only and never overwrites scan results; requires `ci.platform-config`) |
 | `/api/admin/operation_logs` | GET | Operation audit log (filter by `?username=&action=&result=&operator_type=&date_from=&date_to=&page=&per_page=`; requires `ci.operation-logs`) |
@@ -501,6 +502,8 @@ Token expires in 24 hours. `super_admin` role returns `"*"` for permissions.
 | `/api/admin/api_tokens` | POST | Create a token, returns one-time plaintext |
 | `/api/admin/api_tokens/{id}/revoke` | POST | Revoke (**disable**, keeps the record), returns `{"ok":true}` |
 | `/api/admin/api_tokens/{id}` | DELETE | Delete (**hard delete** the record), returns `{"ok":true}` |
+| `/api/admin/integrated_services/{service}/enable` | POST | Enable an integrated service: in one transaction upserts the contract row (provision defaults to auto/manual per the current `DB_AUTO_MIGRATE`, overridable via body) and auto-issues a service token restricted to build.read / build.write / rbac.user.write; the response returns the plaintext `token` once; 409 when already enabled; super_admin only |
+| `/api/admin/integrated_services/{service}/disable` | POST | Disable (freeze): in one transaction sets enabled=0 and revokes the bound token; no tables or data are deleted; 409 when not enabled; super_admin only |
 
 #### Create Token
 

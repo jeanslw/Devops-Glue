@@ -717,18 +717,46 @@ Go to "API Management" (requires the relevant permission) and choose the require
 > **Note:**
 > - The token is shown in plaintext only once at creation; save it immediately.
 > - `/api/admin/*` management endpoints always reject API tokens (only super_admin interactive login may access them).
+> - Do **not** create the Devops-Glue CD service token manually: enabling "CD deployment service" under "Data Management → Integrated services" issues it automatically. See section 16.
 
 ---
 
 ## 16. Connect Devops-Glue CD
 
-To let the companion [Devops-Glue CD](https://gitee.com/jeanslw/devops_cd) call this system correctly, configure the connection to this system in Devops-Glue CD's `app.env`. Choose **one** authentication method:
+### 16.1 Enable "CD deployment service" in this platform (required)
 
-**Recommended — API token** (create one for the CD service in "API Management"; grant the read / write / report scopes it needs):
+CD shares the same database with this platform, but **whether it creates tables and serves is decided by the `integrated_services` contract table** (this platform is the only writer; CD is read-only). When not enabled, CD creates no tables and rejects login and every request with 503.
+
+Entry point: "Data Management → Integrated services" (viewing requires the `ci.system` permission; enabling/disabling is **super_admin only**).
+
+**Enablement flow:**
+
+1. Click "Enable" and confirm. In **one transaction** the platform:
+   - writes `enabled=1` to `integrated_services`;
+   - captures the provision mode from this platform **current** migration mode (`DB_AUTO_MIGRATE`) — it is sampled only at enable time and does **not** change when you switch migration mode later:
+     - `auto` (automatic schema mode): CD is authorized to **create/upgrade its tables automatically** in the shared database, for both MySQL and SQLite;
+     - `manual` (manual schema mode): CD **never creates tables** and only accepts pre-created tables — import CD's bundled `database/init_mysql.sql` first, then enable;
+   - auto-issues a service token restricted to the scopes `build.read`, `build.write`, `rbac.user.write` (no access to any management endpoint).
+2. The plaintext token in the popup is shown **only once** (only its SHA-256 digest is stored); copy it somewhere safe immediately.
+3. Put the token into CD's `app.env` as described in section 16.2, then start CD.
+4. On CD's first connection to the shared database: under `auto` it creates/migrates tables and starts serving; under `manual` it starts serving only after verifying all 14 CD tables exist, otherwise it returns 503 with an import hint.
+
+**Disabling (freezing) and rotation:**
+
+- "Disable (freeze)" makes CD immediately reject all requests and revokes the bound service token in the same transaction;
+- **no CD table or data is ever deleted** — re-enabling restores service;
+- re-enabling issues a **new token** (the old one cannot be recovered); update CD's `CI_API_TOKEN` accordingly;
+- enabling an already-enabled service returns 409: disable first if you need to rotate credentials.
+
+### 16.2 Configure CD connection settings
+
+Configure the connection to this system in Devops-Glue CD's `app.env`. Choose **one** authentication method:
+
+**Recommended — integrated service token** (the one auto-issued by the enablement wizard in 16.1):
 
 ```ini
 CI_API_URL=http://devops-glue      # Address of this system
-CI_API_TOKEN=dg_xxx                # API token created above
+CI_API_TOKEN=dg_xxx                # Token shown once by the enablement wizard
 ```
 
 **Deprecated — service account** (`CI_ADMIN_USER` / `CI_ADMIN_PASS`, being phased out; prefer the API token):

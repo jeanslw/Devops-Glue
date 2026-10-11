@@ -398,6 +398,7 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 | `/api/admin/migrate` | POST | 手动同步库结构（补建缺失表 + 补齐字段/索引 + 种子权限 + 标记 schema 当前；账号无 DDL 权限时返回 409 并提示改用 `php cli/migrate.php`；仅 super_admin） |
 | `/api/admin/backup` | POST | 手动执行数据库备份（zip 归档，滚动留存最近 10 份；启用 CD 时额外产出一份 CD 库归档；仅 super_admin） |
 | `/api/admin/backups` | GET | 列出已生成的数据库备份文件（仅 super_admin） |
+| `/api/admin/integrated_services/{service}` | GET | 集成服务启用状态（当前仅 `cd`；返回 enabled / provision（auto\|manual）/ default_provision（按当前迁移模式推导）/ 配套 token 软引用与活性 / 启用时将签发的 scopes；行不存在返回 enabled=false 默认态；需 `ci.system`） |
 | `/api/admin/tag_cleanup` | POST | 手动立即执行一次过期 tag 清理（等价 `cli/cleanup-pipeline-tags.php`；对应开关未开启或 Harbor 未配置时返回 409 安全跳过；需 `ci.platform-config`） |
 | `/api/admin/tag_backfill` | POST | 手动立即执行一次镜像 Tag 日志回填（等价 `cli/backfill-pipeline-tags.php`；同上，仅补缺失 tag 不覆盖扫描结果；需 `ci.platform-config`） |
 | `/api/admin/operation_logs` | GET | 操作审计日志（支持 `?username=&action=&result=&operator_type=&date_from=&date_to=&page=&per_page=` 筛选；需 `ci.operation-logs`） |
@@ -502,6 +503,8 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 | `/api/admin/api_tokens` | POST | 创建 Token，返回一次性明文 |
 | `/api/admin/api_tokens/{id}/revoke` | POST | 撤销（**禁用**，保留记录），返回 `{"ok":true}` |
 | `/api/admin/api_tokens/{id}` | DELETE | 删除（**硬删除**记录），返回 `{"ok":true}` |
+| `/api/admin/integrated_services/{service}/enable` | POST | 启用集成服务：事务内 upsert 契约行（provision 默认按当前 `DB_AUTO_MIGRATE` 取 auto/manual，可 body 显式覆盖）+ 自动签发限定 scope（build.read / build.write / rbac.user.write）服务 Token，响应一次性返回明文 `token`；已启用 409；仅 super_admin |
+| `/api/admin/integrated_services/{service}/disable` | POST | 禁用（冻结）：事务内置 enabled=0 并撤销配套 Token；不删表不删数据；未启用 409；仅 super_admin |
 
 #### 创建 Token
 

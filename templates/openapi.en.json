@@ -4583,6 +4583,288 @@
         }
       }
     },
+    "/api/admin/integrated_services/{service}": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Get integrated service enablement status",
+        "description": "Reads the integrated_services contract row (CI is the only writer; integrated services are read-only). When no row exists, a default enabled=false state is returned (no seeding). Requires the ci.system permission.",
+        "operationId": "adminIntegratedServiceStatus",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "service",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "cd"
+              ]
+            },
+            "description": "Integrated service name (currently only cd)",
+            "example": "cd"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Integrated service status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "service": {
+                      "type": "string",
+                      "example": "cd"
+                    },
+                    "enabled": {
+                      "type": "boolean",
+                      "description": "Whether the service is enabled (missing row / enabled=0 both mean false)"
+                    },
+                    "provision": {
+                      "type": "string",
+                      "enum": [
+                        "auto",
+                        "manual"
+                      ],
+                      "description": "Provision mode: auto = the integrated service may create tables automatically; manual = only pre-created tables are accepted"
+                    },
+                    "default_provision": {
+                      "type": "string",
+                      "enum": [
+                        "auto",
+                        "manual"
+                      ],
+                      "description": "The provision value that will be written when enabling now (follows CI DB_AUTO_MIGRATE)"
+                    },
+                    "token_id": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "description": "Soft reference to the bound service token api_tokens.id (no plaintext/hash stored)"
+                    },
+                    "token_name": {
+                      "type": "string"
+                    },
+                    "token_active": {
+                      "type": "boolean",
+                      "description": "Whether the bound token is still valid (exists, not revoked, not expired)"
+                    },
+                    "token_scopes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Restricted scopes that will be granted when enabling"
+                    },
+                    "updated_by": {
+                      "type": "string"
+                    },
+                    "created_at": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "updated_at": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "Missing ci.system permission"
+          },
+          "404": {
+            "description": "Unknown integrated service"
+          }
+        }
+      }
+    },
+    "/api/admin/integrated_services/{service}/enable": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Enable integrated service (auto-issues a scoped service token)",
+        "description": "In one transaction: writes provision according to the current CI DB_AUTO_MIGRATE mode (optionally overridden via body.provision = auto/manual), issues a service token restricted to build.read/build.write/rbac.user.write, and upserts the integrated_services row. The plaintext token is returned in the response exactly once. If already enabled, returns 409 (disable first to rotate credentials). super_admin only.",
+        "operationId": "adminIntegratedServiceEnable",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "service",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "cd"
+              ]
+            },
+            "example": "cd"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "provision": {
+                    "type": "string",
+                    "enum": [
+                      "auto",
+                      "manual"
+                    ],
+                    "description": "Optional. Defaults to the current CI migration mode"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Enabled; token is a one-time plaintext",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "service": {
+                      "type": "string",
+                      "example": "cd"
+                    },
+                    "provision": {
+                      "type": "string",
+                      "enum": [
+                        "auto",
+                        "manual"
+                      ]
+                    },
+                    "token_id": {
+                      "type": "integer"
+                    },
+                    "token": {
+                      "type": "string",
+                      "description": "One-time plaintext token (dg_ prefix), returned only now"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "Not super_admin"
+          },
+          "404": {
+            "description": "Unknown integrated service"
+          },
+          "409": {
+            "description": "Service already enabled"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        }
+      }
+    },
+    "/api/admin/integrated_services/{service}/disable": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Disable integrated service (freeze service and revoke its token)",
+        "description": "In one transaction sets enabled=0 (the integrated service immediately rejects all requests) and revokes the bound service token. No integrated-service tables or data are deleted; re-enabling restores service (a new token is issued). Returns 409 if it was never enabled. super_admin only.",
+        "operationId": "adminIntegratedServiceDisable",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "service",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "cd"
+              ]
+            },
+            "example": "cd"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "service": {
+                      "type": "string",
+                      "example": "cd"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "Not super_admin"
+          },
+          "404": {
+            "description": "Unknown integrated service"
+          },
+          "409": {
+            "description": "Service is not enabled"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        }
+      }
+    },
     "/.well-known/openid-configuration": {
       "get": {
         "tags": [

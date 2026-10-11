@@ -4598,6 +4598,288 @@
         }
       }
     },
+    "/api/admin/integrated_services/{service}": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "查询集成服务启用状态",
+        "description": "读取 integrated_services 契约行（CI 唯一写入，集成服务只读）。行不存在时返回 enabled=false 的默认状态（不做种子写入）。需要 ci.system 权限。",
+        "operationId": "adminIntegratedServiceStatus",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "service",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "cd"
+              ]
+            },
+            "description": "集成服务名（当前仅 cd）",
+            "example": "cd"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "集成服务状态",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "service": {
+                      "type": "string",
+                      "example": "cd"
+                    },
+                    "enabled": {
+                      "type": "boolean",
+                      "description": "是否已启用（行不存在/enabled=0 均为 false）"
+                    },
+                    "provision": {
+                      "type": "string",
+                      "enum": [
+                        "auto",
+                        "manual"
+                      ],
+                      "description": "建表方式：auto=集成服务可自动建表；manual=只认运维预建表"
+                    },
+                    "default_provision": {
+                      "type": "string",
+                      "enum": [
+                        "auto",
+                        "manual"
+                      ],
+                      "description": "当前点启用将写入的 provision（跟随 CI DB_AUTO_MIGRATE 模式）"
+                    },
+                    "token_id": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "description": "配套服务 Token 的 api_tokens.id 软引用（不存明文/哈希）"
+                    },
+                    "token_name": {
+                      "type": "string"
+                    },
+                    "token_active": {
+                      "type": "boolean",
+                      "description": "配套 Token 是否仍然有效（存在、未撤销、未过期）"
+                    },
+                    "token_scopes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "启用时将签发的限定 scope 列表"
+                    },
+                    "updated_by": {
+                      "type": "string"
+                    },
+                    "created_at": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "updated_at": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "无 ci.system 权限"
+          },
+          "404": {
+            "description": "未知集成服务"
+          }
+        }
+      }
+    },
+    "/api/admin/integrated_services/{service}/enable": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "启用集成服务（自动签发限定 scope 服务 Token）",
+        "description": "事务内：按 CI 当前 DB_AUTO_MIGRATE 模式写入 provision（可用 body.provision 显式覆盖为 auto/manual）、签发仅含 build.read/build.write/rbac.user.write 三个 scope 的服务 Token、upsert integrated_services 行。明文 Token 仅在响应中返回一次。已启用时返回 409（需先禁用再启用以轮换凭据）。仅 super_admin 可访问。",
+        "operationId": "adminIntegratedServiceEnable",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "service",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "cd"
+              ]
+            },
+            "example": "cd"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "provision": {
+                    "type": "string",
+                    "enum": [
+                      "auto",
+                      "manual"
+                    ],
+                    "description": "可选。缺省按 CI 当前迁移模式写入"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "启用成功，token 为一次性明文",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "service": {
+                      "type": "string",
+                      "example": "cd"
+                    },
+                    "provision": {
+                      "type": "string",
+                      "enum": [
+                        "auto",
+                        "manual"
+                      ]
+                    },
+                    "token_id": {
+                      "type": "integer"
+                    },
+                    "token": {
+                      "type": "string",
+                      "description": "一次性明文 Token（dg_ 前缀），仅此次返回"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "非 super_admin"
+          },
+          "404": {
+            "description": "未知集成服务"
+          },
+          "409": {
+            "description": "该服务已启用"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        }
+      }
+    },
+    "/api/admin/integrated_services/{service}/disable": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "禁用集成服务（冻结服务并撤销配套 Token）",
+        "description": "事务内置 enabled=0（集成服务立即拒绝所有请求）并撤销配套服务 Token。不删除集成服务的任何数据表/数据，重新启用即恢复（签发新 Token）。从未启用返回 409。仅 super_admin 可访问。",
+        "operationId": "adminIntegratedServiceDisable",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "service",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "cd"
+              ]
+            },
+            "example": "cd"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "禁用成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "service": {
+                      "type": "string",
+                      "example": "cd"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "非 super_admin"
+          },
+          "404": {
+            "description": "未知集成服务"
+          },
+          "409": {
+            "description": "该服务尚未启用"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        }
+      }
+    },
     "/.well-known/openid-configuration": {
       "get": {
         "tags": [
