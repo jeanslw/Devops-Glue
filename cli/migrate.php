@@ -21,6 +21,10 @@
  * 审计：每次执行（成功与失败）都会写一条**操作日志**（`action=migrate_schema`、操作人 `system`，
  * 含 `from → to`），后台「日志中心 → 操作日志」可查——CLI 无前端，这是它唯一 web 可见的途径。
  *
+ * 自检：每次执行前先做一次**代码自检**（纯反射，与库无关）：`AppConfig` 的表常量与
+ * `Database::schemaTables()` 探测清单不一致时打印警告（STDERR），点名「后台数据表清单/探针会漏报的表」。
+ * 它不影响退出码——这是代码台账问题，不是「库需要迁移」。
+ *
  * 退出码：
  *   0 = 迁移完成；或 --dry-run 判定「无需迁移」
  *   2 = --dry-run 判定「需要迁移」（有结构变更待补，或版本标记未对齐）——供流水线据此决定是否执行迁移
@@ -48,6 +52,20 @@ foreach (array_slice($_SERVER['argv'] ?? [], 1) as $arg) {
         fwrite(STDERR, "错误：无法识别的参数 {$arg}\n用法：php cli/migrate.php [--dry-run|-n] [-h|--help]\n");
         exit(1);
     }
+}
+
+// ── 代码自检（纯反射，与库无关）：探测清单漂移时警告，但**不改退出码** ──
+// 漂移=后台「数据表清单」与 /healthz 的 tables_missing 会漏报表（v2.8.9 的 ci_api_access_logs 即此例）。
+// 让流水线因一个台账笔误失败，会把一次小修复拖成一次发布事故；硬门禁交给 CI 单测
+// （DatabaseBootstrapTest::testSchemaProbeListCoversEveryAppOwnedTable）。
+$drift = Database::schemaListDrift();
+if (!$drift['ok']) {
+    fwrite(
+        STDERR,
+        '⚠️ 警告：Schema 探测清单与 AppConfig 表常量不一致：' . implode(', ', $drift['tables']) . "\n"
+        . "         影响：后台「数据管理 → 数据表清单」与 /healthz 的 tables_missing 会漏报这些表。\n"
+        . "         处置：在 Database::schemaTables() 补上缺失的应用表（或核对手写/被排除项），并同步 AppConfig。\n"
+    );
 }
 
 // ── dry-run：只读预检（connect() 只建连，不 bootstrap、不建表、不补种子）──

@@ -542,6 +542,13 @@ It means the application's own database account has no `CREATE` / `ALTER` privil
 - A pure manual deployment with `DB_AUTO_MIGRATE=false` writes no `schema_version` (the app runs no DDL), so `schema_current` stays `null` (unknown) — the probe deliberately does **not** fall back to `seed_version` (a refreshed seed proves nothing about new business columns): it neither degrades nor falsely claims alignment, even when `seed_version` matches the current version.
 - `schema_ahead=true` means the database schema version is **higher** than the code (decided via `version_compare`) = a likely **code downgrade/rollback**; combined with `schema_current=false` it separates "upgraded without migrating" from "the code was rolled back", and the two need different handling (see the next question).
 
+### Q: `/healthz` or the admin "System Info" reports a "Table List Consistency" mismatch (`tables_list_drift`) — what now?
+
+- **What it is**: the in-code self-check (`Database::schemaListDrift()`, pure reflection, no database involved) found that the `TABLE_*` constants in `AppConfig` and the `Database::schemaTables()` probe list disagree. The most common cause is adding an application table but forgetting to add the matching line to the probe list (the `ci_api_access_logs` omission fixed in v2.8.9 was exactly that); it can also be a hand-written table name in the list (a value that is not a constant) or the CD-side read-only contract view `v_glue_deploy_logs` sneaking in.
+- **Impact**: **visibility only** — the admin "Data Management → Tables" list shows one table fewer than the real database (or one phantom table more), and the `/healthz` `tables_missing` list cannot notice that table's absence either. Table creation / column back-fill is unaffected (the DDL authority is `ensureTables()`), so the probe only degrades (**still HTTP 200**) instead of pulling traffic; at the same time an error log line is written at bootstrap (once per process), the admin "System Info → Table List Consistency" row names the tables in red, and `cli/migrate.php` prints a warning (exit code untouched).
+- **What to do**: it means this instance runs code that differs from what CI verified (an image upgrade or a hand-patched build bypassed the CI gate) — update to a build containing the fix. If you are editing the code locally, add the missing table in `Database::schemaTables()` (or verify the names against `AppConfig`) and run `vendor/bin/phpunit`: it names the missing table immediately.
+- **Why the probe never returns 500 and never pulls traffic**: this is a bookkeeping problem, not a data or schema failure; taking the service down over a list typo trades availability away for zero safety. The hard gate lives in the unit test (`DatabaseBootstrapTest::testSchemaProbeListCoversEveryAppOwnedTable`, sharing the same comparison logic as the runtime self-check).
+
 ### Q: Startup fails with "RBAC seed partially failed (N items…)" — what now?
 
 It means **at least one row failed while seeding RBAC** (permission definitions / implied rules / system roles / role-permission inserts or pruning). The system deliberately **refuses to start half-broken**: the exception is thrown → the version marker is not advanced → the next boot retries the whole seed (self-healing).
@@ -590,6 +597,14 @@ First decide whether the old code can run against the current database. Migratio
 | Mapping list (`map_list_{mode}`) | 30 seconds |
 | Admin Token (`admin_token_{token}`) | 24 hours |
 | Harbor API version detection (`harbor_api_version`) | 1 hour |
+
+### Q: A new admin feature is missing after an upgrade (e.g. "Migration Mode" stays `-`)?
+
+The browser has a strongly cached copy of the old JS/CSS. Before v2.8.9, nginx served `/assets/*.js|css` with `expires 30d` + `Cache-Control: public, immutable`, and asset filenames carry no content hash — so after upgrading the image, `admin.html` and the API are new while the browser still runs the old `system.js`, leaving the **"Migration Mode" row under Data Management → System Info at its inline placeholder `-`** (the old JS has no rendering code for it). Any other new front-end feature is equally invisible.
+
+v2.8.9 fixes this in two layers: JS/CSS are served with `no-cache` (revalidated on every request, 304 when unchanged), and every asset URL in the templates carries `?v={{APP_VERSION}}` (a new URL per release, so the new file is fetched directly). **If you cached the assets during an older release, one manual hard refresh (Ctrl+F5) is enough**; upgrades no longer need it afterwards.
+
+Troubleshooting: open the browser dev tools → Network and check the `Cache-Control` of the `system.js` response. If it still says `public, immutable` with an `Expires` 30 days out, you are either hitting a not-yet-expired cache entry (hard refresh once) or still running the old nginx config (the container mounts the copy from your **deployment directory** — check which path with `docker inspect devops-glue --format "{{range .Mounts}}{{println .Source}}{{end}}"`; after fixing the right file, `docker exec devops-glue nginx -s reload` applies it — no image rebuild needed).
 
 ### Q: Health check `/api/health` is slow?
 

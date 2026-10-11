@@ -354,15 +354,17 @@ The **🔧 Sync Schema** button on the "Data Management → 🗄️ Database" ca
 Unauthenticated external probe for Uptime Kuma / cloud LB / container orchestration. It only does a DB probe, an applied-version read and a schema-alignment check — it does not probe Jenkins/Git/Harbor and returns in milliseconds.
 
 ```
-1. DB probe (Database::createPdo() + SELECT 1) — db expresses connectivity only
+1. In-code self-check (pure reflection, no DB): Database::schemaListDrift() — a drift between the AppConfig table constants and the probe list ends up as degraded
+   (the drifting names go into tables_list_drift; what is broken is the bookkeeping, not the data, so the status stays HTTP 200 and traffic is never pulled)
+2. DB probe (Database::createPdo() + SELECT 1) — db expresses connectivity only
    └─ on success Database::schemaState(): one SQL reads schema_version / seed_version and decides schema_current + schema_ahead
    └─ either step throws → ready=false (a failed connection and a reachable-but-uninitialized database are logged separately)
-2. Only when schema_current=false: Database::missingTables() probes the core tables one by one
+3. Only when schema_current=false: Database::missingTables() probes the core tables one by one
    (the happy path never pays for these N queries, keeping the probe in the millisecond range)
-3. Summary
-   └─ ready=true  + schema_current≠false → HTTP 200 + status=ok
-   └─ ready=true  + schema_current=false → HTTP 200 + status=degraded (stale schema, or a database newer than the code — never pulls traffic)
-   └─ ready=false                        → HTTP 503 + status=degraded (the db field separates a real outage from a reachable-but-empty database)
+4. Summary
+   └─ ready=true  + schema_current≠false and no list drift → HTTP 200 + status=ok
+   └─ ready=true  + (schema_current=false or a list drift) → HTTP 200 + status=degraded (stale schema / a database newer than the code / in-code bookkeeping drift — never pulls traffic)
+   └─ ready=false                                         → HTTP 503 + status=degraded (the db field separates a real outage from a reachable-but-empty database)
 ```
 
 **Response structure:**
@@ -386,6 +388,7 @@ Unauthenticated external probe for Uptime Kuma / cloud LB / container orchestrat
   - `schema_current=false` + `schema_ahead=false` → the code is newer than the database (**the structural migration never ran**): run `cli/migrate.php` or click "Sync Schema".
   - `schema_current=false` + `schema_ahead=true` → the database is newer than the code (**the code was rolled back**): first decide whether running the old code against the new database is acceptable, then align the marker and review the seed roll-back side effects (see the FAQ "Rollback / downgrade" entry).
 - `tables_missing`: **only present when `schema_current=false` and tables really are missing**, listing the missing core tables; not probed and not emitted when `schema_current` is `true`/`null`.
+- `tables_list_drift`: an **in-code bookkeeping self-check** (`Database::schemaListDrift()`, pure reflection, no database involved, hence executed before the DB probe): present when the `TABLE_*` constants in `AppConfig` and the `Database::schemaTables()` probe list disagree, listing the tables that "the admin table list / this probe's `tables_missing` will fail to report", and counted into `status=degraded` (still HTTP 200). It never appears for correct code — the unit test `DatabaseBootstrapTest::testSchemaProbeListCoversEveryAppOwnedTable` shares exactly the same comparison logic; handling is described in the FAQ "Table List Consistency" entry.
 - `auto_migrate`: whether auto-migrate mode is on (`DB_AUTO_MIGRATE` not explicitly disabled).
 - **Why an unaligned version does not return 503**: during a rolling upgrade "new code + old schema" is an expected intermediate state, and so is a rollback (a database newer than the code) — returning 503 as well would make the LB / K8s pull every replica, far more harmful than the degraded state itself. Monitoring should alert on the `status` / `schema_current` / `schema_ahead` fields instead.
 
@@ -901,7 +904,7 @@ Devops-Glue does not store log content, only `log_url` pointers. When accessing 
 - **Status card**: System monitoring page shows Custom_Push status ✅ (configured) or ⚪ (not configured)
 - **Auto-discovery**: `AutoDiscover` scans Git platforms and automatically identifies projects with `build_provider=custom_push` when `custom_push_enabled=true`
 - **Multi-select checkboxes**: `build_mode` checkboxes (jenkins/gitlab_ci/gitea_ci + Select All) show only configured CIs
-- **Refresh requirements**: Frontend changes require browser hard refresh (Ctrl+F5); config/controller changes require backend restart
+- **Refresh requirements**: **Config / controller changes require a backend restart.** Front-end assets no longer need a manual hard refresh as of v2.8.9: nginx serves `/assets/*.js|css` with `Cache-Control: no-cache` (revalidated with `ETag`/`Last-Modified` on every request, 304 when unchanged), and every asset URL in the templates carries `?v={{APP_VERSION}}` (substituted with the current version by the `/`, `/admin` and `/api/docs` renderers), so an upgrade changes the URLs and fetches the new files. A manual hard refresh is only needed if the browser cached the old JS during an older release (the `expires 30d` + `immutable` era) and it has not expired yet.
 
 #### 5.11.7 Permissions & Scope
 The report endpoint reuses the `build.report` scope, authenticated via API Token `Authorization: Bearer <token>` header.
@@ -916,7 +919,7 @@ object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
 ```
 
 - `'unsafe-inline'` cannot be removed for now: `admin.html` has many inline `onclick` and inline `style`. First-party JS has been verified to contain no `eval` / `new Function`, so `unsafe-eval` is not enabled. Once inline handlers are extracted to external event bindings, this can be narrowed to `script-src 'self'; style-src 'self'`.
-- ⚠️ **Mind the inheritance semantics when editing nginx headers**: a child block (`location` / `if`) containing **any** `add_header` discards all inherited parent `server`-level `add_header` directives — they are not additive. Because the static-asset location already has `add_header Cache-Control`, the 5 security headers must be repeated verbatim there (marked in the file as a "security header group"; change one, change the other).
+- ⚠️ **Mind the inheritance semantics when editing nginx headers**: a child block (`location` / `if`) containing **any** `add_header` discards all inherited parent `server`-level `add_header` directives — they are not additive. There are **two** static-asset locations (① `.css` / `.js` with `Cache-Control: no-cache`; ② images / fonts with `expires 30d` + `immutable`), and both carry `add_header Cache-Control`, so **both** must repeat the 5 security headers verbatim (marked in the file as a "security header group"; change one, change the other two).
 - HSTS stays commented inside the HTTPS block; enable it after HTTPS is turned on.
 
 ---

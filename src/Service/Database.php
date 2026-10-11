@@ -9,6 +9,13 @@ class Database
     /** @var array<string,mixed> */
     private static array $config = [];
     private static bool $bootstrapped = false;
+    /**
+     * 进程内只报一次「探测清单漂移」。
+     *
+     * 漂移是**代码层面的静态事实**（每台实例的结论完全一样），而 bootstrap() 在 verifySeed() 失败时
+     * 不置位 $bootstrapped、下个请求会重跑——不去重就会把同一条 error 日志刷成每秒一行。
+     */
+    private static bool $schemaListDriftLogged = false;
 
     /**
      * 内部访问器：返回「已引导」的连接。
@@ -85,6 +92,11 @@ class Database
         if (self::$bootstrapped) {
             return;
         }
+        // 一致性自检（纯反射，不碰库）：AppConfig 的表常量与探测清单一旦漂移，日志里立刻可见——
+        // 否则「后台数据表清单少一张表、/healthz 的 tables_missing 也看不见它缺失」只能靠人偶然发现
+        // （v2.8.9 的 ci_api_access_logs 正是此例）。只记日志、不抛异常：漏一行清单只影响可见性，
+        // 建表权威是 ensureTables()，不该为一个台账笔误让整个应用起不来（硬门禁交给单测）。
+        self::logSchemaListDriftIfAny();
         self::$pdo = $pdo;
         if (empty(self::$config)) {
             self::init();
@@ -351,6 +363,14 @@ class Database
     /**
      * 当前代码版本定义的全部数据表（系统信息面板按此清单逐表探测存在性）
      *
+     * ⚠️ 这里是**显式清单**（不是反射 AppConfig），新增应用表时必须同步补一行——
+     * 漏加的表现是后台「数据管理 → 数据表清单」少一张表、`/healthz` 的 `tables_missing`
+     * 与该表的真实缺失状态不一致。`tests/Unit/DatabaseBootstrapTest.php`
+     * 的 testSchemaProbeListCoversEveryAppOwnedTable 会守着这个不变量。
+     *
+     * 不含 `TABLE_CD_DEPLOY_LOG_VIEW`（v_glue_deploy_logs）：那是 Devops-CD 侧建立的
+     * 只读契约视图，归 CD 所有，不由本应用的建表逻辑创建/探测。
+     *
      * @return list<string>
      */
     private static function schemaTables(): array
@@ -372,13 +392,107 @@ class Database
             \App\Config\AppConfig::TABLE_API_TOKENS,
             \App\Config\AppConfig::TABLE_USER_IDENTITIES,
             \App\Config\AppConfig::TABLE_OPERATION_LOGS,
+            // API token 调用审计日志（与 ci_operation_logs 同为 append-only 审计表，
+            // ensureTables() 会创建、cleanup-api-access-logs.php 会清理，故必须纳入探测清单）
+            \App\Config\AppConfig::TABLE_API_ACCESS_LOGS,
         ];
+    }
+
+    /**
+     * 一致性自检：探测清单（{@see schemaTables()}）是否与 AppConfig 里的应用表常量对齐。
+     *
+     * 为什么需要它：AppConfig 的 `TABLE_*` 常量是「应用有哪些表」的权威台账，而 schemaTables() 是
+     * **手写清单**，两者靠人工同步——新增表时只要漏改一处就会静默漂移（v2.8.9 修复的
+     * `ci_api_access_logs` 正是此例：真实库有表、`ensureTables()` 也建它，但后台「数据表清单」比真实库
+     * 少一张、`/healthz` 的 `tables_missing` 也感知不到它缺失）。单测
+     * `DatabaseBootstrapTest::testSchemaProbeListCoversEveryAppOwnedTable` 是 CI 门禁，本方法让
+     * **运行时**（bootstrap 日志 / 后台「系统信息」/ `/healthz` / `cli/migrate.php`）看见同一个事实，
+     * 使「升级或手工打补丁绕过了 CI」的实例也不会闷在里面。
+     *
+     * 纯函数：只做反射与集合比较，不建连、不写库、**不抛异常**。
+     *
+     * @param list<string>|null $probeList 待比较的探测清单；null = 用当前代码的 schemaTables()
+     *                                     （可选参数供测试注入「漂移的清单」，验证检测器本身有效）
+     * @return array{ok:bool, tables:list<string>, missing:list<string>, probe_unknown:list<string>, probe_excluded:list<string>}
+     *         ok             —— 三项漂移均为空；
+     *         tables         —— 受影响表名并集（去重后按 missing → probe_unknown → probe_excluded 排列），
+     *                           只需要「有哪些问题表」的调用方（/healthz、后台面板）用它；
+     *         missing        —— 应用自有表（AppConfig 常量）没进探测清单：**危险方向**，后台表清单会少表、
+     *                           探针也看不见它缺失；
+     *         probe_unknown  —— 探测清单里不是任何 `TABLE_*` 常量值的项（手写字符串 / 笔误）；
+     *         probe_excluded —— 探测清单里出现了显式排除项（CD 侧契约视图，不由本应用创建/探测）。
+     */
+    public static function schemaListDrift(?array $probeList = null): array
+    {
+        $probe = $probeList ?? self::schemaTables();
+
+        $owned = []; // 应用自有表：AppConfig 全部 TABLE_* 常量（除 CD 契约视图）
+        $known = []; // 全部已知表名（含 CD 契约视图）：用于识别探测清单里「不是常量」的项
+        $ref   = new \ReflectionClass(\App\Config\AppConfig::class);
+        foreach ($ref->getConstants() as $name => $value) {
+            if (!str_starts_with((string)$name, 'TABLE_') || !is_string($value)) {
+                continue;
+            }
+            $known[$value] = true;
+            if ($value !== \App\Config\AppConfig::TABLE_CD_DEPLOY_LOG_VIEW) {
+                $owned[$value] = true;
+            }
+        }
+
+        $missing       = [];
+        foreach (array_keys($owned) as $table) {
+            if (!in_array($table, $probe, true)) {
+                $missing[] = $table;
+            }
+        }
+        $probeUnknown  = [];
+        $probeExcluded = [];
+        foreach ($probe as $table) {
+            if ($table === \App\Config\AppConfig::TABLE_CD_DEPLOY_LOG_VIEW) {
+                $probeExcluded[] = $table;
+            } elseif (!isset($known[$table])) {
+                $probeUnknown[] = $table;
+            }
+        }
+
+        return [
+            'ok'             => $missing === [] && $probeUnknown === [] && $probeExcluded === [],
+            'tables'         => array_merge($missing, $probeUnknown, $probeExcluded),
+            'missing'        => $missing,
+            'probe_unknown'  => $probeUnknown,
+            'probe_excluded' => $probeExcluded,
+        ];
+    }
+
+    /**
+     * 探测清单漂移时记一条 error 日志（进程内只报一次）。
+     *
+     * 刻意不抛异常：漂移只影响「后台表清单 / 探针的可见性」，不影响建表（DDL 权威是 ensureTables()），
+     * 为一个台账笔误让应用启动失败是把可用性赔进去换不到任何安全收益。硬门禁交给单测（CI）。
+     */
+    private static function logSchemaListDriftIfAny(): void
+    {
+        if (self::$schemaListDriftLogged) {
+            return;
+        }
+        $drift = self::schemaListDrift();
+        if ($drift['ok']) {
+            return;
+        }
+        self::$schemaListDriftLogged = true;
+        \App\Helper\Log::error('schema 探测清单与 AppConfig 表常量不一致（后台「数据表清单」可能少表）', [
+            'missing_from_probe' => $drift['missing'],
+            'probe_unknown'      => $drift['probe_unknown'],
+            'probe_excluded'     => $drift['probe_excluded'],
+            'hint'               => '请在 Database::schemaTables() 补上 AppConfig 中缺失的表（新增应用表时必须同步）；'
+                . 'CI 由 DatabaseBootstrapTest::testSchemaProbeListCoversEveryAppOwnedTable 守着该不变量',
+        ]);
     }
 
     /**
      * 系统信息：DB 驱动 + schema 版本 + 各核心表存在性（供后台「系统信息」面板只读查询）
      *
-     * @return array{driver:string, schema_version:string|null, app_version:string, is_current:bool, auto_migrate:bool, tables:array<string,bool>}
+     * @return array{driver:string, schema_version:string|null, app_version:string, is_current:bool, auto_migrate:bool, tables:array<string,bool>, schema_list_drift:array{ok:bool, tables:list<string>, missing:list<string>, probe_unknown:list<string>, probe_excluded:list<string>}}
      */
     public static function schemaStatus(): array
     {
@@ -405,6 +519,9 @@ class Database
             // 迁移模式（DB_AUTO_MIGRATE 实际生效值）：后台「系统信息 → 迁移模式」行按此渲染自动/手动语义
             'auto_migrate'   => self::isAutoMigrateEnabled(),
             'tables'         => $status,
+            // 探测清单自检（纯反射，与库无关）：后台「系统信息 → 数据表清单一致性」行按此渲染。
+            // 正常恒为 ok=true；漂移即为代码台账问题（后台表清单可能比真实库少表），必须让人看见。
+            'schema_list_drift' => self::schemaListDrift(),
         ];
     }
 
@@ -794,6 +911,7 @@ class Database
     {
         self::$pdo = null;
         self::$bootstrapped = false;
+        self::$schemaListDriftLogged = false;
     }
 
     public static function driver(): string

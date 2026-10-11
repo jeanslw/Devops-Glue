@@ -392,6 +392,90 @@ class DatabaseBootstrapTest extends TestCase
     }
 
     /**
+     * 守卫不变量：Database::schemaTables() 是**显式清单**，必须覆盖 AppConfig 里全部应用自有表。
+     *
+     * 回归背景：`ci_api_access_logs` 曾被漏在这份清单之外 —— 该表由 ensureTables() 真实创建、
+     * 由 cli/cleanup-api-access-logs.php 定时清理，却不在探测清单里，表现为「新装实例的数据表卡片
+     * 比真实库少一张」以及 /healthz 的 tables_missing 感知不到它的缺失。
+     *
+     * 唯一合法例外是 TABLE_CD_DEPLOY_LOG_VIEW（v_glue_deploy_logs）：那是 Devops-CD 侧建立的
+     * 只读契约视图，不由本应用的建表逻辑创建，因此不予探测。
+     *
+     * 比对逻辑与**运行时自检共用同一份事实**（Database::schemaListDrift()）：同一个结论会进 error 日志、
+     * 后台「系统信息 → 数据表清单一致性」行与 /healthz 的 tables_list_drift，使「升级/打补丁绕过了 CI」
+     * 的实例也不会静默少表。
+     */
+    public function testSchemaProbeListCoversEveryAppOwnedTable(): void
+    {
+        // 空内存库 → missingTables() 返回的即 schemaTables() 的全量清单（顺序与定义一致），
+        // 也即 /healthz 与后台表清单真正遍历的那份清单（不复制一份来断言，避免自我印证）
+        $probed = Database::missingTables($this->createMemoryPdo());
+        $drift  = Database::schemaListDrift($probed);
+
+        $this->assertSame(
+            [],
+            $drift['missing'],
+            'AppConfig 中的每张应用表都必须出现在 Database::schemaTables() 探测清单里'
+            . '（漏加会让后台表清单少表、/healthz 的 tables_missing 也看不见它缺失）'
+        );
+        $this->assertSame([], $drift['probe_unknown'], '探测清单里出现了不是 AppConfig TABLE_* 常量的表名（手写字符串/笔误？）');
+        $this->assertSame([], $drift['probe_excluded'], '探测清单不应包含 CD 侧契约视图 v_glue_deploy_logs');
+        $this->assertTrue($drift['ok']);
+    }
+
+    /**
+     * 自检器本身必须有效：把探测清单里的 ci_api_access_logs 摘掉（＝v2.8.9 修复前的状态），
+     * schemaListDrift() 必须点名它——否则运行时提示形同虚设，漏表依旧静默。
+     */
+    public function testSchemaListDriftDetectsMissingProbeEntry(): void
+    {
+        $probed = Database::missingTables($this->createMemoryPdo());
+        $probed = array_values(array_diff($probed, [AppConfig::TABLE_API_ACCESS_LOGS]));
+
+        $drift = Database::schemaListDrift($probed);
+
+        $this->assertFalse($drift['ok']);
+        $this->assertSame([AppConfig::TABLE_API_ACCESS_LOGS], $drift['missing'], '漏加的应用表必须被点名（危险方向）');
+        $this->assertSame([AppConfig::TABLE_API_ACCESS_LOGS], $drift['tables']);
+        $this->assertSame([], $drift['probe_unknown']);
+        $this->assertSame([], $drift['probe_excluded']);
+    }
+
+    /**
+     * 反向漂移同样要点名：探测清单里手写一个不存在的表名（后台表清单会凭空多一张假表）、
+     * 以及把 CD 契约视图塞进探测清单（本应用不该探测 CD 侧视图）。
+     */
+    public function testSchemaListDriftDetectsUnknownAndExcludedProbeEntries(): void
+    {
+        $probed   = Database::missingTables($this->createMemoryPdo());
+        $probed[] = 'ci_typo_table';
+        $probed[] = AppConfig::TABLE_CD_DEPLOY_LOG_VIEW;
+
+        $drift = Database::schemaListDrift($probed);
+
+        $this->assertFalse($drift['ok']);
+        $this->assertSame([], $drift['missing'], '自有表一张不少时不报 missing');
+        $this->assertSame(['ci_typo_table'], $drift['probe_unknown']);
+        $this->assertSame([AppConfig::TABLE_CD_DEPLOY_LOG_VIEW], $drift['probe_excluded']);
+        $this->assertSame(['ci_typo_table', AppConfig::TABLE_CD_DEPLOY_LOG_VIEW], $drift['tables']);
+    }
+
+    /** 正常代码零漂移：schemaStatus()（后台「数据表清单一致性」行的数据源）透出的自检结果必须是 ok。 */
+    public function testSchemaStatusExposesCleanListDriftCheck(): void
+    {
+        Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
+        $pdo = $this->createMemoryPdo();
+        Database::bootstrap($pdo);
+
+        $status = Database::schemaStatus();
+
+        $this->assertArrayHasKey('schema_list_drift', $status);
+        $this->assertTrue($status['schema_list_drift']['ok']);
+        $this->assertSame([], $status['schema_list_drift']['tables']);
+        $this->assertGreaterThan(10, count($status['tables']), '探测清单应覆盖十几张应用表（数字骤降说明 schemaTables() 被误删）');
+    }
+
+    /**
      * 只读预检（cli/migrate.php --dry-run 的数据源）：空库 → 列出全部缺失表，
      * 且**确实没写库**（ci_app_settings 仍不存在，证明未触发建表/种子）。
      */

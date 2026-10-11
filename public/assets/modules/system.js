@@ -25,6 +25,18 @@ export async function loadSystemInfo() {
         const auto = d.auto_migrate === true;
         mm.textContent = auto ? __.t('sys.migrate_mode_auto') : __.t('sys.migrate_mode_manual');
         mm.style.color = auto ? '#16a34a' : '#d97706';
+        // 探测清单自检（Database::schemaListDrift()，纯反射、与库无关）：为「升级/打补丁绕过了 CI」的
+        // 实例把「后台表清单比真实库少表」这件事红字点名——旧版本里它只能靠人偶然发现。
+        // 字段缺失时不渲染（保留占位符 `-`）：没有证据就不宣称「一致」。
+        const sl = document.getElementById('sys-schema-list');
+        const driftInfo = d.schema_list_drift;
+        if (sl && driftInfo) {
+            const drift = driftInfo.tables || [];
+            sl.textContent = drift.length
+                ? __.t('sys.schema_list_drift', { tables: drift.join(', ') })
+                : __.t('sys.schema_list_ok');
+            sl.style.color = drift.length ? '#dc2626' : '#16a34a';
+        }
         const tb = document.getElementById('sys-tables');
         tb.innerHTML = '';
         const tables = d.tables || {};

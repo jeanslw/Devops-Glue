@@ -98,11 +98,12 @@ GET /healthz
 ```
 
 - **HTTP 200 + `status=ok`**：数据库可达且 `schema_current` 为 `true`，或为 `null`（手动建库模式从未跑过结构迁移＝未知：不降级也不谎报对齐）。
-- **HTTP 200 + `status=degraded`**：数据库可达但版本未对齐（`schema_current=false`）——可能是**升级了代码还没跑迁移**（`schema_ahead=false`），也可能是**代码回滚降级**（`schema_ahead=true`）；若确实缺表，同时下发 `tables_missing`（缺失的核心表名）。**这种情况不返回 503**：滚动升级期「新代码 + 旧 schema」与回滚期「旧代码 + 新库」都是预期中间态，若一并 503，LB / K8s 会把全部副本摘掉。
+- **HTTP 200 + `status=degraded`**：数据库可达但版本未对齐（`schema_current=false`）——可能是**升级了代码还没跑迁移**（`schema_ahead=false`），也可能是**代码回滚降级**（`schema_ahead=true`）；若确实缺表，同时下发 `tables_missing`（缺失的核心表名）。**这种情况不返回 503**：滚动升级期「新代码 + 旧 schema」与回滚期「旧代码 + 新库」都是预期中间态，若一并 503，LB / K8s 会把全部副本摘掉。另：代码内自检发现表清单漂移（`tables_list_drift`）时同样只降级不摘流——坏的是台账，不是数据。
 - **HTTP 503 + `status=degraded`**：未就绪——数据库连接失败（`db=false`），或连接正常但版本表缺失（空库未初始化，此时 `db=true`，便于与「真宕机」区分）。
 - `schema_current`：**只认 `schema_version`**（仅由执行过 DDL 的路径写入）与当前 `APP_VERSION` 比较的结果；无 `schema_version` 时为 `null`（未知，不判降级）。刻意不用 `seed_version` 回落——种子补齐不代表业务表新增列已就绪。
 - `seed_version`：仅 `DB_AUTO_MIGRATE=false` 手动建库模式会记录（自动建库模式为 `null`），服务于播种短路与观测。
 - `schema_ahead`：方向位。`schema_version` 高于 `APP_VERSION` 时为 `true`（库比代码新＝疑似**代码降级/回滚**）；无记录时为 `false`。与 `schema_current=false` 组合可区分「没跑结构迁移」与「已回滚降级」。
+- `tables_list_drift`：**代码台账自检**（`Database::schemaListDrift()`，纯反射、与库无关），仅在发现不一致时出现，列出「后台数据表清单 / 本探针的 `tables_missing` 会漏报的表名」。正常代码恒不出现；一旦出现，说明该实例代码里 `Database::schemaTables()` 与 `AppConfig` 的 `TABLE_*` 表常量不同步（升级或手工打补丁绕过了 CI）——请更新到含修复的版本，同时会写一条 error 文件日志、后台「系统信息 → 数据表清单一致性」行也会红字点名。
 - 修复：升级后没跑迁移 → 执行 `php cli/migrate.php` 或点后台「数据管理 → 🗄️ 数据库」卡片的「同步库结构」按钮，`schema_current` 会回到 `true`；**回滚降级** → 先按「常见问题 → 回滚/降级指引」处理，再对齐标记。
 
 - `status`: `ok`（数据库可达） | `degraded`（数据库不可达）
@@ -393,7 +394,7 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 | `/api/admin/platform_versions/probe` | GET | 实际探测 Harbor / Jenkins 版本（慢速探测独立端点，与毫秒级返回配置态的列表分离，避免平台不可达时整页卡住；需 `ci.platform-edit`） |
 | `/api/admin/build_mode` | GET/PUT | 构建模式（启用的 CI 源集合，如 jenkins,gitlab_ci,gitea_ci） |
 | `/api/admin/platform_config` | GET/PUT | 平台接入状态（脱敏，仅返回各平台 `configured` 布尔，不返回 URL/账号/凭证）+ 平台级 tag 设置（清理/回填开关、日志关键字）与 API 调用日志设置；PUT 仅更新请求体显式携带的键，避免互相覆盖（需 `ci.platform-config`） |
-| `/api/admin/system_info` | GET | 数据库 schema 状态（驱动 / schema 版本 / 是否当前 / 迁移模式 `auto_migrate`（`DB_AUTO_MIGRATE` 生效值）/ PHP 版本 / 核心表存在性；需 `ci.system`） |
+| `/api/admin/system_info` | GET | 数据库 schema 状态（驱动 / schema 版本 / 是否当前 / 迁移模式 `auto_migrate`（`DB_AUTO_MIGRATE` 生效值）/ PHP 版本 / 核心表存在性 / 探测清单自检 `schema_list_drift`（`AppConfig` 表常量与探测清单是否一致，即后台「数据表清单一致性」行的数据源）；需 `ci.system`） |
 | `/api/admin/migrate` | POST | 手动同步库结构（补建缺失表 + 补齐字段/索引 + 种子权限 + 标记 schema 当前；账号无 DDL 权限时返回 409 并提示改用 `php cli/migrate.php`；仅 super_admin） |
 | `/api/admin/backup` | POST | 手动执行数据库备份（zip 归档，滚动留存最近 10 份；启用 CD 时额外产出一份 CD 库归档；仅 super_admin） |
 | `/api/admin/backups` | GET | 列出已生成的数据库备份文件（仅 super_admin） |

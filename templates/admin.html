@@ -5,8 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title data-i18n="admin.title">管理后台 — Devops-Glue</title>
     <link rel="icon" href="/favicon.ico" type="image/x-icon">
-    <link rel="stylesheet" href="/assets/admin.css">
-    <link rel="stylesheet" href="/assets/pulse.css">
+    <!-- ⚠️ 静态资源 URL 必须带 ?v={{APP_VERSION}}（由 /admin 路由在服务端替换为当前版本号）。
+         资源文件名无内容哈希，升级镜像后若 URL 不变，浏览器会继续用旧 JS/CSS（HTML 已是新版），
+         表现为「新功能不显示」。新增 <link>/<script> 引用时务必照抄此写法。 -->
+    <link rel="stylesheet" href="/assets/admin.css?v={{APP_VERSION}}">
+    <link rel="stylesheet" href="/assets/pulse.css?v={{APP_VERSION}}">
     <!-- 后台主界面整体缩放 90%：用 zoom（真实重排布局）而非 transform:scale（会在四周留白、fixed 定位错位）。
          仅作用于 #app-page（主界面），登录页 #login-page 为兄弟节点、保持 100% 原样。
          如需改回原大小，把 0.9 改为 1 或删除本块即可。 -->
@@ -1250,6 +1253,7 @@
                                 <tr><td data-i18n="sys.schema_version">Schema 版本</td><td id="sys-schema-version">-</td></tr>
                                 <tr><td data-i18n="sys.is_current">Schema 状态</td><td id="sys-is-current">-</td></tr>
                                 <tr><td data-i18n="sys.migrate_mode">迁移模式</td><td id="sys-migrate-mode">-</td></tr>
+                                <tr><td data-i18n="sys.schema_list">数据表清单一致性</td><td id="sys-schema-list">-</td></tr>
                                 <tr><td data-i18n="sys.php_version">PHP 版本</td><td id="sys-php-version">-</td></tr>
                             </tbody>
                         </table>
@@ -1282,8 +1286,9 @@
     </div><!-- /layout -->
 </div><!-- /app-page -->
 
-<script src="/assets/i18n.js"></script>
-<script type="module" src="/assets/admin.js"></script>
+<!-- 见 <head> 顶部说明：资源引用必须带 ?v={{APP_VERSION}} -->
+<script src="/assets/i18n.js?v={{APP_VERSION}}"></script>
+<script type="module" src="/assets/admin.js?v={{APP_VERSION}}"></script>
 
 </body>
 </html>

@@ -504,7 +504,10 @@ class MainController extends BaseController
     {
         $htmlFile = __DIR__ . '/../../templates/swagger.html';
         $html = file_exists($htmlFile) ? file_get_contents($htmlFile) : '<h1>Swagger file missing / 文档文件丢失</h1>';
-        $response->getBody()->write($html === false ? '' : $html);
+        // 静态资源 URL 带 ?v={{APP_VERSION}}（模板占位符）：服务端替换为当前版本号，
+        // 与 / 和 /admin 路由同一约定，避免升级镜像后浏览器沿用被强缓存的旧 JS/CSS。
+        $html = str_replace('{{APP_VERSION}}', AppConfig::APP_VERSION, $html === false ? '' : $html);
+        $response->getBody()->write($html);
         return $response->withHeader('Content-Type', 'text/html; charset=utf-8');
     }
 

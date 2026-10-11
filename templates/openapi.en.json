@@ -275,6 +275,16 @@
               "ci_job_git_map"
             ]
           },
+          "tables_list_drift": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "In-code bookkeeping self-check (Database::schemaListDrift(), pure reflection, no database involved): present when the AppConfig TABLE_* constants and the Database::schemaTables() probe list disagree, listing the tables that \"the admin table list / this probe's tables_missing will fail to report\", and counted into status=degraded (still HTTP 200, never pulled from the LB). It never appears for correct code; when it does, this instance's code has an unsynced list (an upgrade or hand-patched build bypassed CI). The same finding is written to the error log and called out in red on the admin \"Table List Consistency\" row",
+            "example": [
+              "ci_api_access_logs"
+            ]
+          },
           "time": {
             "type": "integer",
             "description": "Unix timestamp (seconds)",
@@ -1342,7 +1352,7 @@
           "Health"
         ],
         "summary": "Liveness / readiness probe",
-        "description": "Unauthenticated external probe: checks database reachability, the applied versions and schema alignment only; it does not probe Jenkins/Git/Harbor. DB reachable and aligned → 200 + status=ok; DB reachable but stale (schema_current=false, e.g. code upgraded before the migration ran) → 200 + status=degraded (a stale version never pulls traffic, so a rolling upgrade cannot make the LB/K8s drop every replica) with the missing core tables listed in tables_missing; in manual-provisioning mode where the structural migration never ran, schema_current=null (unknown) → 200 + status=ok (neither degraded nor falsely reported aligned); a failed DB connection, or a successful connection whose version table is missing (empty/uninitialized database, in which case db=true) → 503 + status=degraded. The db field expresses connectivity only, to distinguish a real outage from a reachable-but-uninitialized database. schema_ahead=true means the database schema version is higher than the current code (a likely downgrade/rollback), and combined with schema_current=false it separates \"the structural migration never ran\" from \"the code was rolled back\".",
+        "description": "Unauthenticated external probe: checks database reachability, the applied versions and schema alignment only; it does not probe Jenkins/Git/Harbor. DB reachable and aligned → 200 + status=ok; DB reachable but stale (schema_current=false, e.g. code upgraded before the migration ran) → 200 + status=degraded (a stale version never pulls traffic, so a rolling upgrade cannot make the LB/K8s drop every replica) with the missing core tables listed in tables_missing; in manual-provisioning mode where the structural migration never ran, schema_current=null (unknown) → 200 + status=ok (neither degraded nor falsely reported aligned); a failed DB connection, or a successful connection whose version table is missing (empty/uninitialized database, in which case db=true) → 503 + status=degraded. The db field expresses connectivity only, to distinguish a real outage from a reachable-but-uninitialized database. schema_ahead=true means the database schema version is higher than the current code (a likely downgrade/rollback), and combined with schema_current=false it separates \"the structural migration never ran\" from \"the code was rolled back\". When the in-code bookkeeping self-check finds a probe-list drift (tables_list_drift) the probe likewise only degrades instead of pulling traffic (200 + status=degraded): what is broken is the bookkeeping, not the data.",
         "operationId": "healthz",
         "responses": {
           "200": {

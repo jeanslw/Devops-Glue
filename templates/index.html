@@ -10,7 +10,8 @@
     <meta property="og:description" content="Jenkins · Git · Harbor 一站式 DevOps 工具链集成平台">
     <title data-i18n="index.title">Devops-Glue</title>
     <link rel="icon" href="/favicon.ico" type="image/x-icon">
-    <link rel="stylesheet" href="/assets/pulse.css">
+    <!-- ?v={{APP_VERSION}}：由 / 路由在服务端替换为当前版本号（同 admin.html，防旧 CSS/JS 被强缓存） -->
+    <link rel="stylesheet" href="/assets/pulse.css?v={{APP_VERSION}}">
     <noscript><style>body [data-i18n]{opacity:1!important}</style></noscript>
     <style>
         * { margin:0; padding:0; box-sizing:border-box; }
@@ -184,7 +185,7 @@
     <span>version: v{{APP_VERSION}}</span>
 </footer>
 
-<script src="/assets/i18n.js"></script>
+<script src="/assets/i18n.js?v={{APP_VERSION}}"></script>
 <script>/* 后台入口链接子路径兼容：与 assets/core/base.js 的 adminRootPath() 语义保持一致。
     data-dg-home 元素均为「进入后台」入口，应始终指向后台 admin 页：
     根域(/) -> /admin；子路径(/prefix/) -> /prefix/admin；已在 /admin 内则保持不变。

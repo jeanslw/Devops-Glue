@@ -23,6 +23,11 @@ use Psr\Http\Message\ServerRequestInterface as Request;
  *  - `schema_current=null`（手动建库模式从未跑过结构迁移）→ 200 + `status=ok`：不降级也不谎称对齐。
  * 各失败分支都写 error 日志，不再静默吞掉异常。
  *
+ * `tables_list_drift`：代码内自检（`Database::schemaListDrift()`，纯反射、与库无关）发现
+ * 「AppConfig 的 `TABLE_*` 表常量」与「`schemaTables()` 探测清单」不一致时出现，并计入 `status=degraded`
+ * （HTTP 仍 200：坏的是台账而非数据，不该摘流）。它点名的是「后台数据表清单 / 本探针的 `tables_missing`
+ * 会漏报的表」——v2.8.9 修复的 `ci_api_access_logs` 漏加即属此类。正常代码恒不出现。
+ *
  * `schema_ahead` 是方向位，用于区分两种"未对齐"（处置完全不同）：
  *  - `schema_current=false` + `schema_ahead=false` → 代码比库新（**没跑结构迁移**，跑 cli/migrate.php）；
  *  - `schema_current=false` + `schema_ahead=true`  → 库比代码新（**代码已回滚降级**，先确认是否接受旧代码
@@ -45,6 +50,9 @@ final class HealthzController
         $missing       = [];
         $connected     = false; // 连接性：createPdo() + SELECT 1 成功
         $ready         = false; // 就绪：能读到版本状态（ci_app_settings 可查）
+        // 代码自检（纯反射，与库无关，故放在 try 外）：探测清单漂移即「本探针与后台表清单会漏表」，
+        // 希望升级/打补丁绕过 CI 的实例也能被监控看见。
+        $drift = Database::schemaListDrift();
         try {
             $pdo = Database::createPdo();
             $pdo->query('SELECT 1');
@@ -70,8 +78,8 @@ final class HealthzController
         }
 
         // 未就绪（连不上 / 连上但空库）→ degraded；版本确认落后也 degraded（HTTP 仍 200 不摘流）；
-        // 已对齐或未知（手动模式）→ ok。
-        $degraded = !$ready || $schemaCurrent === false;
+        // 已对齐或未知（手动模式）→ ok。代码内台账漂移（tables_list_drift）同样只降级不摘流。
+        $degraded = !$ready || $schemaCurrent === false || !$drift['ok'];
         $payload = [
             'status'         => $degraded ? 'degraded' : 'ok',
             'db'             => $connected,
@@ -85,6 +93,11 @@ final class HealthzController
         ];
         if ($missing !== []) {
             $payload['tables_missing'] = $missing;
+        }
+        if ($drift['tables'] !== []) {
+            // 代码内自检：这两张清单不一致 → 本探针的 tables_missing 与后台「数据表清单」会漏报这些表。
+            // 属代码台账问题（包内容与 CI 结果不符），故只降级不清零、也不 return 503。
+            $payload['tables_list_drift'] = $drift['tables'];
         }
 
         $response->getBody()->write((string) json_encode($payload));
