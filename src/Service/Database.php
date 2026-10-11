@@ -395,6 +395,8 @@ class Database
             // API token 调用审计日志（与 ci_operation_logs 同为 append-only 审计表，
             // ensureTables() 会创建、cleanup-api-access-logs.php 会清理，故必须纳入探测清单）
             \App\Config\AppConfig::TABLE_API_ACCESS_LOGS,
+            // 集成服务启用契约表（CI 属主；ensureTables() 真实创建，CD 只读 enabled/provision）
+            \App\Config\AppConfig::TABLE_INTEGRATED_SERVICES,
         ];
     }
 
@@ -1292,6 +1294,39 @@ class Database
             note TEXT,
             created_at {$TS_TYPE} DEFAULT ({$NOW})
         ){$ENGINE}");
+
+        // integrated_services（集成服务启用契约表：CI 唯一写入方，CD 等集成服务只读 enabled/provision）。
+        // 必须在 api_tokens 之后创建：api_token_id 软引用 api_tokens(id) —— 凭据的签发/哈希/scope/撤销
+        // 全部留在 ApiTokenService，本表只登记「服务配套哪张凭据」；删除 token 时外键自动置空，启用行保留。
+        // 注意：enabled=0 绝不等于「删除/清空 cd_ 表」——关闭只冻结集成服务，数据原样保留。
+        $isvcTable = \App\Config\AppConfig::TABLE_INTEGRATED_SERVICES;
+        if ($isMySQL) {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS {$isvcTable} (
+                id {$PK},
+                service_name VARCHAR(32) NOT NULL UNIQUE,
+                enabled TINYINT NOT NULL DEFAULT 0,
+                provision VARCHAR(16) NOT NULL DEFAULT '" . \App\Config\AppConfig::SERVICE_PROVISION_AUTO . "',
+                api_token_id INT DEFAULT NULL,
+                updated_by VARCHAR(64) DEFAULT '',
+                created_at {$TS_TYPE} DEFAULT ({$NOW}),
+                updated_at {$TS_TYPE} DEFAULT ({$NOW}),
+                CONSTRAINT fk_isvc_token FOREIGN KEY (api_token_id)
+                    REFERENCES " . \App\Config\AppConfig::TABLE_API_TOKENS . "(id) ON DELETE SET NULL
+            ){$ENGINE}");
+        } else {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS {$isvcTable} (
+                id {$PK},
+                service_name TEXT NOT NULL UNIQUE,
+                enabled INTEGER NOT NULL DEFAULT 0,
+                provision TEXT NOT NULL DEFAULT '" . \App\Config\AppConfig::SERVICE_PROVISION_AUTO . "',
+                api_token_id INTEGER DEFAULT NULL,
+                updated_by TEXT DEFAULT '',
+                created_at {$TS_TYPE} DEFAULT ({$NOW}),
+                updated_at {$TS_TYPE} DEFAULT ({$NOW}),
+                FOREIGN KEY (api_token_id)
+                    REFERENCES " . \App\Config\AppConfig::TABLE_API_TOKENS . "(id) ON DELETE SET NULL
+            )");
+        }
 
         // ── 通用列迁移 ──
         // 列清单统一由 columnMigrations() 提供（写路径与只读预检 pendingChanges() 共用同一份事实，避免两处漂移）。

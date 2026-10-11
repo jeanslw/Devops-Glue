@@ -214,6 +214,23 @@ CREATE TABLE IF NOT EXISTS `ci_pipeline_build_log` (
     `updated_at`  DATETIME DEFAULT (NOW())
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- ── 15. integrated_services（集成服务启用契约表；CI 唯一写入，CD 等集成服务只读 enabled/provision）──
+-- 行不存在 / enabled=0 = 集成服务未启用（CD 不建表、不提供服务）；enabled=1 时 CD 按 provision 决定
+-- 自动建表（auto）或只认预建表（manual）。关闭只冻结服务，绝不删除集成服务的数据表。
+-- api_token_id 软引用 api_tokens(id)：凭据签发/哈希/scope/撤销均在 API 管理中维护，删除 token 自动置空。
+CREATE TABLE IF NOT EXISTS `integrated_services` (
+    `id`           INT AUTO_INCREMENT PRIMARY KEY,
+    `service_name` VARCHAR(32) NOT NULL UNIQUE,
+    `enabled`      TINYINT NOT NULL DEFAULT 0,
+    `provision`    VARCHAR(16) NOT NULL DEFAULT 'auto',
+    `api_token_id` INT DEFAULT NULL,
+    `updated_by`   VARCHAR(64) DEFAULT '',
+    `created_at`   DATETIME DEFAULT (NOW()),
+    `updated_at`   DATETIME DEFAULT (NOW()),
+    CONSTRAINT `fk_isvc_token` FOREIGN KEY (`api_token_id`)
+        REFERENCES `api_tokens`(`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- ── 索引 ──
 -- 新库一次性建全（无存量数据，不保留迁移逻辑），直接建索引
 CREATE INDEX `idx_job_git_map_current_path` ON `ci_job_git_map` (`current_path`(255));

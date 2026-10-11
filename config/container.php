@@ -15,6 +15,7 @@ use App\Service\PipelineArtifactService;
 use App\Service\I18nService;
 use App\Service\TokenService;
 use App\Service\ApiTokenService;
+use App\Service\IntegratedServiceRepository;
 use App\Service\AdminAuthService;
 use App\Service\AdminUserRepository;
 use App\Service\ApiAccessLogRepository;
@@ -31,6 +32,7 @@ use App\Controller\MainController;
 use App\Controller\GitController;
 use App\Controller\HarborController;
 use App\Controller\AdminController;
+use App\Controller\IntegratedServiceController;
 use App\Controller\RbacController;
 use App\Controller\BuildController;
 use App\Controller\OAuthController;
@@ -134,6 +136,11 @@ return [
     // API Token 服务（服务账号 / 第三方调用，独立于 RBAC）
     ApiTokenService::class => function (\Psr\Container\ContainerInterface $c) {
         return new ApiTokenService($c->get(\PDO::class));
+    },
+
+    // 集成服务启用契约仓储（integrated_services；CI 唯一写入，CD 等只读 enabled/provision）
+    IntegratedServiceRepository::class => function (\Psr\Container\ContainerInterface $c) {
+        return new IntegratedServiceRepository($c->get(\PDO::class));
     },
 
     // 管理员用户仓库
@@ -433,6 +440,17 @@ return [
             $c->get(ApiTokenService::class),
             $c->get(HarborService::class),
             $c->get(JenkinsService::class)
+        );
+    },
+
+    // 集成服务启停控制器（integrated_services：读 ci.system，写仅 super_admin）
+    IntegratedServiceController::class => function (\Psr\Container\ContainerInterface $c) {
+        return new IntegratedServiceController(
+            $c->get(I18nService::class),
+            $c->get(\PDO::class),
+            $c->get(IntegratedServiceRepository::class),
+            $c->get(ApiTokenService::class),
+            $c->get(Settings::class)
         );
     },
 

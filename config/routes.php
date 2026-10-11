@@ -7,6 +7,7 @@ use App\Controller\HealthzController;
 use App\Controller\MainController;
 use App\Controller\HarborController;
 use App\Controller\AdminController;
+use App\Controller\IntegratedServiceController;
 use App\Controller\RbacController;
 use App\Controller\BuildController;
 use App\Controller\OAuthController;
@@ -112,6 +113,10 @@ $app->group('/api', function (RouteCollectorProxy $api) {
             $auth->map(['POST'], '/api_tokens', [AdminController::class, 'apiTokenCreate']);
             $auth->map(['POST'], '/api_tokens/{id}/revoke', [AdminController::class, 'apiTokenRevoke']);
             $auth->map(['DELETE'], '/api_tokens/{id}', [AdminController::class, 'apiTokenDelete']);
+            // 集成服务启停（integrated_services 契约表；读 ci.system，写仅 super_admin，启用自动签发限定 scope token）
+            $auth->map(['GET'], '/integrated_services/{service}', [IntegratedServiceController::class, 'status']);
+            $auth->map(['POST'], '/integrated_services/{service}/enable', [IntegratedServiceController::class, 'enable']);
+            $auth->map(['POST'], '/integrated_services/{service}/disable', [IntegratedServiceController::class, 'disable']);
         })->add(AuthMiddleware::class);
     });
 

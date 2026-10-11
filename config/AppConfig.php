@@ -35,6 +35,25 @@ final class AppConfig
     public const TABLE_OPERATION_LOGS    = 'ci_operation_logs'; // 后台操作审计日志
     public const TABLE_API_ACCESS_LOGS   = 'ci_api_access_logs'; // API token 调用日志（只记名不记 token）
     public const TABLE_CD_DEPLOY_LOG_VIEW = 'v_glue_deploy_logs'; // CD 部署记录契约视图（只读审计）
+    public const TABLE_INTEGRATED_SERVICES = 'integrated_services'; // 集成服务启用契约表（CI 唯一写入；CD 等集成服务只读 enabled/provision）
+
+    // ── 集成服务（integrated_services.service_name 的取值）──
+    public const SERVICE_CD             = 'cd';   // Devops-CD 部署服务
+    public const SERVICE_PROVISION_AUTO   = 'auto';   // 集成服务可在共享库自动建表（CI 自动迁移模式）
+    public const SERVICE_PROVISION_MANUAL = 'manual'; // 集成服务禁止建表，只认运维预建表（CI 手动建库模式）
+
+    /**
+     * CD 启用向导自动签发的服务 token 限定 scope：
+     *   - build.read  ：读取构建记录/pipelines/tags/日志（CD Build 页与部署选 tag）
+     *   - build.write ：触发构建 / retry / cancel（CD Build 页操作）
+     *   - rbac.user.write：CD 账号管理通道（/api/rbac/*，读用户/角色 + 建改删 cd 账号）
+     * 刻意不给 main/git/harbor 等无关 scope —— 启用即最小权限。
+     */
+    public const CD_SERVICE_TOKEN_SCOPES = [
+        self::API_SCOPE_BUILD_READ,
+        self::API_SCOPE_BUILD_WRITE,
+        self::API_SCOPE_RBAC_USER_WRITE,
+    ];
 
     // ── 角色常量 ──
     public const ROLE_SUPER_ADMIN = 'super_admin';
