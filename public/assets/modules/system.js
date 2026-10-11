@@ -20,6 +20,11 @@ export async function loadSystemInfo() {
         const cur = document.getElementById('sys-is-current');
         cur.textContent = d.is_current ? __.t('sys.current') : __.t('sys.outdated');
         cur.style.color = d.is_current ? '#16a34a' : '#dc2626';
+        // 迁移模式：按 DB_AUTO_MIGRATE 实际生效值渲染自动/手动语义；手动模式橙色提示「建表责任在运维」
+        const mm = document.getElementById('sys-migrate-mode');
+        const auto = d.auto_migrate === true;
+        mm.textContent = auto ? __.t('sys.migrate_mode_auto') : __.t('sys.migrate_mode_manual');
+        mm.style.color = auto ? '#16a34a' : '#d97706';
         const tb = document.getElementById('sys-tables');
         tb.innerHTML = '';
         const tables = d.tables || {};

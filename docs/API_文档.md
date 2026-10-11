@@ -393,7 +393,7 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 | `/api/admin/platform_versions/probe` | GET | 实际探测 Harbor / Jenkins 版本（慢速探测独立端点，与毫秒级返回配置态的列表分离，避免平台不可达时整页卡住；需 `ci.platform-edit`） |
 | `/api/admin/build_mode` | GET/PUT | 构建模式（启用的 CI 源集合，如 jenkins,gitlab_ci,gitea_ci） |
 | `/api/admin/platform_config` | GET/PUT | 平台接入状态（脱敏，仅返回各平台 `configured` 布尔，不返回 URL/账号/凭证）+ 平台级 tag 设置（清理/回填开关、日志关键字）与 API 调用日志设置；PUT 仅更新请求体显式携带的键，避免互相覆盖（需 `ci.platform-config`） |
-| `/api/admin/system_info` | GET | 数据库 schema 状态（驱动 / schema 版本 / 是否当前 / PHP 版本 / 核心表存在性；需 `ci.system`） |
+| `/api/admin/system_info` | GET | 数据库 schema 状态（驱动 / schema 版本 / 是否当前 / 迁移模式 `auto_migrate`（`DB_AUTO_MIGRATE` 生效值）/ PHP 版本 / 核心表存在性；需 `ci.system`） |
 | `/api/admin/migrate` | POST | 手动同步库结构（补建缺失表 + 补齐字段/索引 + 种子权限 + 标记 schema 当前；账号无 DDL 权限时返回 409 并提示改用 `php cli/migrate.php`；仅 super_admin） |
 | `/api/admin/backup` | POST | 手动执行数据库备份（zip 归档，滚动留存最近 10 份；启用 CD 时额外产出一份 CD 库归档；仅 super_admin） |
 | `/api/admin/backups` | GET | 列出已生成的数据库备份文件（仅 super_admin） |
