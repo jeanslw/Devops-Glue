@@ -6,6 +6,8 @@
 > **范围**：仅「CD 的**登录用户**认证走 Glue OIDC」
 > **明确非目标**：① 不改动 Glue 对外 API 的鉴权模型（第三方调 Glue API 仍走 API token）；② 不实现 PKCE；③ 不实现 OIDC 单点登出（end_session）；④ v1 不实现 refresh_token
 
+> **CD 回签（2026-10-12）**：CD 侧已回签 v1 —— ① **接受「角色不存在 = 404」、Glue 接口零改动**（404 在其侧按 `errors.identity_unavailable` 走 fail-closed，其行为表见 §7.5「回签 3」）；② 7 项契约精化**全部采纳**；③ 对 Glue 的 4 项收口按其 `file:line` 复核通过。CD 侧文档提交 `91541c8`（`feature/oidc-bff`）。
+
 ---
 
 ## 0. TL;DR（一页纸）
@@ -36,6 +38,8 @@
 | 5 | CD 侧 BFF 形态 OIDC RP | ⏳ CD 侧进行中 | 依赖 0 / 1 已就绪，可开工 |
 | 前置 | `OIDC_ISSUER` 显式配置 | ⏳ 部署项（联调前必做） | `config/app.env:164`；核对命令见 §7.1 / §7.5 |
 | 护栏 | P0 四项的接线守卫测试 | ✅ 已实现 | `tests/Unit/CdOidcLoginWiringTest.php`（源码守卫 + 真 SQL 行为断言） |
+
+**分支状态与切档前置**：P0 全部实现位于**仅本地**的分支 `feature/cd-oidc-p0`（`d75bde7` → `68181a4` → `6250a15` → `0ca9a1f` → `f25bcac` + 本文档 v1.0.2 的文档提交；`68181a4` 之后均为**纯文档**提交 ⇒ **代码内容与 `68181a4` 等价**，CD 引用的行号不受影响）。⚠️ 该分支**尚未合入 `release/2.9.0`、未推送任何远端**；**CD 侧切档（L1b / L1c）的前置条件是目标环境已部署含 P0 的 Glue 版本**（CD 已在其文档写明），故联调前须先确认合并与部署已完成。**合入方式已核实**：该临时分支已基于本地 `release/2.9.0` 头（`262d42a`）构建 ⇒ 合入 `release/2.9.0` 为**快进（无冲突）**，仅带 6 个提交（2 个代码 + 4 个文档）；⚠️ 但 `release/2.9.0` 的本地头与远端头（`a08eb74`）**已分叉**，须先定收敛方式再合入（见 §9.2 未决项 7）。
 
 ### 已定架构决策（不再讨论）
 
@@ -76,13 +80,13 @@
 | 能力 | 实现位置 | 说明 |
 |:--|:--|:--|
 | 授权码流程 `GET/POST /oauth/authorize` | `config/routes.php:172-180`、`OAuthController::authorizeForm/authorizeSubmit` | 路由组**不挂 AuthMiddleware**（公开） |
-| 授权码安全 | `OAuthService.php:17-20, 89-147` | 一次性、TTL 60s、绑定 `client_id` + `redirect_uri`（`hash_equals` 逐字符匹配）、先删后校验防重放 |
-| 客户端白名单 + fail-closed | `config/settings.php:202-215`、`OAuthService.php:33-44` | `secret` 或 `redirect_uri` 为空/纯空白 → 客户端被剔除（防空 secret 绕过） |
+| 授权码安全 | `OAuthService.php:19, 114-176` | 一次性、TTL 60s、绑定 `client_id` + `redirect_uri`（`hash_equals` 逐字符匹配）、先删后校验防重放 |
+| 客户端白名单 + fail-closed | `config/settings.php:202-225`、`OAuthService.php:37-54` | `secret` 或 `redirect_uri` 为空/纯空白 → 客户端被剔除（防空 secret 绕过） |
 | token 端点鉴权 | `OAuthController.php:135-160` | 支持 `client_secret_post` 与 `client_secret_basic`（RFC 6749 §2.3.1） |
 | 登录限流 | `OAuthController.php:81-94` | 与 `/api/admin/login` 同策略（IP + 用户名，5 次 / 15 分钟），防 OAuth 页成为暴破入口 |
-| 账号状态即时收敛 | `OAuthService.php:174-235` | `validateAccessToken` **每次都回查** `admin_users`：`status=0` → 立即失效；`role` 变更 → **降权即时生效** |
+| 账号状态即时收敛 | `OAuthService.php:199-223`（`validateAccessToken`）+ `:234-269`（`refreshAccount`） | `validateAccessToken` **每次都回查** `admin_users`：`status=0` → 立即失效；`role` 变更 → **降权即时生效** |
 | OIDC Discovery / JWKS | `routes.php:184-185`、`OidcService.php:241-281` | 公开元数据；RS256 / RSA-2048 / 稳定 `kid`；私钥 0600 且从不输出 |
-| `id_token` 签发 | `OidcService::signIdToken:206-232` | `iss/sub/aud/iat/exp` + `nonce` 回显 + 白名单 claims |
+| `id_token` 签发 | `OidcService::signIdToken:219-241` | `iss/sub/aud/iat/exp` + `nonce` 回显 + 白名单 claims |
 | RBAC 读接口（服务账号用） | `routes.php:124-133`、`RbacController` | `GET /api/rbac/users`、`/users/{username}`、`/roles`；scope 统一 `rbac.user.write` |
 | 权限查询内部能力 | `TokenService::loadPermissions:172-185` | `role_permissions JOIN roles`，**新增权限端点可直接复用，零新 SQL** |
 | API token 生命周期 | `AdminController::apiTokenCreate`、`ApiTokenService` | 签发（仅 super_admin）、改 scope 即时生效、吊销、冻结/恢复 |
@@ -138,9 +142,9 @@
 | 唯一支持的 `grant_type` | `authorization_code`（其他 → `unsupported_grant_type` 400） | `OAuthController.php:155-157` |
 | client 认证方式 | `client_secret_basic` 或 `client_secret_post` | `OAuthController.php:145-153`、`OidcService.php:254` |
 | `redirect_uri` | **token 换码时必须重传且精确匹配** | `OAuthController.php:162` → `consumeCode()` |
-| 授权码有效期 | 60 秒、一次性、绑定 client + redirect_uri | `OAuthService.php:19, 89-147` |
-| access token 有效期 | 3600 秒（`Cache-Control: no-store`） | `OAuthService.php:20`、`OAuthController.php:179, 196` |
-| access token 格式 | **不透明随机串**（不是 JWT），只能由 Glue 解析 | `OAuthService.php:154` |
+| 授权码有效期 | 60 秒、一次性、绑定 client + redirect_uri | `OAuthService.php:19, 114-176` |
+| access token 有效期 | 3600 秒（`Cache-Control: no-store`） | `OAuthService.php:27`（唯一事实来源）、`OAuthController.php:181`（引用常量）、`:198`（`no-store`） |
+| access token 格式 | **不透明随机串**（不是 JWT），只能由 Glue 解析 | `OAuthService.php:179`（`bin2hex(random_bytes(32))`） |
 | `id_token` 有效期 | 默认 3600 秒（`OIDC_ID_TOKEN_TTL`） | `settings.php:224` |
 | `id_token` 算法 | RS256，`kid` 稳定（私钥持久化后跨重启不变） | `OidcService.php:188-195, 231` |
 | userinfo | `GET/POST /oauth/userinfo`（Bearer） | `routes.php:177` |
@@ -222,8 +226,8 @@ CD 发起登录 → OAuthController::authorizeSubmit:97
 
 | # | 文件 | 改动 | 说明 |
 |:--|:--|:--|:--|
-| 1 | `config/settings.php` `oauth_clients` | `'cd' => ['secret' => env('CD_OIDC_SECRET',''), 'redirect_uri' => env('CD_OIDC_REDIRECT_URI',''), 'system' => env('CD_OIDC_SYSTEM','cd')]` | 新增键，**不参与** `OAuthService::__construct:33-44` 的 fail-closed 过滤（该过滤只查 `secret`/`redirect_uri`）→ 实现安全 |
-| 2 | `src/Service/OAuthService.php` | 新增只读访问器，如 `clientSystem(string $clientId): ?string`（与既有 `getClientRedirectUri:78` 同风格） | 复用 `$this->clients` 白名单，未注册 client 返回 `null` |
+| 1 | `config/settings.php` `oauth_clients` | `'cd' => ['secret' => env('CD_OIDC_SECRET',''), 'redirect_uri' => env('CD_OIDC_REDIRECT_URI',''), 'system' => env('CD_OIDC_SYSTEM','cd')]` | 新增键，**不参与** `OAuthService::__construct:37-54` 的 fail-closed 过滤（该过滤只查 `secret`/`redirect_uri`）→ 实现安全 |
+| 2 | `src/Service/OAuthService.php` | 新增只读访问器，如 `clientSystem(string $clientId): ?string`（与既有 `getClientRedirectUri:85` 同风格） | 复用 `$this->clients` 白名单，未注册 client 返回 `null`（**已实现**：`clientSystem:99`） |
 | 3 | `src/Controller/OAuthController.php:97` | `authenticate($username, $password, $this->oauth->clientSystem($clientId) ?: AppConfig::SYSTEM_CI)` | **默认回退 CI** → Grafana/Jenkins/Harbor/GitLab 行为**零变化** |
 
 **零回归论证**：① 未声明 `system` 的 client 走 `?: AppConfig::SYSTEM_CI` 分支，与现状完全一致；② `AdminAuthService` 内**没有**任何"按 systemType 限制角色"的额外逻辑（已核验 `:25-53`，仅做 status + 密码 + `isAllowedSystem`）；③ 错误文案已存在（`getSystemErrorKey:147-151` 的 `SYSTEM_CD` 分支 → `auth.no_cd_access`，i18n 已备），**无需新增 i18n**。
@@ -239,7 +243,7 @@ CD 发起登录 → OAuthController::authorizeSubmit:97
 | 2 | access token 改 sha256 存储 | Glue | **P0** | 1h | 与 `TokenService::hashAdminToken` 语义一致；部署瞬间在途 token 失效（≤1h，可接受） |
 | 4 | 新增 `GET /api/rbac/roles/{name}/permissions` | Glue | **P0** | 2h | 🟠 阻塞 CD 权限映射；复用 `TokenService::loadPermissions`，**零新 scope**（`ApiScopeResolver:45-47` 已覆盖整个 `/api/rbac/*`） |
 | 5 | CD 侧 BFF 形态 OIDC RP | **CD** | **P0** | CD 主工作量 | `state`/`nonce`/JWKS 验签/`iss`/`aud`/`exp`；**换 token 必须重传 redirect_uri** |
-| 3 | `systems` claim（userinfo + id_token 白名单） | Glue | P2 | 2h | v1 已从 rbac 端点取得，属优化项。**若做，需同时改 3 处**：`OAuthController::userinfo:219-228`、`buildIdTokenClaims:316-328`、`OidcService::signIdToken:219-229` 的白名单 + `CLAIMS_SUPPORTED:30-33`（否则 claim 被静默丢弃） |
+| 3 | `systems` claim（userinfo + id_token 白名单） | Glue | P2 | 2h | v1 已从 rbac 端点取得，属优化项。**若做，必须四处同改（漏 1 处 = 静默丢弃，不报错）**：① `OAuthController::buildIdTokenClaims:326-338` 组装取值；② `OidcService::OPTIONAL_CLAIMS:46` 加白名单（`signIdToken:232-238` 是**唯一透传入口**）；③ `OidcService::CLAIMS_SUPPORTED:30-33` 声明；④ `OAuthController::userinfo:221-230`（若也要在 userinfo 暴露）。护栏：`OidcServiceTest::testClaimOutsideWhitelistIsSilentlyDropped`（tripwire，落地 P2 时必须变红） |
 | 6 | `refresh_token` | Glue | P2 | 1d | v1 用 §6 的周期校验替代。⚠️ **红线见 §6.3** |
 | 7 | PKCE | — | ❌ 不做 | — | BFF 机密客户端不需要 |
 | 8 | OIDC 单点登出（end_session） | — | ❌ 不做 | — | Glue 无会话可登出 |
@@ -265,7 +269,7 @@ CD 会话：24h（沿用 CD 现有 CD_SESSIONS 机制与 HttpOnly cookie）
 
 ### 6.2 为什么不用 userinfo 做周期校验（重要机理）
 
-`OAuthService::validateAccessToken:174-198` 的查询条件含 `expires_at > time()`，而 `ACCESS_TOKEN_TTL = 3600`（`OAuthService.php:20`）。
+`OAuthService::validateAccessToken:199-223` 的查询条件含 `expires_at > time()`，而 `ACCESS_TOKEN_TTL = 3600`（`OAuthService.php:27`）。
 
 ⇒ **Glue 的 access token 1 小时后必然失效**，`/oauth/userinfo` 随之 401。
 ⇒ 因此「用 userinfo 周期校验」**撑不起 24h 的 CD 会话**（只能在首小时内有效）。
@@ -275,11 +279,11 @@ CD 会话：24h（沿用 CD 现有 CD_SESSIONS 机制与 HttpOnly cookie）
 
 ### 6.3 refresh_token 的 P2 红线（若将来要实现）
 
-`OAuthService::issueAccessToken:152-167` **不查账号状态**。若 `grant_type=refresh_token` 直接调用它，则**账号被停用后仍可无限续期**，等于打掉 Glue 现有最好的安全特性（停用即失效）。实现时必须：
+`OAuthService::issueAccessToken:177-192` **不查账号状态**。若 `grant_type=refresh_token` 直接调用它，则**账号被停用后仍可无限续期**，等于打掉 Glue 现有最好的安全特性（停用即失效）。实现时必须：
 
 1. refresh 分支**先**回查账号（`refreshAccount()` 或等价查询），`status=0` / 用户不存在 → 返回 `invalid_grant`；
 2. 实施 refresh token 轮转（一次一换），并对旧值做吊销；
-3. 顺手把 `OAuthController.php:179` 的 `expires_in => 3600` 字面量改为引用 `OAuthService::ACCESS_TOKEN_TTL`（当前两处各自硬编码，易漂移）。
+3. ~~顺手把 `OAuthController.php:179` 的 `expires_in => 3600` 字面量改为引用 `OAuthService::ACCESS_TOKEN_TTL`（两处各自硬编码易漂移）~~ → **已在 P0 收口（`68181a4`）**：`OAuthController.php:181` 现直接引用 `OAuthService::ACCESS_TOKEN_TTL`，字面量已消失（本条不再是 P2 的待办项）。
 
 ### 6.4 时效矩阵（CD 可据此设计 UX）
 
@@ -350,8 +354,8 @@ CD 会话：24h（沿用 CD 现有 CD_SESSIONS 机制与 HttpOnly cookie）
 | 非 API token（登录态） | 403 | `{"code":403,"message":"…"}` |
 
 - CD 只需读 `permissions`；`role` 是 Glue 归一后的**回显**（证明命中的是哪个角色名）。**角色名不做大小写归一**（精确匹配 `roles.name`）——请原样透传 `/api/rbac/users/{username}` 返回的 `role`，不要自行 lower/trim。
-- **与 CD 建议的差异及理由**：CD 建议「角色不存在 → 200 + `[]`（deny-by-default，避免降权瞬间刷错误日志）」。Glue 侧保留 404，因为 `404` 与「角色存在但零权限」是**两个不同事实**，合并会制造**静默失效**：CD 会把「角色名写错 / 角色被删」当成「该角色没有任何权限」而把用户权限收敛为空，且没有任何可诊断信号。`roleExists` 检查本身也正是为「防角色名悬空导致权限加载为空」而存在（`AdminUserRepository:126`）。CD 侧配合方式：404 → fail-closed 拒绝 + 按角色名缓存失败结果并**限流记日志**（而不是每请求一条）。
-- 若 CD 既有代码只能判 200，**告知即可**：改动量为 1 个 `if`、1 条单测、OpenAPI 双语描述各一处，属可协商项。
+- **与 CD 建议的差异及理由**：CD 建议「角色不存在 → 200 + `[]`（deny-by-default，避免降权瞬间刷错误日志）」。Glue 侧保留 404，因为 `404` 与「角色存在但零权限」是**两个不同事实**，合并会制造**静默失效**：CD 会把「角色名写错 / 角色被删」当成「该角色没有任何权限」而把用户权限收敛为空，且没有任何可诊断信号。`roleExists` 检查本身也正是为「防角色名悬空导致权限加载为空」而存在（`AdminUserRepository::roleExists:127-134`，实现为 `WHERE name = ?` **精确匹配** → `:129`）。CD 侧配合方式：404 → fail-closed 拒绝 + 按角色名缓存失败结果并**限流记日志**（而不是每请求一条）—— **CD 已回签接受此分工**，其侧冻结行为表见本节「回签 3」（含窗口去重、限流 WARN 与 ≤1 窗口自愈）。
+- ~~若 CD 既有代码只能判 200，告知即可（1 个 `if` + 1 条单测 + OpenAPI 双语）~~ → **✅ 已裁定（2026-10-12）：CD 侧回签「接受 404，不需要 Glue 改」**，其处理为 fail-closed（登录阶段 `302 /login?error=errors.identity_unavailable`；已登录复核阶段**删会话行 + 401**）。**Glue 侧保持 404 不变**，本条即最终口径。
 - 不返回 `implied_rules`：写侧 `roleCreate` / `roleUpdate` 已用 `expandPermissions` 展开入库，读侧再展开会与「实际生效权限」口径分叉。
 
 **回签 2：`OIDC_ISSUER` 显式配置 —— 采纳，并升为 P0 前置（部署项）**
@@ -381,7 +385,7 @@ BFF 机密客户端（不做 PKCE）· 不做 OIDC 单点登出（`POST /oauth/a
 | ⚠️ `email` | 用户未配邮箱时是**占位值** `username@devops-glue.local` 且 `email_verified=false` ⇒ **不可当身份标识**（Grafana 按 email 匹配用户才需要它） |
 | 不在 id_token 里 | `role` 只在 `/oauth/userinfo`（Bearer **OAuth** token）返回；`systems` 无（P2）。注意 OAuth access_token **不能**调 `/api/*`（§0 已定案） |
 
-**`/api/rbac/*` 两条硬约束 + 5 个易错点**
+**`/api/rbac/*` 两条硬约束 + 8 个易错点**（序号与 CD 侧文档**不一一对应**：CD 侧同批列为 10 条、多出 2 条为其实现内部细节 —— **双方以内容对齐，不以序号对齐**）
 
 1. **绝不能加 `?format=json`** —— `BaseController::output` 默认 `format=raw`，加了会被包成 `{"data":{…}}`（`BaseController:88-101`）。
 2. **只按 HTTP 状态码分支** —— `message` 经 `jsonError` 翻译，是给人看的诊断文本、**不是稳定 key**（`BaseController:140-152`）。
@@ -393,6 +397,9 @@ BFF 机密客户端（不做 PKCE）· 不做 OIDC 单点登出（`POST /oauth/a
 | 3 | `scope` 漏 `openid` | 响应里**没有 `id_token`**，且不报错 |
 | 4 | `redirect_uri` 漏传 / 不一致 | `invalid_grant`，且看起来像 code 问题 |
 | 5 | `iss` / `jwks_uri` 取推导（内网）值 | 验签失败，误判为密钥问题 |
+| 6 | 把 `role` 自行 lower/trim 后再调权限端点 | 角色名**大小写敏感**（`WHERE name = ?` 精确匹配）⇒ **404**，进而被误读成「角色被删」而 fail-closed 拒绝登录；请**原样透传** `/api/rbac/users/{username}` 返回的 `role` |
+| 7 | 把 `/oauth/authorize` 的失败当 JSON 解析 | 失败是 **401 + HTML 登录页**（不是 JSON error body）；CD 侧不得对该响应做 `json()` |
+| 8 | 把授权码当可重试凭证 | 授权码 TTL 仅 **60s**（`OAuthService::CODE_TTL:19`）且一次性；超时/已用都返回 `invalid_grant`。CD 应**静默重走 `/api/auth/oidc/start`**（一次跳转，**不当错误页**） |
 
 **P2（`systems` claim）的实现约束 —— 4 处同改，漏 1 处静默丢弃**
 
@@ -400,6 +407,25 @@ BFF 机密客户端（不做 PKCE）· 不做 OIDC 单点登出（`POST /oauth/a
 ① `OAuthController::buildIdTokenClaims` 组装取值；② `OidcService::OPTIONAL_CLAIMS` 加白名单；③ `OidcService::CLAIMS_SUPPORTED` 声明（Discovery 的 `claims_supported`）；④ `OAuthController::userinfo` 返回数组（若该 claim 也要在 userinfo 暴露）。
 
 护栏已加：`OidcServiceTest` 断言「白名单 ⊆ `claims_supported`」与「每个白名单 claim 都能被签出」；另有 tripwire 断言当前 `systems` **被静默丢弃**（P2 落地时该断言变红，强制四处同改）。
+
+**回签 3：CD 侧二次回签（2026-10-12，CD 文档提交 `91541c8` / CD 分支 `feature/oidc-bff`）—— 「接受 404 + 自行 fail-closed」，Glue 侧接口零改动**
+
+CD 的裁定与 Glue 侧同向：**404 与「零权限」是两个事实**，合会制造静默失效；而「降权瞬间刷日志」的代价由 **CD 侧**消化，不是把两个事实合并。CD 侧已冻结的行为（对 Glue 而言，这是「谁负责什么」的最终分工）：
+
+| CD 侧场景 | CD 侧行为（已冻结） |
+|:--|:--|
+| 200 真实权限 | 按 `permissions` 判权 |
+| 200 `[]` | deny-by-default（**这是真实事实**：该角色确实未被授予任何权限） |
+| 200 `["*"]` | **通配放行**（`require_perm` / `enforce_deploy_perm` 均认 `*`） |
+| **404** `user.role_not_found` | **fail-closed**：登录阶段 `302 /login?error=errors.identity_unavailable`；已登录复核阶段**删会话行 + 401**（回登录页）；**绝不**降级为空权限 |
+| 404 的日志 / 性能 | 同角色名在 `OIDC_REVALIDATE_SECONDS`（60s）窗口内**只查一次、只打一条 WARN（含角色名）**；角色行恢复后 **≤1 个窗口自动恢复** |
+| 人工排查 | 需要核对角色目录时用 `GET /api/rbac/roles`（只回 `name`/`description`）；**不**在 404 时自动回退「猜」权限 |
+
+- **CD 新开 1 个 i18n key**：`errors.identity_unavailable`（其侧新 key 由 4 个 → **5 个**），并**刻意不复用** `errors.no_cd_access` / `errors.user_disabled` —— 404 不是「账号问题」而是「管理侧配置问题」，混用会把排查方向带偏。**Glue 侧无需任何改动**（Glue 侧对应文案仍是 `user.role_not_found` + 404）。
+- **双方共同持有的不变量**：任何情况下**不得出现「已登录但权限为空」的静默降权** —— 要么拿到明确权限（含 `*` 通配），要么 fail-closed 拒绝并留痕（WARN + 状态码）。
+- **7 项契约精化：CD 全部采纳**，本文对应落点 —— ① `role` **原样透传**（本节坑 6 / §3.3）；② 角色改名会同步 `admin_users.role` ⇒ **404 语义可靠**（回签 1）；③ `email` 可能是占位值 `username@devops-glue.local` 且 `email_verified=false` ⇒ **不可作身份标识**（本节冻结要点表）；④ `role` 只在 `/oauth/userinfo`（OAuth Bearer，**不能**调 `/api/*`）⇒ CD v1 不调 userinfo（角色取自 `/api/rbac/users/{u}`）（本节冻结要点表）；⑤ `/oauth/authorize` 失败 = **401 + HTML**、授权码 TTL **60s**（本节坑 7 / 坑 8），且授权码失效时 CD **静默重走 start**；⑥ **单向**：Glue 侧无任何出站调用，只有 CD→Glue 的**入站**路径（`/oauth/authorize` GET+POST、`/oauth/token`、`/oauth/userinfo`（GET+POST）、`/.well-known/openid-configuration` + `/.well-known/jwks.json`、`/api/rbac/*`）；⑦ **不返回 `implied_rules`**（回签 1）。
+- **CD 对 Glue 4 项收口的取证复核 —— 我们已逐条复核回去（结果：全部为真，无锚点漂移）**：`OidcService::OPTIONAL_CLAIMS:46` 为唯一白名单、`signIdToken:232-238` 为唯一消费点 ✅；`OAuthService::ACCESS_TOKEN_TTL:27`（`public const`）+ `:189` 引用 + `CODE_TTL:19` = 60 ✅；权限端点形状 ✅（`RbacController::rolePermissions:291`、404 → `:302-303`、`super_admin → ['*']` → `:305-307`、`role` 只 `trim` → `:297`、`AdminUserRepository::roleExists:127` 精确匹配 → `:129`）；P2 四处同改的 tripwire ✅（`OidcServiceTest::testClaimOutsideWhitelistIsSilentlyDropped:188`）。⚠️ 唯一需更正的是**分支事实**：CD 看到的是**已被撤下的远端分支** `68181a4`，当前为**仅本地**（最新一条即本文档 v1.0.2 的提交，见 `git log`；**未推送任何远端**），见 §0「分支状态与切档前置」。
+- **CD 侧承诺的护栏（已落其文档 §9 / §11 / §12）**：① **联调第 0 项必做** `curl -s <issuer>/.well-known/openid-configuration | jq .issuer,.jwks_uri`，两端都须为对外地址；且 CD 的 `iss` 不符时**同时打印** discovery 值与期望值；② 验收用例「手工 `DELETE` 角色行 → fail-closed + 限流 WARN + ≤60s 自愈」（本文用例 G）；③ 授权码失效（含 60s 超时）**静默重走 start**，一次跳转、不当错误页；④ P2 的 tripwire 测试作为落地护栏。
 
 ---
 
@@ -421,6 +447,9 @@ BFF 机密客户端（不做 PKCE）· 不做 OIDC 单点登出（`POST /oauth/a
 | 8 | `id_token` 验签 | CD 用 JWKS 验签并校验 `iss`/`aud`/`exp`/`nonce` | 全部通过 | 待 CD 实现 |
 | **E** | **issuer 口径（§7.5 回签 2）** | 配置 `OIDC_ISSUER` 后拉 discovery，并让 CD 打印其期望值 | `discovery.issuer` 与 CD 期望值**逐字符一致**，且 `jwks_uri` 为对外可达地址 | ⏳ 部署时核对 |
 | F | 权限端点 404 分支 | CD 用不存在的角色名调 `/api/rbac/roles/{name}/permissions` | 404（**不是** `{"permissions":[]}`）；CD 侧 fail-closed 拒绝并限流记日志 | ✅ Glue 侧已具备（`CdOidcLoginWiringTest`） |
+| **G** | **404 的端到端 fail-closed 与自愈（CD 侧）** | 手工 `DELETE` 角色行（或让用户名指向不存在的角色）→ CD 登录 / 已登录复核 | 登录阶段 `302 /login?error=errors.identity_unavailable`；复核阶段**删会话行 + 401**；60s 窗口内同角色**只打 1 条 WARN**；角色行恢复后 ≤1 个窗口自动恢复。**不得出现「已登录但权限为空」** | 待 CD 实现 |
+
+> **用例编号对照（防口径分叉）**：本文 **E** = CD 侧文档 `SSO_OIDC.md` §12 的 **F**（issuer 口径 / 联调第 0 项）；本文 **F + G** 合起来对应 CD 侧文档的 **G**（本文 F = Glue 侧响应形状，G = CD 侧端到端行为）。**跨方沟通请以场景名（而非字母）指代用例**。
 
 ---
 
@@ -443,11 +472,12 @@ BFF 机密客户端（不做 PKCE）· 不做 OIDC 单点登出（`POST /oauth/a
 | # | 未决项 | 建议 |
 |:--|:--|:--|
 | 1 | P0-4 权限端点的响应结构 | ✅ **已裁定（§7.5 回签 1）**：`{"role":"…","permissions":[…]}`；**角色不存在 = 404**（不是空数组）；`super_admin` = `["*"]`；不返回 `implied_rules`（写侧 `expandPermissions` 已展开入库，读侧再展开会与「实际生效权限」口径分叉） |
-| 2 | CD 侧 `permissions` 的缓存 TTL 与失效策略 | 建议按角色缓存 60s，与周期校验同频 |
-| 3 | CD 校验失败（Glue 不可用）时的降级策略 | 建议 fail-closed（拒绝）或"已有会话短期放行"，由 CD 决定并在文档记录 |
+| 2 | CD 侧 `permissions` 的缓存 TTL 与失效策略 | ✅ **已裁定（CD `91541c8`）**：按角色缓存，窗口 `OIDC_REVALIDATE_SECONDS` = 60s，与周期校验同频；窗口内同角色**只查一次、只打一条 WARN** |
+| 3 | CD 校验失败（Glue 不可用 / 角色 404）时的降级策略 | ✅ **已裁定（CD `91541c8`）**：**fail-closed** —— 登录阶段 `302 /login?error=errors.identity_unavailable`、已登录复核阶段删会话行 + 401，**绝不**降级为空权限；Glue 恢复后 ≤1 个窗口自愈 |
 | 4 | `systems` 事后修改能力缺失 | 当前**无任何 API/UI 可修改已建账号的 `systems`**（`updateUser` 无该参数、编辑表单隐藏）。若业务需要（如把 `ci,cd` 账号改为仅 `cd`），需单独立项 |
 | 5 | 「仅 CI」选项落库为 `'ci,cd'`（§4.3 推论 2） | 既有小瑕疵，建议单独记账，不与本方案混合修改 |
 | 6 | 是否需要 `groups` 之外的权限表达 | 若后续多系统共用 Glue 为 IdP，建议统一以 `role` + 权限端点表达，避免在 id_token 内堆叠权限 |
+| 7 | **P0 何时合入 `release/2.9.0` 并部署** | ✅ **合并路径已定（2026-10-12）**：`feature/cd-oidc-p0` 为**临时分支**，收口后**合入 `release/2.9.0`**（已基于本地 2.9.0 头 `262d42a` 构建 ⇒ **快进、无冲突**，带 6 个提交 = 2 代码 + 4 文档）；⚠️ 合入前须先完成 2.9.0 本地/远端血统收敛。CD 侧对合并节奏无异议；但 **CD 切档（L1b / L1c）以「目标环境已部署含 P0 的 Glue 版本」为前置**（CD 已在其文档写明）。设计文档随 `feature/cd-oidc-p0` 一并带入 —— **勿让「文档在 release 血统、代码在 feature 血统」的口径分叉**（见 §0 分支状态） |
 
 ---
 
@@ -457,10 +487,10 @@ BFF 机密客户端（不做 PKCE）· 不做 OIDC 单点登出（`POST /oauth/a
 
 | 文件 | 位置 | 改动 |
 |:--|:--|:--|
-| `config/settings.php` | `oauth_clients`（第 202-215 行） | 新增 `cd` 客户端 + `system` 键 |
-| `src/Service/OAuthService.php` | 新增访问器（参考 `getClientRedirectUri:78`） | `clientSystem(string $clientId): ?string` |
+| `config/settings.php` | `oauth_clients`（第 202-225 行） | 新增 `cd` 客户端 + `system` 键 |
+| `src/Service/OAuthService.php` | `oauth_clients` 过滤（参考 `getClientRedirectUri:85`） | `clientSystem(string $clientId): ?string`（**已实现**：`:99`） |
 | `src/Controller/OAuthController.php` | `:97` | `authenticate()` 第三参改为按 client 解析、默认回退 `SYSTEM_CI` |
-| `src/Service/OAuthService.php` | `:162`（签发 `issueAccessToken`）+ `:181`（校验 `validateAccessToken`） | access token 改以 `hash('sha256', $token)` 作 `cache_key`，与 `TokenService::hashAdminToken` 语义一致 |
+| `src/Service/OAuthService.php` | `:177`（签发 `issueAccessToken`，改动前 `:162`）+ `:199`（校验 `validateAccessToken`，改动前 `:181`） | access token 改以 `hash('sha256', $token)` 作 `cache_key`，与 `TokenService::hashAdminToken` 语义一致（**已实现**：`hashAccessToken:270`） |
 | `config/routes.php` | `/rbac` 组（第 124-133 行） | 新增 `GET /roles/{name}/permissions` |
 | `src/Controller/RbacController.php` | 新增方法 | `rolePermissions()`，复用 `TokenService::loadPermissions`（需注入） |
 | `src/Service/AdminUserRepository.php` | 可选 | 如需"角色→权限"读取，可在此加方法（当前 `loadPermissions` 在 `TokenService`） |
@@ -475,7 +505,7 @@ BFF 机密客户端（不做 PKCE）· 不做 OIDC 单点登出（`POST /oauth/a
 | OAuth 路由公开、不挂 AuthMiddleware | `config/routes.php:170-185` |
 | 仅支持 `authorization_code` | `OAuthController.php:155-157` |
 | client_secret 必填、支持 Basic/Post | `OAuthController.php:144-160` |
-| 换 token 需重传 redirect_uri | `OAuthController.php:162` → `OAuthService::consumeCode:114` |
+| 换 token 需重传 redirect_uri | `OAuthController.php:164` → `OAuthService::consumeCode:139` |
 | **登录页硬编码按 CI 校验** | `OAuthController.php:97` + `AdminAuthService::authenticate:43`、`isAllowedSystem:153-157` |
 | 建号默认 `systems='cd'` | `AdminController.php:886`、`public/assets/modules/users.js:123,170-179` |
 | RbacController 建号硬编码 `'cd'` | `RbacController.php:99`（注释 `:21,66`） |
@@ -483,15 +513,15 @@ BFF 机密客户端（不做 PKCE）· 不做 OIDC 单点登出（`POST /oauth/a
 | 编辑账号无法改 `systems` | `AdminUserRepository::updateUser:134`（签名无该参数）、`users.js:144,211` |
 | 非授权创建者带 `ci` 被拒 | `AdminController.php:917-918`、`lang/zh_CN/messages.php:500` |
 | `auth.no_cd_access` 文案已存在 | `lang/zh_CN/messages.php:61`、`lang/en/messages.php:60` |
-| access token 1h 且不透明 | `OAuthService.php:20,154,174-198` |
-| 每次校验回查账号（停用/降权即时生效） | `OAuthService.php:190-193,209-235` |
+| access token 1h 且不透明 | `OAuthService.php:27, 177-192, 199-223` |
+| 每次校验回查账号（停用/降权即时生效） | `OAuthService.php:215-218`（调用点）+ `:234-269`（`refreshAccount`） |
 | `/api/rbac/*` 统一 scope、自动覆盖新子路径 | `ApiScopeResolver.php:45-47` |
 | rbac 用户端点返回 `systems` | `AdminUserRepository::findUserForApi:104-113`、`listUsersForApi:93-98` |
 | **rbac 角色端点不返回权限** | `AdminUserRepository::listRolesForApi:119-124`（只有 `name, description`） |
 | 权限查询可复用 | `TokenService::loadPermissions:172-185` |
-| rbac 端点仅 API token 可调 | `RbacController::requireApiToken:58-64` |
-| `groups` = 单角色 | `OidcService::groupsFromRole:290`、`buildIdTokenClaims:326` |
-| id_token claims 白名单（新增 claim 必须同步改） | `OidcService::signIdToken:219-229`、`CLAIMS_SUPPORTED:30-33` |
+| rbac 端点仅 API token 可调 | `RbacController::requireApiToken:62-68`（前缀 docblock `:59-61`） |
+| `groups` = 单角色 | `OidcService::groupsFromRole:299`、`OAuthController::buildIdTokenClaims:326-338` |
+| id_token claims 白名单（新增 claim 必须同步改） | `OidcService::OPTIONAL_CLAIMS:46`（白名单常量）、`signIdToken:232-238`（唯一透传点）、`CLAIMS_SUPPORTED:30-33`、`OAuthController::userinfo:221-230` |
 
 ---
 
@@ -502,6 +532,7 @@ BFF 机密客户端（不做 PKCE）· 不做 OIDC 单点登出（`POST /oauth/a
 | 2026-10-12 | v0.1 | 初稿：确立 BFF 形态、划掉 PKCE/end_session/refresh_token、识别 P0-0 阻塞项 | 待 CD 评审 |
 | 2026-10-12 | v1.0 | CD 送审回执 + Glue 落地：P0-0/1/2/4 已实现（`d75bde7`）；新增契约回签 §7.5、补充 §二 `OIDC_ISSUER` 升 P0 前置、claim 白名单 4 处同改约束（`68181a4`） | CD 的 5 项结论全部确认，无分歧；权限端点形状保留「角色不存在 = 404」（§7.5 回签 1） |
 | 2026-10-12 | v1.0.1 | 收口提交 `68181a4`：`expires_in` 改引 `ACCESS_TOKEN_TTL` 常量、`OPTIONAL_CLAIMS` 白名单结构化 + 4 条护栏测试、`OIDC_ISSUER` 升 P0 前置（中英双语手册与 `app.env.example` 加告警）；v2.9.0 更新日志补齐（`6250a15`）；分支 `feature/cd-oidc-p0` 已就绪（**仅本地，未推送**） | **契约内容零变化**（仍以 §7.5 为准），本次仅加固与文档；CD 侧回签项无需调整 |
+| 2026-10-12 | v1.0.2 | **CD 侧二次回签**（CD 文档提交 `91541c8`）：**接受 404** 并自行 fail-closed（新增 i18n key `errors.identity_unavailable`，其侧 4→5）、7 项契约精化全部采纳、`OIDC_REVALIDATE_SECONDS` 60s 去重 / 限流 WARN / ≤1 窗口自愈、P2 tripwire 采纳。本文随之补：§7.5「回签 3」+ 坑表 5→8、§8 用例 G 与**编号对照**（本文 E = CD 文档 F）、§9.2 未决项 2/3 标为已裁定 + 新增未决项 7、§0 分支状态与切档前置、§5 与 §10.2 行锚点校正（`systems` 「3 处」→**四处同改**、`groupsFromRole:290`→`:299`、`signIdToken:219-229`→`:232-238`） | **Glue 侧接口零改动**；仍以 §7.5 为唯一权威口径。CD 侧切档前置 = 目标环境已部署含 P0 的 Glue 版本（§0） |
 
 **评审通过后的实施约定**：Glue 侧先落 P0-0 / P0-1 / P0-4（三项独立、零回归），CD 侧 RP 开发随后启动 —— **截至 2026-10-12 已完成**，CD 侧可开工并按 §7.5 契约联调。
 
