@@ -72,6 +72,16 @@ OIDC_ISSUER=https://glue.example.com
 
 > ⚠️ `OIDC_ISSUER` must be the URL each system **actually uses to reach Glue** (scheme + host, plus port when non-default),
 > and it must match the `issuer` in the discovery document exactly — OIDC clients verify that `issuer` matches the request URL and reject the login otherwise.
+>
+> **Verify before integration** (when left empty it is derived from the request `scheme+host`; behind a reverse proxy that
+> derivation yields an **internal** address: not only does `iss` verification fail, the discovery `jwks_uri` also points
+> inward — clients report a **signature-verification failure**, not a network error, which is easy to misdiagnose as a key issue):
+>
+> ```bash
+> curl -s https://glue.example.com/.well-known/openid-configuration | jq .issuer,.jwks_uri
+> ```
+>
+> Both must be the externally reachable address the clients actually use; deployments behind nginx / Ingress must set `OIDC_ISSUER` explicitly.
 
 ### 2.2 Register clients
 

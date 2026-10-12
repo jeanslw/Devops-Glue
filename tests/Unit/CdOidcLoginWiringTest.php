@@ -112,6 +112,24 @@ class CdOidcLoginWiringTest extends TestCase
             'access token 明文不得作为 cache_key 落库'
         );
     }
+    /**
+     * `expires_in` 必须引用 `OAuthService::ACCESS_TOKEN_TTL`：此前它是字面量 3600，与真正决定
+     * cache 过期时间的常量一旦漂移，就会对客户端（Grafana 等）谎报 access token 有效期。
+     * CD v1 不消费该字段，但 CD 侧评审已把它列为整改项，这里是它的回归护栏。
+     */
+    public function testTokenEndpointExpiresInReferencesConstant(): void
+    {
+        $src = $this->read('src/Controller/OAuthController.php');
+
+        $this->assertStringContainsString('OAuthService::ACCESS_TOKEN_TTL', $src);
+        $this->assertDoesNotMatchRegularExpression(
+            "/'expires_in'\s*=>\s*\d+/",
+            $src,
+            'expires_in 不得回退为字面量：与 OAuthService::ACCESS_TOKEN_TTL 漂移即谎报有效期'
+        );
+    }
+
+
 
     /** P0-4：路由已注册，且解析出的 scope 正是 CD 服务 token 持有的那一个。 */
     public function testRolePermissionsRouteExistsAndIsReachableByCdServiceToken(): void

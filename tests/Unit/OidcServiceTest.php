@@ -129,4 +129,70 @@ class OidcServiceTest extends TestCase
         $this->assertSame([], $svc->groupsFromRole(''));
         $this->assertSame([], $svc->groupsFromRole('   '));
     }
+
+    /**
+     * claim 白名单护栏（一）：`OPTIONAL_CLAIMS` 是 `signIdToken` 的唯一透传入口，而
+     * `CLAIMS_SUPPORTED` 是发给客户端的 discovery 声明 —— 两者必须一致：
+     * 白名单里的 claim 未声明 ⇒ 客户端不知道能拿到；声明里的 claim 不在白名单 ⇒ 客户端拿了空。
+     */
+    public function testOptionalClaimsAreDeclaredInClaimsSupported(): void
+    {
+        foreach (['iss', 'sub', 'aud', 'iat', 'exp', 'nonce'] as $core) {
+            $this->assertContains($core, OidcService::CLAIMS_SUPPORTED, "核心 claim {$core} 必须在 claims_supported 声明");
+        }
+
+        foreach (OidcService::OPTIONAL_CLAIMS as $claim) {
+            $this->assertContains(
+                $claim,
+                OidcService::CLAIMS_SUPPORTED,
+                "可选 claim {$claim} 在白名单里却未在 claims_supported 声明"
+            );
+        }
+    }
+
+    /**
+     * claim 白名单护栏（二）：每个白名单 claim 都必须真的能被签进 id_token。
+     * 防「白名单漏加」类静默丢弃（新增 claim 时最易漏改的地方）。
+     */
+    public function testEveryOptionalClaimIsActuallySignedIntoIdToken(): void
+    {
+        $svc    = $this->makeService();
+        $claims = ['iss' => 'https://glue.example.com', 'sub' => 'alice'];
+        foreach (OidcService::OPTIONAL_CLAIMS as $claim) {
+            if ($claim === 'email_verified') {
+                $claims[$claim] = true;
+            } elseif ($claim === 'groups') {
+                $claims[$claim] = ['viewer'];
+            } else {
+                $claims[$claim] = 'v-' . $claim;
+            }
+        }
+
+        $decoded = (array) JWT::decode(
+            $svc->signIdToken($claims, 'cd', 'n-1'),
+            new Key($svc->publicKeyPem(), 'RS256')
+        );
+
+        foreach (OidcService::OPTIONAL_CLAIMS as $claim) {
+            $this->assertArrayHasKey($claim, $decoded, "claim {$claim} 在白名单内却没被签出（白名单失效）");
+        }
+        $this->assertSame(['viewer'], $decoded['groups']);
+        $this->assertTrue($decoded['email_verified']);
+    }
+
+    /**
+     * tripwire：白名单之外的 claim 会被**静默丢弃**（不报错、id_token 里也没有）。
+     * 这条断言把 P2（`systems` claim）的失败模式固定下来：落地 P2 时它必须变红，
+     * 从而强制开发者去改 `OPTIONAL_CLAIMS` + `CLAIMS_SUPPORTED` + `buildIdTokenClaims` + `userinfo` 四处。
+     */
+    public function testClaimOutsideWhitelistIsSilentlyDropped(): void
+    {
+        $svc     = $this->makeService();
+        $decoded = (array) JWT::decode(
+            $svc->signIdToken(['iss' => 'https://glue.example.com', 'sub' => 'alice', 'systems' => 'cd'], 'cd', null),
+            new Key($svc->publicKeyPem(), 'RS256')
+        );
+
+        $this->assertArrayNotHasKey('systems', $decoded, 'systems 尚未进入白名单：P2 落地时本断言应随之更新');
+    }
 }

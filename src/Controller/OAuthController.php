@@ -178,7 +178,7 @@ class OAuthController extends BaseController
         $payload = [
             'access_token' => $accessToken,
             'token_type'   => 'Bearer',
-            'expires_in'   => 3600,
+            'expires_in'   => OAuthService::ACCESS_TOKEN_TTL, // 引用常量而非字面量：漂移会对客户端谎报有效期
         ];
 
         // OIDC：仅当授权请求 scope 含 openid 才签发 id_token（纯 OAuth2/Grafana 不签，保持向后兼容）
@@ -313,6 +313,14 @@ class OAuthController extends BaseController
     /**
      * 组装 id_token 的 claims（iss/sub 由 OidcService 补 exp/iat/aud/nonce）
      *
+     * ⚠️ 新增 claim（如 P2 计划的 `systems`）必须**同时**改 4 处，漏掉第 2 处会被**静默丢弃**
+     * （签出的 id_token 里没有它，也不报错）：
+     *   1. 本方法 —— 组装取值；
+     *   2. `OidcService::OPTIONAL_CLAIMS` —— 透传白名单（关键）；
+     *   3. `OidcService::CLAIMS_SUPPORTED` —— discovery 的 `claims_supported` 声明；
+     *   4. `userinfo()` 的返回数组 —— 若该 claim 也要在 userinfo 暴露。
+     * 护栏：`tests/Unit/OidcServiceTest.php` 的两条白名单交叉断言。
+     *
      * @return array<string,mixed>
      */
     private function buildIdTokenClaims(string $username, string $role, string $issuer): array
@@ -331,6 +339,14 @@ class OAuthController extends BaseController
 
     /**
      * 确定 issuer：优先 OIDC_ISSUER 配置，缺省从当前请求 scheme+host 推导
+     *
+     * ⚠️ 推导路径**有意不读** X-Forwarded-Proto / X-Forwarded-Host（可伪造，会污染 discovery 文档），
+     * 因此经 nginx / Ingress 反向代理时，推导出的 issuer 很可能是**内网地址**（如 http://devops-glue）：
+     *   ① OIDC 客户端 `iss` 校验失败；② 更隐蔽的是 discovery 的 `jwks_uri` 也指向内网 → 客户端拉不到
+     * 公钥，表现为「验签失败」而非「网络不通」，极易误判为密钥问题。
+     * → 凡经反向代理对外提供 SSO 的部署，**必须**显式配置 `OIDC_ISSUER=<对外地址>`；
+     *   联调前核对口径：`curl -s <issuer>/.well-known/openid-configuration | jq .issuer,.jwks_uri`。
+     * 部署项与联调 checklist 见 docs/CD接入Glue-OIDC设计文档.md §7.1 / §7.5。
      */
     private function resolveIssuer(Request $request): string
     {

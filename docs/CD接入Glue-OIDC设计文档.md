@@ -1,6 +1,6 @@
 # CD 接入 Glue OIDC 设计文档
 
-> **状态**：待评审（Draft for Review）—— 评审通过后方可动代码
+> **状态**：P0 已实现（分支 `feature/cd-oidc-p0`，提交 `d75bde7`；385 单测 / 1678 断言 + PHPStan L8 + phpcs 全绿）—— 本文档作为 CD 侧联调依据，契约回签见 §7.5
 > **日期**：2026-10-12
 > **参与方**：Glue（OAuth2/OIDC Provider、用户主数据）· CD（OIDC Relying Party）
 > **范围**：仅「CD 的**登录用户**认证走 Glue OIDC」
@@ -23,6 +23,19 @@
 | 2 | access token 改 sha256 存储 | Glue | 不阻塞（安全修补） |
 | 4 | 新增 `GET /api/rbac/roles/{name}/permissions` | Glue | 🟠 阻塞 CD 权限映射 |
 | 5 | CD 侧 BFF 形态 OIDC RP（主工作量） | **CD** | 依赖 0 / 1 |
+| **前置** | 显式配置 `OIDC_ISSUER=<对外地址>`（§7.1） | Glue（部署动作） | 🟡 不阻塞编码；但经反向代理而不配，`iss` / `jwks_uri` 会推导成内网地址 ⇒ CD 验签失败且极易误判为密钥问题（§7.5 回签 2） |
+
+### P0 落地状态（2026-10-12 更新）
+
+| # | 交付项 | 状态 | 落点 / 证据 |
+|:--|:--|:--|:--|
+| 0 | OAuth 授权按 client 决定账号归属系统 | ✅ 已实现 | `OAuthService::clientSystem` + `OAuthController::authorizeSubmit`（保留 `?: AppConfig::SYSTEM_CI` 回退） |
+| 1 | 注册 `cd` 客户端（secret + 精确 redirect_uri） | ✅ 已实现 | `config/settings.php` `oauth_clients['cd']`；两者默认空串 ⇒ fail-closed 剔除 |
+| 2 | access token 改 sha256 存储 | ✅ 已实现 | `OAuthService::hashAccessToken`；升级瞬间在途 token 失效（≤1h） |
+| 4 | `GET /api/rbac/roles/{name}/permissions` | ✅ 已实现 | `RbacController::rolePermissions` + `config/routes.php`；响应形状见 §7.5 回签 1 |
+| 5 | CD 侧 BFF 形态 OIDC RP | ⏳ CD 侧进行中 | 依赖 0 / 1 已就绪，可开工 |
+| 前置 | `OIDC_ISSUER` 显式配置 | ⏳ 部署项（联调前必做） | `config/app.env:164`；核对命令见 §7.1 / §7.5 |
+| 护栏 | P0 四项的接线守卫测试 | ✅ 已实现 | `tests/Unit/CdOidcLoginWiringTest.php`（源码守卫 + 真 SQL 行为断言） |
 
 ### 已定架构决策（不再讨论）
 
@@ -289,7 +302,7 @@ CD 会话：24h（沿用 CD 现有 CD_SESSIONS 机制与 HttpOnly cookie）
 | `CD_OIDC_SECRET` | ✅ | CD 客户端的 client_secret（**留空 → 客户端被剔除，fail-closed**） |
 | `CD_OIDC_REDIRECT_URI` | ✅ | CD 回调地址，与 CD 侧发起的 `redirect_uri` **逐字符一致**（`hash_equals` 精确比较） |
 | `CD_OIDC_SYSTEM` | 可选 | 该客户端的账号归属系统，默认 `cd`（P0-0 方案 (b) 使用） |
-| `OIDC_ISSUER` | 建议 | 为空时运行时从请求 `scheme+host` 推导；**生产建议显式设置**，避免反向代理下 issuer 漂移导致 CD 侧 `iss` 校验失败 |
+| `OIDC_ISSUER` | ✅ **反代必填（P0 前置）** | 为空时运行时从请求 `scheme+host` 推导，且**有意不读** `X-Forwarded-*`（伪造头会污染 discovery）⇒ 反代下可能推成内网地址：① CD 侧 `iss` 校验失败；② Discovery 的 `jwks_uri` 也指向内网 ⇒ 表现为**验签失败**而非网络不通（极易误判为密钥问题）。联调前核对：`curl -s <issuer>/.well-known/openid-configuration | jq .issuer,.jwks_uri` 两者都须是对外地址 |
 | `OIDC_ID_TOKEN_TTL` | 可选 | 默认 3600 |
 
 ### 7.2 `config/settings.php` 片段
@@ -321,13 +334,80 @@ CD 会话：24h（沿用 CD 现有 CD_SESSIONS 机制与 HttpOnly cookie）
 3. Glue：上 P0-4 权限端点 + P0-2 token 哈希（后者使在途 OAuth token 全部失效，≤1h 影响，建议低峰执行）；
 4. CD：上线 RP → 灰度 1~2 个账号验证 → 全量。
 
+### 7.5 与 CD 的契约回签（2026-10-12）
+
+> 本节是 Glue 侧对 CD 送审的《CD ↔ Glue OIDC 接口冻结契约 v1》的**回签记录**，双方以此为准。
+
+**回签 1：P0-4 权限端点响应结构 —— 采纳 `{"role":…,"permissions":[…]}`，但**保留「角色不存在 = 404」****
+
+| 场景 | HTTP | Body |
+|:--|:--|:--|
+| 正常 | 200 | `{"role":"dev","permissions":["cd.deploy","cd.deploy.approve"]}` |
+| 角色存在但零权限 | 200 | `{"role":"some-role","permissions":[]}` |
+| `super_admin` | 200 | `{"role":"super_admin","permissions":["*"]}` |
+| **角色不存在** | **404** | `{"code":404,"message":"角色不存在"}` |
+| `name` 为空 | 400 | `{"code":400,"message":"…"}` |
+| 非 API token（登录态） | 403 | `{"code":403,"message":"…"}` |
+
+- CD 只需读 `permissions`；`role` 是 Glue 归一后的**回显**（证明命中的是哪个角色名）。**角色名不做大小写归一**（精确匹配 `roles.name`）——请原样透传 `/api/rbac/users/{username}` 返回的 `role`，不要自行 lower/trim。
+- **与 CD 建议的差异及理由**：CD 建议「角色不存在 → 200 + `[]`（deny-by-default，避免降权瞬间刷错误日志）」。Glue 侧保留 404，因为 `404` 与「角色存在但零权限」是**两个不同事实**，合并会制造**静默失效**：CD 会把「角色名写错 / 角色被删」当成「该角色没有任何权限」而把用户权限收敛为空，且没有任何可诊断信号。`roleExists` 检查本身也正是为「防角色名悬空导致权限加载为空」而存在（`AdminUserRepository:126`）。CD 侧配合方式：404 → fail-closed 拒绝 + 按角色名缓存失败结果并**限流记日志**（而不是每请求一条）。
+- 若 CD 既有代码只能判 200，**告知即可**：改动量为 1 个 `if`、1 条单测、OpenAPI 双语描述各一处，属可协商项。
+- 不返回 `implied_rules`：写侧 `roleCreate` / `roleUpdate` 已用 `expandPermissions` 展开入库，读侧再展开会与「实际生效权限」口径分叉。
+
+**回签 2：`OIDC_ISSUER` 显式配置 —— 采纳，并升为 P0 前置（部署项）**
+
+- CD 的证据链经 Glue 复核**成立**：`OidcService::issuer()` 只读配置；`OAuthController::resolveIssuer` 缺省从 `$request->getUri()` 的 `scheme+host(+非默认端口)` 推导，**不读 `X-Forwarded-*`**；`OidcService::discovery()` 用它拼出 `issuer` / `authorization_endpoint` / `token_endpoint` / `userinfo_endpoint` / `jwks_uri`。
+- 后果（反代未显式配置时）：① CD 侧 `iss` 校验失败；② `jwks_uri` 指向内网 ⇒ CD 拉不到公钥，报「验签失败」而非网络错误（最耗时的误判路径）。
+- 落地：`config/app.env` / `config/app.env.example` 注释已加警告与核对命令；联调 checklist **第 0 项**即 `curl -s <issuer>/.well-known/openid-configuration | jq .issuer,.jwks_uri`；用例 E 验收。
+- 有意**不**改成读 `X-Forwarded-Proto/Host`：可伪造头会污染 discovery 文档（与 `ClientIp` 仅在对端为可信反代时才信 XFF 的保守取向一致）。若确需，应单独立项并同时引入可信代理白名单。
+
+**CD 送审的 5 项结论 —— Glue 侧全部确认，无分歧**
+
+BFF 机密客户端（不做 PKCE）· 不做 OIDC 单点登出（`POST /oauth/authorize` **不建会话** ⇒ 无物可登出，比「BFF 自管会话」的理由更本质）· v1 不做 `refresh_token`（改周期调 rbac）· `systems` claim 降 P2 · `/api/rbac/roles` 只回 `name`/`description` 故权限端点必须为 P0。
+
+**`POST /oauth/token` 与 id_token 的冻结要点（Glue 侧实据核验后）**
+
+| 项 | 值 / 依据 |
+|:--|:--|
+| 客户端认证 | HTTP Basic（`client_secret_basic`）或表单体（`client_secret_post`）—— `OAuthController:146-155` |
+| 必传 | `grant_type=authorization_code`、`code`、**`redirect_uri` 逐字符重传**（`consumeCode` 精确比对）、**`scope` 必须含 `openid`** |
+| ⚠️ 静默项 | `scope` 不含 `openid` ⇒ **不下发 `id_token`**（`hasOpenidScope:304-311`），且不报错 |
+| 成功体 | `{"access_token","token_type":"Bearer","expires_in","id_token","scope"}` + `Cache-Control: no-store`；`expires_in` 现已引用 `OAuthService::ACCESS_TOKEN_TTL`（不再写字面量；CD v1 无需依赖它） |
+| 失败体 | `invalid_client` 401 / `invalid_grant` 400（code 无效·已用·**redirect_uri 不匹配**）/ `unsupported_grant_type` 400（含 `code` 为空） |
+| `iss` / `aud` / `sub` | `iss` = Discovery 的 issuer（见回签 2）；`aud` = client_id = `cd`；`sub` = **username**（`buildIdTokenClaims`） |
+| `iat` / `exp` | `exp = now + OIDC_ID_TOKEN_TTL`（默认 3600）；建议 CD 容忍 60s 钟差 |
+| `nonce` | 授权请求带 `nonce` 时原样回显（`OidcService::signIdToken:229-231`）—— **CD 必须校验** |
+| `groups` | `[role]`（role 空则 `[]`，`OidcService::groupsFromRole`）；v1 不用，P2 可交叉校验 |
+| ⚠️ `email` | 用户未配邮箱时是**占位值** `username@devops-glue.local` 且 `email_verified=false` ⇒ **不可当身份标识**（Grafana 按 email 匹配用户才需要它） |
+| 不在 id_token 里 | `role` 只在 `/oauth/userinfo`（Bearer **OAuth** token）返回；`systems` 无（P2）。注意 OAuth access_token **不能**调 `/api/*`（§0 已定案） |
+
+**`/api/rbac/*` 两条硬约束 + 5 个易错点**
+
+1. **绝不能加 `?format=json`** —— `BaseController::output` 默认 `format=raw`，加了会被包成 `{"data":{…}}`（`BaseController:88-101`）。
+2. **只按 HTTP 状态码分支** —— `message` 经 `jsonError` 翻译，是给人看的诊断文本、**不是稳定 key**（`BaseController:140-152`）。
+
+| # | 坑 | 现象 |
+|:--|:--|:--|
+| 1 | 加 `?format=json` | 响应变 `{"data":{…}}`，按顶层取键拿空 |
+| 2 | 用 `message` 文本判错 | Glue 改文案 / 切语言后 CD 逻辑静默失效 |
+| 3 | `scope` 漏 `openid` | 响应里**没有 `id_token`**，且不报错 |
+| 4 | `redirect_uri` 漏传 / 不一致 | `invalid_grant`，且看起来像 code 问题 |
+| 5 | `iss` / `jwks_uri` 取推导（内网）值 | 验签失败，误判为密钥问题 |
+
+**P2（`systems` claim）的实现约束 —— 4 处同改，漏 1 处静默丢弃**
+
+`signIdToken` 只透传 `OidcService::OPTIONAL_CLAIMS` 白名单内的 claim（`OidcService:232-238`），故必须同时改：
+① `OAuthController::buildIdTokenClaims` 组装取值；② `OidcService::OPTIONAL_CLAIMS` 加白名单；③ `OidcService::CLAIMS_SUPPORTED` 声明（Discovery 的 `claims_supported`）；④ `OAuthController::userinfo` 返回数组（若该 claim 也要在 userinfo 暴露）。
+
+护栏已加：`OidcServiceTest` 断言「白名单 ⊆ `claims_supported`」与「每个白名单 claim 都能被签出」；另有 tripwire 断言当前 `systems` **被静默丢弃**（P2 落地时该断言变红，强制四处同改）。
+
 ---
 
 ## 8. 验收用例
 
 | # | 场景 | 步骤 | 预期结果 | 现状 |
 |:--|:--|:--|:--|:--|
-| **A** | **默认 CD 账号可登录（P0-0 回归）** | Glue 后台建号**不填 systems**（落库 `'cd'`）→ 走 OAuth 登录页 | 登录成功、正确回跳 CD | 🔴 **必失败**（修复后应通过） |
+| **A** | **默认 CD 账号可登录（P0-0 回归）** | Glue 后台建号**不填 systems**（落库 `'cd'`）→ 走 OAuth 登录页 | 登录成功、正确回跳 CD | ✅ Glue 侧已修复（`authorizeSubmit` 按 client 取归属系统）；同时该账号在 Glue admin 仍登不上 ⇒ 证明用的是 CD 专属 systemType |
 | B | 管理员角色账号 | 建号时选「CD + CI」→ 登录 CD | 成功 | ✅ |
 | C | `systems='ci'` 的账号 | 该账号登录 CD | 被拒，提示 `auth.no_cd_access`（文案已存在） | ✅（前提是存在此类账号；注意 §4.3 推论 2） |
 | D | 会话内降权 | CD 会话有效期内，Glue 把用户 role 改小 | ≤60s 内 CD 权限随之变化 | 待 CD 实现 |
@@ -339,6 +419,8 @@ CD 会话：24h（沿用 CD 现有 CD_SESSIONS 机制与 HttpOnly cookie）
 | 6 | 停用账号登录 | 停用账号走 OAuth 登录页 | 401「账号已停用」（`auth.user_disabled`） | ✅ |
 | 7 | 登录暴破限流 | 连续 5 次错误密码 | 第 6 次 429 `auth.login_locked`（15 分钟） | ✅ |
 | 8 | `id_token` 验签 | CD 用 JWKS 验签并校验 `iss`/`aud`/`exp`/`nonce` | 全部通过 | 待 CD 实现 |
+| **E** | **issuer 口径（§7.5 回签 2）** | 配置 `OIDC_ISSUER` 后拉 discovery，并让 CD 打印其期望值 | `discovery.issuer` 与 CD 期望值**逐字符一致**，且 `jwks_uri` 为对外可达地址 | ⏳ 部署时核对 |
+| F | 权限端点 404 分支 | CD 用不存在的角色名调 `/api/rbac/roles/{name}/permissions` | 404（**不是** `{"permissions":[]}`）；CD 侧 fail-closed 拒绝并限流记日志 | ✅ Glue 侧已具备（`CdOidcLoginWiringTest`） |
 
 ---
 
@@ -350,7 +432,7 @@ CD 会话：24h（沿用 CD 现有 CD_SESSIONS 机制与 HttpOnly cookie）
 |:--|:--|:--|
 | **若 CD 走 SPA 直连（非 BFF）** | token 落入浏览器 JS，击穿 CD 现有 XSS 安全不变量；且需 Glue 补 PKCE | 已定案走 BFF（§0），本风险不成立 |
 | **若把 OAuth token 接入 Glue `/api/*`** | `AuthMiddleware` 会话分支**不校验 scope**，且 `BaseController::hasPermission` 对 `super_admin` 恒真 → 一枚 super_admin 的 OAuth token 可直达 `/api/admin/*`（用户/token/集成服务管理） | 明确不做（§0）；如未来要做，必须先加 `aud`/resource 区分 + 管理端点 fail-closed |
-| **生产 issuer 漂移** | `OIDC_ISSUER` 为空时按请求 `scheme+host` 推导，反代场景下 CD 侧 `iss` 校验可能失败 | 生产显式配置 `OIDC_ISSUER`（§7.1） |
+| **生产 issuer 漂移（已升 P0 前置）** | `OIDC_ISSUER` 为空时按请求 `scheme+host` 推导（不读 `X-Forwarded-*`），反代下 CD 侧 `iss` 校验失败，且 Discovery 的 `jwks_uri` 指向内网 ⇒ 被误判为「验签失败 / 密钥问题」 | 部署显式配置 `OIDC_ISSUER`（§7.1）+ 联调 checklist 第 0 项用 curl 核对（§7.5 回签 2） |
 | **`redirect_uri` 不一致** | 换 token 时 `invalid_grant`（最常见的联调卡点） | 配置逐字符比对；建议把该值作为联调 checklist 第一项 |
 | **服务 token scope 不足** | CD 周期校验/拉权限 403 | 确认 `dg_` token 含 `rbac.user.write`（§7.3） |
 | **60s 校验带来的 QPS** | CD 活跃用户数 × (1/60) 次/秒 打到 Glue | 单用户端点轻量（一次索引查询）；必要时 CD 侧加本地缓存兜底，或放宽到 120s |
@@ -360,7 +442,7 @@ CD 会话：24h（沿用 CD 现有 CD_SESSIONS 机制与 HttpOnly cookie）
 
 | # | 未决项 | 建议 |
 |:--|:--|:--|
-| 1 | P0-4 权限端点的响应结构 | 建议 `{"role":"…","permissions":["cd.deploy.approve", …]}`；是否也返回 `implied_rules`（`implied_rules` 表存在，Glue 侧如何做权限蕴含需确认口径） |
+| 1 | P0-4 权限端点的响应结构 | ✅ **已裁定（§7.5 回签 1）**：`{"role":"…","permissions":[…]}`；**角色不存在 = 404**（不是空数组）；`super_admin` = `["*"]`；不返回 `implied_rules`（写侧 `expandPermissions` 已展开入库，读侧再展开会与「实际生效权限」口径分叉） |
 | 2 | CD 侧 `permissions` 的缓存 TTL 与失效策略 | 建议按角色缓存 60s，与周期校验同频 |
 | 3 | CD 校验失败（Glue 不可用）时的降级策略 | 建议 fail-closed（拒绝）或"已有会话短期放行"，由 CD 决定并在文档记录 |
 | 4 | `systems` 事后修改能力缺失 | 当前**无任何 API/UI 可修改已建账号的 `systems`**（`updateUser` 无该参数、编辑表单隐藏）。若业务需要（如把 `ci,cd` 账号改为仅 `cd`），需单独立项 |
@@ -418,6 +500,7 @@ CD 会话：24h（沿用 CD 现有 CD_SESSIONS 机制与 HttpOnly cookie）
 | 日期 | 版本 | 变更 | 评审结论 |
 |:--|:--|:--|:--|
 | 2026-10-12 | v0.1 | 初稿：确立 BFF 形态、划掉 PKCE/end_session/refresh_token、识别 P0-0 阻塞项 | 待 CD 评审 |
+| 2026-10-12 | v1.0 | CD 送审回执 + Glue 落地：P0-0/1/2/4 已实现（`d75bde7`）；新增契约回签 §7.5、补充 §二 `OIDC_ISSUER` 升 P0 前置、claim 白名单 4 处同改约束（`81e13b2`） | CD 的 5 项结论全部确认，无分歧；权限端点形状保留「角色不存在 = 404」（§7.5 回签 1） |
 
-**评审通过后的实施约定**：Glue 侧先落 P0-0 / P0-1 / P0-4（三项独立、零回归），CD 侧 RP 开发随后启动。
+**评审通过后的实施约定**：Glue 侧先落 P0-0 / P0-1 / P0-4（三项独立、零回归），CD 侧 RP 开发随后启动 —— **截至 2026-10-12 已完成**，CD 侧可开工并按 §7.5 契约联调。
 

@@ -32,6 +32,19 @@ class OidcService
         'name', 'preferred_username', 'email', 'email_verified', 'groups',
     ];
 
+    /**
+     * 由传入 $claims **透传**进 id_token 的可选 claim 白名单（`signIdToken` 的唯一消费点）。
+     *
+     * ⚠️ 这是一道**静默丢弃**闸门：`signIdToken` 只搬运本白名单内的 claim，未列入者签出的
+     * id_token 里根本不存在、且**不报错**。新增 claim（例如 P2 计划的 `systems`）必须同时改 4 处：
+     *   1. `OAuthController::buildIdTokenClaims` —— 组装取值；
+     *   2. 本常量 —— 透传白名单（漏这里＝静默丢弃）；
+     *   3. `CLAIMS_SUPPORTED` —— discovery 的 `claims_supported` 声明；
+     *   4. `OAuthController::userinfo` 的返回数组 —— 若该 claim 也要在 userinfo 暴露。
+     * 护栏：`OidcServiceTest` 断言「白名单 ⊆ claims_supported」且「每个白名单 claim 都能被签出」。
+     */
+    public const OPTIONAL_CLAIMS = ['name', 'preferred_username', 'email', 'email_verified', 'groups'];
+
     /** @var array<string,mixed> */
     private array $config;
 
@@ -199,7 +212,7 @@ class OidcService
     /**
      * 签发 RS256 id_token。
      *
-     * @param array<string,mixed> $claims   须含 iss、sub；可选 name/preferred_username/email/email_verified/groups
+     * @param array<string,mixed> $claims   须含 iss、sub；可选 claim 须在 self::OPTIONAL_CLAIMS 白名单内（否则静默丢弃）
      * @param string              $clientId aud（客户端 id）
      * @param string|null         $nonce    有则回显进 id_token（防重放）
      */
@@ -216,16 +229,12 @@ class OidcService
         if ($nonce !== null && $nonce !== '') {
             $payload['nonce'] = $nonce;
         }
-        foreach (['name', 'preferred_username', 'email'] as $k) {
+        // 只搬运 OPTIONAL_CLAIMS 白名单内的 claim（新增 claim 需 4 处同改，见该常量注释）。
+        foreach (self::OPTIONAL_CLAIMS as $k) {
             if (array_key_exists($k, $claims)) {
-                $payload[$k] = $claims[$k];
+                // email_verified 是布尔语义需强制转型；其余（含 groups 数组）原样搬运 —— 与白名单化之前逐字节一致
+                $payload[$k] = $k === 'email_verified' ? (bool)$claims[$k] : $claims[$k];
             }
-        }
-        if (array_key_exists('email_verified', $claims)) {
-            $payload['email_verified'] = (bool)$claims['email_verified'];
-        }
-        if (array_key_exists('groups', $claims)) {
-            $payload['groups'] = $claims['groups'];
         }
 
         return JWT::encode($payload, $this->privateKeyPem(), 'RS256', $this->keyId());

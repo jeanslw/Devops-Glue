@@ -17,7 +17,14 @@ class OAuthService
     private const CODE_PREFIX        = 'oauth_code_';
     private const ACCESS_PREFIX      = 'oauth_at_';
     private const CODE_TTL           = 60;      // 授权码有效期（秒）
-    private const ACCESS_TOKEN_TTL   = 3600;    // 访问令牌有效期（秒）
+
+    /**
+     * 访问令牌有效期（秒）—— **唯一事实来源**：`issueAccessToken` 用它写 cache 过期时间，
+     * `OAuthController::token` 的响应 `expires_in` 也必须引用本常量。
+     * 历史问题：控制器里曾写字面量 3600，两者一旦漂移就会对客户端（Grafana 等）谎报有效期；
+     * CD 接入评审据此要求收口，故提升为 public 以允许控制器引用。
+     */
+    public const ACCESS_TOKEN_TTL    = 3600;
 
     private \PDO $pdo;
 
