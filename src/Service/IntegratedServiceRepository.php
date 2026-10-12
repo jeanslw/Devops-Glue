@@ -8,7 +8,7 @@ use App\Config\AppConfig;
  * integrated_services 仓储：集成服务启用契约。
  *
  * 边界约定：
- *   - CI 是本表的**唯一写入方**（后台「数据管理 → 集成服务」开关）；
+ *   - CI 是本表的**唯一写入方**（后台「API 管理 → 🔌 集成服务」开关）；
  *   - CD 等集成服务对本表**只读**（读 enabled/provision 决定是否建表/准入），绝不写；
  *   - 未来服务拆库独立部署时，CD 只依赖这一张窄表，接触点仅此一个 SELECT。
  *
@@ -18,7 +18,8 @@ use App\Config\AppConfig;
  *   - enabled=1 + provision=manual —— 启用，但集成服务禁止建表，只认运维预建表（CI 手动建库模式）。
  *
  * 关闭（enabled 1→0）只**冻结**服务：集成服务自有表与数据原样保留，重新启用即恢复；
- * 凭据（api_tokens 行）的撤销由调用方在同事务内通过 ApiTokenService 完成。
+ * 凭据（api_tokens 行）的撤销由调用方在同事务内通过 ApiTokenService 完成 —— 这里刻意**保留 api_token_id**：
+ * 冻结 ≠ 作废，再次启用要靠这个引用把同一枚凭据（连同原明文）原样恢复，CD 无需更换 CI_API_TOKEN。
  */
 class IntegratedServiceRepository
 {
@@ -46,7 +47,11 @@ class IntegratedServiceRepository
      * 归一化状态（JOIN api_tokens 派生凭据活性）。行不存在时返回默认「未启用」状态 ——
      * 调用方无需先判空，读到什么就是什么（不做任何种子写入）。
      *
-     * @return array{enabled:bool, provision:string, token_id:int|null, token_name:string, token_active:bool, updated_by:string, created_at:string|null, updated_at:string|null}
+     * 凭据拆成三态暴露（token_exists / token_enabled / token_expired），而不是只给一个 token_active：
+     * 「禁用（冻结）留下的、可原样恢复的凭据」与「已作废的凭据（撤销/删除/过期）」在 token_active 上
+     * 都是 false，但后续动作完全不同 —— 前者再次启用即恢复同一枚（CD 无需换 Token），后者只能补发新凭据。
+     *
+     * @return array{enabled:bool, provision:string, token_id:int|null, token_name:string, token_exists:bool, token_enabled:bool, token_expired:bool, token_active:bool, updated_by:string, created_at:string|null, updated_at:string|null}
      */
     public function getState(string $service): array
     {
@@ -62,37 +67,51 @@ class IntegratedServiceRepository
 
         if ($row === false) {
             return [
-                'enabled'      => false,
-                'provision'    => AppConfig::SERVICE_PROVISION_AUTO,
-                'token_id'     => null,
-                'token_name'   => '',
-                'token_active' => false,
-                'updated_by'   => '',
-                'created_at'   => null,
-                'updated_at'   => null,
+                'enabled'       => false,
+                'provision'     => AppConfig::SERVICE_PROVISION_AUTO,
+                'token_id'      => null,
+                'token_name'    => '',
+                'token_exists'  => false,
+                'token_enabled' => false,
+                'token_expired' => false,
+                'token_active'  => false,
+                'updated_by'    => '',
+                'created_at'    => null,
+                'updated_at'    => null,
             ];
         }
 
         $tokenId = $row['api_token_id'] !== null ? (int) $row['api_token_id'] : null;
-        $tokenActive = $tokenId !== null
-            && (int) $row['token_enabled'] === 1
-            && ($row['token_expires_at'] === null || (int) $row['token_expires_at'] > time());
+        // 左侧 JOIN 不到行时 t.* 全为 NULL → token_enabled 为 null 即「凭据行已不存在」（被硬删除 / 从未绑定）
+        $tokenExists  = $tokenId !== null && $row['token_enabled'] !== null;
+        $tokenEnabled = $tokenExists && (int) $row['token_enabled'] === 1;
+        $tokenExpired = $tokenExists
+            && $row['token_expires_at'] !== null
+            && (int) $row['token_expires_at'] <= time();
+        // 活性（对外可见的唯一口径）：行在 且 未被停用 且 未过期
+        $tokenActive = $tokenExists && $tokenEnabled && !$tokenExpired;
 
         return [
-            'enabled'      => (int) $row['enabled'] === 1,
-            'provision'    => (string) $row['provision'],
-            'token_id'     => $tokenId,
-            'token_name'   => (string) ($row['token_name'] ?? ''),
-            'token_active' => $tokenActive,
-            'updated_by'   => (string) ($row['updated_by'] ?? ''),
-            'created_at'   => $row['created_at'] !== null ? (string) $row['created_at'] : null,
-            'updated_at'   => $row['updated_at'] !== null ? (string) $row['updated_at'] : null,
+            'enabled'       => (int) $row['enabled'] === 1,
+            'provision'     => (string) $row['provision'],
+            'token_id'      => $tokenId,
+            'token_name'    => (string) ($row['token_name'] ?? ''),
+            'token_exists'  => $tokenExists,
+            'token_enabled' => $tokenEnabled,
+            'token_expired' => $tokenExpired,
+            'token_active'  => $tokenActive,
+            'updated_by'    => (string) ($row['updated_by'] ?? ''),
+            'created_at'    => $row['created_at'] !== null ? (string) $row['created_at'] : null,
+            'updated_at'    => $row['updated_at'] !== null ? (string) $row['updated_at'] : null,
         ];
     }
 
     /**
-     * 启用：行不存在则插入，存在则切换为启用并绑定新凭据。必须在事务内调用
-     * （凭据 INSERT 与本行写入须同生共死）。
+     * 启用：行不存在则插入，存在则切换为启用并绑定凭据。必须在事务内调用
+     * （凭据 INSERT / UPDATE 与本行写入须同生共死）。
+     *
+     * $tokenId 允许传入当前已绑定的**同一枚**（冻结 → 恢复）：此时语义退化为
+     * 「把 enabled 置 1 + 刷新 provision / updated_by」，凭据行与明文一字不动。
      */
     public function enable(string $service, string $provision, int $tokenId, string $operator): void
     {

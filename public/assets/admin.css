@@ -586,10 +586,14 @@
             font-size:12px; color:#16a34a; display:none; margin-left:auto;
             white-space:nowrap; flex-shrink:0;
         }
-        #custom-push-toggle, #stale-tag-cleanup-toggle, #backfill-tag-toggle, #apilog-cleanup-toggle {
+        #custom-push-toggle, #stale-tag-cleanup-toggle, #backfill-tag-toggle, #apilog-cleanup-toggle, #isvc-cd-toggle {
             width:16px; height:16px; margin:0; cursor:pointer;
             accent-color:#4f46e5;
         }
+        /* 集成服务：勾选框即服务开关（勾选=启用并签发服务 Token，取消=冻结并撤销该 Token） */
+        #isvc-cd-toggle-wrap { flex:0 0 auto; }
+        #isvc-cd-toggle-wrap input:disabled { cursor:not-allowed; }
+        #isvc-cd-toggle-wrap input:disabled + span { color:#9ca3af; }
         .mode-card-notes {
             margin:0; padding-left:16px;
             color:#9ca3af; font-size:11px; line-height:1.7;
@@ -756,6 +760,7 @@
 [data-theme="dark"] .topo-node .node-main,
 [data-theme="dark"] .topo-node .node-sub,
 [data-theme="dark"] .mode-card-hd,
+[data-theme="dark"] .mode-card-toggle,
 [data-theme="dark"] .bm-check { color:#e5e7eb; }
 [data-theme="dark"] .topo-node .node-main a,
 [data-theme="dark"] .topo-node .node-main a:hover,

@@ -280,6 +280,8 @@ Example: a rule "checking `cd.bot` implies `cd.notification-manage`". When you c
 
 "API Management" issues **API Tokens** for third-party services / scripts (such as the Devops-Glue CD service or Jenkins scripts). An API token is independent of the backend account system and directly carries a set of interface scopes, so access is easy to grant, adjust, and revoke at any time. Only `super_admin` can create / edit / revoke / delete tokens.
 
+This page also hosts the **Integrated services** card (above the token list): enabling an integrated service auto-issues a restricted service token here, and disabling it revokes that token — both live on one screen so the origin of that token is obvious. The switch is the **Enable** checkbox on the card (see 6.5).
+
 ### 6.1 Creating an API token
 
 Steps:
@@ -327,10 +329,25 @@ Key points:
 
 ### 6.4 Revoking / Deleting a token
 
-- **Revoke**: immediately disables the token while keeping the record (good when you suspect a leak or want a temporary pause). It can be re-enabled later.
-- **Delete**: removes the token record entirely; not recoverable.
+- **Revoke**: immediately disables the token while keeping the record and its sha256 digest (good when you suspect a leak or want a temporary pause). There is no "re-enable" entry point on this page, so for an **ordinary token** it is equivalent to burning it — issue a new one and update the caller instead.
+- **Delete**: removes the token record entirely (digest included); not recoverable.
+- **The integrated-service `cd-service` token is a special case**: its lifecycle is owned by the **🔌 Integrated services** card (see 6.5) — **unticking the card = freeze** (ticking again restores the *very same* token, no CD change), while manually ⛔ revoking / 🗑 deleting it = **burn** (ticking again issues a **new credential** that CD must adopt).
 
 For day-to-day: use **Revoke** for temporary suspension, **Delete** when it is clearly no longer used.
+
+### 6.5 Integrated services (auto-issued service token)
+
+Above the token list there is also an **🔌 Integrated services** card; currently only one service is supported: `CD deployment service`. It governs "is Devops-Glue CD authorized to run against this platform's shared database":
+
+- **How to toggle**: the **Enable** checkbox on the card is the switch (same interaction as the switches on the Platform Management page) — **tick = enable** (issues the service token in the same transaction), **untick = disable (freeze)**. Both directions ask for confirmation first, and cancelling that dialog or a failed request reverts the checkbox to its previous state.
+- **Status**: ⚪ not enabled (if the credential is merely frozen with the service, the card adds a line saying re-enabling restores the same token) / ✅ enabled (auto provision) / ✅ enabled (manual provision) / ⚠️ enabled but credential dead (red; the checkbox then falls back to unticked — see below).
+- **Provision mode (`provision`)**: captured from this platform's **current migration mode** ("Data Management → Migration mode") **at the moment you tick Enable** — **switching the migration mode afterwards does not change it**. While not enabled the card shows "Provision mode when enabled", i.e. what would be written if you enabled now.
+- **Enable (first time)**: tick **Enable** on the right of the card and confirm; in a single transaction it issues a restricted **service token** (`build.read` + `build.write` + `rbac.user.write`; no admin endpoint scopes), whose plaintext is **shown only once** — paste it into CD's `CI_API_TOKEN`. That token (named `cd-service`) appears in the list below right away.
+- **Enable (restore)**: if the previous action was **Disable (freeze)**, enabling again does **not** issue a new token — the platform simply re-activates the *very same* one, whose original plaintext keeps working, so **CD's `CI_API_TOKEN` needs no change** (the confirm dialog says "♻ restore" and no plaintext popup appears).
+- **Disable (freeze)**: untick **Enable** and confirm; CD immediately rejects every request and the paired service token is **disabled** (`enabled=0`) in the same transaction. **Disabled ≠ burned**: both the credential record and the binding are kept, CD's tables and data are **not** deleted, and **enabling again restores the very same token** (the original plaintext keeps working — no CD change).
+- **Permission**: this page is `super_admin` only, and enabling / disabling is likewise `super_admin` only.
+- **You can enable again after the credential was revoked / deleted (re-issue)**: if the `cd-service` token is ⛔ revoked (while the service stays enabled) or 🗑 deleted in the list, the service goes offline immediately — the card turns red ("⚠️ Enabled, credential dead") and the checkbox falls back to **unticked**. **Tick Enable again and confirm to re-issue a new credential in the same transaction** (the old one stays burned and never comes back) — no need to untick first. The confirm dialog flags this as "⓪ re-issue"; remember to update CD's `CI_API_TOKEN` with the new plaintext.
+- **To burn / rotate the credential on purpose**: ⛔ revoke or 🗑 delete that `cd-service` row in the list, then tick **Enable** on the card to have a new token issued (and update CD). **To merely pause it**, untick the card instead (freeze — the credential is left untouched), so re-enabling needs no CD change at all. Mixing the two up costs you either "CD must be reconfigured" or "the old credential comes back to life".
 
 ---
 ## 7. Admin Pages Overview (Version Compatibility / Security Audit / Monitor Overview / Build Records / Platform Management / Log Center / Data Management)

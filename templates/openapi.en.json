@@ -4588,7 +4588,7 @@
           "Admin"
         ],
         "summary": "Revoke an API token (disable, keep record)",
-        "description": "Disables the token (enabled=0), immediately invalid but keeps the record. Super admin only.",
+        "description": "Disables the token (enabled=0): immediately invalid, but both the record and its digest are kept — which makes it **restorable**: an integrated-service credential disabled this way is restored (the original plaintext keeps working, no CD change) once that service is enabled again. Use DELETE to burn/rotate it for good (hard delete, unrecoverable). Super admin only.",
         "operationId": "adminApiTokenRevoke",
         "security": [
           {
@@ -4760,9 +4760,21 @@
                     "token_name": {
                       "type": "string"
                     },
+                    "token_exists": {
+                      "type": "boolean",
+                      "description": "Whether the credential row still exists (true while frozen/disabled; false once deleted)"
+                    },
+                    "token_enabled": {
+                      "type": "boolean",
+                      "description": "Whether the credential is not disabled (api_tokens.enabled=1)"
+                    },
+                    "token_expired": {
+                      "type": "boolean",
+                      "description": "Whether the credential has expired (expires_at <= now)"
+                    },
                     "token_active": {
                       "type": "boolean",
-                      "description": "Whether the bound token is still valid (exists, not revoked, not expired)"
+                      "description": "Whether the bound token is still valid (= token_exists && token_enabled && !token_expired)"
                     },
                     "token_scopes": {
                       "type": "array",
@@ -4808,8 +4820,8 @@
         "tags": [
           "Admin"
         ],
-        "summary": "Enable integrated service (auto-issues a scoped service token)",
-        "description": "In one transaction: writes provision according to the current CI DB_AUTO_MIGRATE mode (optionally overridden via body.provision = auto/manual), issues a service token restricted to build.read/build.write/rbac.user.write, and upserts the integrated_services row. The plaintext token is returned in the response exactly once. If already enabled, returns 409 (disable first to rotate credentials). super_admin only.",
+        "summary": "Enable integrated service (issue a new credential, or restore the frozen one)",
+        "description": "In one transaction: writes provision according to the current CI DB_AUTO_MIGRATE mode (optionally overridden via body.provision = auto/manual), issues a service token restricted to build.read/build.write/rbac.user.write, and upserts the integrated_services row. The plaintext token is returned in the response exactly once. Returns 409 only when the contract row is enabled **and its credential is still valid** (a genuine duplicate enable; untick then tick Enable to rotate). When it is enabled but the credential is dead (revoked/deleted in the token list, or expired) the call takes the re-issue path instead: the dead credential is retired, a new one is issued and re-bound to the contract row in the same transaction, and the response carries reissued=true. super_admin only.",
         "operationId": "adminIntegratedServiceEnable",
         "security": [
           {
@@ -4876,9 +4888,20 @@
                     "token_id": {
                       "type": "integer"
                     },
+                    "reused": {
+                      "type": "boolean",
+                      "description": "true = this run restored the previously frozen credential (no plaintext is returned again; CD needs no CI_API_TOKEN change)"
+                    },
+                    "reissued": {
+                      "type": "boolean",
+                      "description": "true = the contract row was already enabled and only a new credential was re-issued (the old one is retired; CD must switch to the new token)"
+                    },
                     "token": {
-                      "type": "string",
-                      "description": "One-time plaintext token (dg_ prefix), returned only now"
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "One-time plaintext token (dg_ prefix): returned only when a new credential is issued (first enable / re-issue after a burn); null on the restore path (the caller already holds that plaintext)"
                     }
                   }
                 }
@@ -4898,7 +4921,7 @@
             "description": "Unknown integrated service"
           },
           "409": {
-            "description": "Service already enabled"
+            "description": "Service already enabled with a valid credential (genuine duplicate; a dead credential does not 409 but re-issues)"
           },
           "500": {
             "$ref": "#/components/responses/500"
@@ -4911,8 +4934,8 @@
         "tags": [
           "Admin"
         ],
-        "summary": "Disable integrated service (freeze service and revoke its token)",
-        "description": "In one transaction sets enabled=0 (the integrated service immediately rejects all requests) and revokes the bound service token. No integrated-service tables or data are deleted; re-enabling restores service (a new token is issued). Returns 409 if it was never enabled. super_admin only.",
+        "summary": "Disable integrated service (freeze service and disable its token)",
+        "description": "In one transaction sets enabled=0 (the integrated service immediately rejects all requests) and disables the bound service token (api_tokens.enabled=0). **Disabling is a freeze, not a burn**: both the credential row and the contract row api_token_id are kept, so enabling the service again restores the very same credential — the original plaintext keeps working and CD needs no CI_API_TOKEN change (to burn/rotate it, revoke or delete that token in the token list first). No integrated-service tables or data are deleted. Returns 409 if it was never enabled. super_admin only.",
         "operationId": "adminIntegratedServiceDisable",
         "security": [
           {

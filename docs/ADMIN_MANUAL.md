@@ -719,7 +719,7 @@ Go to "API Management" (requires the relevant permission) and choose the require
 > - **Scopes can be edited at any time**: click "✏️ Edit Scopes" on the token's row under "API Management", tick the new permission set and save. Only **metadata** changes — the plaintext token and its digest stay the same, **no token replacement is needed** (deployed scripts / CD keep working), and the **next request** is checked against the new scopes. That makes it the right tool for temporarily granting `build.report` writeback or withdrawing write permissions you no longer need. Unlike *revoke*, editing never invalidates the token; use *revoke* to stop it completely.
 > - Every scope must come from the table above and at least one must stay selected: unknown values or an empty selection are both rejected (unlike creation, which silently ignores invalid keys) so a mis-tick can never silently widen or narrow access. Each edit is recorded in the operation log as `update_api_token_scopes`.
 > - `/api/admin/*` management endpoints always reject API tokens (only super_admin interactive login may access them).
-> - Do **not** create the Devops-Glue CD service token manually: enabling "CD deployment service" under "Data Management → Integrated services" issues it automatically. See section 16.
+> - Do **not** create the Devops-Glue CD service token manually: enabling "CD deployment service" under "API Management → 🔌 Integrated services" issues it automatically (see section 16); the token then shows up in the token list below. Disabling that integrated service only **disables (freezes, does not burn)** it, and enabling again **restores the very same token** (CD needs no change) — to burn / rotate it, revoke or delete that token.
 
 ---
 
@@ -729,11 +729,11 @@ Go to "API Management" (requires the relevant permission) and choose the require
 
 CD shares the same database with this platform, but **whether it creates tables and serves is decided by the `integrated_services` contract table** (this platform is the only writer; CD is read-only). When not enabled, CD creates no tables and rejects login and every request with 503.
 
-Entry point: "Data Management → Integrated services" (viewing requires the `ci.system` permission; enabling/disabling is **super_admin only**).
+Entry point: "API Management → 🔌 Integrated services" (the card sits above the token list). That page is **super_admin only** (the status endpoint requires the `ci.system` permission; enabling/disabling is **super_admin only**).
 
 **Enablement flow:**
 
-1. Click "Enable" and confirm. In **one transaction** the platform:
+1. Tick the **Enable** checkbox on the right of the card and confirm. In **one transaction** the platform:
    - writes `enabled=1` to `integrated_services`;
    - captures the provision mode from this platform **current** migration mode (`DB_AUTO_MIGRATE`) — it is sampled only at enable time and does **not** change when you switch migration mode later:
      - `auto` (automatic schema mode): CD is authorized to **create/upgrade its tables automatically** in the shared database, for both MySQL and SQLite;
@@ -743,12 +743,14 @@ Entry point: "Data Management → Integrated services" (viewing requires the `ci
 3. Put the token into CD's `app.env` as described in section 16.2, then start CD.
 4. On CD's first connection to the shared database: under `auto` it creates/migrates tables and starts serving; under `manual` it starts serving only after verifying all 14 CD tables exist, otherwise it returns 503 with an import hint.
 
-**Disabling (freezing) and rotation:**
+**Disabling (freezing) and credential rotation:**
 
-- "Disable (freeze)" makes CD immediately reject all requests and revokes the bound service token in the same transaction;
-- **no CD table or data is ever deleted** — re-enabling restores service;
-- re-enabling issues a **new token** (the old one cannot be recovered); update CD's `CI_API_TOKEN` accordingly;
-- enabling an already-enabled service returns 409: disable first if you need to rotate credentials.
+- Unticking **Enable** (and confirming) makes CD immediately reject all requests and **disables** the bound service token (`api_tokens.enabled=0`) in the same transaction;
+- **Disabled ≠ burned**: the credential record, its sha256 digest and the contract row's `api_token_id` are all kept (**no CD table or data is ever deleted**);
+- **Enabling again restores the very same token**: the platform simply re-activates it (`enabled=1`, digest untouched), so the original plaintext keeps working and CD's `CI_API_TOKEN` **needs no change** (the card shows "credential frozen with the service: re-enabling restores the same token", and the confirm dialog says "♻ restore" instead of popping a plaintext box);
+- ticking an already-ticked checkbox cannot double-fire (it is already ticked); calling the enable endpoint again returns 409 — but only while the row is enabled **with a valid credential**;
+- **To burn / rotate the credential**: ⛔ revoke or 🗑 delete that row in the token list first (revoke / delete = burn, so the platform never treats it as a restorable frozen credential), then tick **Enable** — that takes the **re-issue** path (a new credential is issued and re-bound to the same contract row in one transaction, response `reissued=true`); finish by updating CD's `CI_API_TOKEN` as described in 16.2;
+- **A credential that was revoked / deleted on its own is self-recoverable (re-issue)**: the card turns red ("⚠️ Enabled, credential dead") and the checkbox falls back to unticked — **ticking Enable again re-issues a new credential in the same transaction** (re-bound to the same contract row, the old one retired), no disable step required; then update CD's plaintext token.
 
 ### 16.2 Configure CD connection settings
 

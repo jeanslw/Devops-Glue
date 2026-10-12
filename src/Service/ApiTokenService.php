@@ -142,10 +142,27 @@ class ApiTokenService
         return $row ?: null;
     }
 
-    /** 撤销（禁用）token */
+    /** 撤销（禁用）token —— 只改 enabled，token_hash 一字不动，故可用 restore 原样恢复（见下） */
     public function revoke(int $id): bool
     {
         $stmt = $this->pdo->prepare('UPDATE ' . AppConfig::TABLE_API_TOKENS . ' SET enabled = 0 WHERE id = ?');
+        $stmt->execute([$id]);
+        return $stmt->rowCount() > 0;
+    }
+
+    /**
+     * 恢复（重新启用）被冻结的 token —— revoke 的逆操作，同样只改 enabled，token_hash 一字不动。
+     *
+     * 因此**原明文重新生效**：已持有该 token 的调用方（如 CD 的 CI_API_TOKEN）无需重新配置。
+     * 语义边界（必须与调用方一致）：在集成服务语境里 revoke 是「禁用（冻结）」、可 restore 复原；
+     * 真要作废一枚凭据请走 delete()（硬删除，摘要一并消失，不可恢复，只能重新签发）。
+     *
+     * @return bool false = 未命中任何行（id 不存在），或该行本就是启用态
+     *              （MySQL 的 rowCount 只计实际发生变更的行）——调用方只在确认处于禁用态时调用
+     */
+    public function restore(int $id): bool
+    {
+        $stmt = $this->pdo->prepare('UPDATE ' . AppConfig::TABLE_API_TOKENS . ' SET enabled = 1 WHERE id = ?');
         $stmt->execute([$id]);
         return $stmt->rowCount() > 0;
     }

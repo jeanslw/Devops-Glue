@@ -9,7 +9,7 @@ use PHPUnit\Framework\TestCase;
 /**
  * 守卫不变量：通用确认弹窗（templates/admin.html 的 #confirm-modal）是**纯文本通道**。
  *
- * 回归背景（v2.9.0）：「数据管理 → 集成服务」的启用确认弹窗把三步提示拼成
+ * 回归背景（v2.9.0）：「集成服务」启用确认弹窗（该面板当时挂在数据管理页）把三步提示拼成
  * `<div style="..."><div>① …</div>…</div>` 传进 confirmDialog 的 note，而 note 由
  * public/assets/core/toast.js 用 textContent 渲染（弹窗文案从不经 HTML 解析），
  * 于是弹窗里显示的是原样输出的 `<div ...>` 标签（乱码），而不是三行提示。

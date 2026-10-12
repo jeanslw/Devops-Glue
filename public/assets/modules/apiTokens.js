@@ -224,13 +224,21 @@ export function copyApiToken() {
     );
 }
 
+// 撤销 / 删除的很可能正是集成服务的配套凭据（cd-service）：顺手刷新同屏上方的「集成服务」卡片，
+// 否则卡片会继续显示「已启用 · 凭据有效」，与列表里的事实不符（卡片会自动回到未勾选态 = 可补发）。
+// 该刷新函数由 admin.js 挂到 window（见 admin.js 的 Object.assign(window, …)），
+// 经 window 调用可避免 system.js ↔ apiTokens.js 的循环 import。
+function refreshIntegratedPanel() {
+    if (typeof window.loadIntegratedServices === 'function') window.loadIntegratedServices();
+}
+
 export async function revokeApiToken(id) {
     if (!await confirmDialog({ title: '⛔ ' + __.t('api_token.revoke_title'), message: __.t('api_token.confirm_revoke') + ' [' + tokenNameById(id) + ']', confirmText: __.t('common.confirm') })) return;
     try {
         const res = await fetch('/api/admin/api_tokens/' + id + '/revoke', { method: 'POST', headers: authHeaders() });
         if (handle401(res)) return;
         const data = await res.json();
-        if (res.ok) { toast(__.t('api_token.revoked'), true); loadApiTokens(); }
+        if (res.ok) { toast(__.t('api_token.revoked'), true); loadApiTokens(); refreshIntegratedPanel(); }
         else { toast(data.message || __.t('js.network_error'), false); }
     } catch(e) { toast(__.t('js.network_error') + ': ' + e.message, false); }
 }
@@ -241,7 +249,7 @@ export async function deleteApiToken(id) {
         const res = await fetch('/api/admin/api_tokens/' + id, { method: 'DELETE', headers: authHeaders() });
         if (handle401(res)) return;
         const data = await res.json();
-        if (res.ok) { toast(__.t('api_token.deleted'), true); loadApiTokens(); }
+        if (res.ok) { toast(__.t('api_token.deleted'), true); loadApiTokens(); refreshIntegratedPanel(); }
         else { toast(data.message || __.t('js.network_error'), false); }
     } catch(e) { toast(__.t('js.network_error') + ': ' + e.message, false); }
 }

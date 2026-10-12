@@ -3,6 +3,7 @@ import { esc } from '../core/utils.js';
 import { toast, confirmDialog } from '../core/toast.js';
 import { getRole } from '../core/auth.js';
 import { applyTagSettings, applyApiLogSettings } from './mode.js';
+import { loadApiTokens } from './apiTokens.js';
 
 export async function loadSystemInfo() {
     const loading = document.getElementById('sys-loading');
@@ -58,7 +59,8 @@ export async function loadSystemInfo() {
         if (getRole() === 'super_admin') { loadBackups(); }
         loading.style.display = 'none';
         body.style.display = 'block';
-        loadIntegratedServices();
+        // 集成服务面板已迁至「API 管理」页（Token 列表上方；由 admin.js 的 api-tokens 分支加载）：
+        // 本页只负责库结构 / 备份，不再拉集成服务状态。
     } catch(e) {
         toast(__.t('js.network_error') + ': ' + e.message, false);
         loading.style.display = 'none';
@@ -231,8 +233,12 @@ export function toggleSysTables() {
 }
 
 // ═══════════ 集成服务（integrated_services 契约；CI 唯一写入方）═══════════
-// 当前仅一个服务 cd；页面只展示状态 + 启停，启用向导一次性展示自动签发的服务 token。
+// 当前仅一个服务 cd；页面只展示状态 + 用「启用」勾选框启停（勾选=启用、取消=禁用），
+// 启用向导一次性展示自动签发的服务 token。
+// 勾选态 = 「可用」= 契约行 enabled **且** 配套凭据有效：凭据在下方 Token 列表里被撤销/删除后
+// 勾选框自动回到未勾选（服务已不可用），再勾选一次＝补发新凭据（后端 enable 对故障态走补发）。
 let _isvcTokenPlain = '';
+let _isvcState = null; // 最近一次状态响应：enable 据此判断走「首次启用」还是「补发」文案
 
 export async function loadIntegratedServices() {
     const loading = document.getElementById('isvc-loading');
@@ -258,26 +264,35 @@ function renderCdService(d) {
     const dot = document.getElementById('isvc-cd-dot');
     const status = document.getElementById('isvc-cd-status');
     const meta = document.getElementById('isvc-cd-meta');
-    const btnEnable = document.getElementById('isvc-cd-enable');
-    const btnDisable = document.getElementById('isvc-cd-disable');
+    const toggle = document.getElementById('isvc-cd-toggle');
+    const toggleWrap = document.getElementById('isvc-cd-toggle-wrap');
     if (!dot || !status || !meta) return;
 
     const enabled = d.enabled === true;
+    const tokenActive = d.token_active === true;
+    // 凭据要分三态看：还在 / 未被停用 / 未过期。绑定凭据「还在且只是被停用且未过期」= 上一次禁用留下的冻结现场，
+    // 再启用即恢复**同一枚**（原明文继续有效，CD 无需改配置）；已作废的（撤销 / 删除 / 过期）只能补发新凭据。
+    const tokenFrozen = d.token_exists === true && d.token_enabled !== true && d.token_expired !== true;
+    // 「可用」= 契约行已启用 且 配套凭据有效。凭据被作废后即不可用，
+    // 勾选框随之回到未勾选：再勾选一次＝补发新凭据（后端对「已启用但凭据失效」放行走补发）。
+    const usable = enabled && tokenActive;
     const isAuto = d.provision !== 'manual'; // 缺省/未知按 auto 语义（行不存在时后端给 auto）
     const isSuper = getRole() === 'super_admin';
 
-    dot.style.background = !enabled ? '#9ca3af' : (isAuto ? '#16a34a' : '#2563eb');
+    // 三态：未启用（灰）/ 可用（绿=自动建表、蓝=手动建表）/ 已启用但凭据失效（红，等补发）
+    const stateColor = !enabled ? '#9ca3af' : (usable ? (isAuto ? '#16a34a' : '#2563eb') : '#dc2626');
+    dot.style.background = stateColor;
     status.textContent = !enabled
         ? __.t('sys.isvc_off')
-        : (isAuto ? __.t('sys.isvc_on_auto') : __.t('sys.isvc_on_manual'));
-    status.style.color = !enabled ? '#9ca3af' : (isAuto ? '#16a34a' : '#2563eb');
+        : (usable ? (isAuto ? __.t('sys.isvc_on_auto') : __.t('sys.isvc_on_manual')) : __.t('sys.isvc_token_dead'));
+    status.style.color = stateColor;
 
     const lines = [];
     lines.push('<span>' + esc(__.t('sys.isvc_provision')) + '：'
         + (isAuto ? esc(__.t('sys.isvc_provision_auto')) : esc(__.t('sys.isvc_provision_manual'))) + '</span>');
     if (enabled) {
         const tokenLabel = d.token_name ? (esc(d.token_name) + (d.token_id ? ' (#' + d.token_id + ')' : '')) : '-';
-        const tokenState = d.token_active
+        const tokenState = tokenActive
             ? '<span style="color:#16a34a;">' + esc(__.t('sys.isvc_token_active')) + '</span>'
             : '<span style="color:#dc2626;">' + esc(__.t('sys.isvc_token_invalid')) + '</span>';
         lines.push('<span>' + esc(__.t('sys.isvc_token')) + '：' + tokenLabel + ' · ' + tokenState + '</span>');
@@ -285,41 +300,79 @@ function renderCdService(d) {
             lines.push('<span>' + esc(__.t('sys.isvc_updated')) + '：'
                 + esc(d.updated_by || '-') + ' · ' + esc(d.updated_at || '') + '</span>');
         }
-    } else if (d.default_provision) {
-        // 启用前提示：点启用那一刻将按哪种方式写入契约
-        lines.push('<span style="color:#9ca3af;">' + esc(__.t('sys.isvc_will_provision')) + '：'
-            + (d.default_provision === 'manual' ? esc(__.t('sys.isvc_provision_manual')) : esc(__.t('sys.isvc_provision_auto')))
-            + '</span>');
+        if (!tokenActive) {
+            // 故障态（凭据被作废）的自助恢复路径：此刻勾选框是未勾选态，勾一下即补发（不必先取消勾选再勾选）
+            lines.push('<span style="color:#dc2626;">' + esc(__.t('sys.isvc_reissue_hint')) + '</span>');
+        }
+    } else {
+        if (tokenFrozen) {
+            // 冻结态（上一次「禁用」留下的现场）：说清楚「再启用即恢复同一枚」，别让运营以为每次启用都会换 Token
+            const frozenToken = d.token_name ? (d.token_name + (d.token_id ? ' (#' + d.token_id + ')' : '')) : '-';
+            lines.push('<span style="color:#9ca3af;">'
+                + esc(__.t('sys.isvc_token_frozen', { token: frozenToken })) + '</span>');
+        }
+        if (d.default_provision) {
+            // 启用前提示：点启用那一刻将按哪种方式写入契约
+            lines.push('<span style="color:#9ca3af;">' + esc(__.t('sys.isvc_will_provision')) + '：'
+                + (d.default_provision === 'manual' ? esc(__.t('sys.isvc_provision_manual')) : esc(__.t('sys.isvc_provision_auto')))
+                + '</span>');
+        }
     }
     meta.innerHTML = lines.join('');
 
-    if (btnEnable) btnEnable.style.display = (isSuper && !enabled) ? '' : 'none';
-    if (btnDisable) btnDisable.style.display = (isSuper && enabled) ? '' : 'none';
+    // 「启用」勾选框是唯一启停入口（与「平台管理」各功能开关同一交互）：
+    // 勾选=启用（勾选瞬间签发服务 Token，故一律走确认弹窗），取消=冻结并撤销该 Token。
+    // 勾选态取「可用」而非裸 enabled：凭据失效时必须显示为未勾选 —— 否则故障态勾选框停在勾选位、
+    // 点不动也变不了，用户只能看红字却无从自助补发。
+    // 非 super_admin 不显示勾选框（状态仍可见）。
+    if (toggle) { toggle.checked = usable; toggle.disabled = !isSuper; }
+    if (toggleWrap) toggleWrap.style.display = isSuper ? '' : 'none';
+    _isvcState = d; // 供 enableIntegratedService 判断「首次启用」还是「补发」
 }
 
 export async function enableIntegratedService(service) {
+    // 调用方：onIntegratedServiceToggle（「启用」勾选框被勾上时）
+    // 返回值：true=已启用（明文 Token 已在弹窗就绪）；false=用户取消 / 请求失败 → 调用方据此把勾选框退回
     // provision 不传：后端在点启用那一刻按 CI 当前 DB_AUTO_MIGRATE 模式写入（auto/manual）
     // 提示走纯文本 + \n 换行：confirmDialog 的 message/note 由 core/toast.js 用 textContent 渲染，
     // 这里塞 HTML 只会把 <div> 标签原样显示出来（曾如此），断行交给 .modal-note 的 white-space:pre-line。
-    const note = [
+    // 勾选框只有一种动作，但后端有三条路径（首次启用 / 冻结恢复 / 作废补发），弹窗必须事先说清是哪一条。
+    // 弹窗只讲「要点 + 结果」、不解释原因（原因在卡片文案与文档里）：
+    //   - 恢复：复用**同一枚** Token（CD 的 CI_API_TOKEN 无需改动）→ 首行 ♻；
+    //   - 补发：新明文必须同步到 CD → 首行 ⓪；
+    // 两种情况下面的两条固定要点都不变。
+    const st = _isvcState || {};
+    const reuse = st.enabled !== true && st.token_exists === true && st.token_enabled !== true && st.token_expired !== true;
+    const reissue = st.enabled === true && st.token_active !== true;
+    const head = reuse
+        ? ['♻ ' + __.t('sys.isvc_reuse_note')]
+        : (reissue ? ['⓪ ' + __.t('sys.isvc_reissue_note')] : []);
+    const note = head.concat([
         '① ' + __.t('sys.isvc_enable_step1'),
-        '② ' + __.t('sys.isvc_enable_step2'),
-        '③ ' + __.t('sys.isvc_enable_step3')
-    ].join('\n');
+        '② ' + __.t('sys.isvc_enable_step2')
+    ]).join('\n');
     if (!await confirmDialog({
         title: __.t('sys.isvc_enable'),
         message: __.t('sys.isvc_enable_confirm', { name: __.t('sys.isvc_cd_name') }),
         note: note,
         confirmText: __.t('sys.isvc_enable')
-    })) return;
+    })) return false;
     try {
         const res = await fetch('/api/admin/integrated_services/' + encodeURIComponent(service) + '/enable', {
             method: 'POST',
             headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
             body: '{}'
         });
-        if (handle401(res)) return;
+        if (handle401(res)) return false;
         const d = await res.json();
+        if (res.ok && d.reused) {
+            // 恢复：同一枚凭据重新生效。明文不重发（CD 手上就是这一枚），故不弹 Token 框，也不谎称「已签发」
+            hideIntegratedTokenBox();
+            toast(__.t('sys.isvc_restored'), true);
+            loadIntegratedServices();
+            loadApiTokens(); // 同屏：那枚 cd-service 在下方列表里由「已禁用」回到「有效」
+            return true;
+        }
         if (res.ok && d.token) {
             _isvcTokenPlain = d.token;
             const box = document.getElementById('isvc-token-box');
@@ -328,37 +381,67 @@ export async function enableIntegratedService(service) {
             if (val) val.textContent = d.token;
             toast(__.t('sys.isvc_enabled'), true);
             loadIntegratedServices();
-        } else {
-            toast(d.message || __.t('js.network_error'), false, false, 6000);
+            loadApiTokens(); // 同屏：刚签发的 cd-service 立即出现在下方 Token 列表里
+            return true;
         }
+        toast(d.message || __.t('js.network_error'), false, false, 6000);
+        return false;
     } catch (e) {
         toast(__.t('js.network_error') + ': ' + e.message, false);
+        return false;
     }
 }
 
 export async function disableIntegratedService(service) {
+    // 调用方：onIntegratedServiceToggle（「启用」勾选框被取消时）
+    // 返回值：true=已禁用（配套 Token 已停用，即仅冻结）；false=用户取消 / 请求失败 → 调用方把勾选框重新勾上
+    // 弹窗与启用同构：正文一句问句，要点走 note 的 ①② 多行（纯文本 + \n 断行，见 ConfirmDialogPlainTextTest）
+    const note = [
+        '① ' + __.t('sys.isvc_disable_step1'),
+        '② ' + __.t('sys.isvc_disable_step2')
+    ].join('\n');
     if (!await confirmDialog({
         title: __.t('sys.isvc_disable'),
         message: __.t('sys.isvc_disable_confirm', { name: __.t('sys.isvc_cd_name') }),
+        note: note,
         confirmText: __.t('sys.isvc_disable')
-    })) return;
+    })) return false;
     try {
         const res = await fetch('/api/admin/integrated_services/' + encodeURIComponent(service) + '/disable', {
             method: 'POST',
             headers: authHeaders()
         });
-        if (handle401(res)) return;
+        if (handle401(res)) return false;
         const d = await res.json();
         if (res.ok) {
             hideIntegratedTokenBox();
             toast(__.t('sys.isvc_disabled'), true);
             loadIntegratedServices();
-        } else {
-            toast(d.message || __.t('js.network_error'), false, false, 6000);
+            loadApiTokens(); // 同屏：被撤销的 cd-service 状态立即在下方列表里更新
+            return true;
         }
+        toast(d.message || __.t('js.network_error'), false, false, 6000);
+        return false;
     } catch (e) {
         toast(__.t('js.network_error') + ': ' + e.message, false);
+        return false;
     }
+}
+
+// 「启用」勾选框的 onchange 入口（唯一的启停入口）。
+// 勾选框是即时控件，而切换会签发/撤销凭据，故：确认弹窗在 enable/disable 内部，
+// 这里只负责「请求期间禁用防连点」+「取消 / 失败把勾选框退回原状态」，
+// 成功后由 loadIntegratedServices() 按后端返回的状态重绘（勾选态与 disabled 都以服务端为准）。
+export async function onIntegratedServiceToggle(service) {
+    const toggle = document.getElementById('isvc-cd-toggle');
+    if (!toggle || toggle.disabled) return;
+    const want = toggle.checked;
+    toggle.disabled = true;
+    const ok = want
+        ? await enableIntegratedService(service)
+        : await disableIntegratedService(service);
+    if (!ok) toggle.checked = !want;
+    toggle.disabled = getRole() !== 'super_admin';
 }
 
 export function copyIntegratedToken() {
