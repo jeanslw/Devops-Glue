@@ -443,6 +443,7 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 | `/api/rbac/users/{username}` | PUT | 更新账号（body: `password` 和/或 `role`） |
 | `/api/rbac/users/{username}` | DELETE | 删除账号（root 与 super_admin 受保护） |
 | `/api/rbac/roles` | GET | 可用角色列表 |
+| `/api/rbac/roles/{name}/permissions` | GET | 角色权限清单（供 CD 做会话权限收敛与映射；角色不存在返回 404，`super_admin` 返回 `["*"]` 通配） |
 
 ---
 

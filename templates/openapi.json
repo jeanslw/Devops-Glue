@@ -5684,6 +5684,71 @@
           }
         }
       }
+    },
+    "/api/rbac/roles/{name}/permissions": {
+      "get": {
+        "tags": [
+          "RBAC"
+        ],
+        "summary": "角色权限清单（CD 服务账号读）",
+        "description": "返回该角色被授予的权限 key 列表，供 CD 做会话权限收敛与权限映射（此前只有 name/description 的角色目录，CD 只能硬编码一份 Glue 权限清单）。边界：角色不存在返回 404（与「角色存在但零权限」严格区分，避免 CD 把查错角色名当成该角色无权限而清空权限）；super_admin 返回 [\"*\"]（通配，与 /api/admin/login 的 permissions:\"*\" 同语义；其权限由代码授予、不落在 role_permissions 表，照表读会把超管读成零权限）。仅 API token（rbac.user.write scope，整段 /api/rbac/* 统一判）。",
+        "operationId": "rbacRolePermissions",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "description": "角色名（roles.name）",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "角色权限清单",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "role": {
+                      "type": "string"
+                    },
+                    "permissions": {
+                      "type": "array",
+                      "description": "权限 key 列表；super_admin 为 [\"*\"]（通配）",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "非 API token 或缺少 rbac.user.write scope"
+          },
+          "404": {
+            "description": "角色不存在（user.role_not_found）；与「角色存在但未授予任何权限」（200 + 空数组）严格区分"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        }
+      }
     }
   }
 }

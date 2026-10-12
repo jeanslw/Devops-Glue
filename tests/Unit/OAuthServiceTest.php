@@ -116,4 +116,60 @@ class OAuthServiceTest extends TestCase
         $this->assertSame('', $data['scope']);
         $this->assertNull($data['nonce']);
     }
+
+    /**
+     * clientSystem：声明了 system 的客户端返回该值（CD = 'cd'），未声明 / 空白 / 未注册返回
+     * null（由 OAuthController 回退 CI）。回退语义是既有 Grafana / Jenkins 客户端零回归的前提。
+     */
+    public function testClientSystemReturnsDeclaredSystemAndNullOtherwise(): void
+    {
+        $svc = $this->makeService([
+            'cd'         => ['secret' => 's3cret', 'redirect_uri' => 'https://cd.example.com/callback', 'system' => 'cd'],
+            'grafana'    => ['secret' => 's3cret', 'redirect_uri' => 'http://g:3000/login'],
+            'jenkins'    => ['secret' => 's3cret', 'redirect_uri' => 'http://j/finishLogin', 'system' => '   '],
+            'harbor'     => ['secret' => 's3cret', 'redirect_uri' => 'http://h/callback', 'system' => 123],
+        ]);
+
+        $this->assertSame('cd', $svc->clientSystem('cd'));
+        $this->assertNull($svc->clientSystem('grafana'), '未声明 system → null → 调用方回退 CI');
+        $this->assertNull($svc->clientSystem('jenkins'), '纯空白等同于未声明');
+        $this->assertNull($svc->clientSystem('harbor'), '非字符串值不可信，回退 CI');
+        $this->assertNull($svc->clientSystem('ghost'), '未注册客户端没有归属系统');
+    }
+
+    /**
+     * access token 只以 sha256 摘要落库（与 TokenService::hashAdminToken 同口径）：
+     * 明文不得出现在 cache 表，但明文仍能正常校验通过。
+     */
+    public function testAccessTokenIsStoredHashedAndStillValidates(): void
+    {
+        $pdo = new \PDO('sqlite::memory:');
+        $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $pdo->exec('CREATE TABLE ' . AppConfig::TABLE_CACHE . ' (
+            cache_key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            expires_at INTEGER NOT NULL
+        )');
+        // validateAccessToken 会回查账号状态/角色：给出「在用账号」走通正常路径
+        $pdo->exec('CREATE TABLE ' . AppConfig::TABLE_ADMIN_USERS . ' (
+            username TEXT PRIMARY KEY,
+            status INTEGER NOT NULL DEFAULT 1,
+            role TEXT NOT NULL DEFAULT ""
+        )');
+        $pdo->exec('INSERT INTO ' . AppConfig::TABLE_ADMIN_USERS . " VALUES ('alice', 1, 'ci_admin')");
+
+        $svc   = new OAuthService($pdo, []);
+        $token = $svc->issueAccessToken('alice', 'ci_admin', 'cd');
+
+        $key = (string) $pdo->query('SELECT cache_key FROM ' . AppConfig::TABLE_CACHE)->fetchColumn();
+        $this->assertStringContainsString(hash('sha256', $token), $key, 'cache_key 必须含摘要');
+        $this->assertStringNotContainsString($token, $key, 'cache_key 不得含明文 token');
+
+        $data = $svc->validateAccessToken($token);
+        $this->assertNotNull($data, '摘要存储后明文仍应校验通过');
+        $this->assertSame('alice', $data['user']);
+        $this->assertSame('ci_admin', $data['role']);
+
+        $this->assertNull($svc->validateAccessToken($token . '0'), '篡改后的令牌必须失效');
+    }
 }

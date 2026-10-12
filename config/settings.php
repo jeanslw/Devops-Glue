@@ -212,6 +212,16 @@ return [
             'secret'       => env('JENKINS_OIDC_SECRET', ''),
             'redirect_uri' => env('JENKINS_OIDC_REDIRECT_URI', 'http://localhost/securityRealm/finishLogin'),
         ],
+        // Devops-Glue CD（BFF 机密客户端：client_secret 只存在 CD 后端，浏览器只持有 CD 自己的 HttpOnly Cookie）。
+        // 回调地址没有「合理默认」——留空即整个客户端被剔除（fail-closed），与 secret 同理，
+        // 否则空 redirect_uri 会与传 `redirect_uri=` 的攻击请求 hash_equals 相等。
+        'cd' => [
+            'secret'       => env('CD_OIDC_SECRET', ''),
+            'redirect_uri' => env('CD_OIDC_REDIRECT_URI', ''),
+            // 归属系统：授权时按此值校验账号的 systems（见 OAuthController::authorizeSubmit）。
+            // 不声明则回退 CI —— 既有 grafana/jenkins 等客户端行为完全不变。
+            'system'       => env('CD_OIDC_SYSTEM', 'cd'),
+        ],
     ],
 
     // ==================== OIDC Provider（Jenkins / Harbor / GitLab 单点登录）====================

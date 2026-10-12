@@ -7,6 +7,7 @@ use App\Service\AdminUserRepository;
 use App\Service\I18nService;
 use App\Service\PasswordHasher;
 use App\Service\Settings;
+use App\Service\TokenService;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -26,15 +27,18 @@ class RbacController extends BaseController
 {
     private Settings $config;
     private AdminUserRepository $adminUserRepository;
+    private TokenService $tokenService;
 
     public function __construct(
         I18nService $i18n,
         Settings $config,
-        AdminUserRepository $adminUserRepository
+        AdminUserRepository $adminUserRepository,
+        TokenService $tokenService
     ) {
         parent::__construct($i18n);
         $this->config             = $config;
         $this->adminUserRepository = $adminUserRepository;
+        $this->tokenService       = $tokenService;
     }
 
     /**
@@ -262,6 +266,49 @@ class RbacController extends BaseController
         try {
             $roles = $this->adminUserRepository->listRolesForApi();
             return $this->output($response, ['roles' => $roles], $request);
+        } catch (\Exception $e) {
+            return $this->jsonError($response, $this->__('build.modify_failed') . ': ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * GET /api/rbac/roles/{name}/permissions — 角色权限清单（CD 会话权限收敛用）
+     *
+     * 与 `/api/rbac/roles`（只有 name/description）互补：CD 拿不到细粒度权限就无法做权限映射，
+     * 只能把 Glue 的权限清单硬编码一份（必然漂移）。此处复用 `TokenService::loadPermissions`
+     * 的「role_permissions JOIN roles」查询，零新增 SQL。
+     *
+     * 边界（对 CD 的收敛判据很关键，别混）：
+     *   - 角色不存在 → 404（`user.role_not_found`）：与「角色存在但零权限」区分开，
+     *     否则角色名写错也返回 `[]`，CD 会把「查询失败」当成「该角色没有任何权限」而清空权限；
+     *   - `super_admin` → `['*']`：与登录接口 `/api/admin/login` 的 `permissions: "*"` 同一语义
+     *     （通配）；该角色权限由代码授予、并不落在 role_permissions 表里，若照表返回会得到 `[]`，
+     *     等于把超管读成零权限；
+     *   - 其余角色 → 真实权限 key 数组（可能为空数组，此时确实是「该角色没有被授予任何权限」）。
+     *
+     * @param array<string,string> $args 路由参数（name = 角色名）
+     */
+    public function rolePermissions(Request $request, Response $response, array $args): Response
+    {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requireApiToken($response)) {
+            return $resp;
+        }
+        $role = trim((string) ($args['name'] ?? ''));
+        if ($role === '') {
+            return $this->jsonError($response, 'user.invalid_role', 400);
+        }
+        try {
+            if (!$this->adminUserRepository->roleExists($role)) {
+                return $this->jsonError($response, 'user.role_not_found', 404);
+            }
+            $permissions = $role === AppConfig::ROLE_SUPER_ADMIN
+                ? ['*']
+                : $this->tokenService->loadPermissions($role);
+            return $this->output($response, [
+                'role'        => $role,
+                'permissions' => array_values($permissions),
+            ], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.modify_failed') . ': ' . $e->getMessage(), 500);
         }

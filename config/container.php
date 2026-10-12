@@ -459,7 +459,9 @@ return [
         return new RbacController(
             $c->get(I18nService::class),
             $c->get(Settings::class),
-            $c->get(AdminUserRepository::class)
+            $c->get(AdminUserRepository::class),
+            // 角色→权限读取复用 TokenService::loadPermissions（与登录/中间件同一份事实，不另起 SQL）
+            $c->get(TokenService::class)
         );
     },
 

@@ -93,8 +93,10 @@ class OAuthController extends BaseController
             return $response->withStatus(429)->withHeader('Content-Type', 'text/html; charset=utf-8');
         }
 
-        // 复用现有认证逻辑（DB 用户 + .env 兜底），systemType 用 CI（OAuth 登录视为 CI 侧）
-        $result = $this->auth->authenticate($username, $password, AppConfig::SYSTEM_CI);
+        // 复用现有认证逻辑（DB 用户 + .env 兜底）：按客户端声明的归属系统校验账号。
+        // CD 客户端声明 system=cd，其余客户端（Grafana / Jenkins / Harbor / GitLab）未声明 → 回退 CI，行为不变。
+        $systemType = $this->oauth->clientSystem($clientId) ?: AppConfig::SYSTEM_CI;
+        $result = $this->auth->authenticate($username, $password, $systemType);
         if (empty($result['success'])) {
             $this->auth->recordLoginFailure($clientIp, $username);
             $response->getBody()->write($this->renderLoginForm(

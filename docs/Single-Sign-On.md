@@ -88,6 +88,14 @@ Register one client per system in `oauth_clients` in `config/settings.php` (`cli
         'secret'       => env('JENKINS_OIDC_SECRET', ''),
         'redirect_uri' => env('JENKINS_OIDC_REDIRECT_URI', 'http://localhost/securityRealm/finishLogin'),
     ],
+    // Devops-Glue CD: BFF confidential client (client_secret stays on CD's backend; the browser
+    // only holds CD's own cookie). The callback has no sane default — empty drops the whole client;
+    // `system` declares which system the accounts signing in through this client belong to.
+    'cd' => [
+        'secret'       => env('CD_OIDC_SECRET', ''),
+        'redirect_uri' => env('CD_OIDC_REDIRECT_URI', ''),
+        'system'       => env('CD_OIDC_SYSTEM', 'cd'),
+    ],
     // harbor / gitlab clients must be registered as needed (secret and redirect_uri
     // both injected via env); unregistered client_ids are rejected fail-closed at authorize.
 ],
@@ -97,6 +105,8 @@ Register one client per system in `oauth_clients` in `config/settings.php` (`cli
 > Do not use an empty secret as a default — that would let the token endpoint be bypassed with an empty secret. Every client must have a strong random secret.
 >
 > ⚠️ `redirect_uri` uses **exact matching** (`hash_equals`). The callback URL configured on each system must match character-for-character (scheme, host, port, path), or `authorize` rejects the request. In production set `JENKINS_OIDC_REDIRECT_URI` / `GRAFANA_OAUTH_REDIRECT_URI` to the real callbacks; do not commit LAN IPs to git.
+>
+> ℹ️ `system` (optional, falls back to `ci`) declares **which system the accounts signing in through this client belong to**; authorization checks the account's `systems` against it. The CD client declares `cd`, so CD accounts created in the backend (`systems` containing `cd`) can sign in while `systems=ci` accounts get `auth.no_cd_access`. Grafana / Jenkins / Harbor / GitLab do not declare the key, so their behaviour is unchanged. Note: without it there is no per-system admission check, and a rejected account is reported with the CI message `auth.no_ci_access`.
 
 ### 2.3 Confirm the key is ready
 

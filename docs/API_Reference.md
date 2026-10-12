@@ -442,6 +442,7 @@ Token expires in 24 hours. `super_admin` role returns `"*"` for permissions.
 | `/api/rbac/users/{username}` | PUT | Update an account (body: `password` and/or `role`) |
 | `/api/rbac/users/{username}` | DELETE | Delete an account (root / super_admin protected) |
 | `/api/rbac/roles` | GET | List available roles |
+| `/api/rbac/roles/{name}/permissions` | GET | Permission keys granted to a role (used by CD to converge and map session permissions; 404 when the role does not exist, `["*"]` wildcard for `super_admin`) |
 
 ---
 

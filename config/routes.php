@@ -131,6 +131,8 @@ $app->group('/api', function (RouteCollectorProxy $api) {
         $rbac->map(['GET'], '/users', [RbacController::class, 'userList']);
         $rbac->map(['GET'], '/users/{username}', [RbacController::class, 'userGet']);
         $rbac->map(['GET'], '/roles', [RbacController::class, 'roleList']);
+        // 角色→权限清单（CD 权限映射用；scope 仍由 ApiScopeResolver 按整段 /api/rbac/* 统一判 rbac.user.write）
+        $rbac->map(['GET'], '/roles/{name}/permissions', [RbacController::class, 'rolePermissions']);
     })->add(AuthMiddleware::class);
 
     $api->group('/build', function (RouteCollectorProxy $build) {

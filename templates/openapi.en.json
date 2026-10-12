@@ -5669,6 +5669,71 @@
           }
         }
       }
+    },
+    "/api/rbac/roles/{name}/permissions": {
+      "get": {
+        "tags": [
+          "RBAC"
+        ],
+        "summary": "Role permissions (CD service account read)",
+        "description": "Returns the permission keys granted to a role, so CD can converge session permissions and map them (previously only the name/description role catalog existed, leaving CD to hardcode a copy of Glue's permission list). Boundaries: an unknown role returns 404 (kept strictly apart from \"role exists with zero permissions\", so a typo can never be mistaken for \"this role has no permissions\" and silently wipe permissions); super_admin returns [\"*\"] (wildcard, same semantics as permissions:\"*\" on /api/admin/login; that role is granted by code and is not stored in role_permissions, so reading the table would report the super admin as having zero permissions). API token only (rbac.user.write scope, applied to the whole /api/rbac/* prefix).",
+        "operationId": "rbacRolePermissions",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "description": "Role name (roles.name)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Permission list of the role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "role": {
+                      "type": "string"
+                    },
+                    "permissions": {
+                      "type": "array",
+                      "description": "Permission keys; [\"*\"] (wildcard) for super_admin",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "Not an API token, or missing rbac.user.write scope"
+          },
+          "404": {
+            "description": "Role does not exist (user.role_not_found); kept apart from \"role exists but was granted nothing\" (200 + empty array)"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        }
+      }
     }
   }
 }

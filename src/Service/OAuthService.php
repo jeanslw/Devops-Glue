@@ -81,6 +81,24 @@ class OAuthService
     }
 
     /**
+     * 获取客户端声明的账号归属系统（oauth_clients[*]['system']）。
+     *
+     * 用于授权时按 client 决定校验哪个系统的账号权限：CD 客户端的账号 systems 落库是 'cd'，
+     * 若沿用写死的 CI 判据，CD 账号一律被拒（auth.no_ci_access）。
+     *
+     * 未注册的 client、未声明 system、或声明为空白 → null，由调用方回退 CI，
+     * 保证既有 Grafana / Jenkins 等客户端零回归。
+     */
+    public function clientSystem(string $clientId): ?string
+    {
+        $system = $this->clients[$clientId]['system'] ?? null;
+        if (!is_string($system) || trim($system) === '') {
+            return null;
+        }
+        return trim($system);
+    }
+
+    /**
      * 签发授权码（认证成功后调用）
      *
      * scope/nonce 为 OIDC 扩展字段：随授权码透传到 token 端点，
@@ -159,7 +177,7 @@ class OAuthService
         ]);
         $sql = Database::sqlUpsert(AppConfig::TABLE_CACHE, 'cache_key, value, expires_at', '?, ?, ?');
         $this->pdo->prepare($sql)->execute([
-            self::ACCESS_PREFIX . $token,
+            self::ACCESS_PREFIX . self::hashAccessToken($token),
             $value,
             time() + self::ACCESS_TOKEN_TTL,
         ]);
@@ -178,7 +196,7 @@ class OAuthService
                 "SELECT value FROM " . AppConfig::TABLE_CACHE
                 . " WHERE cache_key = ? AND expires_at > ?"
             );
-            $stmt->execute([self::ACCESS_PREFIX . $token, time()]);
+            $stmt->execute([self::ACCESS_PREFIX . self::hashAccessToken($token), time()]);
             $row = $stmt->fetch(\PDO::FETCH_ASSOC);
             if (!$row) {
                 return null;
@@ -232,5 +250,18 @@ class OAuthService
         } catch (\Throwable) {
             return true;
         }
+    }
+
+    /**
+     * 访问令牌入库前统一 sha256（与 TokenService::hashAdminToken 同口径）：
+     * cache 表只存摘要、不存明文，杜绝「库表或备份泄露即所有在途 OAuth 令牌泄露」。
+     * 明文只在 token 端点的响应里返回一次，此后校验一律凭摘要。
+     *
+     * ⚠️ 改为摘要存储会使升级瞬间**仍在途**的令牌失效（最长 1 小时，即 ACCESS_TOKEN_TTL），
+     * 各家 SSO 客户端会重新走一次授权码流程拿新令牌，属预期行为。
+     */
+    private static function hashAccessToken(string $token): string
+    {
+        return \hash('sha256', $token);
     }
 }
