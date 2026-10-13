@@ -268,17 +268,17 @@ class AdminUserRepositoryTest extends TestCase
         $this->assertEquals(2, $repo->countByRole('custom_deployer'));
     }
 
-    public function testRoleExistsChecksRolesTable(): void
+    public function testCanonicalRoleReturnsStoredName(): void
     {
         $pdo = $this->createMemoryDatabaseWithRoles();
         $repo = new AdminUserRepository($pdo);
 
-        // 真实存在的角色：返回 true
+        // 真实存在的角色：返回 roles 表存储的规范名（建号/改号据此归一大小写变体）
         $pdo->exec("INSERT INTO " . AppConfig::TABLE_ROLES . " (name, description, is_system) VALUES ('deployer', '', 0)");
-        $this->assertTrue($repo->roleExists('deployer'));
+        $this->assertSame('deployer', $repo->canonicalRole('deployer'));
 
-        // 不存在的角色：返回 false（建号/改号应据此拦下不存在的角色名）
-        $this->assertFalse($repo->roleExists('ghost_role'));
+        // 不存在的角色：返回 null（建号/改号据此拦下不存在的角色名）
+        $this->assertNull($repo->canonicalRole('ghost_role'));
     }
 
     private function createMemoryDatabaseWithRoles(): \PDO

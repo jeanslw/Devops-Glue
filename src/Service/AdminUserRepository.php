@@ -27,6 +27,11 @@ class AdminUserRepository
     public function createUser(string $username, string $passwordHash, string $role, string $systems = 'ci,cd', string $email = ''): void
     {
         $username = $this->normalizeUsername($username);
+        // 机制级兜底：所有建号路径共用本方法，非法用户名在这里一律拒绝，
+        // 不依赖各控制器各自记得校验。
+        if (!self::isValidUsername($username)) {
+            throw new \InvalidArgumentException("createUser: 非法用户名 {$username}");
+        }
         $stmt = $this->pdo->prepare(
             "INSERT INTO " . AppConfig::TABLE_ADMIN_USERS . " (username, password_hash, role, systems, email, created_at) VALUES (?, ?, ?, ?, ?, " . Database::sqlNow() . ")"
         );
@@ -123,12 +128,32 @@ class AdminUserRepository
         )->fetchAll());
     }
 
-    /** 角色是否已存在于 roles 表（建号/改号前校验，避免角色不存在导致权限加载为空）。 */
-    public function roleExists(string $role): bool
+    /**
+     * 取角色的规范名（roles 表存储值），不存在返回 null。
+     *
+     * MySQL 默认排序规则大小写不敏感，'SUPER_ADMIN' 这类变体能命中 roles 表，
+     * 但 PHP 侧的 === 守卫（super_admin/admin 特权判断）与落库值都是大小写敏感的，
+     * 直接落库会得到一个绕过守卫却加载不到权限的脏角色。调用方必须用本方法取回
+     * 规范名后再做 === 判断与写库，保证比较与存储用的是同一个值。
+     */
+    public function canonicalRole(string $role): ?string
     {
-        $stmt = $this->pdo->prepare("SELECT 1 FROM " . AppConfig::TABLE_ROLES . " WHERE name = ?");
+        $stmt = $this->pdo->prepare("SELECT name FROM " . AppConfig::TABLE_ROLES . " WHERE name = ?");
         $stmt->execute([$role]);
-        return (bool)$stmt->fetchColumn();
+        $name = $stmt->fetchColumn();
+        return $name === false ? null : (string)$name;
+    }
+
+    /**
+     * 用户名校验：小写字母/数字/._@-，1–64 位。
+     *
+     * 必须拒绝 '|'：登录 token 落库值以 '|' 分隔用户名与角色，含 '|' 的用户名
+     * 会让反查解析错位；同时拒绝控制字符与超长名（MySQL 严格模式下超长直接 500）。
+     * 允许 '@' 以兼容邮箱形式的用户名。
+     */
+    public static function isValidUsername(string $username): bool
+    {
+        return preg_match('/^[a-z0-9_.@-]{1,64}$/', $username) === 1;
     }
 
     public function updateUser(string $username, ?string $passwordHash, ?string $role, ?string $email = null): void

@@ -324,7 +324,13 @@ class AdminController extends BaseController
             $stmt->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . TokenService::hashAdminToken($token)]);
             $value = $stmt->fetchColumn();
             if ($value !== false && $value !== '') {
-                return (string)explode('|', (string)($value ?? ''), 2)[0];
+                // 与 TokenService::validate 同向解析：role 取末段，用户名为其余部分，
+                // 用户名含 '|' 时两处结论一致（新建账号已禁止 '|'，这里兜底存量数据）
+                $parts = explode('|', (string)$value);
+                if (count($parts) >= 2) {
+                    array_pop($parts);
+                    return implode('|', $parts);
+                }
             }
         } catch (\Throwable $e) {
         }
@@ -892,6 +898,17 @@ class AdminController extends BaseController
         if ($username === '' || strlen($password) < 8) {
             return $this->jsonError($response, 'auth.new_password_short', 400);
         }
+        if (!AdminUserRepository::isValidUsername($username)) {
+            return $this->jsonError($response, 'user.invalid_username', 400);
+        }
+
+        // 角色以 roles 表存储的规范名为准：MySQL 大小写不敏感匹配会放过 'SUPER_ADMIN'
+        // 这类变体，必须回写规范名后再做 === 守卫与落库
+        $canonicalRole = $this->adminUserRepository->canonicalRole($role);
+        if ($canonicalRole === null) {
+            return $this->jsonError($response, 'user.role_not_found', 400);
+        }
+        $role = $canonicalRole;
 
         // 创建 super_admin 必须由当前已是 super_admin 的操作者执行（防普通 admin 提权）
         if ($role === AppConfig::ROLE_SUPER_ADMIN && $this->currentRole !== AppConfig::ROLE_SUPER_ADMIN) {
@@ -916,11 +933,6 @@ class AdminController extends BaseController
         // 非管理员创建的账号不能包含 ci
         if (!$this->isAdminRole() && self::systemsContain($systems, AppConfig::SYSTEM_CI)) {
             return $this->jsonError($response, 'user.cd_no_ci_access', 403);
-        }
-
-        // 角色必须是 roles 表里真实存在的角色，否则该用户权限加载为空
-        if (!$this->adminUserRepository->roleExists($role)) {
-            return $this->jsonError($response, 'user.role_not_found', 400);
         }
 
         try {
@@ -984,6 +996,13 @@ class AdminController extends BaseController
             }
 
             if ($role !== null) {
+                // 角色以 roles 表存储的规范名为准：MySQL 大小写不敏感匹配会放过
+                // super_admin 的大小写变体，守卫与落库统一用规范名
+                $canonicalRole = $this->adminUserRepository->canonicalRole($role);
+                if ($canonicalRole === null) {
+                    return $this->jsonError($response, 'user.role_not_found', 400);
+                }
+                $role = $canonicalRole;
                 // 提升为 super_admin 必须由 super_admin 操作（防普通 admin 提权）
                 if ($role === AppConfig::ROLE_SUPER_ADMIN && $this->currentRole !== AppConfig::ROLE_SUPER_ADMIN) {
                     return $this->jsonError($response, 'user.cannot_promote_super_admin', 403);
@@ -999,10 +1018,6 @@ class AdminController extends BaseController
                 // 提升为管理员需要 ci.users.manage_admin 权限
                 if (($role === AppConfig::ROLE_ADMIN || $role === AppConfig::ROLE_SUPER_ADMIN) && !$this->hasPermission(AppConfig::PERM_CI_USERS_MANAGE_ADMIN)) {
                     return $this->jsonError($response, 'user.cannot_promote_admin', 403);
-                }
-                // 角色必须是 roles 表里真实存在的角色
-                if (!$this->adminUserRepository->roleExists($role)) {
-                    return $this->jsonError($response, 'user.role_not_found', 400);
                 }
             }
 
