@@ -5,11 +5,11 @@
  * 随镜像发布（cli/ 在镜像内）；bin/ 下的离线工具是本地补丁，require 本文件。
  * 约定：
  *   - 备份 = 纯数据 .sql（INSERT，不含 DDL）。DDL 由恢复方按目标驱动
- *     Database::bootstrap() 生成，这是「MySQL 备份可恢复进 SQLite、反之亦然」的前提。
+ *     Database::bootstrap() 生成，这样 MySQL 备份可以恢复进 SQLite，反之也一样。
  *   - 转义采用 SQL 标准写法（'' 加倍，反斜杠保持字面量），配合文件头
  *     mysqldump 同款 /*!40101 SET SQL_MODE='NO_BACKSLASH_ESCAPES' *​/ 注释，
  *     MySQL 服务端解析时关闭反斜杠转义，SQLite 视其为普通注释——同一份文件两种引擎都能吃。
- *   - 排除 cache（会话 token 是易失凭证，不该在备份里形成第二凭证库）与
+ *   - 排除 cache（会话 token 是易失凭证，不应在备份里多出一份）与
  *     ci_platform_versions（Git API 派生缓存，恢复后自动重拉）。
  */
 require_once __DIR__ . '/../vendor/autoload.php';
@@ -17,8 +17,8 @@ require_once __DIR__ . '/../vendor/autoload.php';
 use App\Config\AppConfig;
 use App\Service\Database;
 
-// 必须先加载环境再读 BACKUP_DIR：常量在 include 时求值一次，
-// 若等到调用方 require 之后再 backupLoadEnv()，config/app.env 里配的 BACKUP_DIR 会被静默忽略
+// 必须先加载环境再读 BACKUP_DIR：常量在 include 时只求值一次，
+// 若等到调用方 require 之后再 backupLoadEnv()，config/app.env 里配的 BACKUP_DIR 不会被读取
 // （只有 Docker ENV / shell export 这类真实环境变量才生效），裸机部署改了 app.env 却不生效。
 backupLoadEnv();
 
@@ -162,7 +162,7 @@ function backupTableColumns(\PDO $pdo, string $driver, string $table): array
 /**
  * SQL 标准值转义：'' 加倍、NULL 保持 NULL、反斜杠按字面量保留。
  * 配合恢复时的 NO_BACKSLASH_ESCAPES，MySQL/SQLite 通用，不会出现
- * 「MySQL 备份里的 \' 被 SQLite 当成字面量反斜杠」这类跨驱动污染。
+ * MySQL 备份里的 \' 被 SQLite 当成字面量反斜杠这类跨驱动污染。
  *
  * @param scalar|null $value
  */
@@ -202,10 +202,10 @@ function backupWriteFile(\PDO $pdo, string $driver, string $targetFile, array $o
     try {
         $tables = $onlyTables ?: backupListTables($pdo, $driver);
         foreach ($tables as $t) {
-            // 排除表无条件跳过：cache（会话 token 是易失凭证，落盘=第二凭证库）与
-            // ci_platform_versions（派生缓存，恢复后自动重拉）绝不能进备份文件。
-            // 这里不能加 !$onlyTables 守卫：双模式改造后调用方总是传入 onlyTables，
-            // 守卫会把排除架空（历史事故：cache 40 行 token 漏进备份文件）。
+            // 排除表无条件跳过：cache（会话 token 是易失凭证，落盘等于多出一份）与
+            // ci_platform_versions（派生缓存，恢复后自动重拉）不得进备份文件。
+            // 这里不能加 !$onlyTables 条件：双模式改造后调用方总是传入 onlyTables，
+            // 该条件会让排除失效（历史事故：cache 的 40 行 token 漏进备份文件）。
             if (in_array($t, $excluded, true)) {
                 continue;
             }

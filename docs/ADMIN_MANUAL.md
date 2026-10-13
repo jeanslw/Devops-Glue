@@ -1,4 +1,4 @@
-# Devops-Glue API Admin Manual v2.8.9
+# Devops-Glue API Admin Manual v2.9.0
 
 > This manual is organized in a "from zero to usable" order, covering the installation, initialization, and full configuration of Devops-Glue API. Once you complete it in order, you will be able to: log in to the admin panel, connect CI / Git / Harbor platforms, configure build mode and mapping, manage permissions and roles, issue API tokens, and have the companion Devops-Glue CD call it correctly.
 
@@ -38,6 +38,7 @@ Devops-Glue API is a Slim4-based unified API layer that provides a single manage
 
 | Devops-Glue API | Devops-Glue CD |
 |:---:|:---:|
+| v2.9.0 | v1.6.0 |
 | v2.8.9 | v1.5.7 |
 | v2.8.8 | v1.5.6 |
 | v2.8.7 | v1.5.x |
@@ -178,7 +179,7 @@ The admin panel sidebar contains the following modules:
 | Build Mode | Build mode (jenkins / gitlab_ci / gitea_ci, multi-select) |
 | User Management | User list, role management, change password |
 | Permission Management | Permission list, permission registration, implied rules |
-| API Management | Create / revoke / delete API tokens (visible to `super_admin` only) |
+| API Management | Create / edit scopes / revoke / delete API tokens (visible to `super_admin` only) |
 | Operation Log | Admin operation audit log (paginated + filterable, permission `ci.operation-logs`) |
 | Deploy Log | CD-side deployment record audit (paginated + filterable, permission `ci.deploy-logs`) |
 | API Access Log | API token invocation audit (paginated + filterable, permission `ci.api-logs`) |
@@ -716,19 +717,51 @@ Go to "API Management" (requires the relevant permission) and choose the require
 
 > **Note:**
 > - The token is shown in plaintext only once at creation; save it immediately.
+> - **Scopes can be edited at any time**: click "✏️ Edit Scopes" on the token's row under "API Management", tick the new permission set and save. Only **metadata** changes — the plaintext token and its digest stay the same, **no token replacement is needed** (deployed scripts / CD keep working), and the **next request** is checked against the new scopes. That makes it the right tool for temporarily granting `build.report` writeback or withdrawing write permissions you no longer need. Unlike *revoke*, editing never invalidates the token; use *revoke* to stop it completely.
+> - Every scope must come from the table above and at least one must stay selected: unknown values or an empty selection are both rejected (unlike creation, which silently ignores invalid keys) so a mis-tick can never silently widen or narrow access. Each edit is recorded in the operation log as `update_api_token_scopes`.
 > - `/api/admin/*` management endpoints always reject API tokens (only super_admin interactive login may access them).
+> - Do **not** create the Devops-Glue CD service token manually: enabling "CD deployment service" under "API Management → 🔌 Integrated services" issues it automatically (see section 16); the token then shows up in the token list below. Disabling that integrated service only **disables (freezes, does not burn)** it, and enabling again **restores the very same token** (CD needs no change) — to burn / rotate it, revoke or delete that token.
 
 ---
 
 ## 16. Connect Devops-Glue CD
 
-To let the companion [Devops-Glue CD](https://gitee.com/jeanslw/devops_cd) call this system correctly, configure the connection to this system in Devops-Glue CD's `app.env`. Choose **one** authentication method:
+### 16.1 Enable "CD deployment service" in this platform (required)
 
-**Recommended — API token** (create one for the CD service in "API Management"; grant the read / write / report scopes it needs):
+CD shares the same database with this platform, but **whether it creates tables and serves is decided by the `integrated_services` contract table** (this platform is the only writer; CD is read-only). When not enabled, CD creates no tables and rejects login and every request with 503.
+
+Entry point: "API Management → 🔌 Integrated services" (the card sits above the token list). That page is **super_admin only** (the status endpoint requires the `ci.system` permission; enabling/disabling is **super_admin only**).
+
+**Enablement flow:**
+
+1. Tick the **Enable** checkbox on the right of the card and confirm. In **one transaction** the platform:
+   - writes `enabled=1` to `integrated_services`;
+   - captures the provision mode from this platform **current** migration mode (`DB_AUTO_MIGRATE`) — it is sampled only at enable time and does **not** change when you switch migration mode later:
+     - `auto` (automatic schema mode): CD is authorized to **create/upgrade its tables automatically** in the shared database, for both MySQL and SQLite;
+     - `manual` (manual schema mode): CD **never creates tables** and only accepts pre-created tables — import CD's bundled `database/init_mysql.sql` first, then enable;
+   - auto-issues a service token restricted to the scopes `build.read`, `build.write`, `rbac.user.write` (no access to any management endpoint).
+2. The plaintext token in the popup is shown **only once** (only its SHA-256 digest is stored); copy it somewhere safe immediately.
+3. Put the token into CD's `app.env` as described in section 16.2, then start CD.
+4. On CD's first connection to the shared database: under `auto` it creates/migrates tables and starts serving; under `manual` it starts serving only after verifying all 14 CD tables exist, otherwise it returns 503 with an import hint.
+
+**Disabling (freezing) and credential rotation:**
+
+- Unticking **Enable** (and confirming) makes CD immediately reject all requests and **disables** the bound service token (`api_tokens.enabled=0`) in the same transaction;
+- **Disabled ≠ burned**: the credential record, its sha256 digest and the contract row's `api_token_id` are all kept (**no CD table or data is ever deleted**);
+- **Enabling again restores the very same token**: the platform simply re-activates it (`enabled=1`, digest untouched), so the original plaintext keeps working and CD's `CI_API_TOKEN` **needs no change** (the card shows "credential frozen with the service: re-enabling restores the same token", and the confirm dialog says "♻ restore" instead of popping a plaintext box);
+- ticking an already-ticked checkbox cannot double-fire (it is already ticked); calling the enable endpoint again returns 409 — but only while the row is enabled **with a valid credential**;
+- **To burn / rotate the credential**: ⛔ revoke or 🗑 delete that row in the token list first (revoke / delete = burn, so the platform never treats it as a restorable frozen credential), then tick **Enable** — that takes the **re-issue** path (a new credential is issued and re-bound to the same contract row in one transaction, response `reissued=true`); finish by updating CD's `CI_API_TOKEN` as described in 16.2;
+- **A credential that was revoked / deleted on its own is self-recoverable (re-issue)**: the card turns red ("⚠️ Enabled, credential dead") and the checkbox falls back to unticked — **ticking Enable again re-issues a new credential in the same transaction** (re-bound to the same contract row, the old one retired), no disable step required; then update CD's plaintext token.
+
+### 16.2 Configure CD connection settings
+
+Configure the connection to this system in Devops-Glue CD's `app.env`. Choose **one** authentication method:
+
+**Recommended — integrated service token** (the one auto-issued by the enablement wizard in 16.1):
 
 ```ini
 CI_API_URL=http://devops-glue      # Address of this system
-CI_API_TOKEN=dg_xxx                # API token created above
+CI_API_TOKEN=dg_xxx                # Token shown once by the enablement wizard
 ```
 
 **Deprecated — service account** (`CI_ADMIN_USER` / `CI_ADMIN_PASS`, being phased out; prefer the API token):
@@ -939,6 +972,6 @@ To add a built-in platform (GitLab/Gitee/GitHub/Gitea style), modify:
 
 ## Appendix E: Single Sign-On (OAuth2 / OIDC)
 
-Glue ships a built-in OAuth2 / OIDC Provider, letting Grafana (OAuth2) and Jenkins / Harbor / GitLab (OIDC) sign in with a Glue account.
+Glue ships a built-in OAuth2 / OIDC Provider, letting Jenkins / Harbor / GitLab (OIDC) sign in with a Glue account.
 
 See [Single-Sign-On.md](Single-Sign-On.md) for setup steps, per-system integration config, and role mapping.

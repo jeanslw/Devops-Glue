@@ -92,8 +92,8 @@ class JenkinsService
                 return ['type' => 'folder', 'fullName' => $path];
             }
         } catch (ConnectException | ServerException $e) {
-            // 连接级失败（拒绝/DNS/超时）与 5xx：必须上抛（→ 502「服务不可达」），
-            // 不得与「路径不存在」混为一谈（否则触发方会收到「Job 不存在」的误报）
+            // 连接级失败（拒绝/DNS/超时）与 5xx 必须上抛，由上层返回 502 服务不可达；
+            // 不能与路径不存在混为一谈，否则触发方会收到 Job 不存在的误报
             throw new \RuntimeException('Jenkins 服务不可达: ' . $e->getMessage(), 0, $e);
         } catch (\Exception $e) {
             $this->logger?->debug('Jenkins resolvePath: 直接路径解析失败', [
@@ -116,7 +116,7 @@ class JenkinsService
                     }
                 }
             } catch (ConnectException | ServerException $e) {
-                // 同上：连接级失败上抛，不与「Folder 内无该 Job」混淆
+                // 同上：连接级失败上抛，不与 Folder 内无该 Job 混淆
                 throw new \RuntimeException('Jenkins 服务不可达: ' . $e->getMessage(), 0, $e);
             } catch (\Exception $e) {
                 $this->logger?->debug('Jenkins resolvePath: Folder 内查找失败', [
@@ -168,7 +168,12 @@ class JenkinsService
     }
 
     /**
-     * @return list<string>|array<string, array{choices: list<mixed>, _class: string, defaultValue: mixed, description: string}>
+     * @return list<string>|array<string, array{
+     *     choices: list<mixed>,
+     *     _class: string,
+     *     defaultValue: mixed,
+     *     description: string
+     * }>
      */
     public function getParameters(string $jobPath, ?int $buildId = null): array
     {
@@ -218,7 +223,14 @@ class JenkinsService
         return $params;
     }
 
-    /** @return array<string, array{choices: list<mixed>, _class: string, defaultValue: mixed, description: string}> */
+    /**
+     * @return array<string, array{
+     *     choices: list<mixed>,
+     *     _class: string,
+     *     defaultValue: mixed,
+     *     description: string
+     * }>
+     */
     private function getCurrentParameters(string $jobPath): array
     {
         return $this->getParameterDefinitions($jobPath);
@@ -356,11 +368,10 @@ class JenkinsService
     }
 
     /**
-     * 批量获取构建 ID + 时间 + 状态 + git ref/sha（一次 API 调用）
+     * 批量获取构建 ID + 时间 + 状态 + git ref/sha（一次 API 调用）。
      *
-     * 不吞连接异常：Jenkins 不可用时必须抛出，让上层（Provider → AuthMiddleware）
-     * 能区分「项目无构建」（200 空数组）与「CI 不可用」（502），
-     * 否则审计日志会把 CI 故障误判为 success。
+     * 不吞连接异常：Jenkins 不可用时抛出，让上层区分项目无构建（200 空数组）
+     * 与 CI 不可用（502）。
      *
      * @return array<int, array{time: string, status: string, ref: string, sha: string}>
      */

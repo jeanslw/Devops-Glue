@@ -7,9 +7,9 @@ namespace App\Service;
 use App\Config\AppConfig;
 
 /**
- * Pipeline → Primary Artifact（当前阶段保持 1:1）的规范读写层。
+ * Pipeline 到 Primary Artifact（当前阶段保持 1:1）的规范读写层。
  *
- * ci_pipeline_artifacts 是唯一 canonical source。
+ * ci_pipeline_artifacts 是唯一权威数据来源。
  */
 final class PipelineArtifactService
 {

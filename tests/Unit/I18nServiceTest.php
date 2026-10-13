@@ -99,7 +99,7 @@ class I18nServiceTest extends TestCase
     }
 
     /**
-     * ci.users.manage_admin 在中文里的翻译必须是「角色管理」（恢复上一版），不能是「管理员用户」
+     * ci.users.manage_admin 在中文里的翻译必须是角色管理（恢复上一版用词），不能是管理员用户
      */
     public function testCiUsersManageAdminTranslatesToRoleManagement(): void
     {

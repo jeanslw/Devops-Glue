@@ -1,13 +1,13 @@
 <?php
 /**
- * LDAP 登录流程冒烟测试 —— 用 mock LDAP 服务器端到端验证 LdapService::authenticate()。
+ * LDAP 登录流程冒烟测试：用 mock LDAP 服务器端到端验证 LdapService::authenticate()。
  *
  * 前置：
  *   1) 先启动 mock 服务器：cd tests/ldap-mock && npm install && node server.js 1389
  *   2) 再跑本脚本：php tests/ldap_login_smoke.php
  *
- * 覆盖「管理员搜索模式」完整链路：connect → admin bind → search(uid) → user bind。
- * 不需要真实 OpenLDAP，也不需要额外 mock 库 —— 唯一依赖是已安装的 ext-ldap。
+ * 覆盖管理员搜索模式的完整链路：connect、admin bind、search(uid)、user bind。
+ * 不需要真实 OpenLDAP，也不需要额外 mock 库，唯一依赖是已安装的 ext-ldap。
  */
 
 declare(strict_types=1);
@@ -58,7 +58,7 @@ if (!extension_loaded('ldap')) {
     exit(2);
 }
 
-// 1) 正确密码 → 登录成功，且返回 DN + 属性
+// 1) 正确密码：登录成功，且返回 DN 与属性
 $r = $service->authenticate('alice', 'alicepass');
 check('alice 正确密码登录成功', ($r['ok'] ?? false) === true, json_encode($r));
 if ($r['ok'] ?? false) {
@@ -74,15 +74,15 @@ if ($r['ok'] ?? false) {
     );
 }
 
-// 2) 错误密码 → ldap_bind_failed（不是 user_not_found，说明确实搜到了用户再校验密码）
+// 2) 错误密码：ldap_bind_failed（不是 user_not_found，说明确实搜到了用户再校验密码）
 $r = $service->authenticate('alice', 'wrongpass');
 check('alice 错误密码 → ldap_bind_failed', ($r['error'] ?? '') === 'ldap_bind_failed', json_encode($r));
 
-// 3) 不存在的用户 → ldap_user_not_found
+// 3) 不存在的用户：ldap_user_not_found
 $r = $service->authenticate('ghost', 'whatever');
 check('ghost 不存在 → ldap_user_not_found', ($r['error'] ?? '') === 'ldap_user_not_found', json_encode($r));
 
-// 4) 空凭据 → empty_credentials
+// 4) 空凭据：empty_credentials
 $r = $service->authenticate('', '');
 check('空凭据 → empty_credentials', ($r['error'] ?? '') === 'empty_credentials', json_encode($r));
 

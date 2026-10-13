@@ -675,10 +675,24 @@ return [
     'api_token.delete'          => '删除',
     'api_token.confirm_delete'  => '确认删除该 Token？删除后记录不可恢复。',
     'api_token.deleted'         => '已删除',
+    'api_token.edit_scopes'     => '编辑 Scope',
+    'api_token.edit_title'      => '✏️ 编辑 Scope',
+    'api_token.edit_target'     => '目标 Token：',
+    'api_token.edit_hint'       => '保存后立即生效，无需重新签发；明文 Token 保持不变。',
+    'api_token.scopes_required' => '请至少勾选一个接口权限',
+    'api_token.scopes_invalid'  => '包含未知的 Scope，请重新选择',
+    'api_token.scopes_updated'  => 'Scope 已更新',
+    'api_token.not_found'       => 'Token 不存在或已被删除',
     'api_token.disabled'        => '已禁用',
     'api_token.super_admin_only'=> '仅超级管理员可访问',
     'api_token.scope_forbidden' => 'API Token 无权访问此接口',
     'api_token.service_unavailable' => 'API Token 服务不可用',
+
+    // 集成服务（integrated_services 契约）
+    'integrated.unknown_service'   => '未知的集成服务',
+    'integrated.already_enabled'   => '该集成服务已启用且服务凭据有效，无需重复启用；如需轮换凭据，请在「API 管理 → 集成服务」取消勾选后再勾选',
+    'integrated.not_enabled'       => '该集成服务尚未启用',
+    'integrated.invalid_provision' => '建表方式无效，仅接受 auto 或 manual',
 
     // API Token Scope 目录
     'api.scope.main'            => 'MAIN（只读）',
@@ -691,7 +705,7 @@ return [
     'api.scope.rbac_user_write' => 'RBAC 用户写（建号/改号/删号）',
 
     // ── OAuth2 Provider ──
-    'oauth.login_title'      => '登录 Devops-Glue',
+    'oauth.login_title'      => '登录',
     'oauth.invalid_request'  => '无效的 OAuth 请求（client_id 或 redirect_uri 不匹配）',
 
     // ── 操作日志 ──
@@ -866,5 +880,40 @@ return [
     'sys.backup_done'     => '备份完成',
     'sys.backup_failed'   => '备份失败',
     'sys.backup_no_tables' => '没有任何应用表可备份（数据库未初始化？）',
+
+    // 集成服务卡片（integrated_services 契约）
+    'sys.panel_integrated'      => '🔌 集成服务',
+    'sys.isvc_intro'            => '集成服务与本平台共享数据库：启用即在同一事务内签发一枚限定权限的服务 Token（见下方 Token 列表，明文仅展示一次）并授权其建表；禁用只冻结服务、同时把该凭据停用（不作废），其数据表与数据保留 —— 重新启用即恢复同一枚凭据，CD 无需修改 CI_API_TOKEN。要作废或换发凭据，请先在下方列表里撤销 / 删除它。',
+    'sys.isvc_cd_name'          => 'CD 部署服务',
+    'sys.isvc_off'              => '⚪ 未启用',
+    'sys.isvc_on_auto'          => '✅ 已启用（自动建表）',
+    'sys.isvc_on_manual'        => '✅ 已启用（手动建表）',
+    'sys.isvc_enable'           => '启用',
+    'sys.isvc_disable'          => '禁用（冻结）',
+    'sys.isvc_provision'        => '建表方式',
+    'sys.isvc_provision_auto'   => '自动建表（授权 CD 自动创建/升级其数据表）',
+    'sys.isvc_provision_manual' => '手动建表（CD 不建表，只认运维预建表）',
+    'sys.isvc_will_provision'   => '启用后建表方式',
+    'sys.isvc_token'            => '服务凭据',
+    'sys.isvc_token_active'     => '有效',
+    'sys.isvc_token_invalid'    => '已失效（被撤销 / 删除 / 已过期）',
+    'sys.isvc_token_dead'       => '⚠️ 已启用，凭据已失效',
+    'sys.isvc_token_frozen'     => '配套凭据 {token} 已随服务冻结（未作废）：重新启用即恢复同一枚，CD 无需更换 CI_API_TOKEN',
+    'sys.isvc_reissue_hint'     => '配套凭据已作废（在下方列表里被撤销 / 删除，或已过期）—— 重新勾选「启用」即在同一事务内补发新凭据，请把新明文 Token 更新到 CD 的 CI_API_TOKEN。',
+    'sys.isvc_updated'          => '最近操作',
+    'sys.isvc_enable_confirm'   => '确定启用「{name}」吗？',
+    'sys.isvc_enable_step1'     => '将自动签发一枚限定权限的服务 Token，明文仅初次生成时展示',
+    'sys.isvc_enable_step2'     => '建表方式在启用时按本平台当前迁移模式写入，之后不再随模式自动改变',
+    'sys.isvc_reissue_note'     => '补发：本次将签发一枚新 Token，原凭据保持作废，CD 需更新 CI_API_TOKEN',
+    'sys.isvc_reuse_note'       => '恢复：凭据只是随服务冻结、并未作废，将重新启用同一枚 Token',
+    'sys.isvc_restored'         => '已恢复原凭据（同一枚 Token 继续有效，CD 无需更换）',
+    'sys.isvc_enabled'          => '已启用，请立即复制服务 Token',
+    'sys.isvc_disable_confirm'  => '确定禁用「{name}」吗？',
+    'sys.isvc_disable_step1'    => 'CD 将立即拒绝所有请求，配套服务 Token 一并停用（仅冻结）',
+    'sys.isvc_disable_step2'    => 'CD 的数据表与数据保留，重新启用即恢复，CD 无需改配置',
+    'sys.isvc_disabled'         => '已禁用（服务冻结，数据保留）',
+    'sys.isvc_token_title'      => '✅ CD 服务已启用 — 请立即复制服务 Token',
+    'sys.isvc_token_hint'       => '此明文 Token 仅显示这一次（平台仅保存其摘要）。请粘贴到 CD 的配置（CI_API_TOKEN），关闭后将无法再次查看。',
+    'sys.isvc_token_saved'      => '我已保存',
 ];
 

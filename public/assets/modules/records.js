@@ -10,9 +10,9 @@ let pullRecordsCache = [];
 let pullLogJobs = [];
 let pullPage = 1;
 const pullPageSize = 20;
-// 拉取式记录是否成功渲染过：静默刷新失败时保留上一次表格，不闪错误行
+// 拉取式记录是否成功渲染过：自动刷新失败时保留上一次表格，不显示错误行
 let pullLoadOk = false;
-// 静默加载连续失败计数：达到上限后停止自动轮询并提示一次（成功即清零）
+// 加载连续失败计数：达到上限后停止自动轮询并提示一次（成功即清零）
 let pullFailCount = 0;
 const PULL_FAIL_LIMIT = 3;
 let pushPage = 1, pushTotalPages = 1;
@@ -185,14 +185,14 @@ export async function loadPullRecords(silent) {
             }
         }
     } catch (e) {
-        // 静默自动刷新连续失败达到上限：停止轮询并提示一次，避免无限空转
+        // 自动刷新连续失败达到上限：停止轮询并提示一次，避免无限空转
         if (silent) {
             pullFailCount++;
             if (pullFailCount >= PULL_FAIL_LIMIT && pullTimer) {
                 stopPullAutoRefresh();
                 toast(__.t('pull.auto_refresh_stopped'), false);
             }
-            // 静默刷新失败：保留上一次成功渲染的表格（含空态），不打断用户阅读
+            // 自动刷新失败：保留上一次成功渲染的表格（含空态），不打断用户阅读
             if (pullLoadOk) return;
         }
         if (pagination) pagination.style.display = 'none';

@@ -6,10 +6,10 @@ use App\Config\AppConfig;
 use App\Helper\Log;
 
 /**
- * ci_app_settings 键值仓储：应用运行时开关/配置（DB 为唯一真相来源）。
+ * ci_app_settings 键值仓储：应用运行时开关与配置（以 DB 为准）。
  *
  * 承载从 AppConfig 迁出的 DB 读写职责：
- *   - build_mode（启用的拉取式 provider 集合，含旧格式自愈映射）
+ *   - build_mode（启用的拉取式 provider 集合，含旧格式转换）
  *   - custom_push_enabled / stale_tag_cleanup_enabled / backfill_tag_enabled
  *   - tag_log_keyword（推送成功关键字）
  *
@@ -58,10 +58,10 @@ class AppSettingRepository
 
     /**
      * 获取启用的构建 provider 集合（主 API）。
-     * 逻辑：DB build_mode → 解析为集合返回。若 DB 无记录（首次运行），
-     * 从 app.env BUILD_MODE 取种子值写入 DB 后返回。此后 DB 为唯一真相来源。
+     * 逻辑：读取 DB build_mode 并解析为集合返回。若 DB 无记录（首次运行），
+     * 从 app.env BUILD_MODE 取种子值写入 DB 后返回。此后以 DB 为准。
      *
-     * 旧格式（jenkins / gitlab_ci / both 单值）惰性映射到新格式并自愈回写。
+     * 旧格式（jenkins / gitlab_ci / both 单值）在读取时转换为新格式并回写。
      *
      * @return list<string> 已启用的拉取式 provider（jenkins/gitlab_ci/gitea_ci），可为空数组
      */
@@ -76,7 +76,7 @@ class AppSettingRepository
                 }
                 return $modes;
             }
-            // DB 无记录 → 首次运行，以 app.env 为种子写入 DB
+            // DB 无记录：首次运行，以 app.env 为种子写入 DB
             $modes = self::parseBuildModes($_ENV['BUILD_MODE'] ?? AppConfig::BUILD_MODE_BOTH);
             try {
                 $this->setBuildModes($modes);
@@ -131,7 +131,7 @@ class AppSettingRepository
     }
 
     /**
-     * 兼容桥接：单值/旧格式字符串 → 集合。
+     * 兼容旧格式：把单值或旧格式字符串解析为集合。
      */
     public function setBuildMode(string $mode): void
     {
@@ -195,7 +195,7 @@ class AppSettingRepository
     }
 
     /**
-     * 拉取式记录「镜像 Tag」日志兜底的推送成功关键字。空串回退默认 'digest'。
+     * 拉取式记录镜像 Tag 日志时使用的推送成功关键字。空串回退默认值 'digest'。
      */
     public function getTagLogKeyword(): string
     {

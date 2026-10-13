@@ -68,8 +68,8 @@ class GitlabService implements GitProviderInterface
      */
     public function setCommitStatus(string $repository, string $sha, string $state, string $context, string $description, string $targetUrl = ''): array
     {
-        // 注意：本方法入参与 getBranches/getTags 不同——调用方（BuildController）三级回退传入
-        // 的是「未编码」值（数字 project_id，或原始 owner/repo 路径），故需在此 urlencode。
+        // 注意：本方法入参与 getBranches/getTags 不同，调用方（BuildController）在回退时传入
+        // 的是未编码的值（数字 project_id，或原始 owner/repo 路径），故需在此 urlencode。
         // 纯数字 project_id 经 urlencode 无副作用；原始路径则被正确编码为 group%2Frepo。
         $encoded = urlencode($repository);
         $url = "{$this->baseUrl}/api/v4/projects/{$encoded}/statuses/{$sha}";
@@ -116,7 +116,7 @@ class GitlabService implements GitProviderInterface
                 $page++;
             } catch (ConnectException | ServerException $e) {
                 // 连接级失败（拒绝/DNS/超时）与 5xx：上抛给 GitService 统一包装为
-                // 「平台不可达」（→ 502），不得吞成空数组（否则与「仓库无分支」无法区分）
+                // 平台不可达（502），不得吞成空数组（否则与仓库无分支无法区分）
                 $this->logger?->warning('GitLab 平台不可达', [
                     'path' => $path, 'page' => $page, 'error' => $e->getMessage(),
                 ]);

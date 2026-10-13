@@ -10,10 +10,10 @@ namespace App\Helper;
  *
  *  - trustedHops=0（默认，安全默认）：只信 REMOTE_ADDR，完全忽略 X-Forwarded-For，
  *    防止直连客户端伪造 XFF 绕过登录失败锁定；
- *  - trustedHops>0 且 TCP 对端是回环/私网/链路本地地址（说明确实隔着自家反代）时，
- *    从 X-Forwarded-For **右端**取倒数第 hops 个地址：
- *    反代会把真实客户端追加在链尾，攻击者自行加在链首的假地址取不到；
- *  - 任一步不合法（对端不是内网、XFF 缺失/过短/含非法 IP）都回退 REMOTE_ADDR。
+ *  - trustedHops>0 且 TCP 对端是回环/私网/链路本地地址（说明确实隔着自家反向代理）时，
+ *    从 X-Forwarded-For 右端取倒数第 hops 个地址：
+ *    反向代理会把真实客户端追加在链尾，攻击者自行加在链首的假地址取不到；
+ *  - 任一步不合法（对端不是内网、XFF 缺失或过短、含非法 IP）都回退 REMOTE_ADDR。
  */
 class ClientIp
 {

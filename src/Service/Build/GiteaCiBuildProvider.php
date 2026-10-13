@@ -11,7 +11,7 @@ use App\Config\AppConfig;
  *
  * 对接 Gitea Actions API（Gitea 1.21+ 逐步开放）。Gitea Actions 的流水线 API
  * 较 GitLab 更晚进入稳定 `/api/v1`，不同版本端点可用性不一，因此每个方法都
- * 独立 try/catch，接口不可用/老版本时优雅降级（返回空或明确文案），绝不抛错中断。
+ * 独立 try/catch，接口不可用或老版本时返回空结果或说明文案，不抛错中断。
  *
  * projectId 约定为 `owner/repo`（与 job_git_map.job_name/current_path 一致）。
  */
@@ -64,7 +64,7 @@ class GiteaCiBuildProvider implements BuildProviderInterface
         $url = "{$this->baseUrl}/api/v1/repos/{$owner}/{$repoName}/actions/runs?limit={$perPage}&page=1";
         try {
             $resp = $this->http->get($url);
-            // 404 / 405：Gitea 未启用 Actions 或该版本无此端点 → 优雅降级
+            // 404 / 405：Gitea 未启用 Actions 或该版本无此端点，返回空结果
             if ($resp->getStatusCode() >= 400) {
                 $this->logger?->debug('Gitea Actions runs 端点不可用', ['project' => $projectId, 'status' => $resp->getStatusCode()]);
                 return [];
@@ -264,7 +264,7 @@ class GiteaCiBuildProvider implements BuildProviderInterface
             $status = $resp->getStatusCode();
             $data = json_decode($resp->getBody(), true);
             // Gitea 1.27.0 起提供 POST /actions/runs/{run}/cancel（同批还有 force-cancel/rerun/approve/logs），
-            // 老版本（<1.27）或 Actions 未启用时该端点 404/405，需明确区分「端点不存在」而非「取消失败」。
+            // 老版本（<1.27）或 Actions 未启用时该端点返回 404/405，需区分端点不存在与取消失败。
             if ($status === 404 || $status === 405) {
                 return ['success' => false, 'message' => '当前 Gitea 版本不提供取消运行的 API（需 Gitea 1.27+），请在 Gitea 界面操作'];
             }

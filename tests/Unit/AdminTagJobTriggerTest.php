@@ -8,13 +8,13 @@ use App\Service\I18nService;
 use PHPUnit\Framework\TestCase;
 
 /**
- * 「后台手动触发 tag 定时任务」的接线与文案回归测试
+ * 后台手动触发 tag 定时任务的接线与文案回归测试
  *
- * 锁定三件事，任一被改坏都应立刻失败：
- *   1. 路由：POST /api/admin/tag_cleanup → runTagCleanup、POST /api/admin/tag_backfill → runTagBackfill；
+ * 覆盖三件事，任一被改坏都应立刻失败：
+ *   1. 路由：POST /api/admin/tag_cleanup 对应 runTagCleanup，POST /api/admin/tag_backfill 对应 runTagBackfill；
  *   2. 控制器：两个公开动作方法存在（后端 guardTagJob 的 409 语义由实现保证）；
- *   3. 界面：两个卡片按钮 + 状态位存在且接到 admin.js 暴露的同名全局函数，
- *      且 JS/后端用到的 i18n key 在 zh_CN / en 两份语言包里都存在且非空。
+ *   3. 界面：两个卡片按钮与状态位存在，且接到 admin.js 暴露的同名全局函数，
+ *      且 JS 与后端用到的 i18n key 在 zh_CN / en 两份语言包里都存在且非空。
  *
  * 运行：vendor/bin/phpunit tests/Unit/AdminTagJobTriggerTest.php
  */
@@ -22,7 +22,7 @@ class AdminTagJobTriggerTest extends TestCase
 {
     private const ROOT = __DIR__ . '/../..';
 
-    /** 手动触发按钮 → 控制器动作方法 的期望接线 */
+    /** 手动触发按钮到控制器动作方法的期望接线 */
     private const ROUTES = [
         '/tag_cleanup' => 'runTagCleanup',
         '/tag_backfill' => 'runTagBackfill',
@@ -53,7 +53,7 @@ class AdminTagJobTriggerTest extends TestCase
         'oplog.act_backfill_pipeline_tags',
     ];
 
-    /** 两个按钮 id → 前端全局函数名 */
+    /** 两个按钮 id 到前端全局函数名的映射 */
     private const BUTTONS = [
         'stale-tag-run-btn' => 'runStaleTagCleanup',
         'backfill-tag-run-btn' => 'runTagBackfill',

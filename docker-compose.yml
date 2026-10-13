@@ -24,7 +24,7 @@ services:
       # 运行时数据持久化到宿主机（分类挂载，互不覆盖）：
       #   /data/db       — SQLite（DB_PATH=/data/db/data.db）。
       #   /data/cache    — OIDC 私钥 + GitLab ID 缓存。
-      #   /data/backups  — 手动「备份数据库」生成的 zip 备份（devops-glue_<driver>_<datetime>.zip）。
+      #   /data/backups  — 手动“备份数据库”生成的 zip 备份（devops-glue_<driver>_<datetime>.zip）。
       - ./data/db:/data/db
       - ./data/cache:/data/cache
       - ./data/backups:/data/backups
@@ -44,11 +44,11 @@ services:
     cap_add:
       - NET_BIND_SERVICE  # nginx 监听 :80（<1024 特权端口）
       - CHOWN             # entrypoint 把运行时目录 chown 给 www-data
-      - SETUID            # nginx/php-fpm master(root) → worker(www-data) 降权
+      - SETUID            # nginx/php-fpm master(root) 降权到 worker(www-data)
       - SETGID
       - DAC_OVERRIDE      # root 建目录/chmod 运行目录（/run、/data 等）
       - FOWNER            # chmod 非本人属主文件（OIDC 私钥 0600 等）
-      - KILL              # master 优雅重启/回收 www-data worker（跨 UID 发信号）
+      - KILL              # master 平滑重启/回收 www-data worker（跨 UID 发信号）
     # 容器 stdout/stderr 滚动：json-file 驱动按大小切分，单容器最多 max-size x max-file。
     # 覆盖 PHP 引擎错误（已改走 stderr）、php-fpm master、nginx error_log、supervisor sleep-loop
     # （tag-cleanup / backfill / api-log-cleanup / db-backup）等全部容器输出。
@@ -69,7 +69,7 @@ services:
 
   # 启动前环境变量预检（一次性容器，复用 mysql 镜像不增加额外下载）：
   # 必填口令缺失时输出中英双语指引并以非零码退出，mysql / devops-glue 因依赖关系不会启动。
-  # ⚠️ `docker compose up -d` 是分离模式，env-check 的双语指引被藏进容器日志，终端只显示 exit 1。
+  # `docker compose up -d` 是分离模式，env-check 的双语指引只写入容器日志，终端只显示 exit 1。
   #   想直接看原因，先跑 `docker compose run --rm env-check` 预检；若 up 已失败，用 `docker compose logs env-check` 回看提示。
   env-check:
     image: mysql:8.4
@@ -143,7 +143,7 @@ services:
 # 集中部署时取消下方注释即可。DB / Harbor / SECRET_KEY / CI_API_TOKEN 由 .env 注入；
 # 镜像 Dockerfile 已内置 CMD（uvicorn 0.0.0.0:8081）与 HEALTHCHECK，无需在此重复。
 # 单机单独部署 CD 时仍用 Devops_CD 仓库自带的 .env + docker compose up。
-# ⚠️ 启用前必须先在根 .env 填写 SECRET_KEY（openssl rand -base64 32）：
+# 启用前必须先在根 .env 填写 SECRET_KEY（openssl rand -base64 32）：
 #    下方 environment 的 ${SECRET_KEY:?} 会在留空时直接拒绝启动
 #
 #  devops-cd:

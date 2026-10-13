@@ -5,10 +5,20 @@ import { toast, confirmDialog } from '../core/toast.js';
 let _apiScopes = [];
 let _apiTokenCreated = '';
 let _tokenRows = [];
+let _editingTokenId = null;
+
+function tokenById(id) {
+    return _tokenRows.find(function(x) { return x.id === id; }) || null;
+}
 
 function tokenNameById(id) {
-    const t = _tokenRows.find(function(x) { return x.id === id; });
+    const t = tokenById(id);
     return (t && t.name) ? t.name : ('#' + id);
+}
+
+// 读取某个 scope 勾选框里已勾选的 scope key
+function checkedScopes(boxId) {
+    return Array.from(document.querySelectorAll('#' + boxId + ' input[data-scope]:checked')).map(function(i) { return i.value; });
 }
 
 export async function loadApiTokens() {
@@ -34,7 +44,9 @@ export async function loadApiTokens() {
                     : (t.expired
                         ? '<span style="color:#dc2626;">⏳ ' + esc(__.t('api_token.expired')) + '</span>'
                         : '<span style="color:#16a34a;">✅ ' + esc(__.t('api_token.active')) + '</span>');
-                const actions = (t.enabled === false ? '' :
+                // 编辑 Scope 对已禁用、已过期的行同样可用：改的是元数据，与明文和有效性无关
+                const actions = '<button class="btn btn-sm" onclick="showApiTokenScopeForm(' + t.id + ')">✏️ ' + esc(__.t('api_token.edit_scopes')) + '</button> '
+                    + (t.enabled === false ? '' :
                     '<button class="btn btn-sm btn-warn" onclick="revokeApiToken(' + t.id + ')">⛔ ' + esc(__.t('api_token.revoke')) + '</button> ')
                     + '<button class="btn btn-sm btn-del" onclick="deleteApiToken(' + t.id + ')">🗑 ' + esc(__.t('api_token.delete')) + '</button>';
                 return '<tr>' +
@@ -62,22 +74,26 @@ async function loadApiTokenScopes() {
     } catch(e) {}
 }
 
-function renderApiTokenScopes(preserveChecked) {
-    const box = document.getElementById('api-token-scopes');
+// 新增 / 编辑两个表单共用同一套 scope 勾选框渲染（selected 为需要预勾选的 scope key 数组）
+function renderScopeBoxes(boxId, selected) {
+    const box = document.getElementById(boxId);
     if (!box) return;
-    const checked = {};
-    if (preserveChecked) {
-        box.querySelectorAll('input[data-scope]:checked').forEach(function(i) { checked[i.value] = true; });
-    }
+    const on = {};
+    (selected || []).forEach(function(k) { on[k] = true; });
     box.innerHTML = _apiScopes.map(function(s) {
         return '<label style="display:grid; grid-template-columns:1fr 9fr;gap:5px;font-size:10px;padding:5px 10px;border:1px solid #d1d5db;border-radius:6px;cursor:pointer;">' +
-            '<input type="checkbox" value="' + esc(s.key) + '" data-scope' + (checked[s.key] ? ' checked' : '') + '>' +
+            '<input type="checkbox" value="' + esc(s.key) + '" data-scope' + (on[s.key] ? ' checked' : '') + '>' +
             '<span>' + esc(s.label) + '</span>' +
         '</label>';
     }).join('');
 }
 
+function renderApiTokenScopes(preserveChecked) {
+    renderScopeBoxes('api-token-scopes', preserveChecked ? checkedScopes('api-token-scopes') : []);
+}
+
 export async function showApiTokenForm() {
+    hideApiTokenScopeForm();                 // 与「编辑 Scope」互斥，避免两处勾选框同时可见看错行
     document.getElementById('api-token-form').style.display = 'block';
     document.getElementById('api-token-created').style.display = 'none';
     document.getElementById('api-token-name').value = '';
@@ -92,9 +108,34 @@ export function hideApiTokenForm() {
     document.getElementById('api-token-form').style.display = 'none';
 }
 
+/**
+ * 打开某条 Token 的编辑 Scope 表单，按当前 scope 预先勾选。
+ * 改的是元数据（scopes 列），保存后立即生效，明文 Token 不变、无需重新签发。
+ */
+export async function showApiTokenScopeForm(id) {
+    const token = tokenById(id);
+    if (!token) return;
+    hideApiTokenForm();
+    _editingTokenId = id;
+    document.getElementById('api-token-edit-name').textContent = token.name || ('#' + id);
+    document.getElementById('api-token-edit-msg').textContent = '';
+    document.getElementById('api-token-scope-form').style.display = 'block';
+    await loadApiTokenScopes();
+    renderScopeBoxes('api-token-edit-scopes', token.scopes || []);
+}
+
+export function hideApiTokenScopeForm() {
+    document.getElementById('api-token-scope-form').style.display = 'none';
+    _editingTokenId = null;
+}
+
 export async function refreshApiTokenView() {
     await loadApiTokenScopes();
     renderApiTokenScopes(true);
+    // 编辑框若开着：按当前勾选状态重建，保留未保存的改动，只刷新 label 文案
+    if (_editingTokenId !== null) {
+        renderScopeBoxes('api-token-edit-scopes', checkedScopes('api-token-edit-scopes'));
+    }
     loadApiTokens();
 }
 
@@ -141,6 +182,40 @@ export async function submitApiTokenForm(e) {
     }
 }
 
+/**
+ * 提交编辑 Scope：PUT /api/admin/api_tokens/{id}/scopes
+ * 后端对空集合与目录外的 scope 一律返回 400，这里只做空勾选的前置提示。
+ */
+export async function submitApiTokenScopeForm(e) {
+    if (e) e.preventDefault();
+    if (_editingTokenId === null) return;
+    const msg = document.getElementById('api-token-edit-msg');
+    msg.textContent = '';
+    const scopes = checkedScopes('api-token-edit-scopes');
+    if (!scopes.length) { msg.textContent = __.t('api_token.scopes_required'); msg.style.color = '#dc2626'; return; }
+
+    try {
+        const res = await fetch('/api/admin/api_tokens/' + _editingTokenId + '/scopes', {
+            method: 'PUT',
+            headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+            body: JSON.stringify({ scopes: scopes })
+        });
+        if (handle401(res)) return;
+        const data = await res.json();
+        if (res.ok) {
+            toast(__.t('api_token.scopes_updated'), true);
+            hideApiTokenScopeForm();
+            loadApiTokens();
+        } else {
+            msg.textContent = data.message || __.t('js.network_error');
+            msg.style.color = '#dc2626';
+        }
+    } catch(err) {
+        msg.textContent = __.t('js.network_error') + ': ' + err.message;
+        msg.style.color = '#dc2626';
+    }
+}
+
 export function copyApiToken() {
     if (!_apiTokenCreated) return;
     navigator.clipboard.writeText(_apiTokenCreated).then(
@@ -149,13 +224,21 @@ export function copyApiToken() {
     );
 }
 
+// 撤销 / 删除的很可能正是集成服务的配套凭据（cd-service）：同时刷新同屏上方的集成服务卡片，
+// 否则卡片会继续显示已启用且凭据有效，与列表里的实际情况不符（卡片会自动回到未勾选态，即可补发）。
+// 该刷新函数由 admin.js 挂到 window（见 admin.js 的 Object.assign(window, …)），
+// 经 window 调用可避免 system.js 与 apiTokens.js 之间的循环 import。
+function refreshIntegratedPanel() {
+    if (typeof window.loadIntegratedServices === 'function') window.loadIntegratedServices();
+}
+
 export async function revokeApiToken(id) {
     if (!await confirmDialog({ title: '⛔ ' + __.t('api_token.revoke_title'), message: __.t('api_token.confirm_revoke') + ' [' + tokenNameById(id) + ']', confirmText: __.t('common.confirm') })) return;
     try {
         const res = await fetch('/api/admin/api_tokens/' + id + '/revoke', { method: 'POST', headers: authHeaders() });
         if (handle401(res)) return;
         const data = await res.json();
-        if (res.ok) { toast(__.t('api_token.revoked'), true); loadApiTokens(); }
+        if (res.ok) { toast(__.t('api_token.revoked'), true); loadApiTokens(); refreshIntegratedPanel(); }
         else { toast(data.message || __.t('js.network_error'), false); }
     } catch(e) { toast(__.t('js.network_error') + ': ' + e.message, false); }
 }
@@ -166,7 +249,7 @@ export async function deleteApiToken(id) {
         const res = await fetch('/api/admin/api_tokens/' + id, { method: 'DELETE', headers: authHeaders() });
         if (handle401(res)) return;
         const data = await res.json();
-        if (res.ok) { toast(__.t('api_token.deleted'), true); loadApiTokens(); }
+        if (res.ok) { toast(__.t('api_token.deleted'), true); loadApiTokens(); refreshIntegratedPanel(); }
         else { toast(data.message || __.t('js.network_error'), false); }
     } catch(e) { toast(__.t('js.network_error') + ': ' + e.message, false); }
 }

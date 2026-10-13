@@ -128,7 +128,7 @@ class GiteaService implements GitProviderInterface
                 $page++;
             } catch (ConnectException | ServerException $e) {
                 // 连接级失败（拒绝/DNS/超时）与 5xx：上抛给 GitService 统一包装为
-                // 「平台不可达」（→ 502），不得吞成空数组（否则与「仓库无分支」无法区分）
+                // 平台不可达（502），不得吞成空数组（否则与仓库无分支无法区分）
                 $this->logger?->warning('Gitea 平台不可达', [
                     'path' => $path, 'page' => $page, 'error' => $e->getMessage(),
                 ]);

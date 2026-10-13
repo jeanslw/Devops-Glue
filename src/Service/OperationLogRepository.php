@@ -20,7 +20,7 @@ class OperationLogRepository
     }
 
     /**
-     * 写一条操作日志。任何失败静默吞掉（审计日志绝不影响主流程）。
+     * 写一条操作日志。任何失败只忽略，不影响主流程。
      *
      * @param string $action 操作类型（login / create_user / delete_role / ...）
      * @param string $target 操作对象（用户名 / 角色名 / 映射名等）
@@ -103,7 +103,7 @@ class OperationLogRepository
         $listStmt->execute($bind);
         $items = $listStmt->fetchAll();
 
-        // detail JSON → 数组，便于前端直接展示
+        // detail 由 JSON 解析为数组，便于前端直接展示
         foreach ($items as &$item) {
             if ($item['detail'] !== null && $item['detail'] !== '') {
                 $decoded = json_decode($item['detail'], true);

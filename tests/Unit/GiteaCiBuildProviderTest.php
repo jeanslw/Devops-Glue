@@ -39,7 +39,7 @@ class GiteaCiBuildProviderTest extends TestCase
 
     public function testGetPipelinesParsesGitea127WorkflowRunsObject(): void
     {
-        // Gitea 1.27 GET /actions/runs → {total_count, workflow_runs:[...]}（对象，非数组）
+        // Gitea 1.27 GET /actions/runs 返回 {total_count, workflow_runs:[...]}（对象，非数组）
         $provider = $this->providerWith([
             self::json(json_encode([
                 'total_count'    => 1,
@@ -68,7 +68,7 @@ class GiteaCiBuildProviderTest extends TestCase
 
     public function testGetJobsParsesGitea127JobsObjectAndCompletedAtDuration(): void
     {
-        // Gitea 1.27 GET /actions/runs/{run}/jobs → {total_count, jobs:[...]}（对象，非数组）
+        // Gitea 1.27 GET /actions/runs/{run}/jobs 返回 {total_count, jobs:[...]}（对象，非数组）
         // job 完成时间字段是 completed_at（无 stopped_at）
         $provider = $this->providerWith([
             self::json(json_encode([

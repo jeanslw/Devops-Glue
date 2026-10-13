@@ -46,7 +46,7 @@ class GitRemoteTest extends TestCase
             '首尾空白'           => ['  https://gitlab.com/acme/app.git  ', 'acme/app'],
             '大写 .GIT 后缀'     => ['https://gitlab.com/acme/app.GIT', 'acme/app'],
 
-            // ── 无效输入 → null，由调用方兜底 ──
+            // ── 无效输入返回 null，由调用方处理 ──
             '空串'               => ['', null],
             '纯空白'             => ['   ', null],
             '只有 host'          => ['https://gitlab.com', null],
@@ -56,7 +56,7 @@ class GitRemoteTest extends TestCase
 
     /**
      * 同一仓库经 https 与 ssh 两种协议接入，必须解析出同一路径。
-     * 这是 CI→CD 链路 join 的前提。
+     * 这是 CI 与 CD 链路关联的前提。
      */
     public function testHttpsAndSshAgreeOnSameRepo(): void
     {

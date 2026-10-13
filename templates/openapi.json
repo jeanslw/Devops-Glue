@@ -45,7 +45,7 @@
     },
     {
       "name": "SSO",
-      "description": "OAuth2 / OIDC 单点登录（Grafana / Jenkins / Harbor / GitLab）"
+      "description": "OAuth2 / OIDC 单点登录（Jenkins / Harbor / GitLab）"
     }
   ],
   "components": {
@@ -1118,6 +1118,49 @@
             "type": "string",
             "description": "一次性明文 Token（dg_ 前缀 + 64 位十六进制），仅返回一次",
             "example": "dg_8f3a4b1c…"
+          }
+        }
+      },
+      "ApiTokenUpdateScopesRequest": {
+        "type": "object",
+        "required": [
+          "scopes"
+        ],
+        "properties": {
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "新的接口权限 scope 列表（必须全部来自 scope 目录且至少一个；含未知 key 或清洗后为空集合返回 400）",
+            "example": [
+              "main",
+              "build.read"
+            ]
+          }
+        }
+      },
+      "ApiTokenUpdateScopesResult": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "id": {
+            "type": "integer",
+            "example": 1
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "保存后的 scope 列表（去空格、去重、保持提交顺序）",
+            "example": [
+              "main",
+              "build.read"
+            ]
           }
         }
       },
@@ -4490,13 +4533,77 @@
         }
       }
     },
+    "/api/admin/api_tokens/{id}/scopes": {
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "编辑 API Token 的 Scope",
+        "description": "改写该 Token 的 scope 清单。只改元数据（明文与摘要不变），调用方无需更换 Token，下一次请求即按新 Scope 校验。仅 super_admin 可访问；scope 必须来自目录且至少一个（否则 400），Token 不存在返回 404。",
+        "operationId": "adminApiTokenUpdateScopes",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Token ID",
+            "example": 1
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiTokenUpdateScopesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "编辑成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiTokenUpdateScopesResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "非 super_admin"
+          },
+          "404": {
+            "description": "Token 不存在"
+          },
+          "503": {
+            "description": "API Token 服务不可用"
+          }
+        }
+      }
+    },
     "/api/admin/api_tokens/{id}/revoke": {
       "post": {
         "tags": [
           "Admin"
         ],
         "summary": "撤销 API Token（禁用，保留记录）",
-        "description": "将 Token 置为禁用（enabled=0），立即失效但保留记录。仅 super_admin 可访问。",
+        "description": "将 Token 置为禁用（enabled=0），立即失效但保留记录 —— 行与摘要都保留，因此它仍是**可恢复**的：集成服务的配套凭据被这样停用后，随该服务重新启用即恢复同一枚（原明文继续可用，CD 无需换配置）。要彻底作废/换发请改用 DELETE（硬删除，不可恢复）。仅 super_admin 可访问。",
         "operationId": "adminApiTokenRevoke",
         "security": [
           {
@@ -4598,6 +4705,311 @@
         }
       }
     },
+    "/api/admin/integrated_services/{service}": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "查询集成服务启用状态",
+        "description": "读取 integrated_services 契约行（CI 唯一写入，集成服务只读）。行不存在时返回 enabled=false 的默认状态（不做种子写入）。需要 ci.system 权限。",
+        "operationId": "adminIntegratedServiceStatus",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "service",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "cd"
+              ]
+            },
+            "description": "集成服务名（当前仅 cd）",
+            "example": "cd"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "集成服务状态",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "service": {
+                      "type": "string",
+                      "example": "cd"
+                    },
+                    "enabled": {
+                      "type": "boolean",
+                      "description": "是否已启用（行不存在/enabled=0 均为 false）"
+                    },
+                    "provision": {
+                      "type": "string",
+                      "enum": [
+                        "auto",
+                        "manual"
+                      ],
+                      "description": "建表方式：auto=集成服务可自动建表；manual=只认运维预建表"
+                    },
+                    "default_provision": {
+                      "type": "string",
+                      "enum": [
+                        "auto",
+                        "manual"
+                      ],
+                      "description": "当前点启用将写入的 provision（跟随 CI DB_AUTO_MIGRATE 模式）"
+                    },
+                    "token_id": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "description": "配套服务 Token 的 api_tokens.id 软引用（不存明文/哈希）"
+                    },
+                    "token_name": {
+                      "type": "string"
+                    },
+                    "token_exists": {
+                      "type": "boolean",
+                      "description": "凭据行是否仍然存在（禁用/停用后仍在；被删除后为 false）"
+                    },
+                    "token_enabled": {
+                      "type": "boolean",
+                      "description": "凭据是否未被停用（api_tokens.enabled=1）"
+                    },
+                    "token_expired": {
+                      "type": "boolean",
+                      "description": "凭据是否已过期（expires_at <= now）"
+                    },
+                    "token_active": {
+                      "type": "boolean",
+                      "description": "配套 Token 是否仍然有效（= token_exists && token_enabled && !token_expired）"
+                    },
+                    "token_scopes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "启用时将签发的限定 scope 列表"
+                    },
+                    "updated_by": {
+                      "type": "string"
+                    },
+                    "created_at": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "updated_at": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "无 ci.system 权限"
+          },
+          "404": {
+            "description": "未知集成服务"
+          }
+        }
+      }
+    },
+    "/api/admin/integrated_services/{service}/enable": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "启用集成服务（签发新凭据，或恢复被冻结的同一枚凭据）",
+        "description": "事务内：按 CI 当前 DB_AUTO_MIGRATE 模式写入 provision（可用 body.provision 显式覆盖为 auto/manual）、处理配套服务 Token、upsert integrated_services 行。三条路径：① 首次启用 → 签发仅含 build.read/build.write/rbac.user.write 三个 scope 的服务 Token，明文仅在响应中返回一次；② 冻结恢复 → 契约行未启用、凭据只是被停用（撤销）且未过期时，**恢复同一枚凭据**（只把 enabled 置回 1，sha256 摘要未变 → 原明文重新生效），响应 reused=true 且不返回 token，CD 的 CI_API_TOKEN 无需更换；③ 作废补发 → 凭据被撤销（契约行仍启用）/ 被删除 / 已过期时，同事务作废旧凭据、签发新凭据并重绑契约行，响应 reissued=true + 新明文。契约行已启用**且凭据有效**时返回 409（真正重复启用）。仅 super_admin 可访问。",
+        "operationId": "adminIntegratedServiceEnable",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "service",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "cd"
+              ]
+            },
+            "example": "cd"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "provision": {
+                    "type": "string",
+                    "enum": [
+                      "auto",
+                      "manual"
+                    ],
+                    "description": "可选。缺省按 CI 当前迁移模式写入"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "启用成功，token 为一次性明文",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "service": {
+                      "type": "string",
+                      "example": "cd"
+                    },
+                    "provision": {
+                      "type": "string",
+                      "enum": [
+                        "auto",
+                        "manual"
+                      ]
+                    },
+                    "token_id": {
+                      "type": "integer"
+                    },
+                    "reused": {
+                      "type": "boolean",
+                      "description": "true = 本次恢复了原被冻结的同一枚凭据（明文不重发，CD 的 CI_API_TOKEN 无需更换）"
+                    },
+                    "reissued": {
+                      "type": "boolean",
+                      "description": "true = 契约行本就启用、只是凭据已作废，本次补发新凭据（旧凭据保持作废，CD 必须换新 token）"
+                    },
+                    "token": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "一次性明文 Token（dg_ 前缀）：仅在新签发时返回（首次启用 / 作废补发）；恢复路径返回 null（那枚凭据的明文调用方手上已有）"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "非 super_admin"
+          },
+          "404": {
+            "description": "未知集成服务"
+          },
+          "409": {
+            "description": "该服务已启用且凭据有效（真正重复启用；凭据失效时不会 409，而是补发新凭据）"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        }
+      }
+    },
+    "/api/admin/integrated_services/{service}/disable": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "禁用集成服务（冻结服务并停用配套 Token）",
+        "description": "事务内置 enabled=0（集成服务立即拒绝所有请求）并停用配套服务 Token（api_tokens.enabled=0）。**停用 = 冻结、不是作废**：凭据行与契约行的 api_token_id 都原样保留，所以再次启用即恢复同一枚凭据 —— 原明文继续有效，CD 无需更换 CI_API_TOKEN（要作废/换发请先在 Token 列表里撤销或删除那枚 Token）。不删除集成服务的任何数据表/数据。从未启用返回 409。仅 super_admin 可访问。",
+        "operationId": "adminIntegratedServiceDisable",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "service",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "cd"
+              ]
+            },
+            "example": "cd"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "禁用成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "service": {
+                      "type": "string",
+                      "example": "cd"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "非 super_admin"
+          },
+          "404": {
+            "description": "未知集成服务"
+          },
+          "409": {
+            "description": "该服务尚未启用"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        }
+      }
+    },
     "/.well-known/openid-configuration": {
       "get": {
         "tags": [
@@ -4658,7 +5070,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "客户端标识（如 grafana）"
+            "description": "客户端标识（如 jenkins）"
           },
           {
             "name": "redirect_uri",
@@ -4870,7 +5282,7 @@
           "SSO"
         ],
         "summary": "邮箱列表（GitHub 风格）",
-        "description": "Grafana 兜底请求的邮箱子端点，返回与 userinfo 一致的占位邮箱。",
+        "description": "GitHub 风格邮箱子端点，返回与 userinfo 一致的邮箱。",
         "operationId": "oauthUserInfoEmails",
         "security": [
           {
@@ -5266,6 +5678,71 @@
           },
           "403": {
             "description": "非 API token 或缺少 rbac.user.write scope"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        }
+      }
+    },
+    "/api/rbac/roles/{name}/permissions": {
+      "get": {
+        "tags": [
+          "RBAC"
+        ],
+        "summary": "角色权限清单（CD 服务账号读）",
+        "description": "返回该角色被授予的权限 key 列表，供 CD 做会话权限收敛与权限映射（此前只有 name/description 的角色目录，CD 只能硬编码一份 Glue 权限清单）。边界：角色不存在返回 404（与「角色存在但零权限」严格区分，避免 CD 把查错角色名当成该角色无权限而清空权限）；super_admin 返回 [\"*\"]（通配，与 /api/admin/login 的 permissions:\"*\" 同语义；其权限由代码授予、不落在 role_permissions 表，照表读会把超管读成零权限）。仅 API token（rbac.user.write scope，整段 /api/rbac/* 统一判）。",
+        "operationId": "rbacRolePermissions",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "description": "角色名（roles.name）",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "角色权限清单",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "role": {
+                      "type": "string"
+                    },
+                    "permissions": {
+                      "type": "array",
+                      "description": "权限 key 列表；super_admin 为 [\"*\"]（通配）",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "非 API token 或缺少 rbac.user.write scope"
+          },
+          "404": {
+            "description": "角色不存在（user.role_not_found）；与「角色存在但未授予任何权限」（200 + 空数组）严格区分"
           },
           "500": {
             "$ref": "#/components/responses/500"

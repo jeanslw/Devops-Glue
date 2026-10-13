@@ -333,7 +333,8 @@ if (isset($health['db_driver'])) {
 
 echo "  [Infra] 健康检查 ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
 
-// /healthz 外部探针（无需鉴权）：DB 可达时应 200；含 db/app_version/schema_version/seed_version/schema_current/auto_migrate/time
+// /healthz 外部探针（无需鉴权）：DB 可达时应返回 200；
+// 响应含 db/app_version/schema_version/seed_version/schema_current/auto_migrate/time
 // schema 版本未对齐（如升级了代码还没跑迁移）时为 200 + status=degraded（不摘流），503 只留给 DB 不可达
 $tc = apiT('/healthz 探针（无认证）', "{$baseUrl}/healthz");
 $tc->assertHttpIs(200, '/healthz 返回 200');
@@ -551,7 +552,7 @@ if ($globalToken) {
         }
     }
     if (isset($permResp['implied']) && is_array($permResp['implied'])) {
-        // 检查 3 条子→父隐含规则存在
+        // 检查 3 条子角色到父角色的隐含规则存在
         foreach (['ci.permissions.list','ci.permissions.register','ci.permissions.rules'] as $child) {
             $parents = $permResp['implied'][$child] ?? [];
             $tc->assert(in_array('ci.permissions.manage', $parents, true), "隐含规则：'{$child}' → ci.permissions.manage");
@@ -725,7 +726,7 @@ echo "  [Build] Jenkins variables ... " . ($tc->status === 'pass' ? "\033[32mPAS
 // ─── 5.5 Custom Push（custom_push）后端端点 ───
 // 自定义推送式 CI：Devops-Glue 只提供 report 单次上报接口（终态），不参与构建执行。
 
-// 无 token → 401
+// 无 token 时返回 401
 $tc = apiT('CustomPush report（无认证）', "{$baseUrl}/api/build/static/report", 'POST', ['pipeline_iid' => 1, 'status' => 'success', 'finished_at' => '2026-08-18 10:05:30']);
 $tc->assertHttpIs(401, '无 token 返回 401');
 echo "  [CustomPush] report(无认证) ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
@@ -733,27 +734,27 @@ echo "  [CustomPush] report(无认证) ... " . ($tc->status === 'pass' ? "\033[3
 if ($globalToken) {
     $authHeader = ["Authorization: Bearer {$globalToken}"];
 
-    // 参数校验：缺 pipeline_iid → 400（校验在鉴权之后）
+    // 参数校验：缺 pipeline_iid 返回 400（校验在鉴权之后）
     $tc = apiT('CustomPush report（缺 pipeline_iid）', "{$baseUrl}/api/build/static/report", 'POST', ['status' => 'success', 'finished_at' => '2026-08-18 10:05:30'], $authHeader);
     $tc->assertHttpIs(400, '缺 pipeline_iid 返回 400');
     echo "  [CustomPush] report(缺pipeline_iid) ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
 
-    // 缺 finished_at → 400
+    // 缺 finished_at 返回 400
     $tc = apiT('CustomPush report（缺 finished_at）', "{$baseUrl}/api/build/static/report", 'POST', ['pipeline_iid' => 1, 'status' => 'success'], $authHeader);
     $tc->assertHttpIs(400, '缺 finished_at 返回 400');
     echo "  [CustomPush] report(缺finished_at) ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
 
-    // 非法 status（pending/running 中间态）→ 400
+    // 非法 status（pending/running 中间态）返回 400
     $tc = apiT('CustomPush report（中间态 status）', "{$baseUrl}/api/build/static/report", 'POST', ['pipeline_iid' => 1, 'status' => 'running', 'finished_at' => '2026-08-18 10:05:30'], $authHeader);
     $tc->assertHttpIs(400, '中间态 status 返回 400');
     echo "  [CustomPush] report(中间态status) ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
 
-    // success 缺 tag → 400（success 必须产出镜像 tag，供部署层交付）
+    // success 缺 tag 返回 400（success 必须产出镜像 tag，供部署层交付）
     $tc = apiT('CustomPush report（success缺tag）', "{$baseUrl}/api/build/static/report", 'POST', ['pipeline_iid' => 1, 'status' => 'success', 'finished_at' => '2026-08-18 10:05:30'], $authHeader);
     $tc->assertHttpIs(400, 'success 缺 tag 返回 400');
     echo "  [CustomPush] report(success缺tag) ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
 
-    // 端点存在性：合法 payload。未配置 custom_push 映射时后端优雅返回 4xx（不会 5xx）。
+    // 端点存在性：合法 payload。未配置 custom_push 映射时后端返回 4xx，不会返回 5xx。
     $tc = apiT('CustomPush report（合法payload）', "{$baseUrl}/api/build/static/report", 'POST', [
         'pipeline_iid' => 1, 'status' => 'success', 'finished_at' => '2026-08-18 10:05:30', 'log_url' => 'http://example.com/log.txt', 'tag' => 'v1.0.0', 'harbor_repository' => 'mycode/static',
     ], $authHeader);

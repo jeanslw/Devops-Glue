@@ -87,8 +87,8 @@ class GiteeService implements GitProviderInterface
                 'message' => $response->getStatusCode() < 400 ? 'status 已回写' : '回写失败',
             ];
         } catch (ConnectException | ServerException $e) {
-            // 连接级失败与「公开版不支持 API」是两回事：不可达必须如实上报，
-            // 不得误报为平台能力限制（原始异常仍只进服务端日志，不下发）
+            // 连接级失败与公开版不支持 API 是两回事：不可达必须如实上报，
+            // 不得当成平台能力限制（原始异常仍只进服务端日志，不下发）
             $this->logger?->warning('Gitee commit status 回写失败（服务不可达）', [
                 'repository' => $repository, 'sha' => $sha, 'error' => $e->getMessage(),
             ]);
@@ -124,7 +124,7 @@ class GiteeService implements GitProviderInterface
                 $page++;
             } catch (ConnectException | ServerException $e) {
                 // 连接级失败（拒绝/DNS/超时）与 5xx：上抛给 GitService 统一包装为
-                // 「平台不可达」（→ 502），不得吞成空数组（否则与「仓库无分支」无法区分）
+                // 平台不可达（502），不得吞成空数组（否则与仓库无分支无法区分）
                 $this->logger?->warning('Gitee 平台不可达', [
                     'path' => $path, 'page' => $page, 'error' => $e->getMessage(),
                 ]);

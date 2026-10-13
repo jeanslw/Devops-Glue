@@ -17,8 +17,8 @@ return [
      *   'gitea_ci'    — Gitea Actions
      *   'custom_push' — 推送式 CI（见下方 build.custom_providers）
      *
-     * 全局「构建模式」是「已启用 CI 源」集合（多选），存于数据库 ci_app_settings.build_mode
-     * （值形如 jenkins,gitlab_ci,gitea_ci），由后台「配置模式」页维护；.env 的 BUILD_MODE 仅作首次运行种子。
+     * 全局构建模式是已启用 CI 源的集合（多选），存于数据库 ci_app_settings.build_mode
+     * （值形如 jenkins,gitlab_ci,gitea_ci），由后台配置模式页维护；.env 的 BUILD_MODE 仅作首次运行种子。
      *
      * Provider 注册条件（与构建模式解耦，始终按配置注册）：
      *   - Jenkins：JENKINS_BASE_URL 非空即注册
@@ -83,7 +83,7 @@ return [
 
     // ==================== 自定义 Build Provider（推送式 CI） ====================
     // 默认已配置 CustomPushBuildProvider，开箱即用，无需修改。
-    // 启用：管理后台「配置模式」Tab → 勾选「启用 Custom_Push」→ 即时生效。
+    // 启用：管理后台配置模式 Tab 勾选启用 Custom_Push，即时生效。
     //
     // build_mode（jenkins/gitlab_ci/both）与 custom_push_enabled 正交，可任意组合。
     // job_git_map.build_provider 填 'custom_push' 即可选用。
@@ -109,7 +109,7 @@ return [
                         'env'         => ['type' => 'choice', 'choices' => ['dev', 'staging', 'prod'], 'description' => '构建镜像目标环境（可选）', 'required' => false],
                     ],
                     // 服务端代理拉取 log_url 的 SSRF 白名单（可选，逗号分隔主机名）。
-                    // 留空 = 不启用白名单，仅按「回环/链路本地/组播/广播/云元数据」IP 段拦截。
+                    // 留空 = 不启用白名单，仅按回环 / 链路本地 / 组播 / 广播 / 云元数据 IP 段拦截。
                     // 建议内网部署显式配置：CUSTOM_PUSH_LOG_ALLOWED_HOSTS=gitlab.example.com,ci.example.com
                     'log_url_allowed_hosts' => array_values(array_filter(array_map('trim', explode(',', env('CUSTOM_PUSH_LOG_ALLOWED_HOSTS', ''))))),
                 ],
@@ -128,7 +128,7 @@ return [
 
     // ==================== LDAP 外部身份源登录 ====================
     // 依赖 PHP ext-ldap 扩展（php.ini 启用 extension=ldap），未加载则自动降级，仅本地登录可用。
-    // 启用后登录顺序：本地 admin_users → LDAP（须已在 user_identities 绑定）→ .env 兜底。
+    // 启用后登录顺序：本地 admin_users，其次 LDAP（须已在 user_identities 绑定），最后 .env。
     //
     // 两种连接模式（二选一）：
     //   1. 管理员搜索模式（通用）：配 bind_dn + bind_password + base_dn + user_filter，
@@ -178,16 +178,16 @@ return [
     /*
      * Job ↔ Git ↔ Harbor 三方映射表
      *
-     * ⚠️ 数据已迁移到 SQLite（config/data/data.db），通过管理界面 /admin 编辑。
-     * ⚠️ 此处仅保留字段文档参考，以下数组为空，修改此处不会生效！
-     * ⚠️ 请通过后台映射管理或直接操作数据库来配置，不要改这个空数组。
+     * 注意：数据已迁移到 SQLite（config/data/data.db），通过管理界面 /admin 编辑。
+     * 此处仅保留字段文档参考，以下数组为空，修改此处不会生效！
+     * 请通过后台映射管理或直接操作数据库来配置，不要改这个空数组。
      *
      * 字段说明：
      *
      * ┌──────────────┬──────┬──────────────────────────────────────────────────┐
      * │ 字段           │ 必填  │ 说明                                             │
      * ├──────────────┼──────┼──────────────────────────────────────────────────┤
-     * │ job_name     │ ✅   │ Jenkins Job 完整路径，如 "java/registry"            │
+     * │ job_name     │ 是   │ Jenkins Job 完整路径，如 "java/registry"            │
      * │ git_platform │      │ 自建实例强烈建议。不填则自动检测 URL 关键词，          │
      * │              │      │ 可选值: gitlab|gitee|github|gitea 或自定义平台名      │
      * │ git_remote   │      │ 不填则从 Jenkins Job 的 SCM 配置自动获取             │
@@ -202,15 +202,21 @@ return [
     'oauth_clients' => [
         // redirect_uri 与各家系统回调地址逐字符精确匹配（hash_equals）。
         // 通过 env 注入，禁止把具体环境的内网 IP 写进 git。
-        // 本地默认走 localhost（Grafana 带 :3000；Jenkins 不写端口，按实际监听在 env 里补全）。
+        // 本地默认走 localhost（Jenkins 不写端口，按实际监听在 env 里补全）。
         // 生产必须改成实际回调。secret 或 redirect_uri 留空/纯空白时客户端会被剔除（fail-closed）。
-        'grafana' => [
-            'secret'       => env('GRAFANA_OAUTH_SECRET', ''),
-            'redirect_uri' => env('GRAFANA_OAUTH_REDIRECT_URI', 'http://localhost:3000/login/generic_oauth'),
-        ],
         'jenkins' => [
             'secret'       => env('JENKINS_OIDC_SECRET', ''),
             'redirect_uri' => env('JENKINS_OIDC_REDIRECT_URI', 'http://localhost/securityRealm/finishLogin'),
+        ],
+        // Devops-Glue CD（BFF 机密客户端：client_secret 只存在 CD 后端，浏览器只持有 CD 自己的 HttpOnly Cookie）。
+        // 回调地址没有合理默认值，留空即整个客户端被剔除（fail-closed），与 secret 同理，
+        // 否则空 redirect_uri 会与传 `redirect_uri=` 的攻击请求 hash_equals 相等。
+        'cd' => [
+            'secret'       => env('CD_OIDC_SECRET', ''),
+            'redirect_uri' => env('CD_OIDC_REDIRECT_URI', ''),
+            // 归属系统：授权时按此值校验账号的 systems（见 OAuthController::authorizeSubmit）。
+            // 不声明则回退 CI（AppConfig::SYSTEM_CI），既有客户端行为不变。
+            'system'       => env('CD_OIDC_SYSTEM', 'cd'),
         ],
     ],
 

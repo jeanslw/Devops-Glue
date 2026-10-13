@@ -32,6 +32,19 @@ class OidcService
         'name', 'preferred_username', 'email', 'email_verified', 'groups',
     ];
 
+    /**
+     * 由 $claims 透传进 id_token 的可选 claim 白名单（仅 signIdToken 读取）。
+     *
+     * signIdToken 只搬运白名单内的 claim，未列入者签出的 id_token 中不存在且不报错。
+     * 新增 claim 需同时改 4 处：
+     *   1. OAuthController::buildIdTokenClaims：组装取值；
+     *   2. 本常量：透传白名单（漏改即该 claim 被丢弃）；
+     *   3. CLAIMS_SUPPORTED：discovery 的 claims_supported 声明；
+     *   4. OAuthController::userinfo 的返回数组：若该 claim 也要在 userinfo 暴露。
+     * OidcServiceTest 断言白名单 ⊆ claims_supported，且每个白名单 claim 都能被签出。
+     */
+    public const OPTIONAL_CLAIMS = ['name', 'preferred_username', 'email', 'email_verified', 'groups'];
+
     /** @var array<string,mixed> */
     private array $config;
 
@@ -58,7 +71,7 @@ class OidcService
 
     // ─────────────────────────── 密钥管理 ───────────────────────────
 
-    /** 私钥 PEM（懒加载：配置注入 → key_file → 自动生成持久化） */
+    /** 私钥 PEM（懒加载：依次尝试配置注入、key_file、自动生成并持久化） */
     private function privateKeyPem(): string
     {
         if ($this->privateKeyPem !== null) {
@@ -86,8 +99,8 @@ class OidcService
         if (!function_exists('openssl_pkey_new')) {
             throw new \RuntimeException('OIDC 需要 PHP openssl 扩展');
         }
-        // Windows 下 openssl_pkey_new/export 依赖 openssl.cnf（否则报「configuration file routines::no such file」），
-        // 需显式定位并传入；Linux 通常已内置默认 config，找不到也不影响。
+        // Windows 下 openssl_pkey_new/export 依赖 openssl.cnf，需显式定位并传入；
+        // Linux 通常已内置默认 config，找不到也不影响。
         $cfg    = $this->opensslConfig();
         $genOpt = [
             'private_key_bits' => 2048,
@@ -199,9 +212,9 @@ class OidcService
     /**
      * 签发 RS256 id_token。
      *
-     * @param array<string,mixed> $claims   须含 iss、sub；可选 name/preferred_username/email/email_verified/groups
+     * @param array<string,mixed> $claims   须含 iss、sub；可选 claim 须在 OPTIONAL_CLAIMS 白名单内
      * @param string              $clientId aud（客户端 id）
-     * @param string|null         $nonce    有则回显进 id_token（防重放）
+     * @param string|null         $nonce    有则回显进 id_token
      */
     public function signIdToken(array $claims, string $clientId, ?string $nonce = null): string
     {
@@ -216,16 +229,12 @@ class OidcService
         if ($nonce !== null && $nonce !== '') {
             $payload['nonce'] = $nonce;
         }
-        foreach (['name', 'preferred_username', 'email'] as $k) {
+        // 只搬运 OPTIONAL_CLAIMS 白名单内的 claim（新增 claim 需 4 处同改，见该常量注释）。
+        foreach (self::OPTIONAL_CLAIMS as $k) {
             if (array_key_exists($k, $claims)) {
-                $payload[$k] = $claims[$k];
+                // email_verified 是布尔语义需强制转型；其余（含 groups 数组）原样搬运 —— 与白名单化之前逐字节一致
+                $payload[$k] = $k === 'email_verified' ? (bool)$claims[$k] : $claims[$k];
             }
-        }
-        if (array_key_exists('email_verified', $claims)) {
-            $payload['email_verified'] = (bool)$claims['email_verified'];
-        }
-        if (array_key_exists('groups', $claims)) {
-            $payload['groups'] = $claims['groups'];
         }
 
         return JWT::encode($payload, $this->privateKeyPem(), 'RS256', $this->keyId());
@@ -280,7 +289,7 @@ class OidcService
         ];
     }
 
-    // ─────────────────────────── 角色 → groups ───────────────────────────
+    // ─────────────────────────── 角色到 groups 的映射 ───────────────────────────
 
     /**
      * Glue 角色映射为 OIDC groups claim（各系统自行把 group 映射到本地角色）
@@ -295,7 +304,7 @@ class OidcService
 
     // ─────────────────────────── 内部工具 ───────────────────────────
 
-    /** hex → 二进制（奇长时前置 0 保证成对） */
+    /** hex 转二进制（奇长时前置 0 保证成对） */
     private function hexToBin(string $hex): string
     {
         if (strlen($hex) % 2 !== 0) {
@@ -315,7 +324,7 @@ class OidcService
         return ctype_xdigit($value) ? $this->hexToBin($value) : $value;
     }
 
-    /** 标准 base64 → base64url（URL 安全、去 padding），供 JWK n/e 编码 */
+    /** 标准 base64 转 base64url（URL 安全、去 padding），供 JWK n/e 编码 */
     private function base64url(string $bin): string
     {
         return rtrim(strtr(base64_encode($bin), '+/', '-_'), '=');

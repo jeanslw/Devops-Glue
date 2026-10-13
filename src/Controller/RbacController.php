@@ -7,18 +7,19 @@ use App\Service\AdminUserRepository;
 use App\Service\I18nService;
 use App\Service\PasswordHasher;
 use App\Service\Settings;
+use App\Service\TokenService;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
 /**
  * RBAC 用户写接口 —— 供 CD 服务账号调用（非 /api/admin/* 交互式后台）。
  *
- * trusted 模型：
+ * 信任模型：
  *   - 鉴权：仅 API token。AuthMiddleware 已按 resolveRequiredScope() 校验 `rbac.user.write`
- *     scope；此处再兜一道 `currentRole === api_token`，把「不走 scope 校验」的登录态用户
- *     （cache token）挡在门外，避免跳过 requirePermission 后任何登录用户都能建/删号。
- *   - 不变量：strtolower 归一化、PasswordHasher::hash()、root 账号保护、
- *     super_admin 唯一性/禁止创建、密码最短 8 位。systems 恒为 'cd'（不接受入参）。
+ *     scope；这里再检查 `currentRole === api_token`，把不走 scope 校验的登录态用户
+ *     （cache token）挡在门外，避免跳过 requirePermission 后任何登录用户都能建号或删号。
+ *   - 固定规则：strtolower 归一化、PasswordHasher::hash()、root 账号保护、
+ *     super_admin 唯一性与禁止创建、密码最短 8 位。systems 恒为 'cd'（不接受入参）。
  *   - 跳过：requirePermission(ci.users.manage_admin) 与 currentRole===super_admin 判断
  *     （服务账号 currentRole 是 api_token，走角色校验会连 admin 都建不了）。
  */
@@ -26,15 +27,18 @@ class RbacController extends BaseController
 {
     private Settings $config;
     private AdminUserRepository $adminUserRepository;
+    private TokenService $tokenService;
 
     public function __construct(
         I18nService $i18n,
         Settings $config,
-        AdminUserRepository $adminUserRepository
+        AdminUserRepository $adminUserRepository,
+        TokenService $tokenService
     ) {
         parent::__construct($i18n);
         $this->config             = $config;
         $this->adminUserRepository = $adminUserRepository;
+        $this->tokenService       = $tokenService;
     }
 
     /**
@@ -79,16 +83,25 @@ class RbacController extends BaseController
         if ($username === '' || strlen($password) < 8) {
             return $this->jsonError($response, 'auth.new_password_short', 400);
         }
+        if (!AdminUserRepository::isValidUsername($username)) {
+            return $this->jsonError($response, 'user.invalid_username', 400);
+        }
+        // 服务账号不得占用根账号名：root 未落库时抢先注册会让该账号登录响应带上 is_root
+        if ($username === $this->config->getRootAdminUser()) {
+            return $this->jsonError($response, 'user.cannot_edit_root', 403);
+        }
         if ($role === '') {
             return $this->jsonError($response, 'user.invalid_role', 400);
         }
-        // 服务账号不得创建 super_admin（防提权）
-        if ($role === AppConfig::ROLE_SUPER_ADMIN) {
-            return $this->jsonError($response, 'user.cannot_create_super_admin', 403);
-        }
-        // 防「角色名悬空」：role 必须是 roles 表里真实存在的角色，否则该用户权限加载为空
-        if (!$this->adminUserRepository->roleExists($role)) {
+        // 角色以 roles 表存储的规范名为准：MySQL 大小写不敏感匹配会放过 'SUPER_ADMIN'
+        // 这类变体，必须回写规范名后再做 === 守卫与落库
+        $canonicalRole = $this->adminUserRepository->canonicalRole($role);
+        if ($canonicalRole === null) {
             return $this->jsonError($response, 'user.role_not_found', 400);
+        }
+        // 服务账号不得创建 super_admin（防提权）
+        if ($canonicalRole === AppConfig::ROLE_SUPER_ADMIN) {
+            return $this->jsonError($response, 'user.cannot_create_super_admin', 403);
         }
 
         try {
@@ -96,7 +109,7 @@ class RbacController extends BaseController
                 return $this->jsonError($response, 'user.username_exists', 409);
             }
             $hash = PasswordHasher::hash($password);
-            $this->adminUserRepository->createUser($username, $hash, $role, AppConfig::SYSTEM_CD);
+            $this->adminUserRepository->createUser($username, $hash, $canonicalRole, AppConfig::SYSTEM_CD);
             return $this->output($response, ['success' => true, 'username' => $username], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.save_failed') . ': ' . $e->getMessage(), 500);
@@ -124,15 +137,20 @@ class RbacController extends BaseController
         $password = $body['password'] ?? null;
         $role     = array_key_exists('role', $body) ? trim((string) $body['role']) : null;
 
-        if ($role === AppConfig::ROLE_SUPER_ADMIN) {
-            return $this->jsonError($response, 'user.cannot_promote_super_admin', 403);
-        }
         if ($role === '') {
             return $this->jsonError($response, 'user.invalid_role', 400);
         }
-        // 防「角色名悬空」：改角色时 role 必须是 roles 表里真实存在的角色
-        if ($role !== null && !$this->adminUserRepository->roleExists($role)) {
-            return $this->jsonError($response, 'user.role_not_found', 400);
+        // 角色规范名：MySQL 大小写不敏感匹配会放过 super_admin 的大小写变体，
+        // 守卫与落库统一用 roles 表存储值
+        $canonicalRole = null;
+        if ($role !== null) {
+            $canonicalRole = $this->adminUserRepository->canonicalRole($role);
+            if ($canonicalRole === null) {
+                return $this->jsonError($response, 'user.role_not_found', 400);
+            }
+            if ($canonicalRole === AppConfig::ROLE_SUPER_ADMIN) {
+                return $this->jsonError($response, 'user.cannot_promote_super_admin', 403);
+            }
         }
 
         $passwordHash = null;
@@ -164,7 +182,7 @@ class RbacController extends BaseController
                 return $this->jsonError($response, 'user.cannot_manage_non_cd', 403);
             }
 
-            $this->adminUserRepository->updateUser($targetUser, $passwordHash, $role);
+            $this->adminUserRepository->updateUser($targetUser, $passwordHash, $canonicalRole);
             return $this->output($response, ['success' => true], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.modify_failed') . ': ' . $e->getMessage(), 500);
@@ -262,6 +280,51 @@ class RbacController extends BaseController
         try {
             $roles = $this->adminUserRepository->listRolesForApi();
             return $this->output($response, ['roles' => $roles], $request);
+        } catch (\Exception $e) {
+            return $this->jsonError($response, $this->__('build.modify_failed') . ': ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * GET /api/rbac/roles/{name}/permissions —— 角色权限清单（供 CD 做权限映射）
+     *
+     * 与 `/api/rbac/roles`（只有 name/description）互补：CD 拿不到细粒度权限就无法做权限映射，
+     * 只能把 Glue 的权限清单硬编码一份（容易不一致）。这里复用 `TokenService::loadPermissions`
+     * 的 role_permissions JOIN roles 查询，不新增 SQL。
+     *
+     * 返回值的三种情况（CD 的判据依赖它们，注意区分）：
+     *   - 角色不存在：404（`user.role_not_found`），与角色存在但零权限区分开，
+     *     否则角色名写错也返回 `[]`，CD 会把查询失败当成该角色没有任何权限而清空权限；
+     *   - `super_admin`：返回 `['*']`，与登录接口 `/api/admin/login` 的 `permissions: "*"` 语义一致；
+     *     该角色权限由代码授予、不落在 role_permissions 表里，若照表返回会得到 `[]`，
+     *     等于把超管读成零权限；
+     *   - 其余角色：返回真实权限 key 数组（可能为空数组，此时表示该角色没有被授予任何权限）。
+     *
+     * @param array<string,string> $args 路由参数（name = 角色名）
+     */
+    public function rolePermissions(Request $request, Response $response, array $args): Response
+    {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requireApiToken($response)) {
+            return $resp;
+        }
+        $role = trim((string) ($args['name'] ?? ''));
+        if ($role === '') {
+            return $this->jsonError($response, 'user.invalid_role', 400);
+        }
+        try {
+            // 回写规范名：大小写变体（如 'SUPER_ADMIN'）应按 roles 表存储值判定与返回
+            $canonicalRole = $this->adminUserRepository->canonicalRole($role);
+            if ($canonicalRole === null) {
+                return $this->jsonError($response, 'user.role_not_found', 404);
+            }
+            $permissions = $canonicalRole === AppConfig::ROLE_SUPER_ADMIN
+                ? ['*']
+                : $this->tokenService->loadPermissions($canonicalRole);
+            return $this->output($response, [
+                'role'        => $canonicalRole,
+                'permissions' => array_values($permissions),
+            ], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.modify_failed') . ': ' . $e->getMessage(), 500);
         }

@@ -1198,11 +1198,12 @@ LOG_RETAIN_DAYS=30                 # App log retention days; Logger self-cleans 
 | GET | `/api/rbac/users` | API Token | CD service account list |
 | GET | `/api/rbac/users/{username}` | API Token | CD service account detail |
 | GET | `/api/rbac/roles` | API Token | Available role list |
+| GET | `/api/rbac/roles/{name}/permissions` | API Token | Permission keys of a role (CD permission mapping; 404 for an unknown role, `["*"]` wildcard for `super_admin`) |
 | **OAuth2 / OIDC** | | | |
 | GET/POST | `/oauth/authorize` | No* | Authorization-code flow: consent page / submit consent (*submission verifies account credentials, shares the login rate limiter) |
 | POST | `/oauth/token` | No* | Exchange authorization code for access token (*validates client credentials and the one-time code) |
 | GET/POST | `/oauth/userinfo` | access token | OAuth2 user info |
-| GET | `/oauth/userinfo/emails` | access token | GitHub-style emails sub-endpoint (Grafana fallback) |
+| GET | `/oauth/userinfo/emails` | access token | GitHub-style emails sub-endpoint (for clients that fetch email via the GitHub emails flow) |
 | GET | `/.well-known/openid-configuration` | No | OIDC discovery document |
 | GET | `/.well-known/jwks.json` | No | OIDC signing public keys |
 

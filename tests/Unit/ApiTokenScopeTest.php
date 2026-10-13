@@ -11,7 +11,7 @@ use PHPUnit\Framework\TestCase;
 /**
  * API Token scope 目录与路由解析单元测试
  *
- * 验证 resolveRequiredScope() 把「HTTP 方法 + 路径」正确映射到 scope，
+ * 验证 resolveRequiredScope() 能把 HTTP 方法与路径正确映射到 scope，
  * 并保证 API_SCOPES / API_SCOPE_PERMS 常量内部一致（不依赖数据库）。
  */
 class ApiTokenScopeTest extends TestCase
@@ -85,6 +85,7 @@ class ApiTokenScopeTest extends TestCase
             'health 任意 token'        => ['GET', '/api/health', '*'],
             'admin 禁止'               => ['GET', '/api/admin/users', null],
             'admin me 也禁止'          => ['GET', '/api/admin/me/permissions', null],
+            'admin 编辑 token scope 禁止' => ['PUT', '/api/admin/api_tokens/1/scopes', null],
             'main 只读'               => ['GET', '/api/main/map/list', AppConfig::API_SCOPE_MAIN],
             'main post 也只读'         => ['POST', '/api/main/jobs/list', AppConfig::API_SCOPE_MAIN],
             'git 只读'                => ['GET', '/api/git/group/proj/branches', AppConfig::API_SCOPE_GIT],

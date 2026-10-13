@@ -4,15 +4,15 @@ export function esc(s) {
 }
 
 /**
- * 归一化 URL，得到「浏览器最终会看到的形式」，再据此判协议。
+ * 归一化 URL，得到浏览器最终会看到的形式，再据此判断协议。
  *
- * 不做这一步会被两类伪装绕过（都是把危险协议伪装成「没有协议」的相对路径）：
- *   1. 制表/换行：WHATWG URL 解析会先剔除所有 ASCII tab/CR/LF 再判协议，
- *      于是 "java\nscript:alert(1)" 匹配不到「有协议」分支而被当相对路径放行，点击即执行；
+ * 不做这一步会被两类伪装绕过（都是把危险协议伪装成没有协议的相对路径）：
+ *   1. 制表符与换行：WHATWG URL 解析会先剔除所有 ASCII tab/CR/LF 再判协议，
+ *      于是 "java\nscript:alert(1)" 匹配不到有协议分支而被当相对路径放行，点击即执行；
  *   2. HTML 字符引用：属性值里的 &#58; / &#x3a; / &colon; / &NewLine; / &Tab; 会被
  *      HTML 解析器还原，"javascript&#58;alert(1)" 同理绕开协议判定。
  * 合法的 URL 来自 JSON（不是 HTML），既不含裸换行也不含字符引用，
- * 因此这里的还原对正常值是无操作，只吃掉伪装写法。
+ * 因此这里的还原对正常值没有影响，只处理这类伪装写法。
  */
 function normalizeUrlForSchemeCheck(s) {
     return String(s)
@@ -36,10 +36,10 @@ function normalizeUrlForSchemeCheck(s) {
 }
 
 /**
- * 把外部来的 URL 收敛成可安全放进 href/src 的形式（不安全则返回 ''）。
+ * 把外部来的 URL 处理成可安全放进 href/src 的形式（不安全则返回 ''）。
  *
- * 返回的是归一化后的值（浏览器真正会解释的那个），避免「校验的值」与
- * 「渲染后浏览器看到的值」不一致。
+ * 返回的是归一化后的值（浏览器真正会解释的那个），避免校验的值与
+ * 渲染后浏览器看到的值不一致。
  */
 export function safeUrl(s) {
     const probe = normalizeUrlForSchemeCheck(s == null ? '' : s);

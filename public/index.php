@@ -31,7 +31,7 @@ $responseFactory = $container->get(ResponseFactoryInterface::class);
 // 加载路由（直接 require，不调用）
 require __DIR__ . '/../config/routes.php';
 
-// 首页（宣传页）：输出模板并替换动态占位符，如页脚版本号 {{APP_VERSION}} → AppConfig::APP_VERSION
+// 首页（宣传页）：输出模板并替换动态占位符，如页脚版本号 {{APP_VERSION}} 替换为 AppConfig::APP_VERSION
 $app->get('/', function ($request, $response, $args) {
     $htmlFile = __DIR__ . '/../templates/index.html';
     if (file_exists($htmlFile)) {
@@ -44,7 +44,7 @@ $app->get('/', function ($request, $response, $args) {
 });
 
 // ── 中间件（LIFO 栈：后添加先执行）──
-// 执行顺序：Error → CORS → Routing → BodyParsing → Route Handler
+// 执行顺序：Error、CORS、Routing、BodyParsing、Route Handler
 $app->addBodyParsingMiddleware();
 $app->addRoutingMiddleware();
 

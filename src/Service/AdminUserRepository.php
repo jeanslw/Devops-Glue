@@ -27,6 +27,11 @@ class AdminUserRepository
     public function createUser(string $username, string $passwordHash, string $role, string $systems = 'ci,cd', string $email = ''): void
     {
         $username = $this->normalizeUsername($username);
+        // 机制级兜底：所有建号路径共用本方法，非法用户名在这里一律拒绝，
+        // 不依赖各控制器各自记得校验。
+        if (!self::isValidUsername($username)) {
+            throw new \InvalidArgumentException("createUser: 非法用户名 {$username}");
+        }
         $stmt = $this->pdo->prepare(
             "INSERT INTO " . AppConfig::TABLE_ADMIN_USERS . " (username, password_hash, role, systems, email, created_at) VALUES (?, ?, ?, ?, ?, " . Database::sqlNow() . ")"
         );
@@ -36,7 +41,7 @@ class AdminUserRepository
     public function updatePassword(string $username, string $passwordHash): void
     {
         $username = $this->normalizeUsername($username);
-        // 只更新密码，绝不能用 REPLACE INTO / INSERT OR REPLACE ——
+        // 只更新密码，不可用 REPLACE INTO / INSERT OR REPLACE：
         // 那会整行删除重建，把 role/systems 回退到列默认值（super_admin 被降级成 admin）。
         $stmt = $this->pdo->prepare(
             "UPDATE " . AppConfig::TABLE_ADMIN_USERS
@@ -45,7 +50,7 @@ class AdminUserRepository
         );
         $stmt->execute([$passwordHash, $username]);
         // 防御：调用方已先校验用户存在，此处 rowCount 必须为 1；
-        // 若为 0（用户被并发删除 / 用户名大小写不匹配）绝不静默吞掉。
+        // 若为 0（用户被并发删除 / 用户名大小写不匹配）直接抛异常，不忽略。
         // 新 bcrypt 哈希必然与旧值不同，不存在"值未变导致 rowCount=0"的误报。
         if ($stmt->rowCount() !== 1) {
             throw new \RuntimeException("updatePassword: 未命中用户 {$username}");
@@ -123,12 +128,32 @@ class AdminUserRepository
         )->fetchAll());
     }
 
-    /** 角色是否已存在于 roles 表（建号/改号前校验，防「角色名悬空」导致权限加载为空）。 */
-    public function roleExists(string $role): bool
+    /**
+     * 取角色的规范名（roles 表存储值），不存在返回 null。
+     *
+     * MySQL 默认排序规则大小写不敏感，'SUPER_ADMIN' 这类变体能命中 roles 表，
+     * 但 PHP 侧的 === 守卫（super_admin/admin 特权判断）与落库值都是大小写敏感的，
+     * 直接落库会得到一个绕过守卫却加载不到权限的脏角色。调用方必须用本方法取回
+     * 规范名后再做 === 判断与写库，保证比较与存储用的是同一个值。
+     */
+    public function canonicalRole(string $role): ?string
     {
-        $stmt = $this->pdo->prepare("SELECT 1 FROM " . AppConfig::TABLE_ROLES . " WHERE name = ?");
+        $stmt = $this->pdo->prepare("SELECT name FROM " . AppConfig::TABLE_ROLES . " WHERE name = ?");
         $stmt->execute([$role]);
-        return (bool)$stmt->fetchColumn();
+        $name = $stmt->fetchColumn();
+        return $name === false ? null : (string)$name;
+    }
+
+    /**
+     * 用户名校验：小写字母/数字/._@-，1–64 位。
+     *
+     * 必须拒绝 '|'：登录 token 落库值以 '|' 分隔用户名与角色，含 '|' 的用户名
+     * 会让反查解析错位；同时拒绝控制字符与超长名（MySQL 严格模式下超长直接 500）。
+     * 允许 '@' 以兼容邮箱形式的用户名。
+     */
+    public static function isValidUsername(string $username): bool
+    {
+        return preg_match('/^[a-z0-9_.@-]{1,64}$/', $username) === 1;
     }
 
     public function updateUser(string $username, ?string $passwordHash, ?string $role, ?string $email = null): void
@@ -153,9 +178,9 @@ class AdminUserRepository
             return;
         }
 
-        // 先查存在性、再 UPDATE：不能依赖 rowCount —— MySQL 下 rowCount 是「变更行数」而非「命中行数」，
+        // 先查存在性、再 UPDATE：不能依赖 rowCount，MySQL 下 rowCount 是变更行数而非命中行数，
         // 同一秒内重复提交（role/email 值未变，updated_at 的 NOW() 为秒级精度也未变）时 rowCount 会误报 0，
-        // 导致对存在的用户误抛「未命中用户」。同 setStatus()。
+        // 导致对存在的用户误抛未命中用户异常。同 setStatus()。
         if (!$this->userExists($username)) {
             throw new \RuntimeException("updateUser: 未命中用户 {$username}");
         }
@@ -173,8 +198,8 @@ class AdminUserRepository
     public function setStatus(string $username, int $status): void
     {
         $username = $this->normalizeUsername($username);
-        // 先查存在性、再 UPDATE：不能依赖 rowCount —— MySQL 下 rowCount 是「变更行数」而非「命中行数」，
-        // 同一秒内重复 toggle（status 值未变）时 rowCount 会误报 0，导致误抛「未命中用户」。
+        // 先查存在性、再 UPDATE：不能依赖 rowCount，MySQL 下 rowCount 是变更行数而非命中行数，
+        // 同一秒内重复 toggle（status 值未变）时 rowCount 会误报 0，导致误抛未命中用户异常。
         if (!$this->userExists($username)) {
             throw new \RuntimeException("setStatus: 未命中用户 {$username}");
         }

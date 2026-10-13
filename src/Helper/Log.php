@@ -30,7 +30,7 @@ class Log
     }
 
     /**
-     * 记录一条警告日志（「需要人关注但非故障」的事件，如检测到代码降级回滚）。
+     * 记录一条警告日志（需要关注但不算故障的事件，如检测到代码回滚降级）。
      * 日志级别按 APP_DEBUG 门控：true=debug / false=info，两种级别都会保留 warning。
      *
      * @param array<string,mixed> $context 日志上下文

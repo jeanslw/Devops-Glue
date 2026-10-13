@@ -20,9 +20,9 @@ use App\Support\ApiScopeResolver;
  * Bearer Token 鉴权中间件
  * 验证通过后将 currentUser / currentRole / userPermissions 写入 request attribute，供 Controller 读取
  *
- * 另负责 API token 调用审计：只记录「以 API token 身份发出」的请求（含鉴权拒绝），
+ * 另负责 API token 调用审计：只记录以 API token 身份发出的请求（含鉴权拒绝），
  * 交互式登录会话不记（其写操作已由 ci_operation_logs 覆盖）。
- * 审计写入全程静默降级，任何日志故障都不得影响主请求。
+ * 审计写入的异常一律忽略，任何日志故障都不得影响主请求。
  */
 class AuthMiddleware implements MiddlewareInterface
 {
@@ -64,7 +64,7 @@ class AuthMiddleware implements MiddlewareInterface
 
         if ($api === null) {
             // 带着 Bearer 来但两种 token 都不合法：可能是过期会话，也可能是伪造 API token。
-            // 安全上按「API token 鉴权失败」留痕（不记任何 token 内容）。
+            // 安全上按 API token 鉴权失败留痕（不记任何 token 内容）。
             $response = $this->unauthorized($request, 'auth.token_invalid');
             $this->recordAccess($request, $response, $startedAt, null, 'invalid_token');
             return $response;
@@ -75,7 +75,7 @@ class AuthMiddleware implements MiddlewareInterface
             $request->getUri()->getPath()
         );
 
-        // 管理端点等不允许 API token 访问 → 403（fail-closed）
+        // 管理端点等不允许 API token 访问：返回 403（fail-closed）
         if ($required === null) {
             $response = $this->forbidden($request, 'api_token.scope_forbidden');
             $this->recordAccess($request, $response, $startedAt, $api, 'scope_forbidden');
@@ -88,7 +88,7 @@ class AuthMiddleware implements MiddlewareInterface
             return $response;
         }
 
-        // scope → 控制器内二次校验所需权限（如 build.write/harbor.scan → ci.trigger）
+        // scope 供控制器内二次校验所需权限（如 build.write/harbor.scan 需要 ci.trigger）
         $permissions = [];
         foreach ($api['scopes'] as $scope) {
             foreach (AppConfig::API_SCOPE_PERMS[$scope] ?? [] as $perm) {
@@ -129,7 +129,7 @@ class AuthMiddleware implements MiddlewareInterface
     }
 
     /**
-     * 记录一次 API token 调用（DB + 文件日志双写，双双静默降级）。
+     * 记录一次 API token 调用（DB + 文件日志双写，写入异常均忽略）。
      *
      * @param array{user:string, token_name:string, scopes:string[]}|null $api 校验出的 token 元信息（失败拒绝时可为 null）
      */

@@ -177,11 +177,11 @@ class MappingManager
         // 解析前先归一到 canonical 键，与 buildEntry/saveDiscovered 的 trim 写入对齐。
         $projectPath = trim($projectPath);
 
-        // Pass 1：按 job_name（canonical 主键）精确匹配，遍历「全部」映射（含 pending/disabled）。
-        // job_name 是各 CI 的唯一身份，绝不能被其它 provider 的 current_path 别名「劫持」——
+        // Pass 1：按 job_name（canonical 主键）精确匹配，遍历全部映射（含 pending/disabled）。
+        // job_name 是各 CI 中的唯一标识，不能被其它 provider 的 current_path 别名占用，
         // 否则 gitea_ci 未启用时，路径 jeanslw/Devops_CD（gitea 的 job_name）会落到 jenkins 的
-        // current_path 别名上，拼出 job/jeanslw/... 404（历史 bug）。
-        // 命中未启用 provider 时也返回该 provider，让调用方走 registry 的「未配置/未启用」分支。
+        // current_path 别名上，拼出 job/jeanslw/... 导致 404（历史 bug）。
+        // 命中未启用 provider 时也返回该 provider，让调用方走 registry 的未配置或未启用分支。
         foreach ($this->allMaps() as $m) {
             $job = trim((string) ($m['job_name'] ?? ''));
             if ($job !== '' && $job === $projectPath) {
@@ -203,8 +203,8 @@ class MappingManager
 
     /**
      * 将命中的映射行解析为 [provider, projectId]。
-     * projectId 按 provider 归一化：gitlab_ci → 数字 project_id；jenkins → job_name（Job 路径）；
-     * 其余（custom_push / gitea_ci）→ job_name（current_path 兜底），保证推 job_name/current_path 收敛到同一条。
+     * projectId 按 provider 归一化：gitlab_ci 取数字 project_id；jenkins 取 job_name（Job 路径）；
+     * 其余（custom_push / gitea_ci）取 job_name（缺失时用 current_path），使 job_name 与 current_path 指向同一条映射。
      *
      * @param array<string,mixed> $m
      * @return array{provider: string, projectId: string}

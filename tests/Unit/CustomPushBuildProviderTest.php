@@ -146,7 +146,7 @@ class CustomPushBuildProviderTest extends TestCase
         $this->assertEquals('main', $row['ref']);
         $this->assertEquals('abc1234567', $row['sha']);
         $this->assertNotNull($row['triggered_at']);
-        // exit_code=0 应被落库为 0，而非当作「未传」落为 NULL
+        // exit_code=0 应被落库为 0，而不是当作未传落为 NULL
         $this->assertNotNull($row['exit_code']);
         $this->assertSame(0, (int) $row['exit_code']);
         // 控制字段（pipeline_iid/status/finished_at/tag/...）不应被写进 variables_json
@@ -180,7 +180,7 @@ class CustomPushBuildProviderTest extends TestCase
         $before = $provider->findByIid('jobA', 30);
         $beforeId = (int) $before['id'];
 
-        // 重复上报同一 pipeline_iid → 覆盖（UPDATE），非新增，保住原自增 id
+        // 重复上报同一 pipeline_iid：覆盖（UPDATE）而非新增，保留原自增 id
         $second = $provider->report('jobA', [
             'pipeline_iid' => 30,
             'status'       => 'success',
@@ -204,7 +204,7 @@ class CustomPushBuildProviderTest extends TestCase
     public function testReportOverwritePreservesUnprovidedFields(): void
     {
         $provider = $this->makeProvider();
-        // 用 failed → aborted 演示覆盖（success 不可降级，故不用 success → failed 做覆盖样例）
+        // 用 failed 到 aborted 演示覆盖（success 不可降级，故不用 success 到 failed 做覆盖样例）
         $provider->report('jobA', [
             'pipeline_iid' => 35,
             'status'       => 'failed',
@@ -217,7 +217,7 @@ class CustomPushBuildProviderTest extends TestCase
             'zone'         => 'az1',
         ]);
 
-        // 重复上报只带必填字段（未带 log_url/ref/sha 等）→ 应保留首次写入的值，而非清空
+        // 重复上报只带必填字段（未带 log_url/ref/sha 等）时，应保留首次写入的值，而不是清空
         $second = $provider->report('jobA', [
             'pipeline_iid' => 35,
             'status'       => 'aborted',

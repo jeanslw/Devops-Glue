@@ -5,9 +5,9 @@ namespace App\Service;
 use App\Config\AppConfig;
 
 /**
- * 极简 OAuth2 Provider（授权码流程）
+ * OAuth2 Provider（授权码流程）
  *
- * 供 Grafana Generic OAuth 等外部系统使用 Devops-Glue 账号登录。
+ * 供外部系统用 Devops-Glue 账号登录。
  * 授权码：一次性、60 秒过期、绑定 client_id + redirect_uri。
  * 访问令牌：存 cache 表，默认 1 小时过期。
  * 客户端白名单：settings.php 的 oauth_clients 配置。
@@ -17,7 +17,14 @@ class OAuthService
     private const CODE_PREFIX        = 'oauth_code_';
     private const ACCESS_PREFIX      = 'oauth_at_';
     private const CODE_TTL           = 60;      // 授权码有效期（秒）
-    private const ACCESS_TOKEN_TTL   = 3600;    // 访问令牌有效期（秒）
+
+    /**
+     * 访问令牌有效期（秒）。
+     *
+     * issueAccessToken 用它写 cache 过期时间，OAuthController::token 的 expires_in 响应
+     * 也引用本常量（public），避免两处各自写字面量而漂移。
+     */
+    public const ACCESS_TOKEN_TTL    = 3600;
 
     private \PDO $pdo;
 
@@ -31,9 +38,8 @@ class OAuthService
     {
         $this->pdo = $pdo;
         // fail-closed：secret 或 redirect_uri 为空/纯空白的客户端视为未配置，直接剔除。
-        // 否则「忘了设 GRAFANA_OAUTH_SECRET、用空默认」时，空 secret 与空输入 hash_equals 相等，
-        // token 端点可被空 secret 绕过——等价于公开默认密钥的带病运行。
-        // 空 redirect_uri 同理：攻击者传 redirect_uri= 会与空配置 hash_equals 成功。
+        // 空 secret 与空输入 hash_equals 相等，等于 token 端点使用公开默认密钥；空 redirect_uri
+        // 同理（请求带 redirect_uri= 即通过校验）。
         $this->clients = array_filter(
             $clients,
             fn($c) => is_array($c)
@@ -78,6 +84,23 @@ class OAuthService
     public function getClientRedirectUri(string $clientId): ?string
     {
         return $this->clients[$clientId]['redirect_uri'] ?? null;
+    }
+
+    /**
+     * 获取客户端声明的账号归属系统（oauth_clients[*]['system']）。
+     *
+     * 授权时按 client 决定校验哪个系统的账号权限：CD 客户端的账号 systems 落库是 'cd'，
+     * 若沿用写死的 CI 条件，CD 账号一律被拒（auth.no_ci_access）。
+     *
+     * 未注册的 client、未声明 system、或声明为空白时返回 null，由调用方回退到 CI（既有客户端行为不变）。
+     */
+    public function clientSystem(string $clientId): ?string
+    {
+        $system = $this->clients[$clientId]['system'] ?? null;
+        if (!is_string($system) || trim($system) === '') {
+            return null;
+        }
+        return trim($system);
     }
 
     /**
@@ -159,7 +182,7 @@ class OAuthService
         ]);
         $sql = Database::sqlUpsert(AppConfig::TABLE_CACHE, 'cache_key, value, expires_at', '?, ?, ?');
         $this->pdo->prepare($sql)->execute([
-            self::ACCESS_PREFIX . $token,
+            self::ACCESS_PREFIX . self::hashAccessToken($token),
             $value,
             time() + self::ACCESS_TOKEN_TTL,
         ]);
@@ -178,7 +201,7 @@ class OAuthService
                 "SELECT value FROM " . AppConfig::TABLE_CACHE
                 . " WHERE cache_key = ? AND expires_at > ?"
             );
-            $stmt->execute([self::ACCESS_PREFIX . $token, time()]);
+            $stmt->execute([self::ACCESS_PREFIX . self::hashAccessToken($token), time()]);
             $row = $stmt->fetch(\PDO::FETCH_ASSOC);
             if (!$row) {
                 return null;
@@ -200,9 +223,9 @@ class OAuthService
     /**
      * 回查访问令牌对应用户的账号状态与当前角色。
      *
-     * - 查无此行（已删除）或 status=0（已停用）→ false，令牌立即失效；
+     * - 查无此行（已删除）或 status=0（已停用）：返回 false，令牌立即失效；
      * - 否则用 admin_users 的当前 role 覆盖缓存里冻结的旧角色（降权即时生效）。
-     * - 旧库缺 status 列 / 查询异常 → true 放行（沿用缓存原值），回查故障不能锁死 SSO。
+     * - 旧库缺 status 列或查询异常：返回 true 放行（沿用缓存原值），回查故障不应锁死 SSO。
      *
      * @param array<string,mixed> $data
      */
@@ -232,5 +255,18 @@ class OAuthService
         } catch (\Throwable) {
             return true;
         }
+    }
+
+    /**
+     * 访问令牌入库前统一做 sha256（与 TokenService::hashAdminToken 算法一致）：
+     * cache 表只存摘要、不存明文，避免库表或备份泄露时在途 OAuth 令牌一并泄露。
+     * 明文只在 token 端点的响应里返回一次，此后校验一律凭摘要。
+     *
+     * 改为摘要存储会使升级瞬间仍在途的令牌失效（最长 1 小时，即 ACCESS_TOKEN_TTL），
+     * 各家 SSO 客户端会重新走一次授权码流程拿新令牌，属预期行为。
+     */
+    private static function hashAccessToken(string $token): string
+    {
+        return \hash('sha256', $token);
     }
 }

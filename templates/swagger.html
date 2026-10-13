@@ -102,8 +102,8 @@
       });
     }
 
-    // 立即按凭证状态切换（同步执行，避免先闪出渐变登录层再隐藏）：
-    // 已有凭证（如从后台导航进来）→ 隐藏登录层；未登录 → 保持登录框，URL 不变。
+    // 立即按凭证状态切换（同步执行，避免先显示渐变登录层再隐藏）：
+    // 已有凭证（如从后台导航进来）时隐藏登录层；未登录时保持登录框，URL 不变。
     if (getDocsToken()) {
       document.getElementById('login-layer').style.display = 'none';
       document.querySelector('.docs-lang-switch').style.display = 'none';

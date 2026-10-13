@@ -112,7 +112,7 @@ class AdminController extends BaseController
             $result = $this->autoDiscover->discover();
             $found = $result['found'];
             // errors：平台级扫描错误；sources：本次实际发起扫描的源（前端据此
-            // 区分「扫描全部失败 / 扫描部分失败 / 扫描成功」）
+            // 区分扫描全部失败、部分失败与成功）
             $errors  = $result['errors'];
             $sources = $result['sources'];
             $saved = $this->autoDiscover->saveDiscovered($found);
@@ -324,7 +324,13 @@ class AdminController extends BaseController
             $stmt->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . TokenService::hashAdminToken($token)]);
             $value = $stmt->fetchColumn();
             if ($value !== false && $value !== '') {
-                return (string)explode('|', (string)($value ?? ''), 2)[0];
+                // 与 TokenService::validate 同向解析：role 取末段，用户名为其余部分，
+                // 用户名含 '|' 时两处结论一致（新建账号已禁止 '|'，这里兜底存量数据）
+                $parts = explode('|', (string)$value);
+                if (count($parts) >= 2) {
+                    array_pop($parts);
+                    return implode('|', $parts);
+                }
             }
         } catch (\Throwable $e) {
         }
@@ -781,7 +787,7 @@ class AdminController extends BaseController
     }
 
     /**
-     * GET /api/admin/custom_builds — Custom_Push 构建记录列表（「push 记录」Tab）
+     * GET /api/admin/custom_builds — Custom_Push 构建记录列表（push 记录 Tab）
      */
     public function customBuildList(Request $request, Response $response): Response
     {
@@ -892,6 +898,17 @@ class AdminController extends BaseController
         if ($username === '' || strlen($password) < 8) {
             return $this->jsonError($response, 'auth.new_password_short', 400);
         }
+        if (!AdminUserRepository::isValidUsername($username)) {
+            return $this->jsonError($response, 'user.invalid_username', 400);
+        }
+
+        // 角色以 roles 表存储的规范名为准：MySQL 大小写不敏感匹配会放过 'SUPER_ADMIN'
+        // 这类变体，必须回写规范名后再做 === 守卫与落库
+        $canonicalRole = $this->adminUserRepository->canonicalRole($role);
+        if ($canonicalRole === null) {
+            return $this->jsonError($response, 'user.role_not_found', 400);
+        }
+        $role = $canonicalRole;
 
         // 创建 super_admin 必须由当前已是 super_admin 的操作者执行（防普通 admin 提权）
         if ($role === AppConfig::ROLE_SUPER_ADMIN && $this->currentRole !== AppConfig::ROLE_SUPER_ADMIN) {
@@ -916,11 +933,6 @@ class AdminController extends BaseController
         // 非管理员创建的账号不能包含 ci
         if (!$this->isAdminRole() && self::systemsContain($systems, AppConfig::SYSTEM_CI)) {
             return $this->jsonError($response, 'user.cd_no_ci_access', 403);
-        }
-
-        // 防「角色名悬空」：role 必须是 roles 表里真实存在的角色，否则该用户权限加载为空
-        if (!$this->adminUserRepository->roleExists($role)) {
-            return $this->jsonError($response, 'user.role_not_found', 400);
         }
 
         try {
@@ -984,6 +996,13 @@ class AdminController extends BaseController
             }
 
             if ($role !== null) {
+                // 角色以 roles 表存储的规范名为准：MySQL 大小写不敏感匹配会放过
+                // super_admin 的大小写变体，守卫与落库统一用规范名
+                $canonicalRole = $this->adminUserRepository->canonicalRole($role);
+                if ($canonicalRole === null) {
+                    return $this->jsonError($response, 'user.role_not_found', 400);
+                }
+                $role = $canonicalRole;
                 // 提升为 super_admin 必须由 super_admin 操作（防普通 admin 提权）
                 if ($role === AppConfig::ROLE_SUPER_ADMIN && $this->currentRole !== AppConfig::ROLE_SUPER_ADMIN) {
                     return $this->jsonError($response, 'user.cannot_promote_super_admin', 403);
@@ -999,10 +1018,6 @@ class AdminController extends BaseController
                 // 提升为管理员需要 ci.users.manage_admin 权限
                 if (($role === AppConfig::ROLE_ADMIN || $role === AppConfig::ROLE_SUPER_ADMIN) && !$this->hasPermission(AppConfig::PERM_CI_USERS_MANAGE_ADMIN)) {
                     return $this->jsonError($response, 'user.cannot_promote_admin', 403);
-                }
-                // 防「角色名悬空」：role 必须是 roles 表里真实存在的角色
-                if (!$this->adminUserRepository->roleExists($role)) {
-                    return $this->jsonError($response, 'user.role_not_found', 400);
                 }
             }
 
@@ -1623,6 +1638,46 @@ class AdminController extends BaseController
     }
 
     /**
+     * PUT /api/admin/api_tokens/{id}/scopes — 编辑 scope（改库即时生效，明文 token 不变）
+     *
+     * 只改写元数据，不重新签发，因此调用方无需换 token；下一次请求即按新 scope 校验。
+     *
+     * @param array<string,string> $args
+     */
+    public function apiTokenUpdateScopes(Request $request, Response $response, array $args): Response
+    {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requireSuperAdmin($response)) {
+            return $resp;
+        }
+        if ($this->apiTokenService === null) {
+            return $this->jsonError($response, 'api_token.service_unavailable', 503);
+        }
+        $id   = (int)($args['id'] ?? 0);
+        $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
+        $payload = is_array($body) ? ($body['scopes'] ?? []) : [];
+
+        $scopes = $this->apiTokenService->normalizeScopes($payload);
+
+        try {
+            $updated = $this->apiTokenService->updateScopes($id, $payload);
+        } catch (\InvalidArgumentException $e) {
+            // 服务层有两类拒绝原因，这里按目录内是否命中任何 scope 区分提示：
+            // 一个都没命中 = 空集合；命中了一部分 = 里面夹了目录外的 key。
+            return $this->jsonError($response, $scopes === [] ? 'api_token.scopes_required' : 'api_token.scopes_invalid', 400);
+        } catch (\Exception $e) {
+            return $this->jsonError($response, $this->__('build.query_failed') . ': ' . $e->getMessage(), 500);
+        }
+        if (!$updated) {
+            return $this->jsonError($response, 'api_token.not_found', 404);
+        }
+
+        $this->opLog()->record($this->currentUser, 'update_api_token_scopes', (string)$id, ['scopes' => $scopes], $this->clientIp($request), 'success');
+        $response->getBody()->write((string) json_encode(['ok' => true, 'id' => $id, 'scopes' => $scopes], JSON_UNESCAPED_UNICODE));
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
      * POST /api/admin/api_tokens/{id}/revoke — 撤销（禁用，保留记录）
      *
      * @param array<string,string> $args
@@ -1782,7 +1837,7 @@ class AdminController extends BaseController
     }
 
     /**
-     * GET /api/admin/platform_config — 各平台接入配置状态（只返回「已配置」布尔，绝不下发 URL/账号/凭证）
+     * GET /api/admin/platform_config — 各平台接入配置状态（只返回已配置布尔，不下发 URL/账号/凭证）
      * 权限：ci.platform-config
      */
     public function platformConfig(Request $request, Response $response): Response
@@ -1800,7 +1855,7 @@ class AdminController extends BaseController
             $gitea   = $c->getGiteaConfig();
             $harbor  = $c->getHarborConfig();
 
-            // 只算「已配置/未配置」，不回传任何连接信息
+            // 只算已配置/未配置，不回传任何连接信息
             $git = fn(array $cfg) => !empty($cfg['base_url']) && !empty($cfg['token']);
 
             return $this->output($response, [
@@ -1828,7 +1883,7 @@ class AdminController extends BaseController
 
     /**
      * PUT /api/admin/platform_config — 更新平台级 tag 设置（清理开关 / 回填开关 / 日志关键字）
-     * 权限：ci.platform-config（平台管理）。这些设置与「构建模式」无关，故从 build_mode 移出。
+     * 权限：ci.platform-config（平台管理）。这些设置与构建模式无关，故从 build_mode 移出。
      * 仅更新请求体显式携带的键，避免互相覆盖。
      */
     public function updatePlatformConfig(Request $request, Response $response): Response
@@ -1892,11 +1947,11 @@ class AdminController extends BaseController
     }
 
     /**
-     * POST /api/admin/tag_cleanup — 后台手动立即执行一次「清理过期 tag」
+     * POST /api/admin/tag_cleanup — 后台手动立即执行一次清理过期 tag
      *（等价于跑一遍 cli/cleanup-pipeline-tags.php，供无 cron / 无 CLI 的部署主动触发）。
-     * 权限：ci.platform-config（与「启用清理过期 tag 记录」开关同权限）。
-     * 安全不变量与 CLI 完全一致：开关未开启 → 409；Harbor 未配置 → 409；
-     * Harbor 不可达 / harbor_repository 或 tag 为空的行一律跳过，绝不误删。幂等，可重复执行。
+     * 权限：ci.platform-config（与启用清理过期 tag 记录开关同权限）。
+     * 与 CLI 一致的校验：开关未开启返回 409；Harbor 未配置返回 409；
+     * Harbor 不可达以及 harbor_repository 或 tag 为空的行一律跳过，不删除。幂等，可重复执行。
      */
     public function runTagCleanup(Request $request, Response $response): Response
     {
@@ -1927,12 +1982,12 @@ class AdminController extends BaseController
     }
 
     /**
-     * POST /api/admin/tag_backfill — 后台手动立即执行一次「镜像 Tag 日志回填」
+     * POST /api/admin/tag_backfill — 后台手动立即执行一次镜像 Tag 日志回填
      *（等价于跑一遍 cli/backfill-pipeline-tags.php，供无 cron / 无 CLI 的部署主动触发）。
-     * 权限：ci.platform-config（与「启用镜像 Tag 日志回填」开关同权限）。
-     * 安全不变量与 CLI 完全一致：开关未开启 → 409；Harbor 未配置 → 409；
-     * 仅当 Harbor 明确确认该 tag 存在、且该 (provider,project_id,pipeline_iid) 尚无 canonical tag 时才写入，
-     * 绝不覆盖 scan-sync 的权威结果。幂等，可重复执行。
+     * 权限：ci.platform-config（与启用镜像 Tag 日志回填开关同权限）。
+     * 与 CLI 一致的校验：开关未开启返回 409；Harbor 未配置返回 409；
+     * 仅当 Harbor 确认该 tag 存在、且该 (provider,project_id,pipeline_iid) 尚无 canonical tag 时才写入，
+     * 不覆盖 scan-sync 的结果。幂等，可重复执行。
      */
     public function runTagBackfill(Request $request, Response $response): Response
     {
@@ -1963,9 +2018,9 @@ class AdminController extends BaseController
     /**
      * POST /api/admin/migrate — 手动同步库结构（建缺失表 + 补列 + 索引 + 种子 + 标记 schema 当前）
      *
-     * 与 `cli/migrate.php` 等价的入口，唯一区别：本入口用**应用自身的数据库账号**执行 DDL——
+     * 与 `cli/migrate.php` 等价的入口，区别是本入口用应用自身的数据库账号执行 DDL：
      * 该账号缺 CREATE/ALTER 权限时（手动建库模式的最小权限部署很常见）返回 409 并提示改用 CLI，
-     * 而不是抛一个无从下手的 500。
+     * 而不是返回 500。
      * 权限：仅 super_admin（DDL 敏感操作）
      */
     public function migrateSchema(Request $request, Response $response): Response
@@ -1979,7 +2034,7 @@ class AdminController extends BaseController
             $this->opLog()->record($this->currentUser, 'migrate_schema', '', ['driver' => $status['driver'], 'app_version' => $status['app_version']], $this->clientIp($request), 'success');
             return $this->output($response, ['success' => true, 'status' => $status], $request);
         } catch (\Exception $e) {
-            // 先归因再回话：把「账号无 DDL 权限」与其它失败区分开，给出可操作的下一步
+            // 先归因再回话：把账号无 DDL 权限与其它失败区分开，给出可操作的下一步
             $driverCode = $e instanceof \PDOException ? (int) ($e->errorInfo[1] ?? 0) : 0;
             $kind       = \App\Service\Database::classifyMigrationError(
                 (string) $e->getMessage(),
@@ -2081,7 +2136,7 @@ class AdminController extends BaseController
     }
 
     /**
-     * GET /api/admin/backups — 列出已生成的数据库备份文件（供「数据管理」面板渲染）。
+     * GET /api/admin/backups — 列出已生成的数据库备份文件（供数据管理面板渲染）。
      * 权限：仅 super_admin（与备份同级）。
      */
     public function listBackups(Request $request, Response $response): Response
@@ -2134,7 +2189,7 @@ class AdminController extends BaseController
             // DB 不可用时回退到常量（避免硬故障）
             $implied = AppConfig::IMPLIED_PERMISSIONS;
         }
-        // 队列展开到不动点：链式规则（A→B、B→C）也必须把 C 补进来，否则只选 A 会永久丢 C。
+        // 队列展开到不动点：链式规则（A 推出 B、B 推出 C）也必须把 C 补进来，否则只选 A 会永久丢 C。
         while ($queue) {
             $pk = array_shift($queue);
             if (in_array($pk, $result, true)) {
@@ -2228,7 +2283,7 @@ class AdminController extends BaseController
                 $entry[$trimKey] = trim($entry[$trimKey]);
             }
         }
-        // 未启用 Custom_Push 时，新增/编辑为 custom_push 的映射强制降为待定，避免「关了开关仍能新增一条 active」
+        // 未启用 Custom_Push 时，新增/编辑为 custom_push 的映射强制降为待定，避免开关关闭仍能新增 active 映射
         if (
             ($entry['build_provider'] ?? '') === AppConfig::PROVIDER_CUSTOM_PUSH
             && !$this->appSettings->getCustomPushEnabled()

@@ -3,10 +3,10 @@
  * 数据库初始化 CLI（建表 + 种子 + 标记 schema 当前）。
  *
  * 由容器 entrypoint 在 supervisord 启动前显式调用，确保 cron 循环（tag-cleanup / tag-backfill）
- * 启动时表已就绪，避免首次安装时 cron 抢在 HTTP 首次请求前运行、撞上「表缺失」。
+ * 启动时表已就绪，避免首次安装时 cron 抢在 HTTP 首次请求前运行、遇到表缺失。
  *
- * 注意：是否建表受 DB_AUTO_MIGRATE 控制——设为 false（手动建库模式）时本脚本只补种子，
- * 需要建表/补列请先执行 database/*.sql，或改用 cli/migrate.php（无视该开关）。
+ * 注意：是否建表受 DB_AUTO_MIGRATE 控制，设为 false（手动建库模式）时本脚本只补种子；
+ * 需要建表或补列请先执行 database/*.sql，或改用 cli/migrate.php（不看该开关）。
  *
  * 退出码：0 = 完成；1 = 致命错误（库连不上 / 建表失败）。
  */
@@ -20,8 +20,8 @@ try {
 } catch (\Throwable $e) {
     fwrite(STDERR, "错误：数据库初始化失败: {$e->getMessage()}\n");
     if (!Database::isAutoMigrateEnabled()) {
-        // 与 Web 后台「同步库结构」同一套归因：仅「账号缺 DDL 权限/只读」或「表缺失」才提示跑建表
-        // 脚本 / 换高权账号；连不上或凭据被拒时应去查连接配置，避免把人引向白跑一遍建表脚本。
+        // 与 Web 后台同步库结构用同一套归因：仅账号缺 DDL 权限或只读、或表缺失时才提示跑建表
+        // 脚本或换高权限账号；连不上或凭据被拒时应去查连接配置，避免引导用户白跑一遍建表脚本。
         $driverCode = $e instanceof \PDOException ? (int) ($e->errorInfo[1] ?? 0) : 0;
         $kind       = Database::classifyMigrationError((string) $e->getMessage(), (string) $e->getCode(), $driverCode);
         if ($kind === 'unreachable') {

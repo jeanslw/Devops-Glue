@@ -45,7 +45,7 @@
     },
     {
       "name": "SSO",
-      "description": "OAuth2 / OIDC Single Sign-On (Grafana / Jenkins / Harbor / GitLab)"
+      "description": "OAuth2 / OIDC Single Sign-On (Jenkins / Harbor / GitLab)"
     }
   ],
   "components": {
@@ -1118,6 +1118,49 @@
             "type": "string",
             "description": "One-time plaintext token (dg_ prefix + 64 hex chars), returned only once",
             "example": "dg_8f3a4b1c…"
+          }
+        }
+      },
+      "ApiTokenUpdateScopesRequest": {
+        "type": "object",
+        "required": [
+          "scopes"
+        ],
+        "properties": {
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "New scope list (all entries must come from the scope catalog, at least one; an unknown key or an empty set returns 400)",
+            "example": [
+              "main",
+              "build.read"
+            ]
+          }
+        }
+      },
+      "ApiTokenUpdateScopesResult": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "id": {
+            "type": "integer",
+            "example": 1
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Stored scope list (trimmed, deduplicated, submission order kept)",
+            "example": [
+              "main",
+              "build.read"
+            ]
           }
         }
       },
@@ -4475,13 +4518,77 @@
         }
       }
     },
+    "/api/admin/api_tokens/{id}/scopes": {
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Edit API token scopes",
+        "description": "Rewrites the token's scope list. Only metadata changes (plaintext and digest stay the same), so callers do not need a new token — the next request is checked against the new scopes. super_admin only; every scope must come from the catalog and at least one is required (otherwise 400), an unknown token returns 404.",
+        "operationId": "adminApiTokenUpdateScopes",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Token ID",
+            "example": 1
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiTokenUpdateScopesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Scopes updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiTokenUpdateScopesResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "Not super_admin"
+          },
+          "404": {
+            "description": "Token not found"
+          },
+          "503": {
+            "description": "API token service unavailable"
+          }
+        }
+      }
+    },
     "/api/admin/api_tokens/{id}/revoke": {
       "post": {
         "tags": [
           "Admin"
         ],
         "summary": "Revoke an API token (disable, keep record)",
-        "description": "Disables the token (enabled=0), immediately invalid but keeps the record. Super admin only.",
+        "description": "Disables the token (enabled=0): immediately invalid, but both the record and its digest are kept — which makes it **restorable**: an integrated-service credential disabled this way is restored (the original plaintext keeps working, no CD change) once that service is enabled again. Use DELETE to burn/rotate it for good (hard delete, unrecoverable). Super admin only.",
         "operationId": "adminApiTokenRevoke",
         "security": [
           {
@@ -4583,6 +4690,311 @@
         }
       }
     },
+    "/api/admin/integrated_services/{service}": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Get integrated service enablement status",
+        "description": "Reads the integrated_services contract row (CI is the only writer; integrated services are read-only). When no row exists, a default enabled=false state is returned (no seeding). Requires the ci.system permission.",
+        "operationId": "adminIntegratedServiceStatus",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "service",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "cd"
+              ]
+            },
+            "description": "Integrated service name (currently only cd)",
+            "example": "cd"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Integrated service status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "service": {
+                      "type": "string",
+                      "example": "cd"
+                    },
+                    "enabled": {
+                      "type": "boolean",
+                      "description": "Whether the service is enabled (missing row / enabled=0 both mean false)"
+                    },
+                    "provision": {
+                      "type": "string",
+                      "enum": [
+                        "auto",
+                        "manual"
+                      ],
+                      "description": "Provision mode: auto = the integrated service may create tables automatically; manual = only pre-created tables are accepted"
+                    },
+                    "default_provision": {
+                      "type": "string",
+                      "enum": [
+                        "auto",
+                        "manual"
+                      ],
+                      "description": "The provision value that will be written when enabling now (follows CI DB_AUTO_MIGRATE)"
+                    },
+                    "token_id": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "description": "Soft reference to the bound service token api_tokens.id (no plaintext/hash stored)"
+                    },
+                    "token_name": {
+                      "type": "string"
+                    },
+                    "token_exists": {
+                      "type": "boolean",
+                      "description": "Whether the credential row still exists (true while frozen/disabled; false once deleted)"
+                    },
+                    "token_enabled": {
+                      "type": "boolean",
+                      "description": "Whether the credential is not disabled (api_tokens.enabled=1)"
+                    },
+                    "token_expired": {
+                      "type": "boolean",
+                      "description": "Whether the credential has expired (expires_at <= now)"
+                    },
+                    "token_active": {
+                      "type": "boolean",
+                      "description": "Whether the bound token is still valid (= token_exists && token_enabled && !token_expired)"
+                    },
+                    "token_scopes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Restricted scopes that will be granted when enabling"
+                    },
+                    "updated_by": {
+                      "type": "string"
+                    },
+                    "created_at": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "updated_at": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "Missing ci.system permission"
+          },
+          "404": {
+            "description": "Unknown integrated service"
+          }
+        }
+      }
+    },
+    "/api/admin/integrated_services/{service}/enable": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Enable integrated service (issue a new credential, or restore the frozen one)",
+        "description": "In one transaction: writes provision according to the current CI DB_AUTO_MIGRATE mode (optionally overridden via body.provision = auto/manual), issues a service token restricted to build.read/build.write/rbac.user.write, and upserts the integrated_services row. The plaintext token is returned in the response exactly once. Returns 409 only when the contract row is enabled **and its credential is still valid** (a genuine duplicate enable; untick then tick Enable to rotate). When it is enabled but the credential is dead (revoked/deleted in the token list, or expired) the call takes the re-issue path instead: the dead credential is retired, a new one is issued and re-bound to the contract row in the same transaction, and the response carries reissued=true. super_admin only.",
+        "operationId": "adminIntegratedServiceEnable",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "service",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "cd"
+              ]
+            },
+            "example": "cd"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "provision": {
+                    "type": "string",
+                    "enum": [
+                      "auto",
+                      "manual"
+                    ],
+                    "description": "Optional. Defaults to the current CI migration mode"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Enabled; token is a one-time plaintext",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "service": {
+                      "type": "string",
+                      "example": "cd"
+                    },
+                    "provision": {
+                      "type": "string",
+                      "enum": [
+                        "auto",
+                        "manual"
+                      ]
+                    },
+                    "token_id": {
+                      "type": "integer"
+                    },
+                    "reused": {
+                      "type": "boolean",
+                      "description": "true = this run restored the previously frozen credential (no plaintext is returned again; CD needs no CI_API_TOKEN change)"
+                    },
+                    "reissued": {
+                      "type": "boolean",
+                      "description": "true = the contract row was already enabled and only a new credential was re-issued (the old one is retired; CD must switch to the new token)"
+                    },
+                    "token": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "One-time plaintext token (dg_ prefix): returned only when a new credential is issued (first enable / re-issue after a burn); null on the restore path (the caller already holds that plaintext)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "Not super_admin"
+          },
+          "404": {
+            "description": "Unknown integrated service"
+          },
+          "409": {
+            "description": "Service already enabled with a valid credential (genuine duplicate; a dead credential does not 409 but re-issues)"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        }
+      }
+    },
+    "/api/admin/integrated_services/{service}/disable": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Disable integrated service (freeze service and disable its token)",
+        "description": "In one transaction sets enabled=0 (the integrated service immediately rejects all requests) and disables the bound service token (api_tokens.enabled=0). **Disabling is a freeze, not a burn**: both the credential row and the contract row api_token_id are kept, so enabling the service again restores the very same credential — the original plaintext keeps working and CD needs no CI_API_TOKEN change (to burn/rotate it, revoke or delete that token in the token list first). No integrated-service tables or data are deleted. Returns 409 if it was never enabled. super_admin only.",
+        "operationId": "adminIntegratedServiceDisable",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "service",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "cd"
+              ]
+            },
+            "example": "cd"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "service": {
+                      "type": "string",
+                      "example": "cd"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "Not super_admin"
+          },
+          "404": {
+            "description": "Unknown integrated service"
+          },
+          "409": {
+            "description": "Service is not enabled"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        }
+      }
+    },
     "/.well-known/openid-configuration": {
       "get": {
         "tags": [
@@ -4643,7 +5055,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Client identifier (e.g. grafana)"
+            "description": "Client identifier (e.g. jenkins)"
           },
           {
             "name": "redirect_uri",
@@ -4855,7 +5267,7 @@
           "SSO"
         ],
         "summary": "Email list (GitHub style)",
-        "description": "Fallback email sub-endpoint requested by Grafana; returns the same placeholder email as userinfo.",
+        "description": "GitHub-style emails sub-endpoint; returns the same email as userinfo.",
         "operationId": "oauthUserInfoEmails",
         "security": [
           {
@@ -5251,6 +5663,71 @@
           },
           "403": {
             "description": "Not an API token, or missing rbac.user.write scope"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        }
+      }
+    },
+    "/api/rbac/roles/{name}/permissions": {
+      "get": {
+        "tags": [
+          "RBAC"
+        ],
+        "summary": "Role permissions (CD service account read)",
+        "description": "Returns the permission keys granted to a role, so CD can converge session permissions and map them (previously only the name/description role catalog existed, leaving CD to hardcode a copy of Glue's permission list). Boundaries: an unknown role returns 404 (kept strictly apart from \"role exists with zero permissions\", so a typo can never be mistaken for \"this role has no permissions\" and silently wipe permissions); super_admin returns [\"*\"] (wildcard, same semantics as permissions:\"*\" on /api/admin/login; that role is granted by code and is not stored in role_permissions, so reading the table would report the super admin as having zero permissions). API token only (rbac.user.write scope, applied to the whole /api/rbac/* prefix).",
+        "operationId": "rbacRolePermissions",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "description": "Role name (roles.name)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Permission list of the role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "role": {
+                      "type": "string"
+                    },
+                    "permissions": {
+                      "type": "array",
+                      "description": "Permission keys; [\"*\"] (wildcard) for super_admin",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "Not an API token, or missing rbac.user.write scope"
+          },
+          "404": {
+            "description": "Role does not exist (user.role_not_found); kept apart from \"role exists but was granted nothing\" (200 + empty array)"
           },
           "500": {
             "$ref": "#/components/responses/500"

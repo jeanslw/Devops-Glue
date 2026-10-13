@@ -677,10 +677,24 @@ return [
     'api_token.delete'          => 'Delete',
     'api_token.confirm_delete'  => 'Delete this token? The record cannot be recovered.',
     'api_token.deleted'         => 'Deleted',
+    'api_token.edit_scopes'     => 'Edit Scopes',
+    'api_token.edit_title'      => '✏️ Edit Scopes',
+    'api_token.edit_target'     => 'Target token: ',
+    'api_token.edit_hint'       => 'Takes effect immediately, no re-issue needed; the plaintext token stays unchanged.',
+    'api_token.scopes_required' => 'Select at least one scope',
+    'api_token.scopes_invalid'  => 'Unknown scope selected, please re-select',
+    'api_token.scopes_updated'  => 'Scopes updated',
+    'api_token.not_found'       => 'Token not found or already deleted',
     'api_token.disabled'        => 'Disabled',
     'api_token.super_admin_only'=> 'Super admin only',
     'api_token.scope_forbidden' => 'API token lacks permission for this endpoint',
     'api_token.service_unavailable' => 'API token service unavailable',
+
+    // Integrated services (integrated_services contract)
+    'integrated.unknown_service'   => 'Unknown integrated service',
+    'integrated.already_enabled'   => 'This integrated service is already enabled with a valid credential; to rotate it, untick then tick Enable on the API management page',
+    'integrated.not_enabled'       => 'This integrated service is not enabled',
+    'integrated.invalid_provision' => 'Invalid provision mode; only auto or manual is accepted',
 
     // API Token Scope catalog
     'api.scope.main'            => 'MAIN (read-only)',
@@ -693,7 +707,7 @@ return [
     'api.scope.rbac_user_write' => 'RBAC user write (create/update/delete users)',
 
     // ── OAuth2 Provider ──
-    'oauth.login_title'      => 'Sign in to Devops-Glue',
+    'oauth.login_title'      => 'Sign in',
     'oauth.invalid_request'  => 'Invalid OAuth request (client_id or redirect_uri mismatch)',
 
     // ── Operation Logs ──
@@ -868,4 +882,39 @@ return [
     'sys.backup_done'     => 'Backup complete',
     'sys.backup_failed'   => 'Backup failed',
     'sys.backup_no_tables' => 'No application tables available to back up (database not initialized?)',
+
+    // Integrated services card (integrated_services contract)
+    'sys.panel_integrated'      => '🔌 Integrated services',
+    'sys.isvc_intro'            => 'Integrated services share this platform database: enabling issues a restricted service token (listed below; plaintext shown once) and authorizes table creation in the same transaction; disabling only freezes the service and deactivates that credential (it is not burned) while its tables and data are kept — re-enabling restores the same token, so CD needs no CI_API_TOKEN change. To burn or rotate a credential, revoke / delete it in the list below first.',
+    'sys.isvc_cd_name'          => 'CD deployment service',
+    'sys.isvc_off'              => '⚪ Not enabled',
+    'sys.isvc_on_auto'          => '✅ Enabled (auto provision)',
+    'sys.isvc_on_manual'        => '✅ Enabled (manual provision)',
+    'sys.isvc_enable'           => 'Enable',
+    'sys.isvc_disable'          => 'Disable (freeze)',
+    'sys.isvc_provision'        => 'Provision mode',
+    'sys.isvc_provision_auto'   => 'Auto provision (CD may create/upgrade its tables automatically)',
+    'sys.isvc_provision_manual' => 'Manual provision (CD never creates tables; pre-created tables required)',
+    'sys.isvc_will_provision'   => 'Provision mode when enabled',
+    'sys.isvc_token'            => 'Service credential',
+    'sys.isvc_token_active'     => 'active',
+    'sys.isvc_token_invalid'    => 'invalid (revoked / deleted / expired)',
+    'sys.isvc_token_dead'       => '⚠️ Enabled, credential dead',
+    'sys.isvc_token_frozen'     => 'Credential {token} is frozen with the service (not burned): re-enabling restores the same token — no CI_API_TOKEN change needed',
+    'sys.isvc_reissue_hint'     => 'The credential is burned (revoked / deleted in the list below, or expired) — Tick Enable again to re-issue a new credential in the same transaction; update CD\'s CI_API_TOKEN with the new plaintext.',
+    'sys.isvc_updated'          => 'Last changed',
+    'sys.isvc_enable_confirm'   => 'Enable "{name}"?',
+    'sys.isvc_enable_step1'     => 'A restricted service token is issued automatically; its plaintext is shown only when first created',
+    'sys.isvc_enable_step2'     => 'Provision mode is captured from this platform current migration mode at enable time; later mode changes do not apply',
+    'sys.isvc_reissue_note'     => 'Re-issue: a new token is issued this time, the old one stays burned, and CD must update CI_API_TOKEN',
+    'sys.isvc_reuse_note'       => 'Restore: the credential is only frozen with the service, not burned — the same token is re-enabled',
+    'sys.isvc_restored'         => 'Original credential restored (the same token keeps working — no CD change needed)',
+    'sys.isvc_enabled'          => 'Enabled — copy the service token now',
+    'sys.isvc_disable_confirm'  => 'Disable "{name}"?',
+    'sys.isvc_disable_step1'    => 'CD will immediately reject all requests; its service token is deactivated (frozen only)',
+    'sys.isvc_disable_step2'    => 'CD tables and data are retained; re-enabling restores it, no CD change needed',
+    'sys.isvc_disabled'         => 'Disabled (service frozen, data retained)',
+    'sys.isvc_token_title'      => '✅ CD service enabled — copy the service token now',
+    'sys.isvc_token_hint'       => 'This plaintext token is shown only once (only its digest is stored). Paste it into the CD configuration (CI_API_TOKEN); it cannot be viewed again after closing.',
+    'sys.isvc_token_saved'      => 'I have saved it',
 ];

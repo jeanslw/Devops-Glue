@@ -264,13 +264,13 @@ class CustomPushBuildProvider implements BuildProviderInterface
         if ($bin !== false && strlen($bin) === 16) {
             $embedded = null;
             if (substr($bin, 0, 12) === "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff") {
-                // IPv4-mapped（::ffff:a.b.c.d）→ 末 4 字节按 IPv4 复检
+                // IPv4-mapped（::ffff:a.b.c.d）：末 4 字节按 IPv4 复检
                 $embedded = substr($bin, 12, 4);
             } elseif (substr($bin, 0, 4) === "\x00\x64\xff\x9b") {
-                // NAT64（64:ff9b::/96、64:ff9b:1::/48）→ 末 4 字节内嵌 IPv4 复检
+                // NAT64（64:ff9b::/96、64:ff9b:1::/48）：末 4 字节内嵌 IPv4 复检
                 $embedded = substr($bin, 12, 4);
             } elseif (substr($bin, 0, 2) === "\x20\x02") {
-                // 6to4（2002::/16）→ 第 2-5 字节内嵌 IPv4 复检
+                // 6to4（2002::/16）：第 2-5 字节内嵌 IPv4 复检
                 $embedded = substr($bin, 2, 4);
             }
             if ($embedded !== null) {
@@ -301,16 +301,16 @@ class CustomPushBuildProvider implements BuildProviderInterface
     }
 
     /**
-     * 一次性上报构建终态结果（success/failed/aborted），无 pending/running 中间态。
+     * 一次性上报构建终态结果（success/failed/aborted），没有 pending/running 中间态。
      *
      * $body 由 BuildController::report 透传，包含：
      *   pipeline_iid（必填）、status（必填，终态）、finished_at（必填）、
      *   started_at / ref / sha / exit_code / log_url / web_url（可选），
      *   以及用户自定义构建参数（排除 REPORT_FIELDS 后写入 variables_json）。
      *
-     * (job_name, pipeline_iid) 冲突时按覆盖（UPDATE）处理，保住原自增 id。
-     * success 为不可逆终态：已 success 的记录拒绝被 failed/aborted 降级（防止与
-     * ci_pipeline_artifacts 中已写入的 tag 产生矛盾）；failed/aborted → success 正常升级。
+     * (job_name, pipeline_iid) 冲突时按覆盖（UPDATE）处理，保留原自增 id。
+     * success 是不可逆终态：已 success 的记录不接受 failed/aborted 降级（防止与
+     * ci_pipeline_artifacts 中已写入的 tag 冲突）；failed/aborted 可以升级为 success。
      *
      * @param array<string, mixed> $body
      * @return array<string, mixed>

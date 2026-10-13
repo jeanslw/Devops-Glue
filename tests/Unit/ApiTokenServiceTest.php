@@ -136,4 +136,94 @@ class ApiTokenServiceTest extends TestCase
     {
         $this->assertNull($this->service->resolve(hash('sha256', 'nope')));
     }
+
+    // ── 编辑 scope（只改 scopes 列的元数据，不重新签发）──
+
+    public function testUpdateScopesReplacesScopeSetImmediately(): void
+    {
+        $created = $this->service->createToken(['name' => 'ci-bot', 'scopes' => ['main']]);
+
+        $this->assertTrue($this->service->updateScopes($created['id'], ['git', 'build.write']));
+
+        $list = $this->service->listTokens();
+        $this->assertSame(['git', 'build.write'], $list[0]['scopes'], '列表应显示编辑后的 scope');
+        $this->assertSame(['git', 'trigger', 'retry', 'cancel'], $list[0]['capabilities'], '能力清单应随 scope 重算（去重且保持目录顺序）');
+    }
+
+    public function testUpdateScopesKeepsTokenDigestAndPlaintextUsable(): void
+    {
+        $created = $this->service->createToken(['name' => 'ci-bot', 'scopes' => ['main']]);
+        $hashBefore = $this->pdo->query('SELECT token_hash FROM ' . AppConfig::TABLE_API_TOKENS)->fetch()['token_hash'];
+
+        $this->service->updateScopes($created['id'], ['build.read']);
+
+        $hashAfter = $this->pdo->query('SELECT token_hash FROM ' . AppConfig::TABLE_API_TOKENS)->fetch()['token_hash'];
+        $this->assertSame($hashBefore, $hashAfter, '编辑 scope 不得改动摘要：调用方无需换 token');
+        $resolved = $this->service->resolve(hash('sha256', $created['token']));
+        $this->assertNotNull($resolved, '原明文 token 编辑 scope 后仍应有效');
+        $this->assertSame(['build.read'], $resolved['scopes']);
+    }
+
+    public function testUpdateScopesAcceptsCommaSeparatedStringAndDropsBlanks(): void
+    {
+        $created = $this->service->createToken(['name' => 'ci-bot', 'scopes' => ['main']]);
+
+        $this->assertTrue($this->service->updateScopes($created['id'], ' git , git ,, build.read '));
+
+        $resolved = $this->service->resolve(hash('sha256', $created['token']));
+        $this->assertSame(['git', 'build.read'], $resolved['scopes'], '逗号分隔字符串应被接受，空项忽略、重复项去重并保持顺序');
+    }
+
+    public function testUpdateScopesSucceedsWhenScopeSetUnchanged(): void
+    {
+        // MySQL 对值未变化的 UPDATE 返回 0 受影响行：语义必须靠存在性判断，
+        // 否则保存了但没改动的情况会被前端当成失败。
+        $created = $this->service->createToken(['name' => 'ci-bot', 'scopes' => ['main', 'git']]);
+        $this->assertTrue($this->service->updateScopes($created['id'], ['main', 'git']));
+    }
+
+    public function testUpdateScopesRejectsUnknownScopeWithoutWriting(): void
+    {
+        $created = $this->service->createToken(['name' => 'ci-bot', 'scopes' => ['main']]);
+
+        try {
+            $this->service->updateScopes($created['id'], ['main', 'admin.superuser']);
+            $this->fail('目录外的 scope 必须被拒绝，否则等于开放越权入口');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('admin.superuser', $e->getMessage());
+        }
+
+        $resolved = $this->service->resolve(hash('sha256', $created['token']));
+        $this->assertSame(['main'], $resolved['scopes'], '被拒绝的请求不得写入任何 scope');
+    }
+
+    public function testUpdateScopesRejectsEmptySet(): void
+    {
+        // 勾选界面全部取消时应当报错：直接清空会让以为已收回或已授权的判断与实际情况不符
+        $created = $this->service->createToken(['name' => 'ci-bot', 'scopes' => ['main']]);
+        $this->expectException(\InvalidArgumentException::class);
+        $this->service->updateScopes($created['id'], ['', '  ']);
+    }
+
+    public function testUpdateScopesRejectsNonListPayload(): void
+    {
+        $created = $this->service->createToken(['name' => 'ci-bot', 'scopes' => ['main']]);
+        $this->expectException(\InvalidArgumentException::class);
+        $this->service->updateScopes($created['id'], 42);
+    }
+
+    public function testUpdateScopesReturnsFalseForUnknownToken(): void
+    {
+        $this->assertFalse($this->service->updateScopes(999, ['main']), 'token 不存在时应返回 false（供控制器回 404）');
+    }
+
+    public function testFindByIdReturnsRowOnlyForExistingToken(): void
+    {
+        $created = $this->service->createToken(['name' => 'ci-bot', 'scopes' => ['main']]);
+
+        $row = $this->service->findById($created['id']);
+        $this->assertNotNull($row);
+        $this->assertSame('ci-bot', $row['name']);
+        $this->assertNull($this->service->findById(999));
+    }
 }

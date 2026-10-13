@@ -10,10 +10,10 @@ use PHPUnit\Framework\TestCase;
 /**
  * 构建模式集合（多选）单元测试
  *
- * 锁定 build_mode 从单值枚举到「已启用 CI 源集合」的解析/存储规则：
- *   - 旧值 both → jenkins,gitlab_ci（读取时自愈回写）
- *   - 新格式逗号分隔，规范顺序恒为 jenkins,gitlab_ci,gitea_ci
- *   - 空值 = 无拉取式 CI；未知值丢弃
+ * 覆盖 build_mode 从单值枚举到已启用 CI 源集合的解析与存储规则：
+ *   - 旧值 both 解析为 jenkins,gitlab_ci（读取时回写为新格式）
+ *   - 新格式为逗号分隔，规范顺序恒为 jenkins,gitlab_ci,gitea_ci
+ *   - 空值表示无拉取式 CI；未知值丢弃
  *
  * 依赖 SQLite 内存库（ci_app_settings 表），不触网。
  * 运行：vendor/bin/phpunit tests/Unit/BuildModeTest.php

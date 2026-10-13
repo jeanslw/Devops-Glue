@@ -67,7 +67,7 @@
 | `/oauth/authorize` | GET/POST | OAuth2 授权码流程：授权确认页 / 提交授权 |
 | `/oauth/token` | POST | OAuth2 授权码换取 access token |
 | `/oauth/userinfo` | GET/POST | OAuth2 用户信息 |
-| `/oauth/userinfo/emails` | GET | GitHub 风格邮箱子端点（Grafana 兜底请求） |
+| `/oauth/userinfo/emails` | GET | GitHub 风格邮箱子端点（兼容按 GitHub emails 流程取邮箱的客户端） |
 | `/.well-known/openid-configuration` | GET | OIDC 发现文档（公开；详见[单点登录](单点登录.md)） |
 | `/.well-known/jwks.json` | GET | OIDC 签名公钥（公开） |
 
@@ -398,6 +398,7 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 | `/api/admin/migrate` | POST | 手动同步库结构（补建缺失表 + 补齐字段/索引 + 种子权限 + 标记 schema 当前；账号无 DDL 权限时返回 409 并提示改用 `php cli/migrate.php`；仅 super_admin） |
 | `/api/admin/backup` | POST | 手动执行数据库备份（zip 归档，滚动留存最近 10 份；启用 CD 时额外产出一份 CD 库归档；仅 super_admin） |
 | `/api/admin/backups` | GET | 列出已生成的数据库备份文件（仅 super_admin） |
+| `/api/admin/integrated_services/{service}` | GET | 集成服务启用状态（当前仅 `cd`；返回 enabled / provision（auto\|manual）/ default_provision（按当前迁移模式推导）/ 配套 token 软引用与三态（`token_exists` / `token_enabled` / `token_expired`）及活性 `token_active`（= 存在 && 未停用 && 未过期）/ 启用时将签发的 scopes；行不存在返回 enabled=false 默认态；需 `ci.system`） |
 | `/api/admin/tag_cleanup` | POST | 手动立即执行一次过期 tag 清理（等价 `cli/cleanup-pipeline-tags.php`；对应开关未开启或 Harbor 未配置时返回 409 安全跳过；需 `ci.platform-config`） |
 | `/api/admin/tag_backfill` | POST | 手动立即执行一次镜像 Tag 日志回填（等价 `cli/backfill-pipeline-tags.php`；同上，仅补缺失 tag 不覆盖扫描结果；需 `ci.platform-config`） |
 | `/api/admin/operation_logs` | GET | 操作审计日志（支持 `?username=&action=&result=&operator_type=&date_from=&date_to=&page=&per_page=` 筛选；需 `ci.operation-logs`） |
@@ -442,20 +443,21 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 | `/api/rbac/users/{username}` | PUT | 更新账号（body: `password` 和/或 `role`） |
 | `/api/rbac/users/{username}` | DELETE | 删除账号（root 与 super_admin 受保护） |
 | `/api/rbac/roles` | GET | 可用角色列表 |
+| `/api/rbac/roles/{name}/permissions` | GET | 角色权限清单（供 CD 做会话权限收敛与映射；角色不存在返回 404，`super_admin` 返回 `["*"]` 通配） |
 
 ---
 
 ## OAuth2 / OIDC 模块 (`/oauth`、`/.well-known`)
 
-> 供 Grafana 等外部系统用 Glue 账号登录（OAuth2 授权码流程），并为 Jenkins oic-auth / Harbor OIDC / GitLab OmniAuth 提供自动发现。完整配置与流程说明见[单点登录](单点登录.md)。
+> 供外部系统用 Glue 账号登录（OAuth2 授权码流程），并为 Jenkins oic-auth / Harbor OIDC / GitLab OmniAuth 提供自动发现。完整配置与流程说明见[单点登录](单点登录.md)。
 
 | 接口 | 方法 | 说明 |
 |---|---|---|
 | `/oauth/authorize` | GET | 授权码流程：展示授权确认页（浏览器跳转） |
 | `/oauth/authorize` | POST | 提交授权（账号密码登录 + 允许/拒绝；与登录接口共用 5 次/15 分钟失败限流） |
 | `/oauth/token` | POST | 授权码换取 access token |
-| `/oauth/userinfo` | GET/POST | 用户信息（access token 鉴权；GET/POST 均注册，兼容 Grafana 等客户端） |
-| `/oauth/userinfo/emails` | GET | GitHub 风格邮箱子端点（Grafana 兜底请求） |
+| `/oauth/userinfo` | GET/POST | 用户信息（access token 鉴权；GET/POST 均注册，兼容以 POST 取用户信息的客户端） |
+| `/oauth/userinfo/emails` | GET | GitHub 风格邮箱子端点（兼容按 GitHub emails 流程取邮箱的客户端） |
 | `/.well-known/openid-configuration` | GET | OIDC 发现文档（公开） |
 | `/.well-known/jwks.json` | GET | OIDC 签名公钥（仅公钥，不泄露私钥） |
 
@@ -500,8 +502,11 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 | `/api/admin/api_tokens/scopes` | GET | 返回可选 scope 目录（`{"scopes":[{"key":"main","label":"MAIN（只读）"},…]}`） |
 | `/api/admin/api_tokens` | GET | Token 列表（**不含明文**，返回 `{"tokens":[…]}`） |
 | `/api/admin/api_tokens` | POST | 创建 Token，返回一次性明文 |
-| `/api/admin/api_tokens/{id}/revoke` | POST | 撤销（**禁用**，保留记录），返回 `{"ok":true}` |
-| `/api/admin/api_tokens/{id}` | DELETE | 删除（**硬删除**记录），返回 `{"ok":true}` |
+| `/api/admin/api_tokens/{id}/scopes` | PUT | **编辑 Scope**：只改元数据（明文与 sha256 摘要不变，**无需更换 Token**，下一个请求即按新 Scope 校验）；scope 须全部来自目录且至少一个（否则 400），Token 不存在 404 |
+| `/api/admin/api_tokens/{id}/revoke` | POST | 撤销（**停用**，保留记录与摘要；它是**可恢复**的：集成服务的配套凭据在「该服务重新启用」时被恢复成同一枚 —— 原明文继续可用），返回 `{"ok":true}` |
+| `/api/admin/api_tokens/{id}` | DELETE | 删除（**硬删除**记录，摘要一并消失，不可恢复 → 集成服务再次启用时只能补发新凭据），返回 `{"ok":true}` |
+| `/api/admin/integrated_services/{service}/enable` | POST | 启用集成服务：事务内 upsert 契约行（provision 默认按当前 `DB_AUTO_MIGRATE` 取 auto/manual，可 body 显式覆盖），并按状态走三条路径 —— ① 首次启用：签发限定 scope（build.read / build.write / rbac.user.write）服务 Token，响应一次性返回明文 `token`；② **冻结恢复**：契约行未启用、凭据只是被停用（撤销）且未过期 → **恢复同一枚凭据**（原明文重新生效，CD 无需改配置），响应 `reused=true` 且 `token` 为 null；③ **作废补发**：凭据被撤销（契约行仍启用）/ 删除 / 过期 → 同事务作废旧凭据 + 签发新凭据并重绑，响应 `reissued=true` + 新明文。仅当「已启用且凭据有效」时 409；仅 super_admin |
+| `/api/admin/integrated_services/{service}/disable` | POST | 禁用（冻结）：事务内置 enabled=0 并**停用**（**非**作废）配套 Token —— 凭据行与绑定关系都保留，再次启用即恢复同一枚（CD 无需改配置，要作废/换发请先撤销或删除那枚 Token）；不删表不删数据；未启用 409；仅 super_admin |
 
 #### 创建 Token
 
@@ -524,6 +529,30 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 {
   "id": 1,
   "token": "dg_8f3a4b1c…（64位十六进制）"
+}
+```
+
+#### 编辑 Token 的 Scope
+
+请求体：
+
+```json
+{
+  "scopes": ["main", "build.read"]
+}
+```
+
+- 只改 `scopes` 列（**元数据**）：明文 Token 与 sha256 摘要都不变，调用方**无需更换** Token，**下一个请求**即按新 Scope 校验——用于给已发出的 Token 补权限或收回权限（`build.report` 这类回写权限尤其适合按需临时补授）。
+- `scopes` 必须**全部**来自目录且**至少一个**：含目录外的 key 返回 400（「包含未知的 Scope，请重新选择」）、空集合返回 400（「请至少勾选一个接口权限」）。这与创建时「静默丢弃非法 key」刻意不同：编辑是**权限收放**动作，勾错了必须报错，不能静默掉权或增权。要彻底失效请用「撤销」。
+- Token 不存在返回 404（「Token 不存在或已被删除」）。仅 `super_admin`；每次编辑写入操作日志 `update_api_token_scopes`（含保存后的 scope 清单）。
+
+响应：
+
+```json
+{
+  "ok": true,
+  "id": 1,
+  "scopes": ["main", "build.read"]
 }
 ```
 
@@ -562,11 +591,17 @@ curl -X POST "http://URL/api/build/php/myapp/report" \
   -H "Authorization: Bearer $NEW_TOKEN" \
   -d '{"pipeline_iid":123,"status":"success","finished_at":"2026-08-18T10:05:12+08:00","exit_code":0,"log_url":"https://ci.example.com/build/123/log","tag":"v1.0.0","env":"prod"}'
 
-# ④ 撤销 Token（禁用，保留记录）
+# ④ 编辑 Token 的 Scope（只改元数据：Token 明文无需更换，下一个请求即生效）
+curl -X PUT "http://URL/api/admin/api_tokens/1/scopes" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d '{"scopes":["main","build.read"]}'
+
+# ⑤ 撤销 Token（禁用，保留记录）
 curl -X POST "http://URL/api/admin/api_tokens/1/revoke" \
   -H "Authorization: Bearer $ADMIN_TOKEN"
 
-# ⑤ 删除 Token（硬删除记录）
+# ⑥ 删除 Token（硬删除记录）
 curl -X DELETE "http://URL/api/admin/api_tokens/1" \
   -H "Authorization: Bearer $ADMIN_TOKEN"
 ```

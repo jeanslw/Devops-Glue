@@ -1,6 +1,6 @@
 /**
- * 内存版 Mock LDAP 服务器 —— 用于在无真实 OpenLDAP 的情况下，端到端验证
- * PHP ext-ldap 的完整登录流程（connect → admin bind → search → user bind）。
+ * 内存版 Mock LDAP 服务器：用于在无真实 OpenLDAP 的情况下，端到端验证
+ * PHP ext-ldap 的完整登录流程（connect，admin bind，search，user bind）。
  *
  * 用法：
  *   cd tests/ldap-mock
@@ -12,8 +12,8 @@
  *   用户 alice： cn=alice,ou=users,dc=example,dc=com  /  alicepass
  *   用户 bob：   cn=bob,ou=users,dc=example,dc=com    /  bobpass
  *
- * 仅支持 simple bind + 单层子树搜索，足够覆盖 LdapService 的
- * 「管理员搜索模式」（bind_dn + base_dn + user_filter=(uid=%s)）。
+ * 仅支持 simple bind 与单层子树搜索，足够覆盖 LdapService 的管理员搜索模式
+ * （bind_dn + base_dn + user_filter=(uid=%s)）。
  */
 
 'use strict'
@@ -24,7 +24,7 @@ const BASE_DN = 'dc=example,dc=com'
 const ADMIN_DN = 'cn=admin,dc=example,dc=com'
 const ADMIN_PASSWORD = 'adminpass'
 
-// 用户表：dn → { password, attributes }
+// 用户表：dn 到 { password, attributes } 的映射
 const users = {
   'cn=alice,ou=users,dc=example,dc=com': {
     password: 'alicepass',
@@ -99,7 +99,7 @@ server.listen(port, '127.0.0.1', () => {
   for (const dn of Object.keys(users)) console.log(`  user : ${dn}`)
 })
 
-// Ctrl+C 优雅退出
+// 收到 Ctrl+C 时退出
 process.on('SIGINT', () => {
   console.log('\nShutting down mock LDAP server...')
   server.close(() => process.exit(0))

@@ -69,9 +69,9 @@ export async function loadMaps() {
         });
         maps = maps.filter(m => (m.status || 'active') === 'active' || !activeRemotes.has(normalizeRemote(m.git_remote)));
 
-        // 注意：不再按 currentBuildModes 隐藏「provider 未启用」的映射——
+        // 注意：不再按 currentBuildModes 隐藏 provider 未启用的映射，
         // Git 平台扫描按原生 CI 标记（与 BUILD_MODE 无关），未启用的映射应正常显示，
-        // 点击「启用」时由 activateMap() 拦截并提示更改 CI 源。
+        // 点击启用时由 activateMap() 拦截并提示更改 CI 源。
 
         const displayTotal = maps.length;
         mapTotalPages = Math.max(1, Math.ceil(displayTotal / mapPerPage));
@@ -175,10 +175,10 @@ export async function doDiscover() {
         if (handle401(res)) return;
         const data = await res.json();
         if (res.ok) {
-            // 三态判定（扫描范围 = 构建模式启用的 provider + custom_push 开启时的 Git 平台）：
-            // - 错误数 = 实际扫描源数 → 扫描全部失败
-            // - 0 < 错误数 < 源数    → 扫描部分失败
-            // - 无错误               → 扫描成功
+            // 三种结果（扫描范围 = 构建模式启用的 provider，外加 custom_push 开启时的 Git 平台）：
+            // - 错误数 = 实际扫描源数：扫描全部失败
+            // - 0 < 错误数 < 源数   ：扫描部分失败
+            // - 无错误              ：扫描成功
             const errs = Array.isArray(data.errors) ? data.errors : [];
             const sources = Array.isArray(data.sources) ? data.sources : [];
             const failed = [...new Set(errs.map(e => String(e).split(':')[0].trim()).filter(Boolean))];

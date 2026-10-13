@@ -34,7 +34,7 @@ class Bootstrap
         /** @var \Slim\App<\Psr\Container\ContainerInterface> $app 容器已 setContainer，泛型实参非空 */
         $app = AppFactory::create();
 
-        // 兼容 Swagger UI 等客户端对 job 名称中 / 的编码（php%2Fmyapp → php/myapp）
+        // 兼容 Swagger UI 等客户端对 job 名称中 / 的编码（php%2Fmyapp 还原为 php/myapp）
         $_SERVER['REQUEST_URI'] = str_replace('%2F', '/', $_SERVER['REQUEST_URI'] ?? '');
 
         return $app;

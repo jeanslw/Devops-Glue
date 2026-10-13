@@ -38,7 +38,7 @@
         [data-theme="dark"] #top-user-menu a { color:#f87171; }
         [data-theme="dark"] #top-user-menu a:hover { background:#26334a; }
 
-        /* ── 数据管理「数据库」操作按钮行（默认：桌面横向、允许换行）── */
+        /* ── 数据管理页数据库标签的操作按钮行（默认：桌面横向、允许换行）── */
         .sys-actions { display:flex; justify-content:flex-end; align-items:center; gap:8px; flex-wrap:wrap; }
         .sys-actions .btn { white-space:nowrap; }
 
@@ -279,8 +279,8 @@
         .badge-sys   { background:#eef2ff; color:#4f46e5; }
         .badge-cus   { background:#fef3c7; color:#d97706; }
 
-        /* 分页：窄屏允许换行（按钮+「共 N 条」+「x/y」），文字项禁止逐字压缩
-           ——CJK 文本的 min-content 是单字宽，不锁 nowrap 会被压成竖排 */
+        /* 分页：窄屏允许换行（按钮 + 共 N 条 + x/y 两处文字），文字项不逐字压缩：
+           CJK 文本的 min-content 是单字宽，不用 nowrap 会被压成竖排 */
         [id$="-pagination"] { flex-wrap:wrap; row-gap:8px; }
         [id$="-pagination"] > span { white-space:nowrap; }
 
@@ -494,6 +494,9 @@
             display:none; margin-top:6px; padding:8px 10px; border-radius:10px;
             background:#f8fafc; border:1px solid #e2e8f0; color:#64748b;
             font-size:11px; line-height:1.6;
+            /* 弹窗正文（#confirm-message / #confirm-note）由 core/toast.js 用 textContent 渲染纯文本，
+               多行只能靠 \n —— 交给 pre-line 断行；传 <div>/<br> 只会原样显示成标签 */
+            white-space:pre-line;
         }
         .modal-hint b { color:#1f2937; font-weight:700; }
         .modal-body label { margin-top:12px; }
@@ -583,10 +586,14 @@
             font-size:12px; color:#16a34a; display:none; margin-left:auto;
             white-space:nowrap; flex-shrink:0;
         }
-        #custom-push-toggle, #stale-tag-cleanup-toggle, #backfill-tag-toggle, #apilog-cleanup-toggle {
+        #custom-push-toggle, #stale-tag-cleanup-toggle, #backfill-tag-toggle, #apilog-cleanup-toggle, #isvc-cd-toggle {
             width:16px; height:16px; margin:0; cursor:pointer;
             accent-color:#4f46e5;
         }
+        /* 集成服务：勾选框即服务开关（勾选=启用并签发服务 Token，取消=冻结并撤销该 Token） */
+        #isvc-cd-toggle-wrap { flex:0 0 auto; }
+        #isvc-cd-toggle-wrap input:disabled { cursor:not-allowed; }
+        #isvc-cd-toggle-wrap input:disabled + span { color:#9ca3af; }
         .mode-card-notes {
             margin:0; padding-left:16px;
             color:#9ca3af; font-size:11px; line-height:1.7;
@@ -670,13 +677,13 @@
             /* 窄屏：宽表格交给外层滚动容器（如 .table-wrap / #table-wrap 自身已 overflow-x:auto）
                横向滚动；不再对 table 用 display:block——那会把 tr/td 脱离表格布局、逐字段竖排 */
             table th, table td { white-space:nowrap; }
-            /* 例外：对接版本表「说明」列允许换行，长描述在列内折行而非无限撑宽表格 */
+            /* 例外：对接版本表的说明列允许换行，长描述在列内折行而非无限撑宽表格 */
             #ver-tbody td:last-child { white-space:normal; min-width:150px; }
-            /* 例外：Token 管理的「接口权限 scope」列允许换行——全选时 scope 很多，
-               nowrap 会让内容溢出 td 画到后面列上混在一起 */
+            /* 例外：Token 管理的接口权限 scope 列允许换行：全选时 scope 很多，
+               加 nowrap 会让内容溢出到后面列上混在一起 */
             table td.scope-cell { white-space:normal; }
             [id$="-table-wrap"] table, .table-wrap table, #table-wrap table { min-width:720px; }
-            /* 窄屏顶栏：单行不换行；隐藏 logo 旁「管理后台」文字，只留 logo；左对齐避免 space-between 把 ☰ 甩到中间 */
+            /* 窄屏顶栏：单行不换行；隐藏 logo 旁的管理后台文字，只留 logo；左对齐，避免 space-between 把 ☰ 挤到中间 */
             .topbar { height:52px; padding:8px 12px; flex-wrap:nowrap; gap:8px; justify-content:flex-start; }
             .topbar .logo { flex-shrink:0; }
             .topbar .logo span[data-i18n] { display:none; }
@@ -753,6 +760,7 @@
 [data-theme="dark"] .topo-node .node-main,
 [data-theme="dark"] .topo-node .node-sub,
 [data-theme="dark"] .mode-card-hd,
+[data-theme="dark"] .mode-card-toggle,
 [data-theme="dark"] .bm-check { color:#e5e7eb; }
 [data-theme="dark"] .topo-node .node-main a,
 [data-theme="dark"] .topo-node .node-main a:hover,

@@ -1,7 +1,7 @@
 <?php
 /**
  * CLI 共享引导：autoload + dotenv 加载 + envVal()。
- * cli/*.php 统一 require 本文件，避免「dotenv 加载顺序 + env 读取」逻辑重复多份。
+ * cli/*.php 统一 require 本文件，避免 dotenv 加载顺序与 env 读取逻辑在多处重复。
  */
 
 require __DIR__ . '/../vendor/autoload.php';

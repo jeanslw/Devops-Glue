@@ -2,12 +2,12 @@
 /**
  * 全库数据备份 CLI（随镜像发布，由 supervisord 的 db-backup 循环调度）
  *
- * 复用 Web 侧 DataBackupService —— 与后台「手动备份」走同一套逻辑（一样的逻辑）：
+ * 复用 Web 侧 DataBackupService，与后台手动备份走同一套逻辑：
  *   - 启用 CD（共享库存在 cd_* 表）时产出两份 zip：
  *       devops-glue_<driver>_<stamp>.zip = CI 应用表（mode=app）
  *       devops-cd_<driver>_<stamp>.zip  = CD 系统表（mode=cd）
  *   - 未启用 CD 时只产出一份（devops-glue_*.zip）。
- *   两份各自独立、可独立恢复，恢复 Glue 不会误把 cd 数据灌回（防止误恢复）。
+ *   两份各自独立、可独立恢复，恢复 Glue 不会误把 cd 数据写入应用表。
  *
  * 用法：
  *   php cli/backup-db.php           受 DB_BACKUP_ENABLED 门控（默认关：打印跳过并退出 0）
@@ -15,7 +15,7 @@
  *
  * 行为：
  *   - 应用表 = AppConfig 全部 TABLE_* 常量；cd 表 = cd_ 前缀。
- *   - 仍无条件排除 cache（会话 token 是易失凭证，落盘 = 第二凭证库）与
+ *   - 仍无条件排除 cache（会话 token 是易失凭证，落盘等于多出一份）与
  *     ci_platform_versions（Git API 派生缓存，恢复后自动重拉）。
  *   - 各自滚动保留最新 10 份。
  *   - 退出码：0 = 完成或按开关跳过；1 = 致命错误（库连不上 / 写盘失败）。
@@ -45,7 +45,7 @@ try {
 
     if ($warning !== '') {
         echo date('Y-m-d H:i:s') . " ⚠ 备份权限告警: {$warning}\n";
-        // cron 无前端，落操作日志是唯一的 web 可见途径（后台「操作日志」面板可查）
+        // cron 无前端，写操作日志是 Web 上可见的唯一途径（后台操作日志面板可查）
         (new OperationLogRepository($pdo))->record(
             'system',
             'backup_database',

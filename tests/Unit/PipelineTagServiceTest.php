@@ -11,12 +11,12 @@ use PHPUnit\Framework\TestCase;
 /**
  * PipelineTagService::cleanupStaleTags 单元测试
  *
- * 专项锁定「以 Harbor 为准」清理 ci_pipeline_artifacts 的安全不变量：
- *   - 只删「Harbor 明确返回了 tag 列表且其中没有这条」的行；
- *   - Harbor 不可达 → 该仓库跳过，绝不误删；
- *   - repository / tag 为空 → 跳过（不可校验 = 保留）；
- *   - Harbor 未配置（null）→ 整体跳过；
- *   - 只碰 ci_pipeline_artifacts，绝不碰 cd_* 表。
+ * 覆盖以 Harbor 为准清理 ci_pipeline_artifacts 时的安全约束：
+ *   - 只删 Harbor 明确返回了 tag 列表且其中没有这条的记录；
+ *   - Harbor 不可达：该仓库跳过，不删除任何记录；
+ *   - repository / tag 为空：跳过（无法校验即保留）；
+ *   - Harbor 未配置（null）：整体跳过；
+ *   - 只操作 ci_pipeline_artifacts，不碰 cd_* 表。
  *
  * 依赖 SQLite 内存库 + mock HarborService（override getTags），不触网。
  *
@@ -47,7 +47,7 @@ class PipelineTagServiceTest extends TestCase
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
             UNIQUE (provider, project_id, pipeline_iid)
         )');
-        // 顺带造一张 cd_* 表，用于锁定「绝不碰 cd_*」
+        // 顺带造一张 cd_* 表，用于验证不会写到 cd_* 表
         $this->pdo->exec('CREATE TABLE cd_registry_artifacts (
             id INTEGER PRIMARY KEY,
             tag TEXT
@@ -130,7 +130,7 @@ class PipelineTagServiceTest extends TestCase
     public function testSkipsWhenHarborUnreachable(): void
     {
         $this->insertTag('java/registry', 1, 'v1.0.0', 'mycode/registry');
-        // getTags 返回 error → 模拟 Harbor 不可达
+        // getTags 返回 error，模拟 Harbor 不可达
         $harbor = $this->makeHarbor(['mycode/registry' => ['error' => 'harbor down']]);
 
         $stat = (new PipelineTagService($this->pdo, $harbor))->cleanupStaleTags();
@@ -170,7 +170,7 @@ class PipelineTagServiceTest extends TestCase
     {
         // ci 表里有一条会过期的记录
         $this->insertTag('java/registry', 1, 'gone', 'mycode/registry');
-        // cd 表里也放一条「同名」记录，清理后必须原封不动
+        // cd 表里也放一条同名记录，清理后必须原封不动
         $this->pdo->prepare('INSERT INTO cd_registry_artifacts (id, tag) VALUES (?, ?)')->execute([1, 'gone']);
         $harbor = $this->makeHarbor(['mycode/registry' => ['latest']]); // 'gone' 已不在 Harbor
 

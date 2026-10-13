@@ -61,6 +61,53 @@ class ApiTokenService
     }
 
     /**
+     * 编辑已有 token 的 scope 清单（不动明文与摘要，token 无需重新签发，下次请求即生效）。
+     *
+     * 与 createToken 不同：创建时非法 scope 会被忽略（宽松处理，避免表单误填导致建号失败），
+     * 编辑时严格报错且拒绝空集合：scope 直接决定可访问范围，勾选界面上的笔误若被忽略，
+     * 就会出现以为已收回权限或以为已授权的误解，故报错让用户重选。
+     *
+     * @param mixed $scopes 数组或逗号分隔字符串；空串与非标量项会被忽略
+     * @return bool false 表示 token 不存在（此时不写入任何内容）
+     * @throws \InvalidArgumentException 含目录外的 scope，或过滤后为空集合
+     * @throws \PDOException 查询 / 写入失败（ERRMODE_EXCEPTION）
+     */
+    public function updateScopes(int $id, mixed $scopes): bool
+    {
+        if ($this->findById($id) === null) {
+            return false;
+        }
+
+        $items = is_string($scopes) ? explode(',', $scopes) : $scopes;
+        if (!is_array($items)) {
+            throw new \InvalidArgumentException('Scopes must be an array or a comma-separated string');
+        }
+
+        $normalized = [];
+        foreach ($items as $item) {
+            $key = is_scalar($item) ? trim((string)$item) : '';
+            if ($key === '') {
+                continue;
+            }
+            if (!isset(AppConfig::API_SCOPES[$key])) {
+                throw new \InvalidArgumentException('Unknown scope: ' . $key);
+            }
+            if (!in_array($key, $normalized, true)) {
+                $normalized[] = $key;
+            }
+        }
+        if ($normalized === []) {
+            throw new \InvalidArgumentException('At least one scope is required');
+        }
+
+        $stmt = $this->pdo->prepare(
+            'UPDATE ' . AppConfig::TABLE_API_TOKENS . ' SET scopes = ? WHERE id = ?'
+        );
+        $stmt->execute([implode(',', $normalized), $id]);
+        return true;
+    }
+
+    /**
      * 列出全部 token（不含明文）。
      * 附上 scope 数组与是否过期的派生字段，方便 UI 直接渲染。
      *
@@ -80,10 +127,42 @@ class ApiTokenService
         return $result;
     }
 
-    /** 撤销（禁用）token */
+    /**
+     * 按主键查找 token 记录（含摘要列，仅供管理端判断存在性；结果不得回写到 HTTP 响应）。
+     *
+     * @return array<string,mixed>|null
+     */
+    public function findById(int $id): ?array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT * FROM ' . AppConfig::TABLE_API_TOKENS . ' WHERE id = ? LIMIT 1'
+        );
+        $stmt->execute([$id]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        return $row ?: null;
+    }
+
+    /** 撤销（禁用）token —— 只改 enabled，token_hash 一字不动，故可用 restore 原样恢复（见下） */
     public function revoke(int $id): bool
     {
         $stmt = $this->pdo->prepare('UPDATE ' . AppConfig::TABLE_API_TOKENS . ' SET enabled = 0 WHERE id = ?');
+        $stmt->execute([$id]);
+        return $stmt->rowCount() > 0;
+    }
+
+    /**
+     * 恢复（重新启用）被冻结的 token，即 revoke 的逆操作，同样只改 enabled，token_hash 不变。
+     *
+     * 因此原明文重新生效：已持有该 token 的调用方（如 CD 的 CI_API_TOKEN）无需重新配置。
+     * 使用约定（必须与调用方一致）：在集成服务语境里 revoke 表示禁用（冻结），可用 restore 复原；
+     * 真要作废一枚凭据请走 delete()（硬删除，摘要一并消失，不可恢复，只能重新签发）。
+     *
+     * @return bool false = 未命中任何行（id 不存在），或该行本就是启用态
+     *              （MySQL 的 rowCount 只计实际发生变更的行）；调用方只在确认处于禁用态时调用
+     */
+    public function restore(int $id): bool
+    {
+        $stmt = $this->pdo->prepare('UPDATE ' . AppConfig::TABLE_API_TOKENS . ' SET enabled = 1 WHERE id = ?');
         $stmt->execute([$id]);
         return $stmt->rowCount() > 0;
     }

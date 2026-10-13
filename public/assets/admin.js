@@ -42,12 +42,13 @@ import {
 } from './modules/permissions.js';
 import {
     loadApiTokens, showApiTokenForm, hideApiTokenForm, refreshApiTokenView,
-    submitApiTokenForm, copyApiToken, revokeApiToken, deleteApiToken
+    submitApiTokenForm, copyApiToken, revokeApiToken, deleteApiToken,
+    showApiTokenScopeForm, hideApiTokenScopeForm, submitApiTokenScopeForm
 } from './modules/apiTokens.js';
 import { loadOperationLogs, resetOperationLogs } from './modules/oplog.js';
 import { loadDeployLogs, resetDeployLogs } from './modules/deploylog.js';
 import { loadApiAccessLogs, resetApiAccessLogs } from './modules/apiaccesslog.js';
-import { loadSystemInfo, doMigrate, doBackup, loadPlatformConfig, toggleSysTables, toggleSysBackups } from './modules/system.js';
+import { loadSystemInfo, doMigrate, doBackup, loadPlatformConfig, toggleSysTables, toggleSysBackups, loadIntegratedServices, enableIntegratedService, disableIntegratedService, onIntegratedServiceToggle, copyIntegratedToken, hideIntegratedTokenBox } from './modules/system.js';
 
 const LOGIN_API = '/api/admin/login';
 
@@ -203,7 +204,8 @@ function doSwitch(name) {
     if (name === 'roles') loadRoleList();
     if (name === 'perm-list') loadPermList();
     if (name === 'implied-rules') loadImpliedRules();
-    if (name === 'api-tokens') loadApiTokens();
+    // 集成服务面板已并入本页（Token 列表上方）：一并刷新，避免状态陈旧
+    if (name === 'api-tokens') { loadApiTokens(); loadIntegratedServices(); }
     if (name === 'operation-logs') loadOperationLogs(1);
     if (name === 'deploy-logs') loadDeployLogs(1);
     if (name === 'api-access-logs') loadApiAccessLogs(1);
@@ -261,9 +263,11 @@ Object.assign(window, {
     loadRoleList, showRoleForm, hideRoleForm, submitRoleForm, deleteRole, togglePermGroup,
     loadPermList, deletePermission, registerPermission, loadImpliedRules, showImpliedForm, hideImpliedForm, submitImpliedForm, deleteImpliedRule,
     loadApiTokens, showApiTokenForm, hideApiTokenForm, submitApiTokenForm, copyApiToken, revokeApiToken, deleteApiToken,
+    showApiTokenScopeForm, hideApiTokenScopeForm, submitApiTokenScopeForm,
     loadOperationLogs, resetOperationLogs, loadDeployLogs, resetDeployLogs,
     loadApiAccessLogs, resetApiAccessLogs,
     loadSystemInfo, doMigrate, doBackup, loadPlatformConfig, toggleSysTables, toggleSysBackups,
+    loadIntegratedServices, enableIntegratedService, disableIntegratedService, onIntegratedServiceToggle, copyIntegratedToken, hideIntegratedTokenBox,
     // 分页 / 视图
     getMapView, getMapPage, setMapPage, getMapTotalPages, setMapTotalPages,
     getTopoPage, setTopoPage, getTopoTotalPages,

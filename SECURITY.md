@@ -6,9 +6,11 @@ As this project is maintained by an individual with limited resources, security 
 
 | Version | Supported |
 | ------- | --------- |
-| v2.8.x | ✅ Active support — will receive security updates |
+| v2.9.0 and below | ✅ Active support — will receive security updates |
+| v2.8.9 and below | ❌ No longer supported — please upgrade to the latest version 
 | v2.7.x and below | ❌ No longer supported — please upgrade to the latest version |
-| CD v1.5.x | ✅ Active support — will receive security updates |
+| CD v1.6.x | ✅ Active support — will receive security updates |
+| CD v1.5.7 | ✅ Active support — will receive security updates |
 | CD v1.4.x and below | ❌ No longer supported — please upgrade to the latest version |
 
 **Notes**:

@@ -67,7 +67,7 @@ To restrict origins, edit `config/settings.php`:
 | `/oauth/authorize` | GET/POST | OAuth2 authorization code flow: consent page / submit authorization |
 | `/oauth/token` | POST | Exchange authorization code for an access token |
 | `/oauth/userinfo` | GET/POST | OAuth2 user info |
-| `/oauth/userinfo/emails` | GET | GitHub-style emails sub-endpoint (Grafana fallback) |
+| `/oauth/userinfo/emails` | GET | GitHub-style emails sub-endpoint (for clients that fetch email via the GitHub emails flow) |
 | `/.well-known/openid-configuration` | GET | OIDC discovery document (public; see [Single-Sign-On](Single-Sign-On.md)) |
 | `/.well-known/jwks.json` | GET | OIDC signing keys (public) |
 
@@ -397,6 +397,7 @@ Token expires in 24 hours. `super_admin` role returns `"*"` for permissions.
 | `/api/admin/migrate` | POST | Manually sync the schema (create missing tables + back-fill columns/indexes + seed permissions + mark schema current; answers 409 pointing at `php cli/migrate.php` when the account lacks DDL privileges; super_admin only) |
 | `/api/admin/backup` | POST | Manually run a database backup (zip archive, keeps the most recent 10; when CD is enabled an extra CD-library archive is produced; super_admin only) |
 | `/api/admin/backups` | GET | List generated database backup files (super_admin only) |
+| `/api/admin/integrated_services/{service}` | GET | Integrated service enablement status (currently only `cd`; returns enabled / provision (auto|manual) / default_provision (derived from the current migration mode) / bound token soft reference plus the credential triad (`token_exists` / `token_enabled` / `token_expired`) and liveness `token_active` (= exists && not disabled && not expired) / scopes that will be granted on enable; a missing row yields the enabled=false default state; requires `ci.system`) |
 | `/api/admin/tag_cleanup` | POST | Run stale tag cleanup once, on demand (equivalent to `cli/cleanup-pipeline-tags.php`; returns 409 and skips safely when the switch is off or Harbor is unconfigured; requires `ci.platform-config`) |
 | `/api/admin/tag_backfill` | POST | Run image tag log backfill once, on demand (equivalent to `cli/backfill-pipeline-tags.php`; same guards, fills missing tags only and never overwrites scan results; requires `ci.platform-config`) |
 | `/api/admin/operation_logs` | GET | Operation audit log (filter by `?username=&action=&result=&operator_type=&date_from=&date_to=&page=&per_page=`; requires `ci.operation-logs`) |
@@ -441,20 +442,21 @@ Token expires in 24 hours. `super_admin` role returns `"*"` for permissions.
 | `/api/rbac/users/{username}` | PUT | Update an account (body: `password` and/or `role`) |
 | `/api/rbac/users/{username}` | DELETE | Delete an account (root / super_admin protected) |
 | `/api/rbac/roles` | GET | List available roles |
+| `/api/rbac/roles/{name}/permissions` | GET | Permission keys granted to a role (used by CD to converge and map session permissions; 404 when the role does not exist, `["*"]` wildcard for `super_admin`) |
 
 ---
 
 ## OAuth2 / OIDC Module (`/oauth`, `/.well-known`)
 
-> Lets external systems such as Grafana log in with Glue accounts (OAuth2 authorization code flow), and provides OIDC auto-discovery for Jenkins oic-auth / Harbor OIDC / GitLab OmniAuth. See [Single-Sign-On](Single-Sign-On.md) for full configuration and flow details.
+> Lets external systems log in with Glue accounts (OAuth2 authorization code flow), and provides OIDC auto-discovery for Jenkins oic-auth / Harbor OIDC / GitLab OmniAuth. See [Single-Sign-On](Single-Sign-On.md) for full configuration and flow details.
 
 | Endpoint | Method | Description |
 |---|---|---|
 | `/oauth/authorize` | GET | Authorization code flow: render the consent page (browser redirect) |
 | `/oauth/authorize` | POST | Submit authorization (username/password login + approve/deny; shares the 5-attempts/15-minutes login lockout with the login endpoint) |
 | `/oauth/token` | POST | Exchange authorization code for an access token |
-| `/oauth/userinfo` | GET/POST | User info (access-token authenticated; both GET and POST are registered for Grafana-style clients) |
-| `/oauth/userinfo/emails` | GET | GitHub-style emails sub-endpoint (Grafana fallback) |
+| `/oauth/userinfo` | GET/POST | User info (access-token authenticated; both GET and POST are registered for clients that send userinfo requests via POST) |
+| `/oauth/userinfo/emails` | GET | GitHub-style emails sub-endpoint (for clients that fetch email via the GitHub emails flow) |
 | `/.well-known/openid-configuration` | GET | OIDC discovery document (public) |
 | `/.well-known/jwks.json` | GET | OIDC signing keys (public keys only, no private key) |
 
@@ -499,8 +501,11 @@ Token expires in 24 hours. `super_admin` role returns `"*"` for permissions.
 | `/api/admin/api_tokens/scopes` | GET | Return the selectable scope catalog (`{"scopes":[{"key":"main","label":"MAIN (read-only)"},…]}`) |
 | `/api/admin/api_tokens` | GET | List tokens (**no plaintext**, returns `{"tokens":[…]}`) |
 | `/api/admin/api_tokens` | POST | Create a token, returns one-time plaintext |
-| `/api/admin/api_tokens/{id}/revoke` | POST | Revoke (**disable**, keeps the record), returns `{"ok":true}` |
-| `/api/admin/api_tokens/{id}` | DELETE | Delete (**hard delete** the record), returns `{"ok":true}` |
+| `/api/admin/api_tokens/{id}/scopes` | PUT | **Edit scopes**: metadata only (plaintext and sha256 digest unchanged, **no need to replace the token**, the next request is checked against the new scopes); every scope must come from the catalog and at least one is required (otherwise 400); 404 when the token does not exist |
+| `/api/admin/api_tokens/{id}/revoke` | POST | Revoke (**disable**, keeps the record and its digest; it is **restorable**: an integrated-service credential disabled this way is restored to the *very same* token when that service is enabled again — the original plaintext keeps working), returns `{"ok":true}` |
+| `/api/admin/api_tokens/{id}` | DELETE | Delete (**hard delete** the record; the digest goes with it and cannot be recovered → the integrated service can only be given a **newly issued** credential on the next enable), returns `{"ok":true}` |
+| `/api/admin/integrated_services/{service}/enable` | POST | Enable an integrated service: in one transaction it upserts the contract row (provision defaults to auto/manual per the current `DB_AUTO_MIGRATE`, overridable via body) and takes one of three paths — ① first enable: issues a service token restricted to build.read / build.write / rbac.user.write and returns the plaintext `token` once; ② **restore from freeze**: the row is disabled and the credential was merely disabled (revoked) and is not expired → the **same credential is restored** (its original plaintext becomes valid again, no CD change needed), replying `reused=true` with `token: null`; ③ **re-issue after a burn**: the credential was revoked (while the row stayed enabled) / deleted / expired → the old credential is retired, a new one is issued and re-bound in the same transaction, replying `reissued=true` plus the new plaintext. 409 only when already enabled **with a valid credential**; super_admin only |
+| `/api/admin/integrated_services/{service}/disable` | POST | Disable (freeze): in one transaction sets enabled=0 and **disables** (**not** burns) the bound token — both the credential row and the binding are kept, so enabling again restores the very same token (no CD change; to burn/rotate it, revoke or delete that token first); no tables or data are deleted; 409 when not enabled; super_admin only |
 
 #### Create Token
 
@@ -523,6 +528,30 @@ Response (**plaintext shown only once**):
 {
   "id": 1,
   "token": "dg_8f3a4b1c…（64 hex chars）"
+}
+```
+
+#### Edit Token Scopes
+
+Request body:
+
+```json
+{
+  "scopes": ["main", "build.read"]
+}
+```
+
+- Only the `scopes` column changes (**metadata**): the plaintext token and its sha256 digest stay the same, so callers **do not need a new token** — the very **next request** is checked against the new scopes. Use it to grant or withdraw permissions on an already-issued token (writeback scopes such as `build.report` are a good fit for temporary grants).
+- `scopes` must **all** come from the catalog and contain **at least one** entry: an unknown key returns 400 ("Unknown scope selected, please re-select"), an empty set returns 400 ("Select at least one scope"). This deliberately differs from creation, where invalid keys are silently dropped: editing is a **permission grant/withdraw** action, so a mis-tick must fail loudly instead of silently widening or narrowing access. Use *revoke* to make a token unusable.
+- An unknown token returns 404 ("Token not found or already deleted"). super_admin only; every edit writes the `update_api_token_scopes` operation-log entry (including the stored scope list).
+
+Response:
+
+```json
+{
+  "ok": true,
+  "id": 1,
+  "scopes": ["main", "build.read"]
 }
 ```
 
@@ -561,11 +590,17 @@ curl -X POST "http://URL/api/build/php/myapp/report" \
   -H "Authorization: Bearer $NEW_TOKEN" \
   -d '{"pipeline_iid":123,"status":"success","finished_at":"2026-08-18T10:05:12+08:00","exit_code":0,"log_url":"https://ci.example.com/build/123/log","tag":"v1.0.0","env":"prod"}'
 
-# ④ Revoke a token (disable, keeps the record)
+# ④ Edit token scopes (metadata only: no token replacement needed, effective on the next request)
+curl -X PUT "http://URL/api/admin/api_tokens/1/scopes" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d '{"scopes":["main","build.read"]}'
+
+# ⑤ Revoke a token (disable, keeps the record)
 curl -X POST "http://URL/api/admin/api_tokens/1/revoke" \
   -H "Authorization: Bearer $ADMIN_TOKEN"
 
-# ⑤ Delete a token (hard delete the record)
+# ⑥ Delete a token (hard delete the record)
 curl -X DELETE "http://URL/api/admin/api_tokens/1" \
   -H "Authorization: Bearer $ADMIN_TOKEN"
 ```
