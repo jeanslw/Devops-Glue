@@ -131,9 +131,9 @@ class OidcServiceTest extends TestCase
     }
 
     /**
-     * claim 白名单护栏（一）：`OPTIONAL_CLAIMS` 是 `signIdToken` 的唯一透传入口，而
-     * `CLAIMS_SUPPORTED` 是发给客户端的 discovery 声明 —— 两者必须一致：
-     * 白名单里的 claim 未声明 ⇒ 客户端不知道能拿到；声明里的 claim 不在白名单 ⇒ 客户端拿了空。
+     * claim 白名单校验（一）：`OPTIONAL_CLAIMS` 是 `signIdToken` 唯一的透传入口，而
+     * `CLAIMS_SUPPORTED` 是发给客户端的 discovery 声明，两者必须一致：
+     * 白名单里的 claim 未声明，客户端不知道能拿到；声明里的 claim 不在白名单，客户端拿了空值。
      */
     public function testOptionalClaimsAreDeclaredInClaimsSupported(): void
     {
@@ -151,8 +151,8 @@ class OidcServiceTest extends TestCase
     }
 
     /**
-     * claim 白名单护栏（二）：每个白名单 claim 都必须真的能被签进 id_token。
-     * 防「白名单漏加」类静默丢弃（新增 claim 时最易漏改的地方）。
+     * claim 白名单校验（二）：每个白名单 claim 都必须真的能被签进 id_token。
+     * 避免白名单漏加导致 claim 被丢弃（新增 claim 时最容易漏改的地方）。
      */
     public function testEveryOptionalClaimIsActuallySignedIntoIdToken(): void
     {
@@ -181,9 +181,9 @@ class OidcServiceTest extends TestCase
     }
 
     /**
-     * tripwire：白名单之外的 claim 会被**静默丢弃**（不报错、id_token 里也没有）。
-     * 这条断言把 P2（`systems` claim）的失败模式固定下来：落地 P2 时它必须变红，
-     * 从而强制开发者去改 `OPTIONAL_CLAIMS` + `CLAIMS_SUPPORTED` + `buildIdTokenClaims` + `userinfo` 四处。
+     * 白名单之外的 claim 会被丢弃（不报错、id_token 里也没有）。
+     * 这条断言把 P2（`systems` claim）的失败表现固定下来：落地 P2 时它必须失败，
+     * 从而提醒开发者去改 `OPTIONAL_CLAIMS` + `CLAIMS_SUPPORTED` + `buildIdTokenClaims` + `userinfo` 四处。
      */
     public function testClaimOutsideWhitelistIsSilentlyDropped(): void
     {

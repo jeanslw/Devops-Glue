@@ -7,25 +7,25 @@ namespace App\Test\Unit;
 use PHPUnit\Framework\TestCase;
 
 /**
- * 守卫不变量：HTML 模板里的静态资源 URL 必须带 `?v={{APP_VERSION}}`，
+ * HTML 模板里的静态资源 URL 必须带 `?v={{APP_VERSION}}`，
  * 且 3 个渲染入口都必须把该占位符替换为当前版本号。
  *
- * 回归背景（v2.8.9）：资源文件名**不带内容哈希**，而 nginx 曾对 `/assets/*.js|css`
- * 下发 `expires 30d` + `Cache-Control: public, immutable` —— 升级镜像后浏览器继续用旧 JS/CSS
- * （`admin.html` 与接口已是新版），表现为「新增的前端功能永远不出现」：
- * 典型症状是后台「数据管理 → 系统信息」的「迁移模式」行恒为内联占位符 `-`
+ * 回归背景（v2.8.9）：资源文件名不带内容哈希，而 nginx 曾对 `/assets/*.js|css`
+ * 下发 `expires 30d` + `Cache-Control: public, immutable`，升级镜像后浏览器继续用旧 JS/CSS
+ * （`admin.html` 与接口已是新版），表现为新增的前端功能始终不出现：
+ * 典型症状是后台数据管理页系统信息的迁移模式行恒为内联占位符 `-`
  * （旧 `system.js` 里没有那段渲染逻辑）。
  *
  * 因此新增 `<link>` / `<script>` 引用时必须照抄 `?v={{APP_VERSION}}` 写法；
- * 而「改了模板却忘了给渲染入口加替换」更糟：占位符会原样进浏览器，资源直接 404。
- * 两个方向都由本测试守住。
+ * 而改了模板却忘了给渲染入口加替换更糟：占位符会原样进浏览器，资源直接 404。
+ * 两个方向都由本测试覆盖。
  */
 class TemplateAssetVersioningTest extends TestCase
 {
     private const ROOT = __DIR__ . '/../..';
 
     /**
-     * 模板 → 渲染该模板的入口文件（入口必须替换 {{APP_VERSION}}）。
+     * 模板到渲染该模板的入口文件的映射（入口必须替换 {{APP_VERSION}}）。
      *
      * @var array<string, list<string>>
      */

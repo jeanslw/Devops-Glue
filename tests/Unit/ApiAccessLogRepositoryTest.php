@@ -10,9 +10,9 @@ use PHPUnit\Framework\TestCase;
 /**
  * ApiAccessLogRepository 单元测试（内存 SQLite）。
  *
- * 锁定审计日志的安全/功能契约：
- *   - record() 静默写、超长截断、空串归一为 null；
- *   - list() 筛选/分页，默认近 30 天窗口；
+ * 覆盖审计日志的安全与功能约定：
+ *   - record() 失败不抛错、超长截断、空串归一为 null；
+ *   - list() 筛选与分页，默认近 30 天窗口；
  *   - purge() 按保留期删除；
  *   - 全程不接触 token 原文（调用方责任，仓储只给入口）。
  */
@@ -237,7 +237,7 @@ class ApiAccessLogRepositoryTest extends TestCase
         )');
         $settings = new \App\Service\AppSettingRepository($this->pdo);
 
-        // 未设置 → 默认 all
+        // 未设置时默认 all
         $this->assertSame('all', $settings->getApiAccessLogLevel());
         // 存取往返 + 大小写归一
         $settings->setApiAccessLogLevel('WARNING');

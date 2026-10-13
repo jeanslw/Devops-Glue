@@ -173,11 +173,11 @@ class AdminUserRepositoryTest extends TestCase
     }
 
     /**
-     * 幂等重提交不得误报「未命中用户」。
+     * 幂等重提交不得误报未命中用户。
      *
-     * 存在性必须靠 userExists() 判定，不能靠 rowCount()：MySQL 下 rowCount 是「变更行数」，
+     * 存在性必须靠 userExists() 判定，不能靠 rowCount()：MySQL 下 rowCount 是变更行数，
      * 同一秒内用相同 role/email 重复提交（updated_at 的 NOW() 为秒级精度也不变）会返回 0，
-     * 对存在的用户误抛异常。SQLite 的 changes() 语义不同，本用例在 sqlite 上属回归护栏、
+     * 对存在的用户误抛异常。SQLite 的 changes() 语义不同，本用例在 SQLite 上主要用于回归，
      * 真正的判别环境是 MySQL。
      */
     public function testUpdateUserIsIdempotentOnUnchangedValues(): void
@@ -239,7 +239,7 @@ class AdminUserRepositoryTest extends TestCase
         $repo->setStatus('grace', 0);
         $this->assertSame(0, (int)$repo->findByUsername('grace')['status']);
 
-        // 同一秒内重复 toggle（status 值未变）不得误报「未命中用户」——这正是 rowCount 方案会误伤的场景
+        // 同一秒内重复 toggle（status 值未变）不得误报未命中用户，这正是 rowCount 方案会误伤的场景
         $repo->setStatus('grace', 0);
         $repo->setStatus('grace', 1);
         $this->assertSame(1, (int)$repo->findByUsername('grace')['status']);
@@ -273,11 +273,11 @@ class AdminUserRepositoryTest extends TestCase
         $pdo = $this->createMemoryDatabaseWithRoles();
         $repo = new AdminUserRepository($pdo);
 
-        // 真实存在的角色 → true
+        // 真实存在的角色：返回 true
         $pdo->exec("INSERT INTO " . AppConfig::TABLE_ROLES . " (name, description, is_system) VALUES ('deployer', '', 0)");
         $this->assertTrue($repo->roleExists('deployer'));
 
-        // 不存在的角色 → false（建号/改号应据此拦下悬空角色名）
+        // 不存在的角色：返回 false（建号/改号应据此拦下不存在的角色名）
         $this->assertFalse($repo->roleExists('ghost_role'));
     }
 

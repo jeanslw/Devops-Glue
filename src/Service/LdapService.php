@@ -16,7 +16,7 @@ namespace App\Service;
  *
  * 依赖：
  *   - php.ini 必须启用 extension=ldap，否则 isAvailable() 返回 false，
- *     调用方需静默降级（此时 LDAP 登录不可用，不影响本地 DB 登录）
+ *     此时 LDAP 登录不可用，不影响本地 DB 登录
  */
 class LdapService
 {

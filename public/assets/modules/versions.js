@@ -66,7 +66,7 @@ export async function loadVersions() {
         document.getElementById('ver-loading').innerHTML = '<p style="color:#dc2626;">' + __.t('js.load_failed') + ': ' + esc(e.message) + '</p>';
     }
 
-    // 慢探测：后台补齐实际版本号 + Harbor 机器人支持情况（失败/超时保持「未知版本」占位）
+    // 慢探测：后台补齐实际版本号与 Harbor 机器人支持情况（失败或超时保留未知版本占位）
     try {
         const res = await probeReq;
         if (handle401(res)) return;
@@ -122,7 +122,7 @@ function getDefaultVer(key) {
 }
 
 export async function saveVersions() {
-    // 后端 saveAll 语义：先清空覆盖表，空串/等于默认值的不落库 → 提交空串即「清空恢复默认」。
+    // 后端 saveAll 语义：先清空覆盖表，空串或等于默认值的不落库，提交空串即清空并恢复默认。
     // 因此必须收集所有输入框的值（含空串）；仅当本次没有任何改动时才跳过提交。
     const versions = {};
     let changed = false;

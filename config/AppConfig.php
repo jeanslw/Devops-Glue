@@ -2,14 +2,14 @@
 namespace App\Config;
 
 /**
- * 全局常量目录：表名、角色、权限种子、状态、构建模式/provider、scope 目录等纯静态数据。
+ * 全局常量目录：表名、角色、权限种子、状态、构建模式与 provider、scope 目录等纯静态数据。
  *
- * 本类刻意保持「无状态、无 IO」：
- *   - settings.php / env 配置读取 → {@see \App\Service\Settings}
- *   - ci_app_settings 运行时开关（build_mode/custom_push/tag 关键字等）→ {@see \App\Service\AppSettingRepository}
- *   - ci_platform_versions 读写 → {@see \App\Service\PlatformVersionRepository}
- *   - ci_job_git_map 读写/过滤 → {@see \App\Service\MappingManager}
- *   - API token 路由 scope 解析 → {@see \App\Support\ApiScopeResolver}
+ * 本类保持无状态、无 IO：
+ *   - settings.php / env 配置读取：{@see \App\Service\Settings}
+ *   - ci_app_settings 运行时开关（build_mode/custom_push/tag 关键字等）：{@see \App\Service\AppSettingRepository}
+ *   - ci_platform_versions 读写：{@see \App\Service\PlatformVersionRepository}
+ *   - ci_job_git_map 读写/过滤：{@see \App\Service\MappingManager}
+ *   - API token 路由 scope 解析：{@see \App\Support\ApiScopeResolver}
  */
 final class AppConfig
 {
@@ -64,7 +64,7 @@ final class AppConfig
     public const ROLE_VIEWER      = 'viewer';
 
     // 请求 attribute 标记：API token 鉴权成功后的 currentRole 值。
-    // 注意：它不是 RBAC 角色（不进 roles 表），仅用于区分「服务账号 token」与「管理登录」两种鉴权来源。
+    // 它不是 RBAC 角色（不进 roles 表），仅用于区分服务账号 token 与管理登录两种鉴权来源。
     public const ROLE_API_TOKEN   = 'api_token';
 
     // ── 权限键常量 ──
@@ -94,7 +94,7 @@ final class AppConfig
     public const PERM_CI_DEPLOY_LOGS      = 'ci.deploy-logs';
     // API 调用日志（API token 调用审计，日志中心子菜单）
     public const PERM_CI_API_LOGS         = 'ci.api-logs';
-    // 系统设置（一级父权限：平台管理 + 数据管理两个子权限，对应「系统设置」菜单分组）
+    // 系统设置（一级父权限：平台管理 + 数据管理两个子权限，对应系统设置菜单分组）
     public const PERM_CI_SETTINGS         = 'ci.settings';
     // 数据管理（DB schema 状态面板，系统设置子菜单，仅 super_admin 可触发迁移）
     public const PERM_CI_SYSTEM           = 'ci.system';
@@ -114,7 +114,7 @@ final class AppConfig
     public const PERM_CD_APPROVAL_CENTER = 'cd.approval-center'; // 审批中心一级菜单
     public const PERM_CD_APPROVE         = 'cd.deploy.approve';  // 审批/驳回操作（刻意挂在 cd.approval-center 一级菜单下，不走 cd.deploy 菜单）
 
-    /** 默认权限种子数据：key => ['name' => '显示名', 'parent' => null|parent_key]（英文规范数据，UI 通过 i18n 翻译） */
+    /** 默认权限种子数据：key => ['name' => 显示名, 'parent' => null|parent_key]（英文规范数据，UI 经 i18n 翻译）。 */
     public const DEFAULT_PERMISSIONS = [
         // CI（18 个：用户管理1父4子 + 权限管理1父3子 + 6 个独立权限 + 权限管理父）
         self::PERM_CI_MANAGE             => ['name' => 'CI Config', 'parent' => null],
@@ -167,16 +167,16 @@ final class AppConfig
     ];
 
     /**
-     * 权限隐含关系：选了一方自动拥有另一方
-     *   - 父→子：选了「构建管理」自动拥有「触发构建」
-     *   - 子→父：选了「部署到单机」自动拥有「部署管理」菜单
+     * 权限隐含关系：选中一方即自动拥有另一方。
+     *   - 父到子：选了构建管理自动拥有触发构建
+     *   - 子到父：选了部署到单机自动拥有部署管理菜单
      */
     public const IMPLIED_PERMISSIONS = [
-        // 父→子
+        // 父到子
         self::PERM_CD_BUILD => [self::PERM_CI_TRIGGER],
-        // 映射管理 → 拉取式记录只读：映射页「复制 Pipeline ID」按钮依赖 /api/build/{path}/pipelines
+        // 映射管理到拉取式记录只读：映射页的复制 Pipeline ID 按钮依赖 /api/build/{path}/pipelines
         self::PERM_CI_MAPPING_EDIT => [self::PERM_CI_BUILD_RECORDS_PULL],
-        // 子→父（选了二级自动显示一级菜单）
+        // 子到父（选了二级自动显示一级菜单）
         self::PERM_CI_USERS_LIST         => [self::PERM_CI_USERS_MANAGE],
         self::PERM_CI_USERS_PASSWORD     => [self::PERM_CI_USERS_MANAGE],
         self::PERM_CI_USERS_MANAGE_ADMIN => [self::PERM_CI_USERS_MANAGE],
@@ -190,11 +190,10 @@ final class AppConfig
         'cd.monitor.system' => [self::PERM_CD_MONITOR],
         'cd.monitor.custom' => [self::PERM_CD_MONITOR],
         'cd.monitor.alert'  => [self::PERM_CD_MONITOR],
-        // 通知管理 ↔ Bot/WebHook
-        //   子→父：选了 Bot/WebHook 自动显示「通知管理」一级菜单
+        // 通知管理与 Bot/WebHook 双向隐含：选了 Bot/WebHook 自动显示通知管理一级菜单
         self::PERM_CD_BOT     => [self::PERM_CD_NOTIFY],
         self::PERM_CD_WEBHOOK => [self::PERM_CD_NOTIFY],
-        // 审批操作 → 审批中心（选了二级自动显示一级菜单）
+        // 审批操作到审批中心（选了二级自动显示一级菜单）
         self::PERM_CD_APPROVE => [self::PERM_CD_APPROVAL_CENTER],
         // 构建记录：选了二级（拉取式/推送式）自动显示一级菜单
         self::PERM_CI_BUILD_RECORDS_PULL => [self::PERM_CI_BUILD_RECORDS],
@@ -208,8 +207,8 @@ final class AppConfig
         self::PERM_CI_SYSTEM          => [self::PERM_CI_SETTINGS],
     ];
 
-    /** 默认角色种子数据：super_admin 内置全权限（'*'），viewer 内置只读（CI + CD 两侧的纯读视图 key）。
-     *  只同步系统角色（不碰后台自定义角色），每次 bootstrap 幂等重建。 */
+    /** 默认角色种子数据：super_admin 内置全权限（'*'），viewer 内置只读（CI 与 CD 两侧的纯读视图 key）。
+     *  只同步系统角色，不涉及后台自定义角色，每次 bootstrap 幂等重建。 */
     public const DEFAULT_ROLES = [
         self::ROLE_SUPER_ADMIN => '*',
         self::ROLE_VIEWER      => [
@@ -234,7 +233,7 @@ final class AppConfig
         ],
     ];
 
-    /** 系统角色描述（roles.description 种子）：CD 侧审批角色目录把它当显示名（空则回退 name），故用简短中文名。 */
+    /** 系统角色描述（roles.description 种子）：CD 侧审批角色目录用它作显示名（空则回退 name），故用简短中文名。 */
     public const DEFAULT_ROLE_DESCRIPTIONS = [
         self::ROLE_SUPER_ADMIN => '超级管理员',
         self::ROLE_VIEWER      => '只读',
@@ -268,7 +267,7 @@ final class AppConfig
     public const PROVIDER_GITLAB_CI   = 'gitlab_ci';
     public const PROVIDER_GITEA_CI    = 'gitea_ci';
 
-    /** 内置「拉取式」构建 provider 集合（build_mode 只在这些值里选；custom_push 是独立开关，不在此列） */
+    /** 内置拉取式构建 provider 集合（build_mode 只能取这些值；custom_push 是独立开关，不在此列）。 */
     public const BUILTIN_PULL_PROVIDERS = [self::PROVIDER_JENKINS, self::PROVIDER_GITLAB_CI, self::PROVIDER_GITEA_CI];
     /**
      * 自定义推送式 CI（user push 模式）默认注册名。
@@ -277,10 +276,9 @@ final class AppConfig
      */
     public const PROVIDER_CUSTOM_PUSH = 'custom_push';
 
-    // ── 构建记录「镜像 Tag」日志兜底 ──
-    // 推送成功关键字（日志兜底匹配用，用户可在「平台管理」页自定义）；默认 'digest'，
-    // 命中 docker push 成功输出的 `digest: sha256:... size: ...` 片段。
-    // 支持 `|` 分隔多个关键字，任一命中即视为推送成功片段。
+    // 构建记录镜像 Tag 的日志兜底
+    // 推送成功关键字（日志兜底匹配用，可在平台管理页自定义）；默认 'digest'，命中
+    // docker push 输出中的 `digest: sha256:... size: ...` 片段，支持 `|` 分隔多个关键字。
     public const SETTING_TAG_LOG_KEYWORD = 'tag_log_keyword';
     public const DEFAULT_TAG_LOG_KEYWORD = 'digest';
 
@@ -298,8 +296,8 @@ final class AppConfig
     public const DEFAULT_API_ACCESS_LOG_LEVEL = 'all';
     public const API_ACCESS_LOG_LEVELS = ['all', 'warning', 'error', 'off'];
 
-    // 审计日志保留天数（cli/cleanup-api-access-logs.php 每日清理依据）与清理开关。
-    // 开关默认开启：保持「每日按保留期清理」的既有行为，需显式关闭才停止。
+    // 审计日志保留天数与清理开关（cli/cleanup-api-access-logs.php 的每日清理依据）。
+    // 开关默认开启，需显式关闭才停止清理。
     public const SETTING_API_ACCESS_LOG_RETAIN_DAYS = 'api_access_log_retain_days';
     public const DEFAULT_API_ACCESS_LOG_RETAIN_DAYS = 90;
     public const MAX_API_ACCESS_LOG_RETAIN_DAYS = 3650;
@@ -320,9 +318,9 @@ final class AppConfig
     public const LOGIN_FAIL_MAX_ATTEMPTS     = 5;
     public const LOGIN_FAIL_LOCK_SECONDS     = 900;  // 连续失败锁定 15 分钟
 
-    // ── API Token 作用域（scope）──
+    // API Token 作用域（scope）
     // 独立于 RBAC 权限体系：token 直接携带 scopes，每个 scope 映射到一组接口的读写能力。
-    // 值均为 i18n key（lang/zh_CN、lang/en），供「API 管理」UI 渲染与后端翻译复用。
+    // 值均为 i18n key（lang/zh_CN、lang/en），供 API 管理页面渲染与后端翻译复用。
     public const API_SCOPE_MAIN         = 'main';
     public const API_SCOPE_GIT          = 'git';
     public const API_SCOPE_HARBOR_READ  = 'harbor.read';
@@ -345,30 +343,29 @@ final class AppConfig
     ];
 
     /**
-     * scope → 控制器内二次校验的权限 key 映射。
-     * 写操作端点（build trigger/retry/cancel、harbor scanTrigger）在 Controller 里还有一层
-     * requirePermission('ci.trigger') 检查，API token 命中这些 scope 时须把对应权限注入 userPermissions，
-     * 否则中间件放行但控制器会 403。
+     * scope 到控制器内二次校验权限 key 的映射。
+     * 写操作端点（build trigger/retry/cancel、harbor scanTrigger）在 Controller 内还有一层
+     * requirePermission('ci.trigger') 检查，API token 命中这些 scope 时须注入对应权限，
+     * 否则中间件放行但控制器返回 403。
      */
     public const API_SCOPE_PERMS = [
         self::API_SCOPE_BUILD_WRITE  => [self::PERM_CI_TRIGGER],
         self::API_SCOPE_BUILD_REPORT => [self::PERM_CI_TRIGGER],
         self::API_SCOPE_HARBOR_SCAN  => [self::PERM_CI_TRIGGER],
-        // build.read → ci.build-records.pull：构建记录只读端点（pipelines/logs 等）在 Controller 内二次校验，
-        // 保证持有 build.read scope 的 CD 服务账号 token 读取拉取式记录时不被 403。
+        // build.read 对应 ci.build-records.pull：构建记录只读端点（pipelines/logs 等）在控制器内二次校验，
+        // 不注入会让持有该 scope 的 CD 服务账号 token 读取记录时被拒。
         self::API_SCOPE_BUILD_READ   => [self::PERM_CI_BUILD_RECORDS_PULL],
-        // 只读 scope 也按「CI 读权限」注入：main/git/harbor.read 对应的列表/查询端点现都在 Controller 内
-        // requirePermission(ci.build-records.pull)，token 命中这些 scope 时须注入，否则会 403。
-        // main 另注入 ci.discover（gitDiscovery 端点）；该权限只 gate 发现视图，不构成写权限提权。
+        // 只读 scope 同样注入 CI 读权限：main/git/harbor.read 对应的列表与查询端点由控制器
+        // requirePermission(ci.build-records.pull) 校验，不注入会被拒。
+        // main 另注入 ci.discover（gitDiscovery 端点），该权限只控制发现视图，不构成提权。
         self::API_SCOPE_MAIN         => [self::PERM_CI_BUILD_RECORDS_PULL, self::PERM_CI_DISCOVER],
         self::API_SCOPE_GIT          => [self::PERM_CI_BUILD_RECORDS_PULL],
         self::API_SCOPE_HARBOR_READ  => [self::PERM_CI_BUILD_RECORDS_PULL],
     ];
 
     /**
-     * scope → 该 scope 实际可访问的接口能力清单（用于「API 管理」列表展示）。
-     * 值直接以英文端点/操作名呈现（不经过 i18n），让用户一眼看清 token 具体能调哪些接口，
-     * 避免只看到 `build.report` 这样抽象的 scope 键而误以为权限没设置好。
+     * scope 到该 scope 可访问接口能力清单的映射（用于 API 管理列表展示）。
+     * 值直接以英文端点/操作名呈现（不经 i18n），便于核对 token 具体能调用哪些接口。
      */
     public const API_SCOPE_CAPABILITIES = [
         self::API_SCOPE_MAIN         => ['main'],

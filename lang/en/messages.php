@@ -707,7 +707,7 @@ return [
     'api.scope.rbac_user_write' => 'RBAC user write (create/update/delete users)',
 
     // ── OAuth2 Provider ──
-    'oauth.login_title'      => 'Sign in to Devops-Glue',
+    'oauth.login_title'      => 'Sign in',
     'oauth.invalid_request'  => 'Invalid OAuth request (client_id or redirect_uri mismatch)',
 
     // ── Operation Logs ──

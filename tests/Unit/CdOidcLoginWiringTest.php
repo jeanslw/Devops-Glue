@@ -18,20 +18,20 @@ use Slim\Psr7\Factory\ResponseFactory;
 use Slim\Psr7\Factory\ServerRequestFactory;
 
 /**
- * 守卫不变量：CD 经 Glue OIDC 登录的四项 P0 接线（定稿见 docs/CD接入Glue-OIDC设计文档.md）。
+ * CD 经 Glue OIDC 登录的四项 P0 接线。
  *
- *   1. P0-1：`oauth_clients` 注册 `cd` 客户端，secret / redirect_uri **都**从 env 注入且默认空串
- *      → 空即被 `OAuthService::__construct` 的 fail-closed 过滤剔除（否则空 secret 与空输入
- *      `hash_equals` 相等 = 公开默认密钥）；回调地址没有「合理默认」，给 localhost 反倒是隐患。
- *   2. P0-0：授权时按 client 声明的归属系统校验账号 —— 写死 CI 会让所有 CD 账号（systems='cd'）
- *      在登录页被拒（auth.no_ci_access）；同时**必须**保留 `?: SYSTEM_CI` 回退，否则既有
- *      Grafana / Jenkins 等未声明 system 的客户端会全体登录失败。
- *   3. P0-2：access token 落库前 sha256 —— cache 表存明文等于「库表或备份泄露即所有在途令牌泄露」。
- *   4. P0-4：`GET /api/rbac/roles/{name}/permissions` 上线且 CD 自己的服务 token 就能调通
- *      （scope 复用 rbac.user.write；若哪天给它单开 scope，CD 会在权限映射上一路 403）。
+ *   1. P0-1：`oauth_clients` 注册 `cd` 客户端，secret / redirect_uri 都从 env 注入且默认空串，
+ *      空值会被 `OAuthService::__construct` 的检查剔除（否则空 secret 与空输入在 `hash_equals`
+ *      下相等，等于公开默认密钥）；回调地址没有合理默认值，默认 localhost 反而有隐患。
+ *   2. P0-0：授权时按 client 声明的归属系统校验账号：写死 CI 会让所有 CD 账号（systems='cd'）
+ *      在登录页被拒（auth.no_ci_access）；同时必须保留 `?: SYSTEM_CI` 回退，否则既有
+ *      Jenkins / Harbor 等未声明 system 的客户端会全部登录失败。
+ *   3. P0-2：access token 落库前先做 sha256：cache 表存明文意味着库表或备份泄露时在途令牌一并泄露。
+ *   4. P0-4：`GET /api/rbac/roles/{name}/permissions` 上线且 CD 自己的服务 token 能调通
+ *      （scope 复用 rbac.user.write；若以后给它单开 scope，CD 会在权限映射上一路 403）。
  *
- * 为什么值得守：以上四点**全都不会让业务单测变红**，只会在浏览器 / 生产上表现为
- * 「CD 登不进 Glue」「既有 SSO 全挂」「令牌随备份泄露」「CD 把角色权限读成空」。
+ * 需要单独测试的原因：以上四点都不会让业务单测失败，只会在浏览器或生产上表现为
+ * CD 登不进 Glue、既有 SSO 全部失败、令牌随备份泄露、CD 把角色权限读成空。
  */
 class CdOidcLoginWiringTest extends TestCase
 {
@@ -114,8 +114,8 @@ class CdOidcLoginWiringTest extends TestCase
     }
     /**
      * `expires_in` 必须引用 `OAuthService::ACCESS_TOKEN_TTL`：此前它是字面量 3600，与真正决定
-     * cache 过期时间的常量一旦漂移，就会对客户端（Grafana 等）谎报 access token 有效期。
-     * CD v1 不消费该字段，但 CD 侧评审已把它列为整改项，这里是它的回归护栏。
+     * cache 过期时间的常量一旦不一致，返回给 OAuth2 客户端的 access token 有效期就是错的。
+     * CD v1 不消费该字段，但 CD 侧已把它列为整改项，这里用于回归验证。
      */
     public function testTokenEndpointExpiresInReferencesConstant(): void
     {
@@ -151,8 +151,8 @@ class CdOidcLoginWiringTest extends TestCase
     }
 
     /**
-     * P0-4 的 DI 接线：容器必须能真的构造出 RbacController。
-     * （漏注入 TokenService 时 PHP-DI 会在运行时抛错 → 该端点 500，而所有单测依然全绿。）
+     * P0-4 的 DI 接线：容器必须能构造出 RbacController。
+     * （漏注入 TokenService 时 PHP-DI 会在运行时抛错，该端点返回 500，而现有单测仍会全部通过。）
      */
     public function testContainerResolvesRbacController(): void
     {
@@ -167,8 +167,7 @@ class CdOidcLoginWiringTest extends TestCase
 
     /**
      * P0-4 的真实行为：跑真 SQL（种子角色 + role_permissions），覆盖 403 / 200 / 超管通配 / 404
-     * 四条分支 —— 尤其「角色不存在」不能返回空数组，否则 CD 会把「查错角色名」当成
-     * 「该角色零权限」而把权限收敛清空。
+     * 四条分支；其中角色不存在时不能返回空数组，否则 CD 会把查错角色名当成该角色零权限而清空权限。
      */
     public function testRolePermissionsEndpointBehaviour(): void
     {
@@ -223,7 +222,7 @@ class CdOidcLoginWiringTest extends TestCase
         );
         $this->assertSame(['*'], ((array) json_decode((string) $resp->getBody(), true))['permissions']);
 
-        // 角色不存在：404，与「零权限」严格区分
+        // 角色不存在：返回 404，与零权限的情况区分开
         $resp = $controller->rolePermissions(
             $apiReq,
             $responseFactory->createResponse(),

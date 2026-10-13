@@ -93,8 +93,8 @@ class OAuthController extends BaseController
             return $response->withStatus(429)->withHeader('Content-Type', 'text/html; charset=utf-8');
         }
 
-        // 复用现有认证逻辑（DB 用户 + .env 兜底）：按客户端声明的归属系统校验账号。
-        // CD 客户端声明 system=cd，其余客户端（Grafana / Jenkins / Harbor / GitLab）未声明 → 回退 CI，行为不变。
+        // 复用现有认证逻辑（DB 用户 + .env 兜底）：按客户端声明的归属系统校验账号；
+        // 未声明 system 的客户端（Jenkins / Harbor / GitLab）回退 CI。
         $systemType = $this->oauth->clientSystem($clientId) ?: AppConfig::SYSTEM_CI;
         $result = $this->auth->authenticate($username, $password, $systemType);
         if (empty($result['success'])) {
@@ -143,7 +143,7 @@ class OAuthController extends BaseController
         $clientId     = (string)($body['client_id'] ?? '');
         $clientSecret = (string)($body['client_secret'] ?? '');
 
-        // Grafana 等客户端默认用 HTTP Basic Auth 传 client_id/client_secret（RFC 6749 §2.3.1）
+        // 部分客户端用 HTTP Basic Auth 传 client_id/client_secret（RFC 6749 §2.3.1）
         if ($clientId === '' || $clientSecret === '') {
             [$basicId, $basicSecret] = $this->parseBasicAuth($request);
             if ($clientId === '') {
@@ -178,10 +178,10 @@ class OAuthController extends BaseController
         $payload = [
             'access_token' => $accessToken,
             'token_type'   => 'Bearer',
-            'expires_in'   => OAuthService::ACCESS_TOKEN_TTL, // 引用常量而非字面量：漂移会对客户端谎报有效期
+            'expires_in'   => OAuthService::ACCESS_TOKEN_TTL, // 引用常量：与 cache 实际过期时间同源
         ];
 
-        // OIDC：仅当授权请求 scope 含 openid 才签发 id_token（纯 OAuth2/Grafana 不签，保持向后兼容）
+        // 仅当授权请求 scope 含 openid 才签发 id_token（纯 OAuth2 客户端不签发）
         if ($this->hasOpenidScope($scope)) {
             $payload['id_token'] = $this->oidc->signIdToken(
                 $this->buildIdTokenClaims((string)$data['user'], (string)$data['role'], $this->resolveIssuer($request)),
@@ -201,7 +201,7 @@ class OAuthController extends BaseController
     /**
      * GET /oauth/userinfo — Bearer token 返回用户信息
      *
-     * Grafana 需要至少一个唯一标识字段；返回 username / role。
+     * 返回用户唯一标识与角色（sub / username / preferred_username / email / role / groups）。
      */
     public function userinfo(Request $request, Response $response): Response
     {
@@ -233,10 +233,9 @@ class OAuthController extends BaseController
     }
 
     /**
-     * GET /oauth/userinfo/emails — GitHub 风格邮箱子端点（Grafana 兜底请求）
+     * GET /oauth/userinfo/emails — GitHub 风格邮箱子端点
      *
-     * userinfo 已含 email 时 Grafana 一般不会再调此端点；注册它是为了兼容
-     * 仍走 GitHub emails 流程的客户端，返回与 userinfo 一致的占位邮箱。
+     * 供仍按 GitHub emails 流程取邮箱的 OAuth2 客户端使用，返回与 userinfo 一致的邮箱。
      */
     public function userinfoEmails(Request $request, Response $response): Response
     {
@@ -282,7 +281,7 @@ class OAuthController extends BaseController
 
     /**
      * 取用户邮箱：实时查库（token 期内 email 变更即时生效）；
-     * 用户不存在或 email 为空时退回 username@devops-glue.local 占位（Grafana 按 email 匹配用户，不能为空）。
+     * 用户不存在或 email 为空时退回 username@devops-glue.local 占位（客户端要求 email 非空）。
      *
      * @return array{email: string, verified: bool}
      */
@@ -293,8 +292,8 @@ class OAuthController extends BaseController
         if ($email !== '') {
             return ['email' => $email, 'verified' => true];
         }
-        // 用户未配置邮箱时退回 username@devops-glue.local 占位（Grafana 按 email 匹配用户，不能为空）。
-        // 该占位域是系统生成的占位值，OP 无法验证，故 email_verified/verified 必须为 false。
+        // 用户未配置邮箱时退回 username@devops-glue.local 占位（客户端要求 email 非空）。
+        // 占位域非用户真实邮箱、无法验证，故 email_verified/verified 必须为 false。
         return ['email' => $username . '@devops-glue.local', 'verified' => false];
     }
 
@@ -313,13 +312,13 @@ class OAuthController extends BaseController
     /**
      * 组装 id_token 的 claims（iss/sub 由 OidcService 补 exp/iat/aud/nonce）
      *
-     * ⚠️ 新增 claim（如 P2 计划的 `systems`）必须**同时**改 4 处，漏掉第 2 处会被**静默丢弃**
+     * 新增 claim（如 P2 计划的 `systems`）必须同时改 4 处，漏掉第 2 处该 claim 会被丢弃
      * （签出的 id_token 里没有它，也不报错）：
-     *   1. 本方法 —— 组装取值；
-     *   2. `OidcService::OPTIONAL_CLAIMS` —— 透传白名单（关键）；
-     *   3. `OidcService::CLAIMS_SUPPORTED` —— discovery 的 `claims_supported` 声明；
-     *   4. `userinfo()` 的返回数组 —— 若该 claim 也要在 userinfo 暴露。
-     * 护栏：`tests/Unit/OidcServiceTest.php` 的两条白名单交叉断言。
+     *   1. 本方法：组装取值；
+     *   2. `OidcService::OPTIONAL_CLAIMS`：透传白名单（关键）；
+     *   3. `OidcService::CLAIMS_SUPPORTED`：discovery 的 `claims_supported` 声明；
+     *   4. `userinfo()` 的返回数组：若该 claim 也要在 userinfo 暴露。
+     * 对应测试：`tests/Unit/OidcServiceTest.php` 的两条白名单交叉断言。
      *
      * @return array<string,mixed>
      */
@@ -340,13 +339,12 @@ class OAuthController extends BaseController
     /**
      * 确定 issuer：优先 OIDC_ISSUER 配置，缺省从当前请求 scheme+host 推导
      *
-     * ⚠️ 推导路径**有意不读** X-Forwarded-Proto / X-Forwarded-Host（可伪造，会污染 discovery 文档），
-     * 因此经 nginx / Ingress 反向代理时，推导出的 issuer 很可能是**内网地址**（如 http://devops-glue）：
-     *   ① OIDC 客户端 `iss` 校验失败；② 更隐蔽的是 discovery 的 `jwks_uri` 也指向内网 → 客户端拉不到
-     * 公钥，表现为「验签失败」而非「网络不通」，极易误判为密钥问题。
-     * → 凡经反向代理对外提供 SSO 的部署，**必须**显式配置 `OIDC_ISSUER=<对外地址>`；
-     *   联调前核对口径：`curl -s <issuer>/.well-known/openid-configuration | jq .issuer,.jwks_uri`。
-     * 部署项与联调 checklist 见 docs/CD接入Glue-OIDC设计文档.md §7.1 / §7.5。
+     * 推导路径有意不读 X-Forwarded-Proto / X-Forwarded-Host（可伪造，会污染 discovery 文档），
+     * 因此经 nginx / Ingress 反向代理时，推导出的 issuer 很可能是内网地址（如 http://devops-glue），
+     * 有两种后果：一是 OIDC 客户端 `iss` 校验失败；二是更隐蔽的，discovery 的 `jwks_uri` 也指向内网，
+     * 客户端拉不到公钥，表现为验签失败而不是网络不通，容易误判为密钥问题。
+     * 因此凡经反向代理对外提供 SSO 的部署，必须显式配置 `OIDC_ISSUER=<对外地址>`；
+     *   联调前核对方式：`curl -s <issuer>/.well-known/openid-configuration | jq .issuer,.jwks_uri`。
      */
     private function resolveIssuer(Request $request): string
     {
@@ -412,7 +410,7 @@ class OAuthController extends BaseController
     {
         $template = file_get_contents(__DIR__ . '/../../templates/oauth_login.html');
         if ($template === false) {
-            // 模板缺失属部署异常，直接抛错暴露问题，不静默降级
+            // 模板缺失属部署异常，直接抛错暴露问题，不做降级处理
             throw new \RuntimeException('OAuth 登录模板缺失: templates/oauth_login.html');
         }
 

@@ -78,7 +78,7 @@ class UserIdentityRepository
                 is_array($rawProfile) ? json_encode($rawProfile, JSON_UNESCAPED_UNICODE) : $rawProfile,
             ]);
         } catch (\PDOException $e) {
-            // 唯一索引冲突 = 已绑定，返回 false 让上层决定（不静默覆盖）
+            // 唯一索引冲突表示已绑定，返回 false 由上层决定（不直接覆盖）
             return false;
         }
     }

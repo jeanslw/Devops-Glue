@@ -21,9 +21,9 @@ if (!isset($app) || !$app instanceof App) {
 }
 
 // 管理页面
-// ⚠️ admin.html 里的静态资源都写成 /assets/xxx.js?v={{APP_VERSION}}：资源文件名不带内容哈希，
+// admin.html 里的静态资源都写成 /assets/xxx.js?v={{APP_VERSION}}：资源文件名不带内容哈希，
 //    若 URL 不随版本变化，升级镜像后浏览器会继续用被强缓存的旧 JS/CSS（HTML 已是新版），
-//    表现为「某个新功能永远不出现」。故此处必须与 / 路由一致，把占位符替换为当前版本号。
+//    表现为新增的前端功能始终不出现。故此处必须与 / 路由一致，把占位符替换为当前版本号。
 $app->get('/admin', function ($request, $response) {
     $htmlFile = __DIR__ . '/../templates/admin.html';
     $html = file_exists($htmlFile) ? (string) file_get_contents($htmlFile) : '<h1>Page Not Found / 页面丢失</h1>';
@@ -131,7 +131,7 @@ $app->group('/api', function (RouteCollectorProxy $api) {
         $rbac->map(['GET'], '/users', [RbacController::class, 'userList']);
         $rbac->map(['GET'], '/users/{username}', [RbacController::class, 'userGet']);
         $rbac->map(['GET'], '/roles', [RbacController::class, 'roleList']);
-        // 角色→权限清单（CD 权限映射用；scope 仍由 ApiScopeResolver 按整段 /api/rbac/* 统一判 rbac.user.write）
+        // 角色权限清单（CD 权限映射用；scope 仍由 ApiScopeResolver 按整段 /api/rbac/* 统一判 rbac.user.write）
         $rbac->map(['GET'], '/roles/{name}/permissions', [RbacController::class, 'rolePermissions']);
     })->add(AuthMiddleware::class);
 
@@ -169,15 +169,15 @@ $app->group('/api', function (RouteCollectorProxy $api) {
     })->add(AuthMiddleware::class);
 });
 
-// OAuth2 Provider（授权码流程，供 Grafana 等外部系统用 Glue 账号登录）
-// 注意：本组路由不挂 AuthMiddleware —— authorize 是浏览器跳转，token/userinfo 各自校验。
+// OAuth2 Provider（授权码流程，供外部系统用 Glue 账号登录）
+// 本组路由不挂 AuthMiddleware：authorize 由浏览器直接跳转，token / userinfo 各自校验凭证。
 $app->group('/oauth', function (RouteCollectorProxy $oauth) {
     $oauth->get('/authorize',  [OAuthController::class, 'authorizeForm']);
     $oauth->post('/authorize', [OAuthController::class, 'authorizeSubmit']);
     $oauth->post('/token',     [OAuthController::class, 'token']);
-    // Grafana 等客户端取 email 时可能用 POST 请求 userinfo，GET/POST 都注册
+    // userinfo 同时接受 GET 与 POST（部分 OAuth2 客户端用 POST 取用户信息）
     $oauth->map(['GET', 'POST'], '/userinfo', [OAuthController::class, 'userinfo']);
-    // GitHub 风格邮箱子端点（Grafana 兜底请求 /userinfo/emails）
+    // GitHub 风格邮箱子端点（兼容按 GitHub emails 流程取邮箱的 OAuth2 客户端）
     $oauth->get('/userinfo/emails', [OAuthController::class, 'userinfoEmails']);
 });
 

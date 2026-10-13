@@ -36,7 +36,7 @@ class AdminUserRepository
     public function updatePassword(string $username, string $passwordHash): void
     {
         $username = $this->normalizeUsername($username);
-        // 只更新密码，绝不能用 REPLACE INTO / INSERT OR REPLACE ——
+        // 只更新密码，不可用 REPLACE INTO / INSERT OR REPLACE：
         // 那会整行删除重建，把 role/systems 回退到列默认值（super_admin 被降级成 admin）。
         $stmt = $this->pdo->prepare(
             "UPDATE " . AppConfig::TABLE_ADMIN_USERS
@@ -45,7 +45,7 @@ class AdminUserRepository
         );
         $stmt->execute([$passwordHash, $username]);
         // 防御：调用方已先校验用户存在，此处 rowCount 必须为 1；
-        // 若为 0（用户被并发删除 / 用户名大小写不匹配）绝不静默吞掉。
+        // 若为 0（用户被并发删除 / 用户名大小写不匹配）直接抛异常，不忽略。
         // 新 bcrypt 哈希必然与旧值不同，不存在"值未变导致 rowCount=0"的误报。
         if ($stmt->rowCount() !== 1) {
             throw new \RuntimeException("updatePassword: 未命中用户 {$username}");
@@ -123,7 +123,7 @@ class AdminUserRepository
         )->fetchAll());
     }
 
-    /** 角色是否已存在于 roles 表（建号/改号前校验，防「角色名悬空」导致权限加载为空）。 */
+    /** 角色是否已存在于 roles 表（建号/改号前校验，避免角色不存在导致权限加载为空）。 */
     public function roleExists(string $role): bool
     {
         $stmt = $this->pdo->prepare("SELECT 1 FROM " . AppConfig::TABLE_ROLES . " WHERE name = ?");
@@ -153,9 +153,9 @@ class AdminUserRepository
             return;
         }
 
-        // 先查存在性、再 UPDATE：不能依赖 rowCount —— MySQL 下 rowCount 是「变更行数」而非「命中行数」，
+        // 先查存在性、再 UPDATE：不能依赖 rowCount，MySQL 下 rowCount 是变更行数而非命中行数，
         // 同一秒内重复提交（role/email 值未变，updated_at 的 NOW() 为秒级精度也未变）时 rowCount 会误报 0，
-        // 导致对存在的用户误抛「未命中用户」。同 setStatus()。
+        // 导致对存在的用户误抛未命中用户异常。同 setStatus()。
         if (!$this->userExists($username)) {
             throw new \RuntimeException("updateUser: 未命中用户 {$username}");
         }
@@ -173,8 +173,8 @@ class AdminUserRepository
     public function setStatus(string $username, int $status): void
     {
         $username = $this->normalizeUsername($username);
-        // 先查存在性、再 UPDATE：不能依赖 rowCount —— MySQL 下 rowCount 是「变更行数」而非「命中行数」，
-        // 同一秒内重复 toggle（status 值未变）时 rowCount 会误报 0，导致误抛「未命中用户」。
+        // 先查存在性、再 UPDATE：不能依赖 rowCount，MySQL 下 rowCount 是变更行数而非命中行数，
+        // 同一秒内重复 toggle（status 值未变）时 rowCount 会误报 0，导致误抛未命中用户异常。
         if (!$this->userExists($username)) {
             throw new \RuntimeException("setStatus: 未命中用户 {$username}");
         }

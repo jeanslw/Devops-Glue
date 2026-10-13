@@ -34,8 +34,8 @@ class AdminAuthService
         $dbUser = $this->repository->findByUsername($username);
 
         if ($dbUser !== null) {
-            // 停用账号（status=0）禁止登录：无论密码对错都提示「已停用」，避免误报「账号或密码错误」。
-            // 必须先于密码校验判断，否则停用账号输入错误密码会落到「密码错误」分支，误导用户以为密码忘了。
+            // 停用账号（status=0）禁止登录：无论密码对错都返回已停用提示，不返回账号或密码错误。
+            // 必须先于密码校验判断，否则停用账号输入错误密码会落到密码错误分支，提示与实际情况不符。
             if ((int)($dbUser['status'] ?? 1) === 0) {
                 return ['success' => false, 'errorKey' => 'auth.user_disabled'];
             }
@@ -53,10 +53,10 @@ class AdminAuthService
             }
         }
 
-        // 本地 DB 校验未通过 → 尝试 LDAP（先账号密码打 LDAP，再在 user_identities 里找已绑定账号）
-        // 策略：LDAP 只负责"验明正身"，授权（role/systems/email）仍以 admin_users 对应行作为唯一权威，
+        // 本地 DB 校验未通过时尝试 LDAP（先拿账号密码打 LDAP，再在 user_identities 里找已绑定账号）
+        // 策略：LDAP 只负责验证身份，授权（role/systems/email）仍以 admin_users 对应行为准，
         //       未绑定（provider_uid 未出现在 user_identities）一律拒绝，不自动建号；
-        //       若 LDAP 链路有故障（连接失败等），落到后续 .env 兜底判断（仅首次部署生效）。
+        //       若 LDAP 链路有故障（连接失败等），落到后续 .env 判断（仅首次部署生效）。
         if ($this->ldap !== null && $this->ldap->isEnabled()) {
             $ldapRes = $this->ldap->authenticate($username, $password);
             if (!empty($ldapRes['ok'])) {
@@ -95,17 +95,17 @@ class AdminAuthService
                         ];
                     }
                 }
-                // LDAP 通过但未绑定本地账号 → 明确拒绝，不放行、不自动建号
+                // LDAP 通过但未绑定本地账号：明确拒绝，不放行、不自动建号
                 return ['success' => false, 'errorKey' => 'auth.ldap_not_bound'];
             }
-            // LDAP 明确失败（密码错误 / 用户不存在）→ 直接拒绝；其余错误放行到 env 兜底
+            // LDAP 明确失败（密码错误 / 用户不存在）：直接拒绝；其余错误放行到 .env 判断
             if (in_array($ldapRes['error'] ?? '', ['ldap_bind_failed', 'ldap_user_not_found'], true)) {
                 return ['success' => false, 'errorKey' => 'auth.wrong_credentials'];
             }
         }
 
-        // .env 兜底仅限首次部署（admin_users 为空）。DB 是登录唯一权威，禁止常开明文旁路；
-        // DB 不可访问时 findByUsername 已抛异常（上层转 500），不存在「灾难恢复兜底登录」。
+        // .env 根密码仅限首次部署（admin_users 为空）。登录判定以 DB 为准，禁止常开明文旁路；
+        // DB 不可访问时 findByUsername 已抛异常（上层转 500），没有灾难恢复式的登录路径。
         // 忘记密码走离线补丁。
         if ($this->hasNoAdminUsers() && $this->authenticateEnvRoot($username, $password)) {
             return [

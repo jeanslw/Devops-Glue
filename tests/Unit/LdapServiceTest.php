@@ -8,11 +8,11 @@ use App\Service\Settings;
 use PHPUnit\Framework\TestCase;
 
 /**
- * LdapService 单测 — 不依赖真实 LDAP 服务器 / ext-ldap 扩展。
+ * LdapService 单测 — 不依赖真实 LDAP 服务器与 ext-ldap 扩展。
  *
- * 覆盖两类「无需 mock 即可测」的逻辑：
+ * 覆盖两类无需 mock 即可测的逻辑：
  *   1) 纯函数：escapeFilter / escapeDn（LDAP 注入防护，安全性关键路径）
- *   2) 降级分支：未装扩展 / 配置未启用时的短路返回（用户当前正是「不用 LDAP」场景）
+ *   2) 未启用分支：未装扩展或配置未启用时的短路返回
  *
  * 完整 bind 流程（connect/search/read）需要真实 ext-ldap 或 mock 掉 ldap_* 全局函数，
  * 见 AdminAuthService 通过构造注入 ?LdapService 即可在无 LDAP 时走本地 DB 登录。
@@ -69,7 +69,7 @@ class LdapServiceTest extends TestCase
         }
 
         // 配置 enabled=true 但扩展缺失：isEnabled 必须为 false，authenticate 直接返回 extension_missing，
-        // 绝不尝试 ldap_connect（这正是「不用 LDAP 也能安全运行」的契约）。
+        // 不尝试调用 ldap_connect（这正是不用 LDAP 也能正常运行的约定）。
         $service = new LdapService(new Settings(['ldap' => ['enabled' => true, 'host' => 'ldap.example.com']]));
 
         $this->assertFalse($service->isAvailable());

@@ -63,13 +63,13 @@ class ApiTokenService
     /**
      * 编辑已有 token 的 scope 清单（不动明文与摘要，token 无需重新签发，下次请求即生效）。
      *
-     * 与 createToken 刻意不同：创建时非法 scope 静默丢弃（宽松，避免表单噪音导致建号失败），
-     * 编辑时**严格报错**且拒绝空集合——scope 直接决定越权面，勾选界面上的笔误若被静默吞掉，
-     * 就会出现「以为已收回权限 / 以为已授权」的误解，宁可报错让人重选。
+     * 与 createToken 不同：创建时非法 scope 会被忽略（宽松处理，避免表单误填导致建号失败），
+     * 编辑时严格报错且拒绝空集合：scope 直接决定可访问范围，勾选界面上的笔误若被忽略，
+     * 就会出现以为已收回权限或以为已授权的误解，故报错让用户重选。
      *
      * @param mixed $scopes 数组或逗号分隔字符串；空串与非标量项会被忽略
      * @return bool false 表示 token 不存在（此时不写入任何内容）
-     * @throws \InvalidArgumentException 含目录外的 scope，或清洗后为空集合
+     * @throws \InvalidArgumentException 含目录外的 scope，或过滤后为空集合
      * @throws \PDOException 查询 / 写入失败（ERRMODE_EXCEPTION）
      */
     public function updateScopes(int $id, mixed $scopes): bool
@@ -151,14 +151,14 @@ class ApiTokenService
     }
 
     /**
-     * 恢复（重新启用）被冻结的 token —— revoke 的逆操作，同样只改 enabled，token_hash 一字不动。
+     * 恢复（重新启用）被冻结的 token，即 revoke 的逆操作，同样只改 enabled，token_hash 不变。
      *
-     * 因此**原明文重新生效**：已持有该 token 的调用方（如 CD 的 CI_API_TOKEN）无需重新配置。
-     * 语义边界（必须与调用方一致）：在集成服务语境里 revoke 是「禁用（冻结）」、可 restore 复原；
+     * 因此原明文重新生效：已持有该 token 的调用方（如 CD 的 CI_API_TOKEN）无需重新配置。
+     * 使用约定（必须与调用方一致）：在集成服务语境里 revoke 表示禁用（冻结），可用 restore 复原；
      * 真要作废一枚凭据请走 delete()（硬删除，摘要一并消失，不可恢复，只能重新签发）。
      *
      * @return bool false = 未命中任何行（id 不存在），或该行本就是启用态
-     *              （MySQL 的 rowCount 只计实际发生变更的行）——调用方只在确认处于禁用态时调用
+     *              （MySQL 的 rowCount 只计实际发生变更的行）；调用方只在确认处于禁用态时调用
      */
     public function restore(int $id): bool
     {

@@ -20,8 +20,8 @@ class TokenService
     }
 
     /**
-     * 登录 token 入库前统一 sha256（与 API token 一致，见 validateApiToken）：
-     * cache 表只存哈希、不存明文，杜绝「库表/备份泄露即会话令牌泄露」。
+     * 登录 token 入库前统一做 sha256（与 API token 一致，见 validateApiToken）：
+     * cache 表只存哈希、不存明文，避免库表或备份泄露时会话令牌一并泄露。
      * 明文 token 只在登录响应里返回一次；此后校验、反查、吊销一律凭哈希。
      */
     public static function hashAdminToken(string $token): string
@@ -71,10 +71,10 @@ class TokenService
     /**
      * 回查账号是否仍有效（未停用、未删除）。
      *
-     * - status 明确为 0（停用）→ false，token 立即失效（踢下线）。
-     * - 查无此行（账号已被删除）→ false，同样失效。
-     * - 查询抛异常（DB 不可达 / 旧库无 status 列）→ true 放行：
-     *   状态回查失败不阻断已登录 token 的校验（fail-open 保可用）。
+     * - status 明确为 0（停用）：返回 false，token 立即失效（踢下线）。
+     * - 查无此行（账号已被删除）：返回 false，同样失效。
+     * - 查询抛异常（DB 不可达 / 旧库无 status 列）：返回 true 放行，
+     *   状态回查失败不阻断已登录 token 的校验（保证可用性）。
      */
     private function isAccountActive(string $username): bool
     {

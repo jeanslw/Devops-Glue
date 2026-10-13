@@ -9,8 +9,8 @@ use PHPUnit\Framework\TestCase;
 /**
  * BuildController::extractTagFromTrace / pickTag 回归测试
  *
- * 锁定「日志里先出现上一条构建 tag（v20260827-129），后出现当前构建 tag（v20260827-130）」
- * 时，必须优先返回与当前 pipelineId 尾号一致的那条，避免「镜像 Tag」列显示上一条构建的 tag。
+ * 当日志里先出现上一条构建的 tag（v20260827-129）、后出现当前构建的 tag（v20260827-130）时，
+ * 必须优先返回与当前 pipelineId 尾号一致的那条，避免镜像 Tag 列显示上一条构建的 tag。
  */
 class BuildTagExtractTest extends TestCase
 {

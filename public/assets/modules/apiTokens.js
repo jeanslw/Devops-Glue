@@ -44,7 +44,7 @@ export async function loadApiTokens() {
                     : (t.expired
                         ? '<span style="color:#dc2626;">⏳ ' + esc(__.t('api_token.expired')) + '</span>'
                         : '<span style="color:#16a34a;">✅ ' + esc(__.t('api_token.active')) + '</span>');
-                // 编辑 Scope 对「已禁用 / 已过期」的行同样可用：改的是元数据，与明文和有效性无关
+                // 编辑 Scope 对已禁用、已过期的行同样可用：改的是元数据，与明文和有效性无关
                 const actions = '<button class="btn btn-sm" onclick="showApiTokenScopeForm(' + t.id + ')">✏️ ' + esc(__.t('api_token.edit_scopes')) + '</button> '
                     + (t.enabled === false ? '' :
                     '<button class="btn btn-sm btn-warn" onclick="revokeApiToken(' + t.id + ')">⛔ ' + esc(__.t('api_token.revoke')) + '</button> ')
@@ -109,7 +109,7 @@ export function hideApiTokenForm() {
 }
 
 /**
- * 打开某条 Token 的「编辑 Scope」表单，按当前 scope 预勾选。
+ * 打开某条 Token 的编辑 Scope 表单，按当前 scope 预先勾选。
  * 改的是元数据（scopes 列），保存后立即生效，明文 Token 不变、无需重新签发。
  */
 export async function showApiTokenScopeForm(id) {
@@ -183,8 +183,8 @@ export async function submitApiTokenForm(e) {
 }
 
 /**
- * 提交「编辑 Scope」：PUT /api/admin/api_tokens/{id}/scopes
- * 后端对空集合与目录外的 scope 一律 400 拒绝，这里只做「空勾选」的前置提示。
+ * 提交编辑 Scope：PUT /api/admin/api_tokens/{id}/scopes
+ * 后端对空集合与目录外的 scope 一律返回 400，这里只做空勾选的前置提示。
  */
 export async function submitApiTokenScopeForm(e) {
     if (e) e.preventDefault();
@@ -224,10 +224,10 @@ export function copyApiToken() {
     );
 }
 
-// 撤销 / 删除的很可能正是集成服务的配套凭据（cd-service）：顺手刷新同屏上方的「集成服务」卡片，
-// 否则卡片会继续显示「已启用 · 凭据有效」，与列表里的事实不符（卡片会自动回到未勾选态 = 可补发）。
+// 撤销 / 删除的很可能正是集成服务的配套凭据（cd-service）：同时刷新同屏上方的集成服务卡片，
+// 否则卡片会继续显示已启用且凭据有效，与列表里的实际情况不符（卡片会自动回到未勾选态，即可补发）。
 // 该刷新函数由 admin.js 挂到 window（见 admin.js 的 Object.assign(window, …)），
-// 经 window 调用可避免 system.js ↔ apiTokens.js 的循环 import。
+// 经 window 调用可避免 system.js 与 apiTokens.js 之间的循环 import。
 function refreshIntegratedPanel() {
     if (typeof window.loadIntegratedServices === 'function') window.loadIntegratedServices();
 }

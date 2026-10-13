@@ -9,7 +9,7 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * 应用层日志轮转回归测试：Logger 写 app-*.log 时按保留天数清理过期文件。
- * 裸机部署没有 Docker 日志驱动 / logrotate，全靠 Logger 自清理，不能退化回「无限累积」。
+ * 裸机部署没有 Docker 日志驱动与 logrotate，全凭 Logger 自行清理，不能退回无限累积。
  */
 class LoggerRotationTest extends TestCase
 {

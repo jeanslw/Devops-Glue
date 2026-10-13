@@ -105,11 +105,11 @@ class IntegratedServiceRepositoryTest extends TestCase
     }
 
     /**
-     * 禁用（冻结）→ 再次启用：必须**恢复同一枚凭据**，而不是重新签发。
+     * 禁用（冻结）后再启用：必须恢复同一枚凭据，而不是重新签发。
      *
-     * 这是运营的硬要求：每次「禁用再启用」都换 Token，CD 就得跟着改一次 CI_API_TOKEN。
-     * revoke 只把 enabled 置 0、sha256 摘要一字未动，所以 restore 同 id 后原明文立即重新生效；
-     * 契约行刻意保留 api_token_id，就是这个引用的作用。
+     * 这是运营的硬要求：每次禁用再启用都换 Token，CD 就得跟着改一次 CI_API_TOKEN。
+     * revoke 只把 enabled 置 0、sha256 摘要未动，所以 restore 同 id 后原明文立即重新生效；
+     * 契约行刻意保留 api_token_id，就是起这个引用的作用。
      */
     public function testDisableThenEnableReusesTheSameCredential(): void
     {
@@ -178,12 +178,12 @@ class IntegratedServiceRepositoryTest extends TestCase
     }
 
     /**
-     * 「已启用但凭据已作废」不是终局（页面自助恢复的存储层保证）：
-     * 契约行仍是 enabled=1，配套 token 被**撤销**（= 显式作废）后再启用必须能补发 ——
-     * 同事务签发新凭据 + upsert 重绑同一行，旧凭据保持作废（不得复活）。
+     * 已启用但凭据已作废并非终局（页面自助恢复的存储层保证）：
+     * 契约行仍是 enabled=1，配套 token 被撤销（即显式作废）后再启用必须能补发：
+     * 同事务签发新凭据 + upsert 重绑同一行，旧凭据保持作废，不得复活。
      *
-     * 与「禁用（冻结）」的区别就在状态里：只有契约行**未**启用 + 凭据只是被停用且未过期时，
-     * 控制器才走「恢复同一枚」（见 IntegratedServiceReissueWiringTest）；已作废的一律补发新凭据。
+     * 与禁用（冻结）的区别就在状态里：只有契约行未启用 + 凭据只是被停用且未过期时，
+     * 控制器才走恢复同一枚（见 IntegratedServiceReissueWiringTest）；已作废的一律补发新凭据。
      */
     public function testReEnableAfterCredentialRevokedReissuesCredential(): void
     {
@@ -192,7 +192,7 @@ class IntegratedServiceRepositoryTest extends TestCase
         $this->repo->enable(AppConfig::SERVICE_CD, AppConfig::SERVICE_PROVISION_AUTO, $first['id'], 'root');
         $this->pdo->commit();
 
-        // 运营在「API 管理」Token 列表里撤销了 cd-service：契约行不动，服务进入「已启用但无凭据」故障态
+        // 运营在 API 管理页的 Token 列表里撤销了 cd-service：契约行不动，服务进入已启用但无凭据的故障态
         $this->tokens->revoke($first['id']);
         $broken = $this->repo->getState(AppConfig::SERVICE_CD);
         $this->assertTrue($broken['enabled'], '单独撤销凭据不改契约行');
@@ -200,7 +200,7 @@ class IntegratedServiceRepositoryTest extends TestCase
         $this->assertNotNull($broken['token_id'], '撤销是停用行、不是删除：外键引用仍在');
         $this->assertTrue($broken['token_exists']);
         $this->assertFalse($broken['token_enabled']);
-        // 契约行仍是「已启用」→ 控制器不会把这种凭据当冻结现场来恢复（恢复只认「行未启用 + 凭据只是被停用」）
+        // 契约行仍是已启用，控制器不会把这种凭据当冻结状态来恢复（恢复只认行未启用 + 凭据只是被停用）
 
         // 再勾一次 = 补发：按控制器顺序（作废旧凭据 + 签发新凭据 + 同事务重绑）
         $second = $this->issueCdToken();
@@ -218,8 +218,8 @@ class IntegratedServiceRepositoryTest extends TestCase
     }
 
     /**
-     * 同上，但凭据是被**硬删除**的：契约行的 api_token_id 被外键置空，
-     * 补发路径同样必须可走通（控制器据此判断「无需作废旧凭据，直接签发 + 重绑」）。
+     * 同上，但凭据是被硬删除的：契约行的 api_token_id 被外键置空，
+     * 补发路径同样必须可走通（控制器据此判断无需作废旧凭据，直接签发 + 重绑）。
      */
     public function testReEnableAfterCredentialDeletedReissuesCredential(): void
     {
@@ -247,8 +247,8 @@ class IntegratedServiceRepositoryTest extends TestCase
     }
 
     /**
-     * 绑定凭据已过期：不能靠 restore 复活（把一枚过期凭据重新点亮仍是死凭据），控制器据此走补发。
-     * 因此 getState 必须把「已过期」单独暴露出来，而不是混在 token_active=false 里。
+     * 绑定凭据已过期：不能靠 restore 复活（把一枚过期凭据重新启用仍是死凭据），控制器据此走补发。
+     * 因此 getState 必须把已过期单独暴露出来，而不是与 token_active=false 混在一起。
      */
     public function testExpiredBoundCredentialIsReportedSeparatelyFromFrozen(): void
     {

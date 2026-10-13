@@ -21,14 +21,14 @@ export async function loadSystemInfo() {
         const cur = document.getElementById('sys-is-current');
         cur.textContent = d.is_current ? __.t('sys.current') : __.t('sys.outdated');
         cur.style.color = d.is_current ? '#16a34a' : '#dc2626';
-        // 迁移模式：按 DB_AUTO_MIGRATE 实际生效值渲染自动/手动语义；手动模式橙色提示「建表责任在运维」
+        // 迁移模式：按 DB_AUTO_MIGRATE 实际生效值渲染自动/手动语义；手动模式用橙色提示建表责任在运维
         const mm = document.getElementById('sys-migrate-mode');
         const auto = d.auto_migrate === true;
         mm.textContent = auto ? __.t('sys.migrate_mode_auto') : __.t('sys.migrate_mode_manual');
         mm.style.color = auto ? '#16a34a' : '#d97706';
-        // 探测清单自检（Database::schemaListDrift()，纯反射、与库无关）：为「升级/打补丁绕过了 CI」的
-        // 实例把「后台表清单比真实库少表」这件事红字点名——旧版本里它只能靠人偶然发现。
-        // 字段缺失时不渲染（保留占位符 `-`）：没有证据就不宣称「一致」。
+        // 探测清单自检（Database::schemaListDrift()，纯反射、与库无关）：对升级或打补丁绕过 CI 的实例，
+        // 把后台表清单比真实库少表的情况用红字指出；旧版本里这类问题只能靠人工偶然发现。
+        // 字段缺失时不渲染（保留占位符 `-`）：没有证据就不显示一致。
         const sl = document.getElementById('sys-schema-list');
         const driftInfo = d.schema_list_drift;
         if (sl && driftInfo) {
@@ -59,8 +59,8 @@ export async function loadSystemInfo() {
         if (getRole() === 'super_admin') { loadBackups(); }
         loading.style.display = 'none';
         body.style.display = 'block';
-        // 集成服务面板已迁至「API 管理」页（Token 列表上方；由 admin.js 的 api-tokens 分支加载）：
-        // 本页只负责库结构 / 备份，不再拉集成服务状态。
+        // 集成服务面板已迁至 API 管理页（Token 列表上方；由 admin.js 的 api-tokens 分支加载）：
+        // 本页只负责库结构 / 备份，不再请求集成服务状态。
     } catch(e) {
         toast(__.t('js.network_error') + ': ' + e.message, false);
         loading.style.display = 'none';
@@ -83,7 +83,7 @@ export async function doMigrate() {
             loadSystemInfo();
         } else {
             const denied = res.status === 409;
-            // 409 = 账号无 DDL 权限（可操作提示，非故障）：橙色 + ⚠️ + warn 级 toast，与真正的失败(红)区分
+            // 409 = 账号无 DDL 权限（可操作提示，非故障）：橙色 + warn 级 toast，与真正的失败(红)区分
             st.textContent = (denied ? '⚠️ ' : '❌ ') + (d.message || __.t('sys.migrate_failed'));
             st.style.color = denied ? '#d97706' : '#dc2626';
             toast(d.message || __.t('sys.migrate_failed'), denied ? 'warn' : false);
@@ -232,11 +232,11 @@ export function toggleSysTables() {
     if (arrow) arrow.textContent = hidden ? '▼' : '▶';
 }
 
-// ═══════════ 集成服务（integrated_services 契约；CI 唯一写入方）═══════════
-// 当前仅一个服务 cd；页面只展示状态 + 用「启用」勾选框启停（勾选=启用、取消=禁用），
+// ═══════════ 集成服务（integrated_services 契约；唯一写入方为 CI）═══════════
+// 当前仅一个服务 cd；页面只展示状态并用启用勾选框启停（勾选=启用、取消=禁用），
 // 启用向导一次性展示自动签发的服务 token。
-// 勾选态 = 「可用」= 契约行 enabled **且** 配套凭据有效：凭据在下方 Token 列表里被撤销/删除后
-// 勾选框自动回到未勾选（服务已不可用），再勾选一次＝补发新凭据（后端 enable 对故障态走补发）。
+// 勾选态 = 可用 = 契约行 enabled 且配套凭据有效：凭据在下方 Token 列表里被撤销/删除后
+// 勾选框自动回到未勾选（服务已不可用），再勾选一次即补发新凭据（后端 enable 对故障态走补发）。
 let _isvcTokenPlain = '';
 let _isvcState = null; // 最近一次状态响应：enable 据此判断走「首次启用」还是「补发」文案
 
@@ -270,11 +270,11 @@ function renderCdService(d) {
 
     const enabled = d.enabled === true;
     const tokenActive = d.token_active === true;
-    // 凭据要分三态看：还在 / 未被停用 / 未过期。绑定凭据「还在且只是被停用且未过期」= 上一次禁用留下的冻结现场，
-    // 再启用即恢复**同一枚**（原明文继续有效，CD 无需改配置）；已作废的（撤销 / 删除 / 过期）只能补发新凭据。
+    // 凭据要分三态看：还在 / 未被停用 / 未过期。绑定凭据还在、只是被停用且未过期，即上一次禁用留下的冻结状态，
+    // 再启用即恢复同一枚（原明文继续有效，CD 无需改配置）；已作废的（撤销 / 删除 / 过期）只能补发新凭据。
     const tokenFrozen = d.token_exists === true && d.token_enabled !== true && d.token_expired !== true;
-    // 「可用」= 契约行已启用 且 配套凭据有效。凭据被作废后即不可用，
-    // 勾选框随之回到未勾选：再勾选一次＝补发新凭据（后端对「已启用但凭据失效」放行走补发）。
+    // 可用 = 契约行已启用且配套凭据有效。凭据被作废后即不可用，
+    // 勾选框随之回到未勾选：再勾选一次即补发新凭据（后端对已启用但凭据失效放行走补发）。
     const usable = enabled && tokenActive;
     const isAuto = d.provision !== 'manual'; // 缺省/未知按 auto 语义（行不存在时后端给 auto）
     const isSuper = getRole() === 'super_admin';
@@ -306,7 +306,7 @@ function renderCdService(d) {
         }
     } else {
         if (tokenFrozen) {
-            // 冻结态（上一次「禁用」留下的现场）：说清楚「再启用即恢复同一枚」，别让运营以为每次启用都会换 Token
+            // 冻结状态（上一次禁用留下的结果）：说明再启用即恢复同一枚，避免运营以为每次启用都会换 Token
             const frozenToken = d.token_name ? (d.token_name + (d.token_id ? ' (#' + d.token_id + ')' : '')) : '-';
             lines.push('<span style="color:#9ca3af;">'
                 + esc(__.t('sys.isvc_token_frozen', { token: frozenToken })) + '</span>');
@@ -320,10 +320,10 @@ function renderCdService(d) {
     }
     meta.innerHTML = lines.join('');
 
-    // 「启用」勾选框是唯一启停入口（与「平台管理」各功能开关同一交互）：
+    // 启用勾选框是唯一启停入口（与平台管理各功能开关同一交互）：
     // 勾选=启用（勾选瞬间签发服务 Token，故一律走确认弹窗），取消=冻结并撤销该 Token。
-    // 勾选态取「可用」而非裸 enabled：凭据失效时必须显示为未勾选 —— 否则故障态勾选框停在勾选位、
-    // 点不动也变不了，用户只能看红字却无从自助补发。
+    // 勾选态取可用而非裸 enabled：凭据失效时必须显示为未勾选，否则故障态勾选框停在勾选位、
+    // 点不动也变不了，用户只能看红字而无法自助补发。
     // 非 super_admin 不显示勾选框（状态仍可见）。
     if (toggle) { toggle.checked = usable; toggle.disabled = !isSuper; }
     if (toggleWrap) toggleWrap.style.display = isSuper ? '' : 'none';
@@ -331,15 +331,15 @@ function renderCdService(d) {
 }
 
 export async function enableIntegratedService(service) {
-    // 调用方：onIntegratedServiceToggle（「启用」勾选框被勾上时）
-    // 返回值：true=已启用（明文 Token 已在弹窗就绪）；false=用户取消 / 请求失败 → 调用方据此把勾选框退回
+    // 调用方：onIntegratedServiceToggle（启用勾选框被勾上时）
+    // 返回值：true=已启用（明文 Token 已在弹窗就绪）；false=用户取消 / 请求失败，调用方据此把勾选框退回
     // provision 不传：后端在点启用那一刻按 CI 当前 DB_AUTO_MIGRATE 模式写入（auto/manual）
     // 提示走纯文本 + \n 换行：confirmDialog 的 message/note 由 core/toast.js 用 textContent 渲染，
     // 这里塞 HTML 只会把 <div> 标签原样显示出来（曾如此），断行交给 .modal-note 的 white-space:pre-line。
     // 勾选框只有一种动作，但后端有三条路径（首次启用 / 冻结恢复 / 作废补发），弹窗必须事先说清是哪一条。
-    // 弹窗只讲「要点 + 结果」、不解释原因（原因在卡片文案与文档里）：
-    //   - 恢复：复用**同一枚** Token（CD 的 CI_API_TOKEN 无需改动）→ 首行 ♻；
-    //   - 补发：新明文必须同步到 CD → 首行 ⓪；
+    // 弹窗只讲要点与结果、不解释原因（原因在卡片文案与文档里）：
+    //   - 恢复：复用同一枚 Token（CD 的 CI_API_TOKEN 无需改动），弹窗首行即恢复提示；
+    //   - 补发：新明文必须同步到 CD，弹窗首行即补发提示；
     // 两种情况下面的两条固定要点都不变。
     const st = _isvcState || {};
     const reuse = st.enabled !== true && st.token_exists === true && st.token_enabled !== true && st.token_expired !== true;
@@ -366,7 +366,7 @@ export async function enableIntegratedService(service) {
         if (handle401(res)) return false;
         const d = await res.json();
         if (res.ok && d.reused) {
-            // 恢复：同一枚凭据重新生效。明文不重发（CD 手上就是这一枚），故不弹 Token 框，也不谎称「已签发」
+            // 恢复：同一枚凭据重新生效。明文不重发（CD 手上就是这一枚），故不弹 Token 框，也不显示为已签发
             hideIntegratedTokenBox();
             toast(__.t('sys.isvc_restored'), true);
             loadIntegratedServices();
@@ -393,9 +393,9 @@ export async function enableIntegratedService(service) {
 }
 
 export async function disableIntegratedService(service) {
-    // 调用方：onIntegratedServiceToggle（「启用」勾选框被取消时）
-    // 返回值：true=已禁用（配套 Token 已停用，即仅冻结）；false=用户取消 / 请求失败 → 调用方把勾选框重新勾上
-    // 弹窗与启用同构：正文一句问句，要点走 note 的 ①② 多行（纯文本 + \n 断行，见 ConfirmDialogPlainTextTest）
+    // 调用方：onIntegratedServiceToggle（启用勾选框被取消时）
+    // 返回值：true=已禁用（配套 Token 已停用，即仅冻结）；false=用户取消 / 请求失败，调用方把勾选框重新勾上
+    // 弹窗与启用一致：正文一句问句，要点走 note 的 ①② 多行（纯文本 + \n 断行，见 ConfirmDialogPlainTextTest）
     const note = [
         '① ' + __.t('sys.isvc_disable_step1'),
         '② ' + __.t('sys.isvc_disable_step2')
@@ -428,9 +428,9 @@ export async function disableIntegratedService(service) {
     }
 }
 
-// 「启用」勾选框的 onchange 入口（唯一的启停入口）。
-// 勾选框是即时控件，而切换会签发/撤销凭据，故：确认弹窗在 enable/disable 内部，
-// 这里只负责「请求期间禁用防连点」+「取消 / 失败把勾选框退回原状态」，
+// 启用勾选框的 onchange 入口（唯一的启停入口）。
+// 勾选框是即时控件，而切换会签发/撤销凭据，故确认弹窗放在 enable/disable 内部，
+// 这里只负责请求期间禁用防连点、以及取消或失败时把勾选框退回原状态，
 // 成功后由 loadIntegratedServices() 按后端返回的状态重绘（勾选态与 disabled 都以服务端为准）。
 export async function onIntegratedServiceToggle(service) {
     const toggle = document.getElementById('isvc-cd-toggle');

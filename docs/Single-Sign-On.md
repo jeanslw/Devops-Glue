@@ -1,12 +1,12 @@
 # Devops-Glue Single Sign-On (OAuth2 / OIDC)
 
-> Glue ships a built-in **OAuth2 / OIDC Provider** that lets **Grafana, Jenkins, Harbor, and GitLab** sign in with a Glue account,
+> Glue ships a built-in **OAuth2 / OIDC Provider** that lets **Jenkins, Harbor, and GitLab** sign in with a Glue account,
 > mapping the Glue role (`groups`) onto each system's local roles.
 >
-> Grafana uses **pure OAuth2** (Generic OAuth, authorization code flow), while Jenkins / Harbor / GitLab use **full OIDC**
-> (OpenID Connect 1.0 / RFC 8414 Discovery / RFC 7517 JWKS, RS256-signed `id_token`).
+> All three use **full OIDC** (OpenID Connect 1.0 / RFC 8414 Discovery / RFC 7517 JWKS, RS256-signed `id_token`);
+> the provider also supports the plain OAuth2 authorization code flow (no `id_token` is issued when the request omits `scope=openid`).
 >
-> This document covers: enabling SSO on the Glue side, integration examples for all four systems, and the `groups` (Glue role) → local role mapping table.
+> This document covers: enabling SSO on the Glue side, integration examples for the three systems, and the `groups` (Glue role) → local role mapping table.
 
 ## Table of Contents
 
@@ -16,7 +16,6 @@
    - [3.1 Harbor](#31-harbor)
    - [3.2 Jenkins](#32-jenkins)
    - [3.3 GitLab](#33-gitlab)
-   - [3.4 Grafana](#34-grafana)
 4. [groups → Role Mapping Table](#4-groups--role-mapping-table)
 5. [Verification](#5-verification)
 
@@ -31,7 +30,7 @@ Glue exposes the following endpoints (`<issuer>` is Glue's externally reachable 
 | Authorization | `<issuer>/oauth/authorize` | Browser redirect entry point, renders the login form |
 | Token | `<issuer>/oauth/token` | Exchanges code for `access_token` (plus `id_token` for OIDC) |
 | UserInfo | `<issuer>/oauth/userinfo` | Returns user info for a Bearer token |
-| Emails sub-endpoint | `<issuer>/oauth/userinfo/emails` | GitHub-style emails endpoint (fallback for clients like Grafana that still fetch email via the GitHub emails flow; not listed in the discovery document) |
+| Emails sub-endpoint | `<issuer>/oauth/userinfo/emails` | GitHub-style emails endpoint (for clients that still fetch email via the GitHub emails flow; not listed in the discovery document) |
 | Discovery | `<issuer>/.well-known/openid-configuration` | OIDC discovery document |
 | JWKS | `<issuer>/.well-known/jwks.json` | Publishes the RS256 public key (`n`/`e`/`kid`, never the private key) |
 
@@ -40,7 +39,7 @@ Key features:
 - **Signature algorithm**: the `id_token` is signed with **RS256**. The private key lives only on the Glue side; the public key is published via JWKS, so each system validates against `jwks.json` alone.
 - **Supported scopes**: `openid profile email`.
 - **`groups` claim**: both `id_token` and `userinfo` return `groups`, an array of Glue user roles (e.g. `["super_admin"]`), which each system maps onto local roles.
-- **Backward compatible**: when the authorization request omits `scope=openid`, the flow stays pure OAuth2 (the original Grafana path) and no `id_token` is issued.
+- **Backward compatible**: when the authorization request omits `scope=openid`, the flow stays plain OAuth2 and no `id_token` is issued.
 - **nonce passthrough**: when the request carries a `nonce`, the `id_token` echoes it back for replay protection.
 
 ---
@@ -86,14 +85,10 @@ OIDC_ISSUER=https://glue.example.com
 ### 2.2 Register clients
 
 Register one client per system in `oauth_clients` in `config/settings.php` (`client_id` + `secret` + an exactly-matching `redirect_uri`).
-`redirect_uri` is injected via env as well (see `GRAFANA_OAUTH_REDIRECT_URI` / `JENKINS_OIDC_REDIRECT_URI` in `config/app.env.example`), so environment-specific callback URLs never get hardcoded into git:
+`redirect_uri` is injected via env as well (see `JENKINS_OIDC_REDIRECT_URI` in `config/app.env.example`), so environment-specific callback URLs never get hardcoded into git:
 
 ```php
 'oauth_clients' => [
-    'grafana' => [
-        'secret'       => env('GRAFANA_OAUTH_SECRET', ''),
-        'redirect_uri' => env('GRAFANA_OAUTH_REDIRECT_URI', 'http://localhost:3000/login/generic_oauth'),
-    ],
     'jenkins' => [
         'secret'       => env('JENKINS_OIDC_SECRET', ''),
         'redirect_uri' => env('JENKINS_OIDC_REDIRECT_URI', 'http://localhost/securityRealm/finishLogin'),
@@ -114,9 +109,9 @@ Register one client per system in `oauth_clients` in `config/settings.php` (`cli
 > ⚠️ Security convention (fail-closed): a client whose `secret` or `redirect_uri` is empty or whitespace-only is **dropped** (treated as unconfigured).
 > Do not use an empty secret as a default — that would let the token endpoint be bypassed with an empty secret. Every client must have a strong random secret.
 >
-> ⚠️ `redirect_uri` uses **exact matching** (`hash_equals`). The callback URL configured on each system must match character-for-character (scheme, host, port, path), or `authorize` rejects the request. In production set `JENKINS_OIDC_REDIRECT_URI` / `GRAFANA_OAUTH_REDIRECT_URI` to the real callbacks; do not commit LAN IPs to git.
+> ⚠️ `redirect_uri` uses **exact matching** (`hash_equals`). The callback URL configured on each system must match character-for-character (scheme, host, port, path), or `authorize` rejects the request. In production set `JENKINS_OIDC_REDIRECT_URI` (and the equivalents for the other clients) to the real callbacks; do not commit LAN IPs to git.
 >
-> ℹ️ `system` (optional, falls back to `ci`) declares **which system the accounts signing in through this client belong to**; authorization checks the account's `systems` against it. The CD client declares `cd`, so CD accounts created in the backend (`systems` containing `cd`) can sign in while `systems=ci` accounts get `auth.no_cd_access`. Grafana / Jenkins / Harbor / GitLab do not declare the key, so their behaviour is unchanged. Note: without it there is no per-system admission check, and a rejected account is reported with the CI message `auth.no_ci_access`.
+> ℹ️ `system` (optional, falls back to `ci`) declares **which system the accounts signing in through this client belong to**; authorization checks the account's `systems` against it. The CD client declares `cd`, so CD accounts created in the backend (`systems` containing `cd`) can sign in while `systems=ci` accounts get `auth.no_cd_access`. Jenkins / Harbor / GitLab do not declare the key, so their behaviour is unchanged. Note: without it there is no per-system admission check, and a rejected account is reported with the CI message `auth.no_ci_access`.
 
 ### 2.3 Confirm the key is ready
 
@@ -222,47 +217,17 @@ Run `gitlab-ctl reconfigure` to apply.
 > The `groups` claim maps to GitLab external groups via OmniAuth's `groups_attribute` (default `groups`);
 > override it in `args` if needed. Admin-group mapping uses `admin_group`. Field names vary by GitLab version.
 
-### 3.4 Grafana
-
-Grafana uses **Generic OAuth** (pure OAuth2 authorization code flow — no `id_token` / OIDC discovery). The client is already registered in 2.2 (`client_id` = `grafana`).
-
-**3.4.1 Grafana environment variables** (`docker-compose.yml` or `grafana.ini`):
-
-```yaml
-environment:
-  GF_AUTH_GENERIC_OAUTH_ENABLED: "true"
-  GF_AUTH_GENERIC_OAUTH_NAME: "Devops-Glue"
-  GF_AUTH_GENERIC_OAUTH_CLIENT_ID: "grafana"
-  GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET: "your-strong-secret"   # matches the grafana client secret in 2.2
-  GF_AUTH_GENERIC_OAUTH_SCOPES: "openid"
-  GF_AUTH_GENERIC_OAUTH_AUTH_URL: "http://your-glue:8080/oauth/authorize"
-  GF_AUTH_GENERIC_OAUTH_TOKEN_URL: "http://your-glue:8080/oauth/token"
-  GF_AUTH_GENERIC_OAUTH_API_URL: "http://your-glue:8080/oauth/userinfo"
-  GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_PATH: "contains(role, 'super_admin') && 'Admin' || 'Viewer'"
-```
-
-> Grafana's callback URL is fixed at `http://<grafana>:3000/login/generic_oauth` and must match the `redirect_uri` in 2.2.
-
-**3.4.2 Role mapping**:
-
-- Glue `super_admin` role → Grafana `Admin`
-- All other roles (including `viewer`) → Grafana `Viewer`
-- `role_attribute_path` is a JMESPath expression, re-evaluated on every login, so role changes take effect immediately
-- Grafana matches existing users by `email`; when a Glue user has no email set, the system falls back to `username@devops-glue.local`
-
-**3.4.3 Verification**: restart Glue and Grafana → open the Grafana login page → click "Sign in with Devops-Glue" → sign in with a Glue account and confirm the role is correct.
-
 ---
 
 ## 4. groups → Role Mapping Table
 
 The Glue role is delivered as the `groups` claim (an array). Each system maps it as follows:
 
-| Glue role (`groups` value) | Harbor | Jenkins (Role Strategy) | GitLab (external groups) | Grafana |
-|:---|:---|:---|:---|:---|
-| `super_admin` | `oidc_admin_group` → admin | `assignments` attached to a role with `Overall/Administer` | `admin_group` → admin | `Admin` |
-| `ci_admin` and other custom roles | regular user (per-project permissions assigned separately) | `assignments` attached to the matching role | matching external group | `Viewer` |
-| unconfigured role | regular user | no mapping (no permissions by default, configure as needed) | no mapping | `Viewer` |
+| Glue role (`groups` value) | Harbor | Jenkins (Role Strategy) | GitLab (external groups) |
+|:---|:---|:---|:---|
+| `super_admin` | `oidc_admin_group` → admin | `assignments` attached to a role with `Overall/Administer` | `admin_group` → admin |
+| `ci_admin` and other custom roles | regular user (per-project permissions assigned separately) | `assignments` attached to the matching role | matching external group |
+| unconfigured role | regular user | no mapping (no permissions by default, configure as needed) | no mapping |
 
 Mapping principles:
 

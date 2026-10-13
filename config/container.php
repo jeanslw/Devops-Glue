@@ -110,16 +110,16 @@ return [
         $config = $c->get(Settings::class);
         return new Logger(
             $config->getLogPath(),
-            // 与环境无关：APP_DEBUG=true → debug（全量），false → info（生产保留诊断信息，仅过滤 debug 噪声）
+            // 与环境无关：APP_DEBUG=true 时为 debug（全量），false 时为 info（保留诊断信息，仅过滤 debug 噪声）
             $config->isDebug() ? 'debug' : 'info'
         );
     },
 
-    // CORS 中间件：只读纯配置，不经过 Settings —— Settings 构造会连带解析
-    // PlatformVersionRepository → \PDO → 建立 DB 连接。若 DB 宕机，全局中间件
+    // CORS 中间件：只读纯配置，不经过 Settings。Settings 构造会连带解析
+    // PlatformVersionRepository 与 \PDO，从而建立 DB 连接。若 DB 宕机，全局中间件
     // 在每请求解析阶段就抛异常，/healthz 这类无鉴权探针自己的 try/catch 根本进不去，
-    // 会先被兜成 500。这里直接读 $settings['cors']（与 Settings::getCorsConfig() 同源），
-    // 彻底断开 DB 依赖链。
+    // 会先被转成 500。这里直接读 $settings['cors']（与 Settings::getCorsConfig() 同源），
+    // 断开 DB 依赖。
     CorsMiddleware::class => function () use ($settings) {
         return new CorsMiddleware($settings['cors'] ?? ['allowed_origins' => ['*']]);
     },
@@ -460,7 +460,7 @@ return [
             $c->get(I18nService::class),
             $c->get(Settings::class),
             $c->get(AdminUserRepository::class),
-            // 角色→权限读取复用 TokenService::loadPermissions（与登录/中间件同一份事实，不另起 SQL）
+            // 角色到权限的读取复用 TokenService::loadPermissions（与登录、中间件用同一份实现，不另起 SQL）
             $c->get(TokenService::class)
         );
     },
@@ -566,7 +566,7 @@ return [
         );
     },
 
-    // ---------- OAuth2 / OIDC Provider（Grafana / Jenkins / Harbor / GitLab 用 Glue 账号登录）----------
+    // ---------- OAuth2 / OIDC Provider（Jenkins / Harbor / GitLab 用 Glue 账号登录）----------
 
     OAuthService::class => function (\Psr\Container\ContainerInterface $c) use ($settings) {
         return new OAuthService(

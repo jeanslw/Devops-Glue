@@ -4,16 +4,16 @@ namespace App\Service\Build;
 
 /**
  * 构建状态统一枚举：把 Jenkins / GitLab CI / Gitea Actions / custom_push 各自的原生
- * 状态词归一为项目自己的词汇，供前端 badge 与看板统一消费。
+ * 状态词归一为项目自己的词汇，供前端 badge 与看板统一使用。
  *
- * 归一后的词汇（终态 + 中间态）：
+ * 归一后的词汇（终态与中间态）：
  *   success / failed / unstable / canceled / running / pending / manual / skipped / unknown
  *
- * 映射原则：只做「等价状态合并」（各来源原生状态归并到现有词汇，不额外造状态）；未收录的值小写透传，空串归一为 unknown。
- *  - Jenkins UNSTABLE 保留为独立 unstable（构建成功但告警/测试失败，非干净成功，≠ failed）。
- *  - GitLab manual 保留为独立 manual（等待人工触发，≠ pending）；scheduled/created/
+ * 映射原则：只做等价状态合并（各来源原生状态归并到现有词汇，不新增状态）；未收录的值小写透传，空串归一为 unknown。
+ *  - Jenkins UNSTABLE 保留为独立的 unstable（构建成功但有告警或测试失败，不等于 failed）。
+ *  - GitLab manual 保留为独立的 manual（等待人工触发，不等于 pending）；scheduled/created/
  *    waiting_for_resource/preparing 归入 pending（等待执行）。
- *  - Jenkins ABORTED / GitLab canceled / Gitea cancelled / custom_push aborted 同义 → canceled。
+ *  - Jenkins ABORTED / GitLab canceled / Gitea cancelled / custom_push aborted 同义，统一为 canceled。
  */
 final class BuildStatus
 {

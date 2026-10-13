@@ -97,7 +97,7 @@ class JenkinsBuildProvider implements BuildProviderInterface
             }
             $fullName = $resolved['fullName'];
         } catch (\RuntimeException $e) {
-            // 连接级失败（resolvePath 上抛的「服务不可达」）：上抛 → AuthMiddleware 502，
+            // 连接级失败（resolvePath 上抛的服务不可达）：继续上抛，由 AuthMiddleware 返回 502，
             // 不得吞成 200 + success=false（否则 Jenkins 宕机被当成业务失败）
             throw $e;
         } catch (\Exception $e) {
@@ -113,7 +113,7 @@ class JenkinsBuildProvider implements BuildProviderInterface
             return ['success' => false, 'message' => '获取构建参数失败: ' . $e->getMessage()];
         }
 
-        // 无参数 → 直接触发
+        // 无参数时直接触发
         if (empty($allParams)) {
             try {
                 /** @var array<string, mixed> $result */

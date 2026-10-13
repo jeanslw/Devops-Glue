@@ -83,8 +83,8 @@ class GitRemoteResolver
         try {
             $resolved = $this->jenkins->resolvePath($jobName);
         } catch (\RuntimeException $e) {
-            // Jenkins 连接级不可达（resolvePath 上抛）：这里不冒泡——分支查询要继续走
-            // 手动映射兜底（与「Job 不存在」同路径），否则配置了 job_git_map 的项目会被误伤
+            // Jenkins 连接级不可达（resolvePath 上抛）：这里不向外抛，分支查询继续走
+            // 手动映射（与 Job 不存在的分支相同），否则配置了 job_git_map 的项目会被误伤
             $this->logger?->warning('Jenkins 不可达，resolvePath 降级走手动映射兜底', [
                 'job'   => $jobName,
                 'error' => $e->getMessage(),
@@ -92,7 +92,7 @@ class GitRemoteResolver
             $resolved = null;
         }
         if (!$resolved || $resolved['type'] !== 'job') {
-            // Jenkins 找不到 → 尝试手动映射兜底（GitLab CI 项目）
+            // Jenkins 找不到：改用手动映射（GitLab CI 项目）
             if (isset($this->manualMap[$jobName])) {
                 $m = $this->manualMap[$jobName];
                 $platform = $m['git_platform'] ?? $this->defaultPlatform;

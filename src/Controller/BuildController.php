@@ -71,8 +71,8 @@ class BuildController extends BaseController
     private function resolve(string $projectPath): array
     {
         // resolveProject 已按 provider 归一化 projectId：
-        //   jenkins → job 路径；gitlab_ci → 数字 project_id；
-        //   custom_push → job_name（current_path 兜底），推 job_name/current_path 归一到同一条记录。
+        //   jenkins 用 job 路径；gitlab_ci 用数字 project_id；
+        //   custom_push 用 job_name（current_path 兜底）；推送时 job_name/current_path 归一到同一条记录。
         $r = $this->mapping->resolveProject($projectPath);
         return [$r['provider'], $r['projectId']];
     }
@@ -96,7 +96,7 @@ class BuildController extends BaseController
                 'git_platform'     => $m['git_platform'] ?? '',
             ];
         }
-        // ?format=raw → 纯 job 名数组
+        // ?format=raw 时返回纯 job 名数组
         if (($request->getQueryParams()['format'] ?? 'raw') === 'raw') {
             return $this->output($response, array_column($all, 'job_name'), $request);
         }
@@ -314,10 +314,10 @@ class BuildController extends BaseController
         }
 
         $p = $this->registry->create($provider);
-        // ?per_page=N 透传给 provider（默认 20），供「拉取式记录」分页一次拉取更多
+        // ?per_page=N 透传给 provider（默认 20），供拉取式记录一次拉取更多
         $perPage = (int) ($request->getQueryParams()['per_page'] ?? 0);
         $data = $p->getPipelines($projectId, $perPage > 0 ? $perPage : 20);
-        // 「镜像 Tag」列：仅 harbor-scan 回写成功（writeback_status='success'）视为推送成功，投影到每行
+        // 镜像 Tag 列：仅 harbor-scan 回写成功（writeback_status='success'）视为推送成功，投影到每行
         $data = $this->attachPullTags($path, $data);
         $format = $request->getQueryParams()['format'] ?? 'raw';
 
@@ -383,7 +383,7 @@ class BuildController extends BaseController
             $jobs[$i]['log_url'] = $jobId > 0 ? "/api/build/{$path}/logs/{$jobId}" : null;
         }
 
-        // ?format=raw → 显式请求 Jenkins 风格 ["SUCCESS"]；默认返回完整 jobs（含 log_url）
+        // ?format=raw 时按 Jenkins 风格返回 ["SUCCESS"]；默认返回完整 jobs（含 log_url）
         if (($request->getQueryParams()['format'] ?? '') === 'raw') {
             $statuses = array_map(fn($j) => $j['status'] ?? 'unknown', $jobs);
             return $this->output($response, $statuses, $request);
@@ -734,7 +734,7 @@ class BuildController extends BaseController
         // ── 通过 Git Provider 回写 commit status ──
         try {
             $gitProvider = $this->gitRegistry->create($gitPlatform);
-            // 三级回退：project_id（数字）→ current_path（真实路径）→ Jenkins 短名
+            // 三级回退：project_id（数字）、current_path（真实路径）、Jenkins 短名
             $gitRepo = $gitProjectId ? (string) $gitProjectId
                 : (!empty($gitCurrentPath) ? $gitCurrentPath : $path);
             $result = $gitProvider->setCommitStatus($gitRepo, $sha, $state, $context, $description, $targetUrl);
@@ -779,7 +779,7 @@ class BuildController extends BaseController
             $stmt = $pdo->prepare($sql);
             $stmt->execute([$project, $sha, $checkType, $state, $context, $description, $tag, $writebackStatus, $writebackMessage]);
         } catch (\Exception $e) {
-            // 静默失败，不影响主流程，但记录日志便于排查（例如列缺失导致 INSERT 失败）
+            // 失败不影响主流程，但记日志便于排查（例如列缺失导致 INSERT 失败）
             \App\Helper\Log::exception($e);
         }
     }
@@ -819,8 +819,8 @@ class BuildController extends BaseController
                 $gitPlatform    = $m['git_platform'] ?? '';
                 $gitProjectId   = $m['project_id'] ?? null;
                 $gitCurrentPath = $cp;
-                // 规范 project_id（供 getPipelines 用）：gitlab_ci→数字 project_id，
-                // custom_push→job_name（current_path 兜底），jenkins→原始 path。
+                // 规范 project_id（供 getPipelines 用）：gitlab_ci 用数字 project_id，
+                // custom_push 用 job_name（current_path 兜底），jenkins 用原始 path。
                 if ($provider === AppConfig::PROVIDER_GITLAB_CI && !empty($gitProjectId)) {
                     $ciProjectId = (string) $gitProjectId;
                 } elseif ($provider !== AppConfig::PROVIDER_JENKINS) {
@@ -872,12 +872,12 @@ class BuildController extends BaseController
         // Harbor 不可达时降级放行：CI 刚 push 完 tag，大概率存在；读取侧 cleanupStaleTags 兜底清理
 
         // 3. 解析 pipeline 身份（用于 commit status 回写 + artifact 落库）
-        //    pipeline_iid 与 sha 共同构成 pipeline identity，禁止「半个身份」：
-        //    - 两者都传：直接采用（可靠，避免「最新 pipeline」误判）
+        //    pipeline_iid 与 sha 共同构成 pipeline identity，不接受只有一半的身份：
+        //    - 两者都传：直接采用（可靠，避免误配到最新 pipeline）
         //    - 两者都不传：legacy 兜底到 getPipelines 最新一条（兼容旧客户端）
-        //    - 只传其一：直接 400（否则会把请求的 iid 与最新 pipeline 的 sha 拼接成错误配对）
+        //    - 只传其一：直接 400（否则会把请求的 iid 与最新 pipeline 的 sha 拼成错误配对）
         //    getPipelines 用映射后的规范 project_id，而非原始 $path
-        //    （gitlab_ci 必须用数字 project_id，custom_push 用 job_name，jenkins 才用 path）
+        //    （gitlab_ci 用数字 project_id，custom_push 用 job_name，jenkins 用 path）
         $bodySha = trim((string) ($body['sha'] ?? ''));
         $bodyIid = isset($body['pipeline_iid']) ? (int) $body['pipeline_iid'] : 0;
 
@@ -907,9 +907,9 @@ class BuildController extends BaseController
 
         // 4. Harbor 扫描 + commit status 回写（通过 Git Provider，跨所有平台）
         $vulnCount = 0;
-        // scanState 只表达「Harbor 扫描结果」，与 commit status 回写是否成功解耦。
-        // 二者不可再共用一个变量：回写失败（如 Gitee 公开版不支持 commit status API）
-        // 不等于扫描失败，CI 按 scan_state 判断漏洞时不能把回写失败误读成「镜像有毒」。
+        // scanState 只表达 Harbor 扫描结果，与 commit status 回写是否成功解耦。
+        // 二者不共用一个变量：回写失败（如 Gitee 公开版不支持 commit status API）不等于扫描失败，
+        // CI 按 scan_state 判断漏洞时不能把回写失败读成镜像有问题。
         $scanState      = 'unknown';
         $writebackState = 'unknown';
         $result         = ['success' => false, 'message' => ''];
@@ -929,8 +929,8 @@ class BuildController extends BaseController
                     try {
                         $scan = $this->harbor->getScanReport($harborProject, $harborRepoName, $tag);
                     } catch (\RuntimeException $e) {
-                        // Harbor 连接级不可达（getScanReport 上抛）：与「扫描未启用」严格区分，
-                        // scanState 记 pending（commit status 合法态，语义=暂无扫描结论），继续尽力回写
+                        // Harbor 连接级不可达（getScanReport 上抛）：与扫描未启用分开处理，
+                        // scanState 记 pending（commit status 合法态，语义为暂无扫描结论），继续尽力回写
                         \App\Helper\Log::exception($e);
                         $scanState = 'pending';
                         $result    = ['success' => false, 'message' => 'Harbor 服务不可达: ' . $e->getMessage()];
@@ -939,7 +939,7 @@ class BuildController extends BaseController
                         if (isset($scan['error']) || isset($scan['code'])) {
                             $scanState = 'pending';
                             // 4xx 业务错误（412=扫描未启用 / 404=资源不存在 / 401|403=认证失败）：
-                            // 透出 HarborService 的具体原因，不再笼统误报「扫描功能未启用」
+                            // 透出 HarborService 的具体原因，不一律报成扫描功能未启用
                             $result = ['success' => false, 'message' => $this->harborScanErrorMessage($scan)];
                         } else {
                             // getScanReport 签名返回 array（永不为 null），?? [] 是不可达的死代码
@@ -954,7 +954,7 @@ class BuildController extends BaseController
                     $harborUrl = $this->config->getHarborConfig()['url'] ?? '';
                     // 通过 Git Provider 回写 commit status（所有平台统一接口）
                     $gitProvider = $this->gitRegistry->create($gitPlatform);
-                    // 三级回退：project_id（数字）→ current_path（真实路径）→ Jenkins 短名
+                    // 三级回退：project_id（数字）、current_path（真实路径）、Jenkins 短名
                     $gitRepo = $gitProjectId ? (string) $gitProjectId
                         : (!empty($gitCurrentPath) ? $gitCurrentPath : $path);
                     $result = $gitProvider->setCommitStatus($gitRepo, $sha, $writebackState, 'harbor-scan', $desc, $harborUrl);
@@ -968,7 +968,7 @@ class BuildController extends BaseController
             }
         }
 
-        // 5. 记录 pipeline → tag 映射（含扫描状态）
+        // 5. 记录 pipeline 到 tag 的映射（含扫描状态）
         if (!empty($iid)) {
             $this->recordPipelineTag(
                 $path,
@@ -1015,7 +1015,7 @@ class BuildController extends BaseController
         $tags  = $this->loadPipelineTags();
         $entry = $tags[$path] ?? [];
         // 别名归并：同一项目可能同时以 job_name / current_path 落 tag（与 tagsList 一致），
-        // 按其中一键查询时把另一键下的 pipeline→tag 也合并进来，避免按 current_path 查空。
+        // 按其中一键查询时把另一键下的 pipeline 到 tag 映射也合并进来，避免按 current_path 查空。
         foreach ($this->mapping->allMaps() as $m) {
             $job = $m['job_name'] ?? '';
             $cp  = $m['current_path'] ?? '';
@@ -1046,7 +1046,7 @@ class BuildController extends BaseController
             ], $request);
         }
 
-        // ?format=raw → 仓库:tag
+        // ?format=raw 时返回 仓库:tag
         if ($pipeline && ($request->getQueryParams()['format'] ?? 'raw') === 'raw') {
             return $this->output($response, $harbor ? [$harbor . ':' . $tag] : [$tag], $request);
         }
@@ -1064,12 +1064,12 @@ class BuildController extends BaseController
     }
 
     /**
-     * 拉取式记录「镜像 Tag」列的数据源投影。
+     * 拉取式记录镜像 Tag 列的数据源投影。
      *
      * 仅当 ci_security_checks 中存在 check_type='harbor-scan' 且 writeback_status='success'
      * 的记录时，才认为该 commit 的镜像 tag 已推送成功，并把对应 tag 关联到 pipeline 行上。
-     * 判断依据是「回写成功」（推送成功的审计事实），而非 ci_pipeline_artifacts（最终产物——
-     * 产物有记录并不代表推送成功，不能用产物倒推）。
+     * 判断依据是回写成功（推送成功的审计事实），而非 ci_pipeline_artifacts（最终产物）：
+     * 产物有记录并不代表推送成功，不能用产物倒推。
      *
      * @param array<int, array<string,mixed>> $pipelines
      *
@@ -1082,7 +1082,7 @@ class BuildController extends BaseController
         }
         try {
             // 同一项目可能以 job_name / current_path 别名落审计，一并纳入匹配，避免漏关联；
-            // 同时收集本项目 harbor_repository（用于判断「可日志兜底」）。
+            // 同时收集本项目 harbor_repository（用于判断可否走日志兜底）。
             $aliases = [$path];
             $harborRepo = '';
             foreach ($this->mapping->allMaps() as $m) {
@@ -1105,7 +1105,7 @@ class BuildController extends BaseController
             $tagBySha = [];
             $tagSourceBySha = [];
 
-            // 主数据源：harbor-scan 回写成功（推送成功的审计事实）→ sha→tag
+            // 主数据源：harbor-scan 回写成功（推送成功的审计事实），得到 sha 到 tag 的映射
             $ph = implode(',', array_fill(0, count($aliases), '?'));
             $stmt = $this->pdo->prepare(
                 "SELECT sha, tag FROM " . AppConfig::TABLE_SECURITY_CHECKS
@@ -1121,7 +1121,7 @@ class BuildController extends BaseController
                 }
             }
 
-            // 兜底缓存：日志懒解析落库的 sha→tag（ci_pipeline_build_log，主源未命中时补位）
+            // 兜底缓存：日志懒解析落库的 sha 到 tag 映射（ci_pipeline_build_log，主源未命中时补位）
             $shas = array_values(array_unique(array_filter(
                 array_map(fn($p) => (string) ($p['sha'] ?? ''), $pipelines),
                 fn($s) => $s !== ''
@@ -1162,9 +1162,9 @@ class BuildController extends BaseController
     /**
      * POST /api/build/{path}/pipelines/{id}/resolve-tag
      *
-     * 「镜像 Tag」日志兜底懒解析：对一条 status=success 且未命中 harbor-scan 回写的 pipeline，
+     * 镜像 Tag 的日志兜底懒解析：对一条 status=success 且未命中 harbor-scan 回写的 pipeline，
      * 遍历其 jobs 日志，按可配置关键字 + 本项目 harbor 仓库路径命中后尽力提取 tag，
-     * 并落库到 ci_pipeline_build_log（sha→tag 缓存），下次列表直接命中，不再重复拉日志。
+     * 并落库到 ci_pipeline_build_log（sha 到 tag 缓存），下次列表直接命中，不再重复拉日志。
      * Body 可带 force=1 强制重解析：跳过缓存、覆盖旧 tag，用于修正历史解析错误。
      *
      * @param array<string,string> $args
@@ -1207,7 +1207,7 @@ class BuildController extends BaseController
             return $this->output($response, ['tag' => '', 'resolved' => false, 'reason' => 'no_repository'], $request);
         }
 
-        // 缓存命中：非强制时直接返回（含「已解析但无 tag」的空结果，避免重复拉日志）
+        // 缓存命中：非强制时直接返回（含已解析但无 tag 的空结果，避免重复拉日志）
         if (!$force && $sha !== '') {
             try {
                 $c = $this->pdo->prepare("SELECT tag FROM " . AppConfig::TABLE_PIPELINE_BUILD_LOG . " WHERE sha = ?");
@@ -1262,7 +1262,7 @@ class BuildController extends BaseController
     /**
      * 从单条 job 日志中尽力提取镜像 tag。
      * 命中条件：日志包含推送成功关键字（可配置，默认 digest）且包含本项目 harbor 仓库路径。
-     * 提取优先级：`repo:tag` → `-t TAG` / `--tag TAG`；多条候选时优先「尾号 = 当前构建编号」。
+     * 提取优先级：`repo:tag`，其次 `-t TAG` / `--tag TAG`；多条候选时优先尾号等于当前构建编号的。
      */
     private function extractTagFromTrace(string $trace, string $harborRepo, string $keyword, int $pipelineId = 0): string
     {
@@ -1272,7 +1272,7 @@ class BuildController extends BaseController
         if ($trace === '' || $harborRepo === '') {
             return '';
         }
-        // 推送成功关键字（大小写不敏感，支持 `|` 分隔多个，任一命中即可）；空关键字视为「不过滤」
+        // 推送成功关键字（大小写不敏感，支持 `|` 分隔多个，任一命中即可）；空关键字视为不过滤
         if ($keyword !== '') {
             $keywords = array_values(array_filter(array_map('trim', explode('|', $keyword)), fn($k) => $k !== ''));
             if (!empty($keywords)) {
@@ -1316,7 +1316,7 @@ class BuildController extends BaseController
     }
 
     /**
-     * 从候选 tag 中选一个：优先「尾号数字 = 当前构建编号」的（如 v20260827-130 ↔ pipelineId=130），
+     * 从候选 tag 中选一个：优先尾号数字等于当前构建编号的（如 v20260827-130 对应 pipelineId=130），
      * 避免日志里更早出现的上一条构建 tag（v20260827-129）被误采；无命中则取第一条。
      *
      * @param list<string> $candidates
@@ -1347,7 +1347,7 @@ class BuildController extends BaseController
         return $tag;
     }
 
-    // ── pipeline → tag 映射持久化（SQLite） ──
+    // pipeline 到 tag 映射的持久化（SQLite）
 
     /**
      * POST /api/build/{path}/report
@@ -1571,7 +1571,7 @@ class BuildController extends BaseController
     /**
      * 把 HarborService 返回的错误数组翻译成对用户明确的错误描述。
      * request() 出错时返回 ['error' => string]；HTTP 4xx 附带 ['http_code' => int]，
-     * 网络错误（重试耗尽）只有 error 无 http_code，据此区分「不可达 / 认证失败 / 资源不存在」。
+     * 网络错误（重试耗尽）只有 error 无 http_code，据此区分不可达、认证失败与资源不存在。
      *
      * @param array{http_code?: int, error?: string} $err
      */
@@ -1580,7 +1580,7 @@ class BuildController extends BaseController
         $httpCode = $err['http_code'] ?? 0;
         $msg      = $err['error'] ?? '未知错误';
         if ($httpCode === 0) {
-            // HarborService v1 路径返回的业务错误（如「项目 xxx 不存在」）直接透传，并非网络错误
+            // HarborService v1 路径返回的业务错误（如项目 xxx 不存在）直接透传，并非网络错误
             if (str_contains($msg, '不存在')) {
                 return $msg;
             }
@@ -1601,7 +1601,7 @@ class BuildController extends BaseController
     /**
      * scanSync 场景下 Harbor 扫描报告 4xx 错误数组的文案。
      * 与 harborErrorMessage() 的区别：412（扫描插件未启用）映射为既有的友好文案，
-     * 其余 4xx 透出 HarborService 的具体原因，避免一律误报「扫描功能未启用」。
+     * 其余 4xx 透出 HarborService 的具体原因，避免一律报成扫描功能未启用。
      *
      * @param array{http_code?: int, error?: string, message?: string} $scan
      */
@@ -1622,7 +1622,7 @@ class BuildController extends BaseController
         ?string $sourceUpdatedAt = null,
         ?string $createdAt = null
     ): bool {
-        // canonical artifact 是唯一事实源。
+        // canonical artifact 是唯一数据源。
         if (empty($projectKey) || $identity->pipelineIid <= 0 || empty($tag) || empty($harborRepo)) {
             return false;
         }

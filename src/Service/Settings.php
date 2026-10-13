@@ -5,16 +5,14 @@ namespace App\Service;
 use App\Config\AppConfig;
 
 /**
- * 只读运行时配置：封装 settings.php / env 合并后的配置数组。
+ * 只读运行时配置：封装 settings.php 与 env 合并后的配置数组。
  *
- * 从 AppConfig 迁出。职责边界：
- *   - 本类只读 $config 数组（连接信息、开关、LDAP、CORS 等纯配置）；
- *   - DB 读写（build_mode、custom_push、平台版本覆盖、job 映射）分别归
- *     {@see AppSettingRepository} / {@see PlatformVersionRepository} / {@see MappingManager}；
- *   - AppConfig 仅保留常量与目录数据。
+ * 本类只读配置（连接信息、开关、LDAP、CORS 等纯配置）；DB 读写（build_mode、custom_push、
+ * 平台版本覆盖、job 映射）分别归 {@see AppSettingRepository} / {@see PlatformVersionRepository}
+ * / {@see MappingManager}，AppConfig 仅保留常量与目录数据。
  *
- * 平台 API 版本的「DB 覆盖 + settings.php 最高优先级」合并保留在本类
- * （getGitPlatformsConfig/getHarborApiInfo 需要消费合并结果），DB 行的读写仍在 PlatformVersionRepository。
+ * 平台 API 版本的合并规则（DB 覆盖 + settings.php 最高优先级）保留在本类
+ * （getGitPlatformsConfig/getHarborApiInfo 需使用合并结果），DB 行读写仍在 PlatformVersionRepository。
  */
 class Settings
 {
@@ -104,7 +102,13 @@ class Settings
     }
 
     // CORS 配置
-    /** @return array{allowed_origins?: list<string>, allowed_methods?: list<string>, allowed_headers?: list<string>} */
+    /**
+     * @return array{
+     *     allowed_origins?: list<string>,
+     *     allowed_methods?: list<string>,
+     *     allowed_headers?: list<string>
+     * }
+     */
     public function getCorsConfig(): array
     {
         return $this->config['cors'] ?? ['allowed_origins' => ['*']];
@@ -137,16 +141,22 @@ class Settings
     }
 
     /**
-     * 获取用户自定义 Build Provider 列表（custom_push 等推送式 CI）
-     * 与 Git 自定义平台解耦：独立配置项 build.custom_providers，不放在 git 下。
-     * @return list<array{name: string, class: string, config: array<string,mixed>}> 每个元素包含 name (注册名), class (完整类名) 和 config (构造参数数组)
+     * 获取自定义 Build Provider 列表（custom_push 等推送式 CI）。
+     * 与 Git 自定义平台相互独立，配置项为 build.custom_providers。
+     *
+     * name 为注册名、class 为完整类名、config 为构造参数。
+     *
+     * @return list<array{
+     *     name: string,
+     *     class: string,
+     *     config: array<string,mixed>
+     * }>
      */
     public function getCustomBuildProviders(): array
     {
         return $this->config['build']['custom_providers'] ?? [];
     }
 
-    // getGitPlatformsConfig 方法
     /** @return list<array<string,mixed>> */
     public function getGitPlatformsConfig(): array
     {
@@ -201,7 +211,6 @@ class Settings
         return $platforms;
     }
 
-    // 获取 Harbor 的 API 配置
     /** @return array{api_base_url: string, api_version: string} */
     public function getHarborApiInfo(): array
     {
@@ -218,7 +227,6 @@ class Settings
         ];
     }
 
-    // 按名称获取单个 Git 平台配置
     /** @return array<string,mixed> */
     public function getGitPlatformConfig(string $name): array
     {

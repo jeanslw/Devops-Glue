@@ -67,7 +67,7 @@
 | `/oauth/authorize` | GET/POST | OAuth2 授权码流程：授权确认页 / 提交授权 |
 | `/oauth/token` | POST | OAuth2 授权码换取 access token |
 | `/oauth/userinfo` | GET/POST | OAuth2 用户信息 |
-| `/oauth/userinfo/emails` | GET | GitHub 风格邮箱子端点（Grafana 兜底请求） |
+| `/oauth/userinfo/emails` | GET | GitHub 风格邮箱子端点（兼容按 GitHub emails 流程取邮箱的客户端） |
 | `/.well-known/openid-configuration` | GET | OIDC 发现文档（公开；详见[单点登录](单点登录.md)） |
 | `/.well-known/jwks.json` | GET | OIDC 签名公钥（公开） |
 
@@ -449,15 +449,15 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 
 ## OAuth2 / OIDC 模块 (`/oauth`、`/.well-known`)
 
-> 供 Grafana 等外部系统用 Glue 账号登录（OAuth2 授权码流程），并为 Jenkins oic-auth / Harbor OIDC / GitLab OmniAuth 提供自动发现。完整配置与流程说明见[单点登录](单点登录.md)。
+> 供外部系统用 Glue 账号登录（OAuth2 授权码流程），并为 Jenkins oic-auth / Harbor OIDC / GitLab OmniAuth 提供自动发现。完整配置与流程说明见[单点登录](单点登录.md)。
 
 | 接口 | 方法 | 说明 |
 |---|---|---|
 | `/oauth/authorize` | GET | 授权码流程：展示授权确认页（浏览器跳转） |
 | `/oauth/authorize` | POST | 提交授权（账号密码登录 + 允许/拒绝；与登录接口共用 5 次/15 分钟失败限流） |
 | `/oauth/token` | POST | 授权码换取 access token |
-| `/oauth/userinfo` | GET/POST | 用户信息（access token 鉴权；GET/POST 均注册，兼容 Grafana 等客户端） |
-| `/oauth/userinfo/emails` | GET | GitHub 风格邮箱子端点（Grafana 兜底请求） |
+| `/oauth/userinfo` | GET/POST | 用户信息（access token 鉴权；GET/POST 均注册，兼容以 POST 取用户信息的客户端） |
+| `/oauth/userinfo/emails` | GET | GitHub 风格邮箱子端点（兼容按 GitHub emails 流程取邮箱的客户端） |
 | `/.well-known/openid-configuration` | GET | OIDC 发现文档（公开） |
 | `/.well-known/jwks.json` | GET | OIDC 签名公钥（仅公钥，不泄露私钥） |
 

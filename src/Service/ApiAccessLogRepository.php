@@ -9,11 +9,11 @@ use App\Helper\Log;
  * API token 调用日志仓储（ci_api_access_logs，append-only）。
  *
  * 安全边界：
- *  - 只存 token 展示名（api_tokens.name），绝不存 token 原文/hash；
+ *  - 只存 token 展示名（api_tokens.name），不存 token 原文与哈希；
  *  - 不存请求 body / query / Authorization 头；
- *  - route 存路由模板（如 /api/build/{path}/pipelines/{id}），避免高基数与敏感路径直出。
+ *  - route 存路由模板（如 /api/build/{path}/pipelines/{id}），避免高基数与敏感路径直接落库。
  *
- * 写入必须静默降级：record() 内任何异常都不得影响主请求。
+ * 写入失败不影响主流程：record() 内任何异常都不得影响主请求。
  */
 class ApiAccessLogRepository
 {

@@ -67,7 +67,7 @@ To restrict origins, edit `config/settings.php`:
 | `/oauth/authorize` | GET/POST | OAuth2 authorization code flow: consent page / submit authorization |
 | `/oauth/token` | POST | Exchange authorization code for an access token |
 | `/oauth/userinfo` | GET/POST | OAuth2 user info |
-| `/oauth/userinfo/emails` | GET | GitHub-style emails sub-endpoint (Grafana fallback) |
+| `/oauth/userinfo/emails` | GET | GitHub-style emails sub-endpoint (for clients that fetch email via the GitHub emails flow) |
 | `/.well-known/openid-configuration` | GET | OIDC discovery document (public; see [Single-Sign-On](Single-Sign-On.md)) |
 | `/.well-known/jwks.json` | GET | OIDC signing keys (public) |
 
@@ -448,15 +448,15 @@ Token expires in 24 hours. `super_admin` role returns `"*"` for permissions.
 
 ## OAuth2 / OIDC Module (`/oauth`, `/.well-known`)
 
-> Lets external systems such as Grafana log in with Glue accounts (OAuth2 authorization code flow), and provides OIDC auto-discovery for Jenkins oic-auth / Harbor OIDC / GitLab OmniAuth. See [Single-Sign-On](Single-Sign-On.md) for full configuration and flow details.
+> Lets external systems log in with Glue accounts (OAuth2 authorization code flow), and provides OIDC auto-discovery for Jenkins oic-auth / Harbor OIDC / GitLab OmniAuth. See [Single-Sign-On](Single-Sign-On.md) for full configuration and flow details.
 
 | Endpoint | Method | Description |
 |---|---|---|
 | `/oauth/authorize` | GET | Authorization code flow: render the consent page (browser redirect) |
 | `/oauth/authorize` | POST | Submit authorization (username/password login + approve/deny; shares the 5-attempts/15-minutes login lockout with the login endpoint) |
 | `/oauth/token` | POST | Exchange authorization code for an access token |
-| `/oauth/userinfo` | GET/POST | User info (access-token authenticated; both GET and POST are registered for Grafana-style clients) |
-| `/oauth/userinfo/emails` | GET | GitHub-style emails sub-endpoint (Grafana fallback) |
+| `/oauth/userinfo` | GET/POST | User info (access-token authenticated; both GET and POST are registered for clients that send userinfo requests via POST) |
+| `/oauth/userinfo/emails` | GET | GitHub-style emails sub-endpoint (for clients that fetch email via the GitHub emails flow) |
 | `/.well-known/openid-configuration` | GET | OIDC discovery document (public) |
 | `/.well-known/jwks.json` | GET | OIDC signing keys (public keys only, no private key) |
 

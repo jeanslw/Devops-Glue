@@ -9,12 +9,12 @@ use App\Service\Database;
 use PHPUnit\Framework\TestCase;
 
 /**
- * 回归测试：Slim4 重构后 Database::getPdo() 变成死代码，
- * 容器直接 new PDO，导致建库脚本（无 INSERT）重建的库永远没有种子数据，
- * 登录后无 RBAC 权限、无「修改密码」功能。
+ * 回归测试：Slim4 重构后 Database::getPdo() 成为死代码，容器直接 new PDO，
+ * 建库脚本（不含 INSERT）重建的库因此永远没有种子数据，登录后无 RBAC 权限、
+ * 无修改密码功能。
  *
- * 这里锁住 bootstrap() 入口：必须写入 RBAC 系统角色/权限/角色映射 + 根管理员，
- * 且种子缺失时 fail-fast 抛异常，而不是静默。
+ * 本文件锁住 bootstrap() 入口：必须写入 RBAC 系统角色/权限/角色映射 + 根管理员，
+ * 种子缺失时抛异常，不得跳过。
  */
 class DatabaseBootstrapTest extends TestCase
 {
@@ -153,7 +153,8 @@ class DatabaseBootstrapTest extends TestCase
 
     /**
      * 手动建库模式（DB_AUTO_MIGRATE=false）首次引导：写 seed_version 记录种子已应用，
-     * 但**不写 schema_version** —— 该模式的 DDL（含存量库补列）归运维，标记 schema 当前会谎报表结构已升级。
+     * 不写 schema_version。该模式的 DDL（含存量库补列）由运维执行，标记 schema 为当前
+     * 会错误地表示表结构已升级。
      */
     public function testManualModeMarksSeedVersionButNotSchemaVersion(): void
     {
@@ -171,8 +172,8 @@ class DatabaseBootstrapTest extends TestCase
     }
 
     /**
-     * 手动建库模式命中 seed_version 后应短路：不再每请求重跑 seedRbac 的写库
-     * （php-fpm 每请求独立进程，bootstrap() 的进程内守卫无法跨请求生效）。
+     * 手动建库模式命中 seed_version 后应短路，不再每请求重跑 seedRbac 的写库：
+     * php-fpm 每请求独立进程，bootstrap() 的进程内标记无法跨请求生效。
      */
     public function testManualModeSkipsRbacSeedWhenSeedVersionMatches(): void
     {
@@ -188,7 +189,7 @@ class DatabaseBootstrapTest extends TestCase
         $this->assertSame($before - 1, $after, '手动模式命中 seed_version 后不应重复播种');
     }
 
-    /** seed_version 缺失（如代码升级后尚未补种子）时应重新播种自愈，而不是永久短路。 */
+    /** seed_version 缺失（如代码升级后尚未补种子）时应重新播种补齐，不能永久短路。 */
     public function testManualModeReseedsWhenSeedVersionMissing(): void
     {
         $pdo = $this->createManualModePdo();
@@ -204,8 +205,8 @@ class DatabaseBootstrapTest extends TestCase
     }
 
     /**
-     * 迁移失败归因（建议 4）：MySQL 权限类驱动码 1044/1142/1227、SQLSTATE 42000 与 SQLite 只读库
-     * 都应归为「账号无 DDL 权限」，供后台按钮返回 409 + 可操作提示（而不是裸 500）。
+     * 迁移失败归因：MySQL 权限类驱动码 1044/1142/1227、SQLSTATE 42000 与 SQLite 只读库
+     * 都归为账号缺 DDL 权限一类，供后台按钮返回 409 与可操作提示，而非裸 500。
      */
     public function testClassifyMigrationErrorDetectsDdlDenial(): void
     {
@@ -220,7 +221,7 @@ class DatabaseBootstrapTest extends TestCase
         // violation" 里的 access violation 不能作为权限信号，否则 1064 语法错误会被连带误判）
         $this->assertSame('ddl_denied', Database::classifyMigrationError('CREATE command denied for user', '42000'));
         $this->assertSame('ddl_denied', Database::classifyMigrationError('access denied; you need the SUPER privilege', '42000'));
-        // SQLite 只读库/只读文件与「缺 DDL 权限」同类处置
+        // SQLite 只读库/只读文件与缺 DDL 权限同类处置
         $this->assertSame('ddl_denied', Database::classifyMigrationError('SQLite: attempt to write a readonly database'));
     }
 
@@ -236,13 +237,13 @@ class DatabaseBootstrapTest extends TestCase
         $this->assertSame('unreachable', Database::classifyMigrationError('SQLSTATE[HY000] [2002] Connection refused', 'HY000', 2002));
         $this->assertSame('unreachable', Database::classifyMigrationError('SQLSTATE[HY000] [28000] login failed', '28000'));
         $this->assertSame('unreachable', Database::classifyMigrationError('SQLite: unable to open database file'));
-        // PHP open_basedir 限制 → SQLite 打不开库文件（线上真实见过），同样属于「库不可达」
+        // PHP open_basedir 限制导致 SQLite 打不开库文件（线上出现过），同样属于库不可达
         $this->assertSame('unreachable', Database::classifyMigrationError('SQLSTATE[HY000]: General error: 14 open_basedir prohibits opening C:\\data\\x.db', 'HY000', 14));
     }
 
     /**
-     * 无法归因的错误保持 other；尤其 42000 大类里的语法错误(1064)/重复列(1060) 绝不能误判成缺 DDL
-     * 权限——迁移部分成功后重跑撞 1060 是最常见路径，误判会把排障引向「换高权账号」的错误方向。
+     * 无法归因的错误保持 other。42000 大类里的语法错误(1064)/重复列(1060) 不能判成缺 DDL 权限：
+     * 迁移部分成功后重跑撞 1060 是最常见路径，误判会把排障引向换高权限账号。
      */
     public function testClassifyMigrationErrorFallsBackToOther(): void
     {
@@ -253,20 +254,20 @@ class DatabaseBootstrapTest extends TestCase
             '42000',
             1064
         ));
-        // 1060 重复列（迁移中途失败后重跑的常见情形）→ other，而非 ddl_denied
+        // 1060 重复列（迁移中途失败后重跑的常见情形）归 other，而非 ddl_denied
         $this->assertSame('other', Database::classifyMigrationError(
             'SQLSTATE[42S21]: Column already exists: 1060 Duplicate column name',
             '42S21',
             1060
         ));
-        // 无驱动码、仅 SQLSTATE 42000 但消息不含 denied → 不能按权限拒绝处理
+        // 无驱动码、仅 SQLSTATE 42000 但消息不含 denied：不按权限拒绝处理
         $this->assertSame('other', Database::classifyMigrationError('some syntactic problem', '42000'));
         $this->assertSame('other', Database::classifyMigrationError(''));
     }
 
     /**
-     * 自动建库模式：只写 schema_version（seed_version 是手动建库模式的记录键，此模式不写）
-     * → schema_current=true，且无缺失表。
+     * 自动建库模式：只写 schema_version（seed_version 是手动建库模式的记录键，此模式不写），
+     * 结果为 schema_current=true 且无缺失表。
      */
     public function testSchemaStateReportsAlignedInAutoMigrateMode(): void
     {
@@ -283,8 +284,8 @@ class DatabaseBootstrapTest extends TestCase
 
     /**
      * 手动建库模式只写 seed_version（不写 schema_version）：schema_current 必须保持 null（未知），
-     * 不得用 seed_version 回落判 true——种子（RBAC INSERT）补齐不代表业务表新增列已就绪，
-     * 升级漏跑结构迁移时种子照样能补齐，回落判 true 会把「新代码 + 旧表结构」谎报成健康。
+     * 不得用 seed_version 回落判 true。种子（RBAC INSERT）补齐不代表业务表新增列已就绪：
+     * 升级漏跑结构迁移时种子照样能补齐，回落判 true 会把新代码配旧表结构报成健康。
      */
     public function testSchemaStateStaysUnknownInManualModeWithoutSchemaVersion(): void
     {
@@ -296,7 +297,7 @@ class DatabaseBootstrapTest extends TestCase
         $this->assertNull($state['schema_current'], '无 schema_version 时必须是「未知」，不得据 seed_version 谎称结构已对齐');
     }
 
-    /** 版本落后（升级了代码还没跑迁移）→ schema_current=false；缺失表清单只在真缺表时非空。 */
+    /** 版本落后（升级了代码还没跑迁移）时 schema_current=false；缺失表清单只在真缺表时非空。 */
     public function testSchemaStateDetectsStaleVersionAndMissingTables(): void
     {
         Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
@@ -313,7 +314,7 @@ class DatabaseBootstrapTest extends TestCase
         $this->assertSame([AppConfig::TABLE_PLATFORM_VERSIONS], Database::missingTables($pdo));
     }
 
-    /** 两个版本键都没有（既非自动建库也未手动标记）→ schema_current=null（未知），探针不据此降级。 */
+    /** 两个版本键都没有（既非自动建库也未手动标记）时 schema_current=null（未知），探针不据此降级。 */
     public function testSchemaStateReturnsNullWhenNoVersionRecorded(): void
     {
         Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
@@ -331,8 +332,8 @@ class DatabaseBootstrapTest extends TestCase
     }
 
     /**
-     * 方向位 schema_ahead：库结构版本**高于**代码版本 = 代码被降级（回滚）→ current=false + ahead=true。
-     * 方向必须用 version_compare 判定（'2.10.0' > '2.8.9'）；字符串比较会得出相反结论，故专门锁住该用例。
+     * 方向位 schema_ahead：库结构版本高于代码版本，即代码被降级（回滚），current=false + ahead=true。
+     * 方向用 version_compare 判定（'2.10.0' > '2.8.9'）；字符串比较会得出相反结论，故锁住该用例。
      */
     public function testSchemaStateReportsAheadOnCodeDowngrade(): void
     {
@@ -345,12 +346,12 @@ class DatabaseBootstrapTest extends TestCase
         $this->assertFalse($state['schema_current'], '版本不一致 → 未对齐');
         $this->assertTrue($state['schema_ahead'], '库版本高于代码 → 疑似降级回滚（须用 version_compare，非字典序）');
 
-        // 反向：版本低于代码 → 属于「没跑结构迁移」，不是「代码回滚」
+        // 反向：版本低于代码，属于没跑结构迁移，不是代码回滚
         $pdo->exec('UPDATE ' . AppConfig::TABLE_APP_SETTINGS . " SET value = '0.0.0' WHERE setting_key = 'schema_version'");
         $this->assertFalse(Database::schemaState($pdo)['schema_ahead'], '库版本低于代码不算 ahead');
     }
 
-    /** 无版本记录（未知）时 ahead 必须为 false：没有记录可判定为「更高」，避免监控误报降级。 */
+    /** 无版本记录（未知）时 ahead 必须为 false：没有记录可判定为更高，避免监控误报降级。 */
     public function testSchemaStateReportsAheadFalseWhenNoVersionRecorded(): void
     {
         Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
@@ -364,8 +365,9 @@ class DatabaseBootstrapTest extends TestCase
     }
 
     /**
-     * 降级后 migrateNow() 会把「更新」的标记改写回当前（旧）版本（自动模式 bootstrap 走同一 markSchemaCurrent 路径），
-     * 且改写前先经 warnOnVersionDowngrade() 留 warning 日志——本用例锁住「不抛异常且标记被对齐」。
+     * 降级后 migrateNow() 会把更新后的标记改写回当前（旧）版本（自动模式 bootstrap 走同一
+     * markSchemaCurrent 路径），改写前先经 warnOnVersionDowngrade() 留 warning 日志；
+     * 本用例锁住不抛异常且标记被对齐。
      */
     public function testMigrateNowRewritesAheadMarkerToCurrentVersion(): void
     {
@@ -392,23 +394,23 @@ class DatabaseBootstrapTest extends TestCase
     }
 
     /**
-     * 守卫不变量：Database::schemaTables() 是**显式清单**，必须覆盖 AppConfig 里全部应用自有表。
+     * 不变量：Database::schemaTables() 是显式清单，必须覆盖 AppConfig 里全部应用自有表。
      *
-     * 回归背景：`ci_api_access_logs` 曾被漏在这份清单之外 —— 该表由 ensureTables() 真实创建、
-     * 由 cli/cleanup-api-access-logs.php 定时清理，却不在探测清单里，表现为「新装实例的数据表卡片
-     * 比真实库少一张」以及 /healthz 的 tables_missing 感知不到它的缺失。
+     * 回归背景：ci_api_access_logs 曾被漏在这份清单之外。该表由 ensureTables() 真实创建、
+     * 由 cli/cleanup-api-access-logs.php 定时清理，却不在探测清单里，表现为新装实例的数据表
+     * 卡片比真实库少一张，/healthz 的 tables_missing 也感知不到它的缺失。
      *
-     * 唯一合法例外是 TABLE_CD_DEPLOY_LOG_VIEW（v_glue_deploy_logs）：那是 Devops-CD 侧建立的
+     * 唯一合法例外是 TABLE_CD_DEPLOY_LOG_VIEW（v_glue_deploy_logs）：它是 Devops-CD 侧建立的
      * 只读契约视图，不由本应用的建表逻辑创建，因此不予探测。
      *
-     * 比对逻辑与**运行时自检共用同一份事实**（Database::schemaListDrift()）：同一个结论会进 error 日志、
-     * 后台「系统信息 → 数据表清单一致性」行与 /healthz 的 tables_list_drift，使「升级/打补丁绕过了 CI」
-     * 的实例也不会静默少表。
+     * 比对逻辑与运行时自检（Database::schemaListDrift()）共用同一份事实：同一个结论会进 error
+     * 日志、后台系统信息的数据表清单一致性行与 /healthz 的 tables_list_drift，升级或打补丁
+     * 绕过 CI 的实例也不会少表。
      */
     public function testSchemaProbeListCoversEveryAppOwnedTable(): void
     {
-        // 空内存库 → missingTables() 返回的即 schemaTables() 的全量清单（顺序与定义一致），
-        // 也即 /healthz 与后台表清单真正遍历的那份清单（不复制一份来断言，避免自我印证）
+        // 空内存库：missingTables() 返回的即 schemaTables() 的全量清单（顺序与定义一致），
+        // 也是 /healthz 与后台表清单真正遍历的那份清单（不复制一份来断言，避免自我印证）
         $probed = Database::missingTables($this->createMemoryPdo());
         $drift  = Database::schemaListDrift($probed);
 
@@ -424,8 +426,8 @@ class DatabaseBootstrapTest extends TestCase
     }
 
     /**
-     * 自检器本身必须有效：把探测清单里的 ci_api_access_logs 摘掉（＝v2.8.9 修复前的状态），
-     * schemaListDrift() 必须点名它——否则运行时提示形同虚设，漏表依旧静默。
+     * 自检器本身必须有效：把探测清单里的 ci_api_access_logs 摘掉（即清单漏掉该表时的状态），
+     * schemaListDrift() 必须点名它，否则运行时提示形同虚设，漏表依旧无人发现。
      */
     public function testSchemaListDriftDetectsMissingProbeEntry(): void
     {
@@ -460,7 +462,7 @@ class DatabaseBootstrapTest extends TestCase
         $this->assertSame(['ci_typo_table', AppConfig::TABLE_CD_DEPLOY_LOG_VIEW], $drift['tables']);
     }
 
-    /** 正常代码零漂移：schemaStatus()（后台「数据表清单一致性」行的数据源）透出的自检结果必须是 ok。 */
+    /** 正常代码零漂移：schemaStatus()（后台数据表清单一致性行的数据源）透出的自检结果必须是 ok。 */
     public function testSchemaStatusExposesCleanListDriftCheck(): void
     {
         Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
@@ -476,8 +478,8 @@ class DatabaseBootstrapTest extends TestCase
     }
 
     /**
-     * 只读预检（cli/migrate.php --dry-run 的数据源）：空库 → 列出全部缺失表，
-     * 且**确实没写库**（ci_app_settings 仍不存在，证明未触发建表/种子）。
+     * 只读预检（cli/migrate.php --dry-run 的数据源）：空库时列出全部缺失表，
+     * 且确实没写库（ci_app_settings 仍不存在，证明未触发建表/种子）。
      */
     public function testPendingChangesOnEmptyDatabaseReportsTablesAndStaysReadOnly(): void
     {
@@ -495,7 +497,7 @@ class DatabaseBootstrapTest extends TestCase
         $pdo->query('SELECT 1 FROM ' . AppConfig::TABLE_APP_SETTINGS . ' LIMIT 1');
     }
 
-    /** 只读预检：已建全的库 → 表与列都没有待补项（与 CLI「迁移后仍缺表」的校验口径一致）。 */
+    /** 只读预检：已建全的库，表与列都没有待补项（与 CLI 迁移后仍缺表的校验口径一致）。 */
     public function testPendingChangesAfterBootstrapIsEmpty(): void
     {
         Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
@@ -508,14 +510,14 @@ class DatabaseBootstrapTest extends TestCase
     }
 
     /**
-     * 只读预检：存量旧表（缺 columnMigrations 中的列）→ 该表出现在「缺失列」而非「缺失表」，
-     * 并逐列列出待补字段。这正对应 --dry-run 最有用的场景：存量库升级前先看清会 ALTER 什么。
+     * 只读预检：存量旧表（缺 columnMigrations 中的列）出现在缺失列而非缺失表，并逐列列出
+     * 待补字段。这正是 --dry-run 最有用的场景：存量库升级前先看清会 ALTER 什么。
      */
     public function testPendingChangesReportsLegacyColumnsOfExistingTable(): void
     {
         Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
         $pdo = $this->createMemoryPdo();
-        // 手工造一张「旧版」表：存在，但没有 status 列（status 在 columnMigrations 映射里）
+        // 手工造一张旧版表：存在，但没有 status 列（status 在 columnMigrations 映射里）
         $pdo->exec('CREATE TABLE ' . AppConfig::TABLE_JOB_GIT_MAP . ' (job_name TEXT PRIMARY KEY, git_platform TEXT)');
 
         $pending = Database::pendingChanges($pdo);
@@ -526,10 +528,10 @@ class DatabaseBootstrapTest extends TestCase
     }
 
     /**
-     * 预检与实跑同源：pendingChanges() 报出的缺列，跑一次迁移后必须全部补齐（否则预检会误导运维）。
+     * 预检与实跑同源：pendingChanges() 报出的缺列，跑一次迁移后必须全部补齐，否则预检会误导运维。
      *
      * 用真实 SQLite 库文件 + Database::connect() 注入连接：migrateNow() 自带 connect()，
-     * 只有让 self::$pdo 指向同一个库，才能验证「预检结果 == 迁移实际补齐的内容」。
+     * 只有让 self::$pdo 指向同一个库，才能验证预检结果等于迁移实际补齐的内容。
      */
     public function testPendingChangesMatchesWhatMigrateNowFix(): void
     {
@@ -539,7 +541,7 @@ class DatabaseBootstrapTest extends TestCase
         Database::init(['driver' => 'sqlite', 'path' => $dbPath, 'auto_migrate' => true]);
 
         $pdo = Database::connect(); // 只建连：起一个真实库文件并注入 self::$pdo
-        // 手工造一张「旧版」表：存在，但缺 status 列
+        // 手工造一张旧版表：存在，但缺 status 列
         $pdo->exec('CREATE TABLE ' . AppConfig::TABLE_JOB_GIT_MAP . ' (job_name TEXT PRIMARY KEY, git_platform TEXT)');
 
         $before = Database::pendingChanges($pdo);
@@ -558,8 +560,8 @@ class DatabaseBootstrapTest extends TestCase
     }
 
     /**
-     * ci_app_settings 缺失（表没建）时 schemaState() 必须抛异常：探针据此判定「库不可用」（503），
-     * 不能悄悄吞掉异常把空库报成 ok。
+     * ci_app_settings 缺失（表没建）时 schemaState() 必须抛异常：探针据此判定库不可用（503），
+     * 不能吞掉异常把空库报成 ok。
      */
     public function testSchemaStateThrowsWhenSettingsTableMissing(): void
     {
@@ -572,8 +574,8 @@ class DatabaseBootstrapTest extends TestCase
     // ────────────── 降级（回滚）时的播种语义：merge（只补不删）vs prune（按当前代码收敛） ──────────────
 
     /**
-     * 降级走「合并播种」：新版本授予系统角色的映射必须**保留**（不得被回滚顺手收窄），
-     * 版本标记仍自愈为当前代码版本，并在改写前留 warning 痕迹。
+     * 降级走合并播种：新版本授予系统角色的映射必须保留，不得被回滚顺手收窄；
+     * 版本标记仍自动改写为当前代码版本，并在改写前留 warning 痕迹。
      */
     public function testDowngradeUsesMergeSeedingAndKeepsNewerMappings(): void
     {
@@ -581,11 +583,11 @@ class DatabaseBootstrapTest extends TestCase
         $pdo = $this->createMemoryPdo();
         Database::bootstrap($pdo);
 
-        // 模拟「新版本」：给系统角色 viewer 多授一个权限
+        // 模拟新版本：给系统角色 viewer 多授一个权限
         $extra = $this->firstPermissionNotGrantedToViewer();
         $this->grantRolePermission($pdo, AppConfig::ROLE_VIEWER, $extra);
 
-        // 模拟「代码被降级」：记录版本高于当前代码版本
+        // 模拟代码被降级：记录版本高于当前代码版本
         $this->setVersion($pdo, 'schema_version', '99.0.0');
 
         $this->reBootstrap($pdo, true); // 降级后的首个请求（自动建库模式）
@@ -601,7 +603,7 @@ class DatabaseBootstrapTest extends TestCase
         );
     }
 
-    /** 合并播种的另一半是「补」：当前代码期望的映射即使被删，降级后也要补回来（只补不删的两个方向）。 */
+    /** 合并播种的另一半是补：当前代码期望的映射即使被删，降级后也要补回来（只补不删的两个方向）。 */
     public function testDowngradeMergeStillRestoresMappingsExpectedByCurrentCode(): void
     {
         Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
@@ -640,7 +642,7 @@ class DatabaseBootstrapTest extends TestCase
         );
     }
 
-    /** 显式迁移（cli/migrate.php / 后台「同步库结构」）在降级场景下仍按当前代码收敛，避免「合并」被永久化。 */
+    /** 显式迁移（cli/migrate.php / 后台同步库结构）在降级场景下仍按当前代码收敛，避免合并被永久化。 */
     public function testExplicitMigrateOnDowngradeStillPrunes(): void
     {
         Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
@@ -660,7 +662,7 @@ class DatabaseBootstrapTest extends TestCase
         $this->assertSame(AppConfig::APP_VERSION, $this->version($pdo, 'schema_version'));
     }
 
-    /** 手动建库模式（DB_AUTO_MIGRATE=false）的降级同样走合并播种，并把 seed_version 自愈为当前版本。 */
+    /** 手动建库模式（DB_AUTO_MIGRATE=false）的降级同样走合并播种，seed_version 一并改写为当前版本。 */
     public function testManualModeDowngradeAlsoUsesMergeSeeding(): void
     {
         Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
@@ -681,7 +683,7 @@ class DatabaseBootstrapTest extends TestCase
     }
 
 
-    // ────────────── 降级事件的审计留痕：写进操作日志（后台「操作日志」可见） ──────────────
+    // 降级事件的审计留痕：写进操作日志（后台操作日志可见）
 
     /** 降级必须落一条操作日志：动作 schema_downgrade、操作人 system、结果 failure、target=被降级到的版本。 */
     public function testDowngradeIsRecordedInOperationLog(): void
@@ -705,7 +707,7 @@ class DatabaseBootstrapTest extends TestCase
         $this->assertSame(AppConfig::APP_VERSION, $detail['current'] ?? null);
     }
 
-    /** 同一个「被降级到的版本」只记一条：分布式部署下多进程各自检测不应刷屏；不同版本各记一条。 */
+    /** 同一个被降级到的版本只记一条：分布式部署下多进程各自检测不应重复记录；不同版本各记一条。 */
     public function testDowngradeOperationLogIsDeduplicatedPerVersion(): void
     {
         Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
@@ -723,7 +725,7 @@ class DatabaseBootstrapTest extends TestCase
         $this->assertCount(2, $this->operationLogRows($pdo, 'schema_downgrade'), '不同 previous 版本各记一条');
     }
 
-    /** 正常升级方向绝不能留下"降级"审计（否则操作日志会被误报污染）。 */
+    /** 正常升级方向不应留下"降级"审计（否则操作日志会被误报污染）。 */
     public function testNormalUpgradeIsNotRecordedAsDowngrade(): void
     {
         Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
@@ -738,7 +740,7 @@ class DatabaseBootstrapTest extends TestCase
 
     // ────────────── 升 / 首次 也要留痕：版本跃迁审计（降级已有，见上一组） ──────────────
 
-    /** 首次初始化建库 → schema_init（success，target 为空表示"此前无版本记录"）。 */
+    /** 首次初始化建库记 schema_init（success，target 为空表示"此前无版本记录"）。 */
     public function testFirstBootIsRecordedAsSchemaInit(): void
     {
         Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
@@ -758,7 +760,7 @@ class DatabaseBootstrapTest extends TestCase
         $this->assertSame(AppConfig::APP_VERSION, $detail['current'] ?? null);
     }
 
-    /** 自动引导里的版本向前推进 → schema_upgrade（success，target=跃迁前版本）。 */
+    /** 自动引导里的版本向前推进记 schema_upgrade（success，target=跃迁前版本）。 */
     public function testUpgradeIsRecordedAsSchemaUpgrade(): void
     {
         Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
@@ -778,7 +780,7 @@ class DatabaseBootstrapTest extends TestCase
         $this->assertSame(AppConfig::APP_VERSION, $detail['current'] ?? null);
     }
 
-    /** 手动建库模式：引导只补种子（seed_version 跃迁）→ 同样记 schema_upgrade，但 scope=seed 以示区分。 */
+    /** 手动建库模式：引导只补种子（seed_version 跃迁）同样记 schema_upgrade，但 scope=seed 以示区分。 */
     public function testManualModeSeedTransitionIsRecordedWithSeedScope(): void
     {
         Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
@@ -796,7 +798,7 @@ class DatabaseBootstrapTest extends TestCase
     }
 
     /**
-     * 显式迁移（`cli/migrate.php` / 后台按钮）**不写**版本跃迁记录——它记录的是"操作"本身
+     * 显式迁移（`cli/migrate.php` / 后台按钮）不写版本跃迁记录，它记录的是"操作"本身
      * （`migrate_schema`，按钮路径在 AdminController、CLI 路径在 cli/migrate.php），避免一次操作两行日志。
      */
     public function testExplicitMigrateDoesNotRecordTransition(): void
@@ -814,7 +816,7 @@ class DatabaseBootstrapTest extends TestCase
     }
 
     /**
-     * 显式迁移在**降级方向**必须留痕：回滚后用旧代码跑 migrateNow()（正是回滚 SOP 的对齐步骤），
+     * 显式迁移在降级方向必须留痕：回滚后用旧代码跑 migrateNow()（回滚 SOP 的对齐步骤），
      * 要记一条 schema_downgrade（channel=explicit_migrate、seed_mode=prune）；正向 / 平级则一条都不记。
      */
     public function testExplicitMigrateDowngradeIsAudited(): void
@@ -842,8 +844,8 @@ class DatabaseBootstrapTest extends TestCase
     }
 
     /**
-     * 去重键必须按 channel 区分：同一回滚事件里，先发生的「自动引导降级」（merge）不得把随后
-     * 「显式迁移降级」（prune）的审计行吞掉——两者后果不同，后台都要能查到。
+     * 去重键必须按 channel 区分：同一回滚事件里，先发生的自动引导降级（merge）不得把随后的
+     * 显式迁移降级（prune）审计行吞掉，两者后果不同，后台都要能查到。
      */
     public function testExplicitDowngradeAuditIsNotSwallowedByBootstrapDedup(): void
     {
@@ -882,7 +884,7 @@ class DatabaseBootstrapTest extends TestCase
         $pdo = $this->createMemoryPdo();
         Database::bootstrap($pdo);
 
-        // 让 role_permissions 的任何删除都失败 → prune 阶段产生部分失败（模拟"种子只播了一半"）
+        // 让 role_permissions 的任何删除都失败，使 prune 阶段产生部分失败（模拟"种子只播了一半"）
         $pdo->exec(
             'CREATE TRIGGER fail_rp_delete BEFORE DELETE ON ' . AppConfig::TABLE_ROLE_PERMISSIONS
             . " BEGIN SELECT RAISE(ABORT, 'forced seed failure'); END"
@@ -936,7 +938,7 @@ class DatabaseBootstrapTest extends TestCase
 
 
     /**
-     * 构造「纯手工建库 + DB_AUTO_MIGRATE=false」的库：先用自动模式建全表，
+     * 构造纯手工建库 + DB_AUTO_MIGRATE=false 的库：先用自动模式建全表，
      * 再清掉 schema_version，等价于运维只跑了 database/*.sql（脚本不含该键），
      * 最后按手动模式引导一次。
      */
@@ -956,7 +958,7 @@ class DatabaseBootstrapTest extends TestCase
         $this->reBootstrap($pdo, false);
     }
 
-    /** viewer 未被授予的某个权限键（用于模拟「新版本多授的权限」）。 */
+    /** viewer 未被授予的某个权限键（用于模拟新版本多授的权限）。 */
     private function firstPermissionNotGrantedToViewer(): string
     {
         foreach (array_keys(AppConfig::DEFAULT_PERMISSIONS) as $key) {
@@ -995,7 +997,7 @@ class DatabaseBootstrapTest extends TestCase
     }
 
     /**
-     * 设置某个版本键的值（**upsert**，不是 UPDATE）。
+     * 设置某个版本键的值（upsert，不是 UPDATE）。
      *
      * 必须用 upsert：自动建库模式只写 `schema_version`、不写 `seed_version`，
      * 若用 UPDATE 去改 seed_version 会匹配 0 行，手动模式就会把它当成"升级"而不是"降级"。
@@ -1016,7 +1018,7 @@ class DatabaseBootstrapTest extends TestCase
         return ($row === false) ? null : (string) $row;
     }
 
-    /** 模拟「新进程再引导一次」：同一 PDO，清掉进程内幂等守卫。 */
+    /** 模拟新进程再引导一次：同一 PDO，清掉进程内的幂等标记。 */
     private function reBootstrap(\PDO $pdo, bool $autoMigrate): void
     {
         Database::reset();

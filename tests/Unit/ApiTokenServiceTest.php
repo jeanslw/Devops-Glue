@@ -176,8 +176,8 @@ class ApiTokenServiceTest extends TestCase
 
     public function testUpdateScopesSucceedsWhenScopeSetUnchanged(): void
     {
-        // MySQL 对「值与原来相同」的 UPDATE 返回 0 受影响行：语义必须靠存在性判断，
-        // 否则「保存了但没改动」会被前端当成失败。
+        // MySQL 对值未变化的 UPDATE 返回 0 受影响行：语义必须靠存在性判断，
+        // 否则保存了但没改动的情况会被前端当成失败。
         $created = $this->service->createToken(['name' => 'ci-bot', 'scopes' => ['main', 'git']]);
         $this->assertTrue($this->service->updateScopes($created['id'], ['main', 'git']));
     }
@@ -199,7 +199,7 @@ class ApiTokenServiceTest extends TestCase
 
     public function testUpdateScopesRejectsEmptySet(): void
     {
-        // 勾选界面全部取消时宁可报错：静默清空会让「以为已收回/以为已授权」变成越权面的意外
+        // 勾选界面全部取消时应当报错：直接清空会让以为已收回或已授权的判断与实际情况不符
         $created = $this->service->createToken(['name' => 'ci-bot', 'scopes' => ['main']]);
         $this->expectException(\InvalidArgumentException::class);
         $this->service->updateScopes($created['id'], ['', '  ']);

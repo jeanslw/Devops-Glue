@@ -262,8 +262,8 @@ export async function onStaleTagCleanupToggle() {
 
 /**
  * 手动立即执行 tag 任务（清理 / 回填）的通用前端动作。
- * 共享：开关状态已在卡片渲染时同步，按钮 disabled 反映可执行性；
- * 执行前二次确认 → 禁用按钮 + 「执行中…」→ 成功后按结果填充状态文本。
+ * 开关状态已在卡片渲染时同步，按钮 disabled 反映是否可执行；
+ * 执行前二次确认，确认后禁用按钮并显示 "执行中…"，成功后按结果填写状态文本。
  * opts: {btnId, statusId, url, confirmKey, noteKey, runningKey, labelKey, buildMessage, refreshAfter}
  */
 async function runTagJob(opts) {
@@ -319,7 +319,7 @@ function num(v) {
     return isFinite(n) ? n : 0;
 }
 
-/** 「立即清理一次」：POST /api/admin/tag_cleanup */
+/** 立即清理一次：POST /api/admin/tag_cleanup */
 export async function runStaleTagCleanup() {
     await runTagJob({
         btnId: 'stale-tag-run-btn',
@@ -336,7 +336,7 @@ export async function runStaleTagCleanup() {
     });
 }
 
-/** 「立即回填一次」：POST /api/admin/tag_backfill */
+/** 立即回填一次：POST /api/admin/tag_backfill */
 export async function runTagBackfill() {
     await runTagJob({
         btnId: 'backfill-tag-run-btn',
@@ -354,7 +354,7 @@ export async function runTagBackfill() {
 }
 
 /**
- * 同步「立即清理一次 / 立即回填一次」两个按钮的可用性：
+ * 同步立即清理一次、立即回填一次两个按钮的可用性：
  * 仅当对应开关已开启时才允许手动执行（与后端 409 校验一致），
  * 关闭时按钮置灰并给出 title 提示，避免用户点了才被拒绝。
  */
@@ -474,7 +474,7 @@ export function applyApiLogSettings(data) {
     }
 }
 
-// 保留天数下拉切换：选「自定义」只展开输入框等用户输入，其余档位直接保存
+// 保留天数下拉切换：选自定义时只展开输入框等待输入，其余档位直接保存
 export function onApiLogRetainChange() {
     const retainSel = document.getElementById('apilog-set-retain');
     const retainCustom = document.getElementById('apilog-set-retain-custom');

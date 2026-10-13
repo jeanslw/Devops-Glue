@@ -11,8 +11,8 @@ use PHPUnit\Framework\TestCase;
 /**
  * TokenService::validate 回归测试（内存 SQLite）
  *
- * 锁定 #8 修复：cache value 以「user|role」存储，用户名若含 '|'，
- * 旧实现取 parts[1] 当角色会把用户名里 '|' 后的片段误当 role → 提权。
+ * 锁定 #8 修复：cache value 以 "user|role" 存储，用户名若含 '|'，
+ * 旧实现取 parts[1] 当角色会把用户名里 '|' 后的片段误当 role，造成提权。
  * 新实现 role 取最后一段，用户名其余部分按原样还原。
  */
 class TokenServiceTest extends TestCase
@@ -94,7 +94,7 @@ class TokenServiceTest extends TestCase
     public function testPlaintextTokenKeyDoesNotMatch(): void
     {
         // 锁死哈希化改造：若 cache 表里还留着旧实现的明文 token 当 key（或库被泄露），
-        // 校验端已改为按 sha256 查找，明文 key 命中不了 → 会话作废（fail-closed）。
+        // 校验端已改为按 sha256 查找，明文 key 无法命中，会话即作废（fail-closed）。
         $this->pdo->prepare(
             'INSERT INTO ' . AppConfig::TABLE_CACHE . ' (cache_key, value, expires_at) VALUES (?, ?, ?)'
         )->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . 'tok_plain', 'alice|admin', time() + 3600]);
@@ -109,7 +109,7 @@ class TokenServiceTest extends TestCase
 
     public function testDisabledUserTokenIsInvalidated(): void
     {
-        // 停用账号（status=0）：token 命中缓存但账号已停用 → 立即失效（踢下线）
+        // 停用账号（status=0）：token 命中缓存但账号已停用，立即失效（踢下线）
         $this->createAdminUsersTable();
         $this->seedUser('alice', 0);
         $this->seedToken('tok_disabled', 'alice|admin');
@@ -129,7 +129,7 @@ class TokenServiceTest extends TestCase
 
     public function testDeletedUserTokenIsInvalidated(): void
     {
-        // 账号已删除：admin_users 无此行 → token 同样失效
+        // 账号已删除：admin_users 无此行，token 同样失效
         $this->createAdminUsersTable();
         $this->seedToken('tok_deleted', 'ghost|admin');
         $this->assertNull($this->service->validate('tok_deleted'));
@@ -137,7 +137,7 @@ class TokenServiceTest extends TestCase
 
     public function testMissingStatusColumnDoesNotLockOut(): void
     {
-        // 旧库无 status 列（或 DB 不可达）：状态检查抛异常 → 放行（fail-open 保可用）
+        // 旧库无 status 列（或 DB 不可达）：状态检查抛异常，放行（fail-open 保可用）
         $this->seedToken('tok_legacy', 'alice|admin');
         $result = $this->service->validate('tok_legacy');
         $this->assertNotNull($result);
@@ -146,7 +146,7 @@ class TokenServiceTest extends TestCase
 
     public function testLegacyTokenDisabledByDefault(): void
     {
-        // 安全开关默认关：即使给出「正确的」base64(user:password)，也不放行（fail-closed）
+        // 安全开关默认关：即使给出正确的 base64(user:password)，也不放行（fail-closed）
         $this->assertFalse($this->service->validateLegacy(base64_encode('admin:secret')));
     }
 

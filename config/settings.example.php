@@ -46,9 +46,9 @@ return [
         'password' => env('HARBOR_PASSWORD', ''),
     ],
     'build' => [
-        // 自定义 Build Provider（推送式 CI）— 默认已配置，开箱即用，无需修改。
-        // 启用：管理后台「配置模式」Tab → 勾选「启用 Custom_Push」→ 即时生效。
-        // build_mode 与 custom_push_enabled 正交，可任意组合。
+        // 自定义 Build Provider（推送式 CI）：默认已配置，开箱即用，无需修改。
+        // 启用方式：管理后台配置模式 Tab 勾选启用 Custom_Push，即时生效。
+        // build_mode 与 custom_push_enabled 相互独立，可任意组合。
         //
         // 用户 CI 对接一个接口（path = job_git_map.job_name）：
         //   POST /api/build/{path}/report — 一次性上报构建终态结果（含 tag）
@@ -85,7 +85,7 @@ return [
      * ┌──────────────┬──────┬──────────────────────────────────────────────────┐
      * │ 字段           │ 必填  │ 说明                                             │
      * ├──────────────┼──────┼──────────────────────────────────────────────────┤
-     * │ job_name     │ ✅   │ Jenkins Job 完整路径                               │
+     * │ job_name     │ 是   │ Jenkins Job 完整路径                               │
      * │ git_platform │      │ 自建实例强烈建议。可选: gitlab|gitee|github|gitea    │
      * │ git_remote   │      │ 不填则从 Jenkins 自动获取                           │
      * │ project_id   │      │ GitLab: 不填自动查 API                              │
@@ -99,7 +99,7 @@ return [
     'job_git_map' => [
         // [
 
-        //     'job_name'          => 'java/registry',   // ✅ 必填
+        //     'job_name'          => 'java/registry',   // 必填
         //     'git_platform'      => 'gitlab',           //   自建实例必须
         //     'git_remote'        => 'http://git.company.com/group/project.git',
         //     'project_id'        => 2,
@@ -109,24 +109,19 @@ return [
         // ],
     ],
     /*
-     * OAuth2 / OIDC 客户端白名单（供 Grafana / Jenkins / Harbor / GitLab 用 Glue 账号登录）
+     * OAuth2 / OIDC 客户端白名单（供外部系统用 Glue 账号登录）
      *
      * 每个客户端需配置：
-     *   client_id     — 客户端标识（数组键名，如 grafana / jenkins）
+     *   client_id     — 客户端标识（数组键名，如 jenkins / harbor）
      *   secret        — 客户端密钥（必须设强随机字符串；空/纯空白会被 fail-closed 剔除）
      *   redirect_uri  — 授权回调地址（必须与外部系统配置逐字符一致，含 scheme/host/端口/路径）
      *
      * 各家回调地址：
-     *   Grafana — http://your-grafana:3000/login/generic_oauth
      *   Jenkins — http://your-jenkins/securityRealm/finishLogin
      *   Harbor  — https://your-harbor/c/oidc/callback
      *   GitLab  — https://your-gitlab/users/auth/openid_connect/callback
      */
     'oauth_clients' => [
-        // 'grafana' => [
-        //     'secret'       => env('GRAFANA_OAUTH_SECRET', ''),
-        //     'redirect_uri' => 'http://your-grafana:3000/login/generic_oauth',
-        // ],
         // 'jenkins' => [
         //     'secret'       => env('JENKINS_OIDC_SECRET', ''),
         //     'redirect_uri' => 'http://your-jenkins/securityRealm/finishLogin',

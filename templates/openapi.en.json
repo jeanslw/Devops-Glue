@@ -45,7 +45,7 @@
     },
     {
       "name": "SSO",
-      "description": "OAuth2 / OIDC Single Sign-On (Grafana / Jenkins / Harbor / GitLab)"
+      "description": "OAuth2 / OIDC Single Sign-On (Jenkins / Harbor / GitLab)"
     }
   ],
   "components": {
@@ -5055,7 +5055,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Client identifier (e.g. grafana)"
+            "description": "Client identifier (e.g. jenkins)"
           },
           {
             "name": "redirect_uri",
@@ -5267,7 +5267,7 @@
           "SSO"
         ],
         "summary": "Email list (GitHub style)",
-        "description": "Fallback email sub-endpoint requested by Grafana; returns the same placeholder email as userinfo.",
+        "description": "GitHub-style emails sub-endpoint; returns the same email as userinfo.",
         "operationId": "oauthUserInfoEmails",
         "security": [
           {

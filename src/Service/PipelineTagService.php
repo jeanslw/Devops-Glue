@@ -6,9 +6,9 @@ use App\Config\AppConfig;
 use App\Helper\Log;
 
 /**
- * Pipeline artifact 的「以 Harbor 为准」清理服务。
+ * Pipeline artifact 的以 Harbor 为准的清理服务。
  *
- * ci_pipeline_artifacts 是唯一 canonical source。
+ * ci_pipeline_artifacts 是唯一权威数据来源。
  */
 class PipelineTagService
 {
@@ -116,11 +116,11 @@ class PipelineTagService
     }
 
     /**
-     * 回填：把 ci_pipeline_build_log 中「日志推导」的 tag（source='log'）经 Harbor 校验存在后，
-     * 提升写入 canonical ci_pipeline_artifacts —— 仅当该 (provider, project_id, pipeline_iid)
-     * 尚无 tag 时才写，绝不覆盖 scanSync 的权威结果。
+     * 回填：把 ci_pipeline_build_log 中日志推导出的 tag（source='log'）经 Harbor 校验存在后，
+     * 提升写入 ci_pipeline_artifacts；仅当该 (provider, project_id, pipeline_iid)
+     * 尚无 tag 时才写，不覆盖 scanSync 的结果。
      *
-     * 信任边界：只有 Harbor 明确返回「该 tag 存在」才会落库，故回填数据与 scanSync 同信任级。
+     * 信任边界：只有 Harbor 明确返回该 tag 存在才会落库，故回填数据与 scanSync 同信任级。
      *
      * @return array{promoted:int,checked:int,unreachable:int,unverifiable:int,skipped:int}
      */
@@ -170,7 +170,7 @@ class PipelineTagService
                 continue;
             }
 
-            // 已有 canonical tag → 权威优先，回填不覆盖
+            // 已有 tag：以已入库的为准，回填不覆盖
             $existing = $artifactSvc->find($identity);
             if ($existing && trim((string) ($existing['tag'] ?? '')) !== '') {
                 $stat['skipped']++;

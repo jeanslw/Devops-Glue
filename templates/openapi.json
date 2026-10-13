@@ -45,7 +45,7 @@
     },
     {
       "name": "SSO",
-      "description": "OAuth2 / OIDC 单点登录（Grafana / Jenkins / Harbor / GitLab）"
+      "description": "OAuth2 / OIDC 单点登录（Jenkins / Harbor / GitLab）"
     }
   ],
   "components": {
@@ -5070,7 +5070,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "客户端标识（如 grafana）"
+            "description": "客户端标识（如 jenkins）"
           },
           {
             "name": "redirect_uri",
@@ -5282,7 +5282,7 @@
           "SSO"
         ],
         "summary": "邮箱列表（GitHub 风格）",
-        "description": "Grafana 兜底请求的邮箱子端点，返回与 userinfo 一致的占位邮箱。",
+        "description": "GitHub 风格邮箱子端点，返回与 userinfo 一致的邮箱。",
         "operationId": "oauthUserInfoEmails",
         "security": [
           {

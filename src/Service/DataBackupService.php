@@ -180,9 +180,9 @@ class DataBackupService
     }
 
     /**
-     * 备份前自检：MySQL 下确认当前账户对当前库有库级/全局权限。
-     * information_schema.tables 按权限过滤——账户对某些表（尤其 cd_*）无任何权限时，
-     * 这些表会被静默漏掉（比报错更危险）。返回告警文本；无风险返回空串。
+     * 备份前自检：MySQL 下确认当前账户对当前库有库级或全局权限。
+     * information_schema.tables 会按权限过滤，账户对某些表（尤其 cd_*）无任何权限时，
+     * 这些表会被漏掉且不报错（比报错更危险）。返回告警文本；无风险时返回空串。
      * SQLite 无权限模型，返回空串。
      */
     private function mysqlVisibilityWarning(): string
@@ -198,7 +198,7 @@ class DataBackupService
         }
         foreach ($grants as $grant) {
             $g = (string) $grant;
-            // 纯 USAGE 是「无权限」占位行，跳过
+            // 纯 USAGE 是无权限占位行，跳过
             if (preg_match('/^\s*GRANT\s+USAGE\s+ON/i', $g)) {
                 continue;
             }
@@ -356,7 +356,7 @@ class DataBackupService
     }
 
     /**
-     * 列出备份目录下已生成的 zip 备份文件（按时间倒序），供「数据管理」面板渲染
+     * 列出备份目录下已生成的 zip 备份文件（按时间倒序），供数据管理面板渲染
      *
      * @return list<array{name:string, size:int, mtime:int}>
      */

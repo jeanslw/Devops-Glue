@@ -1,4 +1,4 @@
-# Devops-Glue API Admin Manual v2.8.9
+# Devops-Glue API Admin Manual v2.9.0
 
 > This manual is organized in a "from zero to usable" order, covering the installation, initialization, and full configuration of Devops-Glue API. Once you complete it in order, you will be able to: log in to the admin panel, connect CI / Git / Harbor platforms, configure build mode and mapping, manage permissions and roles, issue API tokens, and have the companion Devops-Glue CD call it correctly.
 
@@ -38,6 +38,7 @@ Devops-Glue API is a Slim4-based unified API layer that provides a single manage
 
 | Devops-Glue API | Devops-Glue CD |
 |:---:|:---:|
+| v2.9.0 | v1.6.0 |
 | v2.8.9 | v1.5.7 |
 | v2.8.8 | v1.5.6 |
 | v2.8.7 | v1.5.x |
@@ -971,6 +972,6 @@ To add a built-in platform (GitLab/Gitee/GitHub/Gitea style), modify:
 
 ## Appendix E: Single Sign-On (OAuth2 / OIDC)
 
-Glue ships a built-in OAuth2 / OIDC Provider, letting Grafana (OAuth2) and Jenkins / Harbor / GitLab (OIDC) sign in with a Glue account.
+Glue ships a built-in OAuth2 / OIDC Provider, letting Jenkins / Harbor / GitLab (OIDC) sign in with a Glue account.
 
 See [Single-Sign-On.md](Single-Sign-On.md) for setup steps, per-system integration config, and role mapping.

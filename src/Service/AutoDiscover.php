@@ -18,8 +18,7 @@ class AutoDiscover
     private ?Logger $logger;
     private ?Client $gitlabClient = null;
     private ?Client $giteaClient = null;
-    /** @var list<string> 本次 discover 实际发起网络扫描的源（已启用且已配置），
-     * 供前端区分「扫描全部失败 / 扫描部分失败 / 扫描成功」 */
+    /** @var list<string> 本次实际发起扫描的源（已启用且已配置），供前端区分扫描全部失败与部分失败。 */
     private array $scanSources = [];
 
     public function __construct(JenkinsService $jenkins, ProviderRegistry $gitRegistry, Settings $config, MappingManager $mapping, ?Logger $logger = null, ?Client $gitlabClient = null, ?Client $giteaClient = null)
@@ -39,10 +38,10 @@ class AutoDiscover
         $this->scanSources = [];
         $enabled = $this->mapping->activeBuildProviders();
 
-        // ⚠️ 关键安全约束：已有映射的去重范围
-        // - 内置拉取式 provider（jenkins/gitlab_ci/gitea_ci）的记录始终纳入去重：
-        //   Git 平台扫描按原生 CI 标记（与 BUILD_MODE 无关），已映射项目不应因对应 CI 未启用而被重复建议
-        // - custom_push_enabled 开启时：custom_push 记录也纳入去重（正交维度）
+        // 已有映射的去重范围：
+        // - 内置拉取式 provider（jenkins/gitlab_ci/gitea_ci）的记录始终纳入去重，因为 Git 平台
+        //   扫描按原生 CI 标记，已映射项目不应因对应 CI 未启用而被重复建议；
+        // - custom_push_enabled 开启时，custom_push 记录也纳入去重。
         $cpEnabled = $this->mapping->hasCustomPush();
         $activeRemotes = [];   // 归一化后的 key：host/path（统一格式，跨协议去重）
         $existingNames = [];
@@ -73,9 +72,9 @@ class AutoDiscover
         $errors    = [];
         $found     = [];
 
-        // 先扫描 Git 平台原生 CI（GitLab CI / Gitea Actions），构建「仓库路径 → 平台」提示表，
-        // 供 Jenkins 扫描纠正自建平台的误识别——自建 GitLab/Gitea 可能同 host 仅端口不同
-        //（且 SSH 端口与 Web 端口无配置对应关系），URL 子串匹配无法区分，会回退默认平台。
+        // 先扫描 Git 平台原生 CI（GitLab CI / Gitea Actions），构建仓库路径到平台的提示表，
+        // 供 Jenkins 扫描纠正自建平台的误识别：自建 GitLab/Gitea 可能同 host 仅端口不同，
+        // URL 子串匹配无法区分，会回退到默认平台。
         $platformHints = [];  // strtolower(仓库路径) => git_platform
 
         if (in_array(AppConfig::PROVIDER_GITLAB_CI, $enabled, true)) {
@@ -107,10 +106,10 @@ class AutoDiscover
             }
         }
 
-        // Git 平台扫描：与 BUILD_MODE/custom_push 开关无关——只要平台已配置就发现其项目，
-        // build_provider 按平台原生 CI 标记（GitLab→gitlab_ci、Gitea→gitea_ci；
-        // 无原生拉取式 provider 的平台如 Bitbucket 才用 custom_push）。
-        // 原生 CI 已启用的平台由其专属扫描覆盖（如 scanGitlabCi），scanGitPlatforms 内部跳过。
+        // Git 平台扫描与 BUILD_MODE / custom_push 开关无关：平台已配置即发现其项目，
+        // build_provider 按平台原生 CI 标记（GitLab 为 gitlab_ci、Gitea 为 gitea_ci，
+        // 无原生 provider 的平台如 Bitbucket 用 custom_push）。原生 CI 已启用的平台
+        // 由其专属扫描覆盖（如 scanGitlabCi），scanGitPlatforms 内部跳过。
         try {
             // 跨扫描去重：已被本轮前面扫描（Jenkins/GitLab CI/Gitea）发现的项目不再重复导入
             $foundRemotes = $activeRemotes;
@@ -179,7 +178,7 @@ class AutoDiscover
     /**
      * @param list<string> $activeRemotes
      * @param list<string> $existingNames
-     * @param array<string,string> $platformHints 同轮平台扫描构建的「strtolower(仓库路径) => git_platform」提示表
+     * @param array<string,string> $platformHints 同轮平台扫描得到的 仓库路径(小写) => git_platform 提示表
      * @return list<DiscoveredItem>
      */
     private function scanJenkins(array $activeRemotes, array $existingNames, array $platformHints = []): array
@@ -202,8 +201,8 @@ class AutoDiscover
                 if (in_array($jobName, $existingNames)) {
                     continue;
                 }
-                // 平台识别：优先用同轮平台扫描的「仓库路径→平台」提示表纠正
-                //（自建平台同 host 时 URL 无法区分）；查不到再走 URL 匹配/默认平台
+                // 平台识别：先用同轮扫描的提示表纠正（自建平台同 host 时 URL 无法区分），
+                // 查不到再走 URL 匹配或默认平台
                 $platform = '';
                 $pathKey  = $remote !== '' ? mb_strtolower($this->extractPath($remote, $jobName)) : '';
                 if ($pathKey !== '' && isset($platformHints[$pathKey])) {
@@ -228,7 +227,7 @@ class AutoDiscover
             }
         } catch (\Exception $e) {
             $this->logger?->warning('AutoDiscover Jenkins 扫描失败', ['error' => $e->getMessage()]);
-            // 上抛给 discover() 聚合进 __errors__——否则 Jenkins 宕机会被前端误判为「没有可发现的项目」
+            // 抛给 discover() 汇总到 __errors__：否则 Jenkins 不可达会被前端显示为无可发现项目
             throw $e;
         }
         return $found;
@@ -249,7 +248,7 @@ class AutoDiscover
         if (empty($base) || !$this->gitlabClient) {
             return $found;
         }
-        // 已配置才计入扫描源（未配置的源不算「不可达」）
+        // 已配置才计为扫描源
         $this->scanSources[] = 'GitLab CI';
 
         try {
@@ -302,7 +301,7 @@ class AutoDiscover
             }
         } catch (\Exception $e) {
             $this->logger?->warning('AutoDiscover GitLab CI 扫描失败', ['error' => $e->getMessage()]);
-            // 上抛给 discover() 聚合进 __errors__——否则 GitLab 宕机/Token 失效会被误判为「空列表」
+            // 抛给 discover() 汇总到 __errors__：否则 GitLab 不可达或 Token 失效会被显示为空列表
             throw $e;
         }
         return $found;
@@ -323,7 +322,7 @@ class AutoDiscover
         if (empty($base) || !$this->giteaClient) {
             return $found;
         }
-        // 已配置才计入扫描源（未配置的源不算「不可达」）
+        // 已配置才计为扫描源
         $this->scanSources[] = 'Gitea Actions';
 
         try {
@@ -376,7 +375,7 @@ class AutoDiscover
             }
         } catch (\Exception $e) {
             $this->logger?->warning('AutoDiscover Gitea Actions 扫描失败', ['error' => $e->getMessage()]);
-            // 上抛给 discover() 聚合进 __errors__——否则 Gitea 宕机/Token 失效会被误判为「空列表」
+            // 抛给 discover() 汇总到 __errors__：否则 Gitea 不可达或 Token 失效会被显示为空列表
             throw $e;
         }
         return $found;
@@ -386,11 +385,11 @@ class AutoDiscover
 
     /**
      * 扫描已配置的 Git 平台项目，build_provider 按平台原生 CI 标记：
-     * GitLab→gitlab_ci、Gitea→gitea_ci；无原生拉取式 provider 的平台才回落 custom_push。
+     * GitLab 为 gitlab_ci、Gitea 为 gitea_ci；无原生 provider 的平台用 custom_push。
      * 原生 CI 已启用（∈ $enabledProviders）的平台由其专属扫描覆盖，这里跳过避免重复。
-     * 目前支持 GitLab（通过已有 gitlabClient）；其他平台可后续扩展。
+     * 目前仅支持 GitLab（复用 gitlabClient），其他平台按需扩展。
      *
-     * @param list<string> $activeRemotes 调用方须并入本轮已发现项目的 remote key，避免跨扫描重复导入
+     * @param list<string> $activeRemotes 调用方须并入本轮已发现项目的 remote key，避免重复导入
      * @param list<string> $existingNames
      * @param list<string> $enabledProviders 当前 BUILD_MODE 启用的拉取式 provider
      * @return list<DiscoveredItem>
@@ -403,7 +402,7 @@ class AutoDiscover
         $glCfg = $this->config->getGitlabConfig();
         $base  = rtrim($glCfg['base_url'] ?? '', '/');
         if (!empty($base) && $this->gitlabClient && !in_array(AppConfig::PROVIDER_GITLAB_CI, $enabledProviders, true)) {
-            // 已配置才计入扫描源（未配置的源不算「不可达」）
+            // 已配置才计为扫描源
             $this->scanSources[] = 'Git';
             try {
                 $test = $this->gitlabClient->get("{$base}/api/v4/user");
@@ -450,7 +449,7 @@ class AutoDiscover
                 }
             } catch (\Exception $e) {
                 $this->logger?->warning('AutoDiscover Git 平台扫描失败 (GitLab)', ['error' => $e->getMessage()]);
-                // 上抛给 discover() 聚合进 __errors__——否则 GitLab 宕机会被误判为「空列表」
+                // 抛给 discover() 汇总到 __errors__：否则 GitLab 不可达会被显示为空列表
                 throw $e;
             }
         }
@@ -463,8 +462,7 @@ class AutoDiscover
     // ── helpers ──
 
     /**
-     * 归一化 Git remote URL 为「host/org/repo」去重键，用于跨协议去重。
-     * 委托给 App\Helper\GitRemote::normalize()（可单测的公共助手）。
+     * 归一化 Git remote URL 为 host/org/repo 去重键，用于跨协议去重；委托 GitRemote::normalize()。
      */
     private function normalizeRemote(string $remote): string
     {
@@ -484,7 +482,7 @@ class AutoDiscover
     }
 
     /**
-     * 收集「仓库路径 → 平台」提示表（供 Jenkins 扫描纠正自建平台误识别）。
+     * 收集仓库路径到平台的提示表（供 Jenkins 扫描纠正自建平台误识别）。
      * 同路径多平台并存时保留先扫描到的（GitLab CI 先于 Gitea Actions）。
      *
      * @param array<string,string> $hints

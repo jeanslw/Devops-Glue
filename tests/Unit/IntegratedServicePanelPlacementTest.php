@@ -8,17 +8,17 @@ use App\Service\I18nService;
 use PHPUnit\Framework\TestCase;
 
 /**
- * 守卫不变量：「集成服务」面板必须挂在「API 管理」页（Token 列表**上方**），
- * 且已从「数据管理」页彻底迁出（v2.9.0 起）。
+ * 集成服务面板的位置约束：必须挂在 API 管理页（Token 列表上方），
+ * 且已从数据管理页迁出（v2.9.0 起）。
  *
- * 迁移动机：该面板的动作本质是**授权 + 发凭据**——启用即在事务内签发限定 scope 的
- * 服务 Token、禁用即撤销它；这些 Token 就出现在同一页的下方列表里，同屏才能让
- * 「这枚 token 从哪来 / 为什么不能手改」一目了然。`provision`（建表方式）只是
- * 契约的另一个维度，其取值仍取自「数据管理 → 迁移模式」。
+ * 放在同一页的原因：该面板的动作是授权与发凭据：启用即在事务内签发限定 scope 的
+ * 服务 Token、禁用即撤销它；这些 Token 就在同一页的下方列表里，同屏便于确认
+ * 这枚 token 从哪来、为什么不能手改。`provision`（建表方式）是契约的另一个维度，
+ * 其取值仍取自数据管理页的迁移模式。
  *
- * 为何要守：这类纯 UI 搬迁最容易「看着搬了其实漏一处」——面板留在原 tab、
- * 加载只在旧 tab 触发（进新 tab 状态永远空白）、inline onclick/onchange 忘记挂 window、
- * 双语只补一半。以上都不会让任何 PHP 单测变红，只会在浏览器里静默失效。
+ * 需要测试覆盖的原因：这类纯 UI 搬迁容易漏改一处（面板留在原 tab、
+ * 加载只在旧 tab 触发导致进新 tab 状态为空、inline onclick/onchange 忘记挂 window、
+ * 双语只补一半）。以上都不会让任何 PHP 单测失败，只在浏览器里表现为功能无效。
  */
 class IntegratedServicePanelPlacementTest extends TestCase
 {
@@ -101,7 +101,7 @@ class IntegratedServicePanelPlacementTest extends TestCase
             $systemJs,
             '面板渲染仍由 system.js 提供（admin.js 仅负责触发时机）'
         );
-        // 进入「数据管理」页不得再拉集成服务状态（enable/disable 成功后的自我刷新是合法的，见
+        // 进入数据管理页不得再请求集成服务状态（enable/disable 成功后的自我刷新允许，见
         // enableIntegratedService / disableIntegratedService），故只检查 loadSystemInfo 的函数体。
         $sysInfo = $this->functionBody($systemJs, 'export async function loadSystemInfo(');
         $this->assertStringNotContainsString(
@@ -160,15 +160,15 @@ class IntegratedServicePanelPlacementTest extends TestCase
         $zh = (string) $i18n->getAll('zh_CN')['sys.isvc_intro'];
         $en = (string) $i18n->getAll('en')['sys.isvc_intro'];
 
-        // 面板现在与 Token 列表同屏，「启用会签发一枚 Token」必须写在脸上
+        // 面板现在与 Token 列表同屏，启用会签发一枚 Token 这点必须在界面上写明
         $this->assertStringContainsString('Token', $zh);
         $this->assertStringContainsString('token', strtolower($en));
     }
 
     /**
-     * 启停入口必须是「启用」勾选框（而非两个按钮）：勾选框是即时控件，点一下状态就变了，
-     * 因此必须依赖 onIntegratedServiceToggle 的「确认弹窗 + 取消回退」语义；退回成裸按钮，
-     * 这套回退逻辑就没有任何入口触发，勾选框会与后端状态静默不一致。
+     * 启停入口必须是启用勾选框（而非两个按钮）：勾选框是即时控件，点一下状态就变了，
+     * 因此必须依赖 onIntegratedServiceToggle 的确认弹窗 + 取消回退逻辑；退回成裸按钮，
+     * 这套回退逻辑就没有任何入口触发，勾选框会与后端状态不一致。
      */
     public function testEnableToggleIsACheckboxNotAButton(): void
     {
@@ -186,7 +186,7 @@ class IntegratedServicePanelPlacementTest extends TestCase
         $this->assertStringNotContainsString('isvc-cd-enable', $html);
         $this->assertStringNotContainsString('isvc-cd-disable', $html);
 
-        // 勾选框外观必须与「平台管理」各功能开关同源（同一 CSS 规则），避免退化成裸 checkbox
+        // 勾选框外观必须与平台管理各功能开关一致（同一 CSS 规则），避免退化成裸 checkbox
         $this->assertStringContainsString(
             '#isvc-cd-toggle',
             $this->read(self::ROOT . '/public/assets/admin.css'),
@@ -195,12 +195,12 @@ class IntegratedServicePanelPlacementTest extends TestCase
     }
 
     /**
-     * 勾选态的可信性与回退不变量：
-     *   1. 勾选态只由后端状态决定（渲染时写入），不由本地点击结果决定 —— 且取的是「可用」
+     * 勾选态的取值与回退：
+     *   1. 勾选态只由后端状态决定（渲染时写入），不由本地点击结果决定；取的是可用
      *      （enabled 且凭据有效）而非裸 enabled：凭据在下方列表里被撤销/删除后，勾选框必须回到
      *      未勾选，否则故障态既点不动（已勾选）也无法自助补发；
      *   2. 请求期间禁用勾选框（防连点双发）；
-     *   3. 用户取消确认 / 请求失败必须把勾选框退回 —— 这依赖 enable/disable 返回布尔值。
+     *   3. 用户取消确认 / 请求失败必须把勾选框退回，这依赖 enable/disable 返回布尔值。
      */
     public function testToggleStateFollowsServerAndRevertsOnCancelOrFailure(): void
     {

@@ -46,7 +46,7 @@ class PlatformVersionRepository
             )->fetchAll();
             foreach ($rows as $r) {
                 if (isset($result[$r['platform']])) {
-                    // 线值沿用 'json'：前端 versions.js 据此渲染「管理界面」徽标
+                    // source 沿用 'json'：前端 versions.js 据此渲染管理界面徽标
                     $result[$r['platform']] = ['value' => $r['version'], 'source' => 'json'];
                 }
             }

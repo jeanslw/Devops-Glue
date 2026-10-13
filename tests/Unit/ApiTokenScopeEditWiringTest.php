@@ -8,19 +8,19 @@ use App\Service\I18nService;
 use PHPUnit\Framework\TestCase;
 
 /**
- * 守卫不变量：「API 管理 → 编辑 Scope」功能必须**四层齐活**（v2.9.0 新增）。
+ * API 管理页编辑 Scope 功能的接线测试（v2.9.0 新增）。
  *
- * 该功能横跨 4 层：路由（config/routes.php）→ 控制器（AdminController）→
- * 服务（ApiTokenService）→ 前端（admin.html 表单 + apiTokens.js 调用 + admin.js 挂 window）。
- * 任一层漏做都是「半接线」故障：最常见的是**接口做好了但页面按钮调不到**
- * （inline onclick 依赖 admin.js 的 Object.assign(window, …)），或**双语翻译只补了一半**
- * ——两者都不会让任何 PHP 单测变红，只会在浏览器里静默失效，故在此显式守住。
+ * 该功能横跨 4 层：路由（config/routes.php）、控制器（AdminController）、
+ * 服务（ApiTokenService）、前端（admin.html 表单 + apiTokens.js 调用 + admin.js 挂 window）。
+ * 任一层漏做都会导致接线不完整：最常见的是接口做好了但页面按钮调不到
+ * （inline onclick 依赖 admin.js 的 Object.assign(window, …)），或双语翻译只补了一半。
+ * 两者都不会让任何 PHP 单测失败，只会在浏览器里失效，故在此显式覆盖。
  */
 class ApiTokenScopeEditWiringTest extends TestCase
 {
     private const ROOT = __DIR__ . '/../..';
 
-    /** 编辑 Scope 涉及的双语翻译键：缺一个就会出现「页面显示 api_token.xxx」原文键。 */
+    /** 编辑 Scope 涉及的双语翻译键：缺一个页面就会直接显示 api_token.xxx 原文键。 */
     private const I18N_KEYS = [
         'api_token.edit_scopes',
         'api_token.edit_title',

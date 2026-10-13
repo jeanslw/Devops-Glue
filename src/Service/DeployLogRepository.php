@@ -10,7 +10,7 @@ use App\Config\AppConfig;
  * 设计原则：
  *  - 只读：仅提供分页列表，不提供写入/删除。
  *  - 审计字段：只查契约视图内的审计列，不含 output/stage_times 等大字段。
- *  - 优雅降级：视图缺失或查询异常不抛 500，返回空集 + available=false，由前端展示占位。
+ *  - 容错：视图缺失或查询异常不抛 500，返回空集且 available=false，由前端展示占位。
  */
 class DeployLogRepository
 {
@@ -38,7 +38,14 @@ class DeployLogRepository
      * 未传日期时默认近 30 天，避免全表扫描。
      *
      * @param array<string,mixed> $filters
-     * @return array{available:bool,total:int,page:int,per_page:int,total_pages:int,items:list<array<string,mixed>>}
+     * @return array{
+     *     available: bool,
+     *     total: int,
+     *     page: int,
+     *     per_page: int,
+     *     total_pages: int,
+     *     items: list<array<string,mixed>>
+     * }
      */
     public function list(array $filters = [], int $page = 1, int $perPage = 20): array
     {

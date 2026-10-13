@@ -38,7 +38,7 @@ export async function loadMonitor() {
         document.getElementById('stat-platforms').textContent = st.git_platforms ?? '—';
         document.getElementById('stat-repos').textContent = st.harbor_repos ?? '—';
 
-        // DB 驱动展示：优先原始驱动名，缺失时回退「未知」翻译（__.t 签名只有 (key, params)，不支持默认值第三参）
+        // DB 驱动展示：优先原始驱动名，缺失时回退到未知的翻译文案（__.t 签名只有 (key, params)，不支持默认值第三参）
         const bmLabel = (Array.isArray(data.build_modes) && data.build_modes.length > 0)
             ? data.build_modes.map(m => {
                 switch (m) {

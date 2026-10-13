@@ -31,7 +31,7 @@ class ErrorHandlerFactory
         callable $resolveErrorLocale,
         ResponseFactoryInterface $responseFactory
     ): void {
-        // ── 通用错误 → API 请求返回 JSON，否则 HTML ──
+        // ── 通用错误：API 请求返回 JSON，其余返回 HTML ──
         $errorMiddleware->setDefaultErrorHandler(function ($request, $exception, $displayErrorDetails) use ($isApiRequest, $errorMessages, $resolveErrorLocale, $responseFactory) {
             $response = $responseFactory->createResponse();
             $code = 500;

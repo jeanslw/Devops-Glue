@@ -7,15 +7,15 @@ namespace App\Test\Unit;
 use PHPUnit\Framework\TestCase;
 
 /**
- * 守卫不变量：通用确认弹窗（templates/admin.html 的 #confirm-modal）是**纯文本通道**。
+ * 通用确认弹窗（templates/admin.html 的 #confirm-modal）只接受纯文本。
  *
- * 回归背景（v2.9.0）：「集成服务」启用确认弹窗（该面板当时挂在数据管理页）把三步提示拼成
+ * 回归背景（v2.9.0）：集成服务启用确认弹窗（该面板当时挂在数据管理页）把三步提示拼成
  * `<div style="..."><div>① …</div>…</div>` 传进 confirmDialog 的 note，而 note 由
- * public/assets/core/toast.js 用 textContent 渲染（弹窗文案从不经 HTML 解析），
+ * public/assets/core/toast.js 用 textContent 渲染（弹窗文案不经 HTML 解析），
  * 于是弹窗里显示的是原样输出的 `<div ...>` 标签（乱码），而不是三行提示。
  *
- * 三条不变量（破任一条即复现同一类故障）：
- *   1. 弹窗文本节点只经 textContent 渲染 —— toast.js 里不得出现 innerHTML；
+ * 三条约束（违反任一条即复现同一类故障）：
+ *   1. 弹窗文本节点只经 textContent 渲染，toast.js 里不得出现 innerHTML；
  *   2. 多行文案只能靠 \n，故正文选择器需要 white-space:pre-line 才会断行；
  *   3. 调用方传给 confirmDialog 的 message / note 不得含 HTML 标签（含经局部变量中转的写法）。
  */
@@ -79,8 +79,8 @@ class ConfirmDialogPlainTextTest extends TestCase
     }
 
     /**
-     * 表达式本身；若它是裸变量名，再附上该变量的赋值语句文本 ——
-     * 覆盖「先把 HTML 拼进局部变量、再把变量传进 note」这类写法（本次回归即此形状）。
+     * 表达式本身；若它是裸变量名，再附上该变量的赋值语句文本，
+     * 用于覆盖先把 HTML 拼进局部变量、再把变量传进 note 这类写法（本次回归即此情况）。
      */
     private function resolveExpression(string $js, string $expr): string
     {

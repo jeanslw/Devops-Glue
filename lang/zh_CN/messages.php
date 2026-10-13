@@ -705,7 +705,7 @@ return [
     'api.scope.rbac_user_write' => 'RBAC 用户写（建号/改号/删号）',
 
     // ── OAuth2 Provider ──
-    'oauth.login_title'      => '登录 Devops-Glue',
+    'oauth.login_title'      => '登录',
     'oauth.invalid_request'  => '无效的 OAuth 请求（client_id 或 redirect_uri 不匹配）',
 
     // ── 操作日志 ──

@@ -14,12 +14,12 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 /**
  * RBAC 用户写接口 —— 供 CD 服务账号调用（非 /api/admin/* 交互式后台）。
  *
- * trusted 模型：
+ * 信任模型：
  *   - 鉴权：仅 API token。AuthMiddleware 已按 resolveRequiredScope() 校验 `rbac.user.write`
- *     scope；此处再兜一道 `currentRole === api_token`，把「不走 scope 校验」的登录态用户
- *     （cache token）挡在门外，避免跳过 requirePermission 后任何登录用户都能建/删号。
- *   - 不变量：strtolower 归一化、PasswordHasher::hash()、root 账号保护、
- *     super_admin 唯一性/禁止创建、密码最短 8 位。systems 恒为 'cd'（不接受入参）。
+ *     scope；这里再检查 `currentRole === api_token`，把不走 scope 校验的登录态用户
+ *     （cache token）挡在门外，避免跳过 requirePermission 后任何登录用户都能建号或删号。
+ *   - 固定规则：strtolower 归一化、PasswordHasher::hash()、root 账号保护、
+ *     super_admin 唯一性与禁止创建、密码最短 8 位。systems 恒为 'cd'（不接受入参）。
  *   - 跳过：requirePermission(ci.users.manage_admin) 与 currentRole===super_admin 判断
  *     （服务账号 currentRole 是 api_token，走角色校验会连 admin 都建不了）。
  */
@@ -90,7 +90,7 @@ class RbacController extends BaseController
         if ($role === AppConfig::ROLE_SUPER_ADMIN) {
             return $this->jsonError($response, 'user.cannot_create_super_admin', 403);
         }
-        // 防「角色名悬空」：role 必须是 roles 表里真实存在的角色，否则该用户权限加载为空
+        // 避免角色不存在：role 必须是 roles 表里真实存在的角色，否则该用户权限加载为空
         if (!$this->adminUserRepository->roleExists($role)) {
             return $this->jsonError($response, 'user.role_not_found', 400);
         }
@@ -134,7 +134,7 @@ class RbacController extends BaseController
         if ($role === '') {
             return $this->jsonError($response, 'user.invalid_role', 400);
         }
-        // 防「角色名悬空」：改角色时 role 必须是 roles 表里真实存在的角色
+        // 避免角色不存在：改角色时 role 必须是 roles 表里真实存在的角色
         if ($role !== null && !$this->adminUserRepository->roleExists($role)) {
             return $this->jsonError($response, 'user.role_not_found', 400);
         }
@@ -272,19 +272,19 @@ class RbacController extends BaseController
     }
 
     /**
-     * GET /api/rbac/roles/{name}/permissions — 角色权限清单（CD 会话权限收敛用）
+     * GET /api/rbac/roles/{name}/permissions —— 角色权限清单（供 CD 做权限映射）
      *
      * 与 `/api/rbac/roles`（只有 name/description）互补：CD 拿不到细粒度权限就无法做权限映射，
-     * 只能把 Glue 的权限清单硬编码一份（必然漂移）。此处复用 `TokenService::loadPermissions`
-     * 的「role_permissions JOIN roles」查询，零新增 SQL。
+     * 只能把 Glue 的权限清单硬编码一份（容易不一致）。这里复用 `TokenService::loadPermissions`
+     * 的 role_permissions JOIN roles 查询，不新增 SQL。
      *
-     * 边界（对 CD 的收敛判据很关键，别混）：
-     *   - 角色不存在 → 404（`user.role_not_found`）：与「角色存在但零权限」区分开，
-     *     否则角色名写错也返回 `[]`，CD 会把「查询失败」当成「该角色没有任何权限」而清空权限；
-     *   - `super_admin` → `['*']`：与登录接口 `/api/admin/login` 的 `permissions: "*"` 同一语义
-     *     （通配）；该角色权限由代码授予、并不落在 role_permissions 表里，若照表返回会得到 `[]`，
+     * 返回值的三种情况（CD 的判据依赖它们，注意区分）：
+     *   - 角色不存在：404（`user.role_not_found`），与角色存在但零权限区分开，
+     *     否则角色名写错也返回 `[]`，CD 会把查询失败当成该角色没有任何权限而清空权限；
+     *   - `super_admin`：返回 `['*']`，与登录接口 `/api/admin/login` 的 `permissions: "*"` 语义一致；
+     *     该角色权限由代码授予、不落在 role_permissions 表里，若照表返回会得到 `[]`，
      *     等于把超管读成零权限；
-     *   - 其余角色 → 真实权限 key 数组（可能为空数组，此时确实是「该角色没有被授予任何权限」）。
+     *   - 其余角色：返回真实权限 key 数组（可能为空数组，此时表示该角色没有被授予任何权限）。
      *
      * @param array<string,string> $args 路由参数（name = 角色名）
      */

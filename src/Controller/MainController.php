@@ -366,7 +366,7 @@ class MainController extends BaseController
                         });
                     } catch (\Throwable $e) {
                         $componentResults[$name] = false;
-                        // 连接类失败：三个组件会同时连不上，这里只记一次避免刷屏
+                        // 连接类失败：三个组件会同时连不上，这里只记一次，避免日志重复
                         if (!$probeLogged) {
                             \App\Helper\Log::error('[健康检查] Harbor 连接失败', ['platform' => 'harbor', 'url' => $harborUrl, 'error' => $e->getMessage()]);
                             $probeLogged = true;
@@ -494,10 +494,10 @@ class MainController extends BaseController
     /**
      * GET /api/docs — Swagger UI 页面（未登录时同页内嵌登录框）
      *
-     * 页面本身（纯 UI）轻量放行，不含任何业务数据；OpenAPI 规范(/api/openapi.json)
-     * 与 Try-it-out 请求仍由服务端鉴权。为让会话 token 不再出现在 URL（防 access log /
-     * 浏览器历史泄露），登录态由同源 sessionStorage 承载、仅在页面 JS 侧可感知，因此
-     * 无法由服务端分流"未登录→登录页"；登录层直接内嵌本页，JS 检测无凭证时同页显示
+     * 页面本身（纯 UI）直接放行，不含任何业务数据；OpenAPI 规范(/api/openapi.json)
+     * 与 Try-it-out 请求仍由服务端鉴权。为让会话 token 不再出现在 URL（防 access log 与
+     * 浏览器历史泄露），登录态由同源 sessionStorage 承载，仅在页面 JS 侧可感知，因此
+     * 服务端无法据此改跳登录页；登录层直接内嵌本页，JS 检测无凭证时同页显示
      * 登录框（URL 保持 /api/docs），登录成功写 sessionStorage 后就地初始化 SwaggerUI。
      */
     public function docs(Request $request, Response $response): Response
@@ -541,7 +541,7 @@ class MainController extends BaseController
         } else {
             $json = file_get_contents($specFile);
             if ($json === false) {
-                // 文件存在却读取失败（权限/IO 错误）属服务端异常：沿用本方法 JSON 错误响应风格返回 500，不静默吞错
+                // 文件存在却读取失败（权限/IO 错误）属服务端异常：沿用本方法 JSON 错误响应风格返回 500，不忽略
                 $response->getBody()->write((string) json_encode([
                     'code'    => 500,
                     'message' => 'Unable to read OpenAPI spec file',

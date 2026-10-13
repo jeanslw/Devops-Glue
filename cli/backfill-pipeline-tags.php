@@ -6,19 +6,19 @@
  *   php cli/backfill-pipeline-tags.php
  *
  * 说明：
- *   - 数据来源：ci_pipeline_build_log（拉取式记录「镜像 Tag」日志兜底的懒解析缓存，source='log'）。
- *   - 信任边界：仅当 Harbor 明确返回「该 tag 存在」时，才把日志推导的 tag 提升写入
- *     canonical ci_pipeline_artifacts；且只补「(provider,project_id,pipeline_iid) 尚无 tag」的坑，
- *     绝不覆盖 scanSync 的权威结果。故回填数据与 scanSync 同信任级。
- *   - 安全不变量：Harbor 未配置 / 不可达 / repository 或 tag 为空 / 已有 canonical tag → 跳过，
- *     绝不误写；只写「Harbor 明确返回了 tag 列表且其中包含这条」的记录。
- *   - 幂等：可重复跑、并发跑无害。只写 ci_pipeline_artifacts，绝不碰任何 cd_* 表。
+ *   - 数据来源：ci_pipeline_build_log（拉取式记录镜像 Tag 日志时生成的解析缓存，source='log'）。
+ *   - 信任边界：仅当 Harbor 明确返回该 tag 存在时，才把日志推导的 tag 提升写入
+ *     ci_pipeline_artifacts；且只补 (provider,project_id,pipeline_iid) 尚无 tag 的记录，
+ *     不覆盖 scanSync 的结果。故回填数据与 scanSync 同信任级。
+ *   - 安全约束：Harbor 未配置 / 不可达 / repository 或 tag 为空 / 已有 tag 时跳过，
+ *     不写入任何记录；只写 Harbor 明确返回了 tag 列表且其中包含这条的记录。
+ *   - 幂等：可重复跑、并发跑无害。只写 ci_pipeline_artifacts，不碰任何 cd_* 表。
  *   - 受后台开关 backfill_tag_enabled 控制：未开启时直接跳过（退出码 0）。
  *
  * 调度：用宿主 cron / 容器 crontab / Windows 计划任务定时调用即可，与 CD 完全解耦。
  *   例如每 30 分钟：0,30 * * * * php /path/to/cli/backfill-pipeline-tags.php >> /data/logs/tag-backfill.log 2>&1
  *
- * 退出码：0 = 完成（含「开关未开启 / Harbor 未配置 / 不可达而安全跳过」）；1 = 致命错误（库连不上/表缺失/异常）。
+ * 退出码：0 = 完成（含开关未开启 / Harbor 未配置 / 不可达而安全跳过）；1 = 致命错误（库连不上、表缺失或异常）。
  */
 require __DIR__ . '/bootstrap.php';
 
@@ -36,7 +36,7 @@ try {
     exit(1);
 }
 
-// ── 3.5 开关检查：后台「镜像 Tag 日志回填」未开启则安全跳过（默认关闭）──
+// ── 3.5 开关检查：后台镜像 Tag 日志回填未开启则直接跳过（默认关闭）──
 try {
     $backfillRow = $pdo->query("SELECT value FROM " . AppConfig::TABLE_APP_SETTINGS . " WHERE setting_key = 'backfill_tag_enabled'")->fetch();
     $backfillEnabled = $backfillRow && $backfillRow['value'] === '1';

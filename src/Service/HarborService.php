@@ -179,7 +179,7 @@ class HarborService
     }
 
     /**
-     * 规范化 Harbor 版本号：'v2.0.6-f5884625' → '2.0.6'；'v1.10.1' → '1.10.1'。
+     * 规范化 Harbor 版本号：'v2.0.6-f5884625' 输出 '2.0.6'；'v1.10.1' 输出 '1.10.1'。
      * 无法识别的格式返回 null。
      */
     private function normalizeHarborVersion(string $raw): ?string
@@ -200,10 +200,10 @@ class HarborService
      *
      * 策略：
      *  1. 先尝试 v2.0 端点 /api/v2.0/projects
-     *  2. HTTP 404 → 回退 v1
-     *  3. 401/403 → 判定为 v2（认证问题，端点存在）
-     *  4. 网络不通 → 再尝试 v1 端点 /api/projects
-     *  5. 全部失败 → 默认 v2
+     *  2. 返回 HTTP 404：回退 v1
+     *  3. 返回 401/403：判定为 v2（认证问题，端点存在）
+     *  4. 网络不通：再尝试 v1 端点 /api/projects
+     *  5. 全部失败：默认 v2
      */
     private function detectApiVersion(): string
     {
@@ -332,14 +332,14 @@ class HarborService
             }
 
             if ($attempt < $maxRetries) {
-                // 指数退避: 200ms → 400ms
+                // 指数退避：间隔由 200ms 增至 400ms
                 usleep(($attempt + 1) * 200000);
             }
         }
 
         // 所有重试耗尽：连接级/5xx 失败必须上抛（RuntimeException），
-        // 由 AuthMiddleware 统一转 502「服务不可达」——不得吞成 error 数组，
-        // 否则调用方会把「Harbor 宕机」误判为业务错误（如「扫描功能未启用」「无 tag」）。
+        // 由 AuthMiddleware 统一转 502 服务不可达，不得吞成 error 数组，
+        // 否则调用方会把 Harbor 宕机误判为业务错误（如扫描功能未启用、无 tag）。
         // 4xx 业务错误仍走上方的 error 数组语义（资源不存在 / 认证失败等）。
         $this->logger?->error('Harbor 请求重试耗尽', [
             'method' => $method,
@@ -356,11 +356,11 @@ class HarborService
     /**
      * 通用分页获取：自动翻页直到数据不足 pageSize 或达到最大页数限制
      *
-     * @param string                                                $path        请求路径
-     * @param int                                                   $pageSize    每页数量
-     * @param int                                                   $maxPages    最大页数（安全阀）
+     * @param string $path 请求路径
+     * @param int $pageSize 每页数量
+     * @param int $maxPages 最大页数（安全阀）
      * @param callable(array<int|string,mixed>): array<int|string,mixed> $extract 提取回调：返回该页的业务数据
-     * @param array<string,mixed>                                   $extraQuery  额外的 query 参数（如 with_tag, project_id）
+     * @param array<string,mixed> $extraQuery 额外的 query 参数（如 with_tag, project_id）
      * @return array<int|string,mixed>
      */
     private function paginatedGet(string $path, int $pageSize, int $maxPages, callable $extract, array $extraQuery = []): array
@@ -387,7 +387,7 @@ class HarborService
             // 返回数量不足 pageSize 说明已是最后一页
         } while (count($data) === $pageSize && $page <= $maxPages);
 
-        // 达到 maxPages 且最后一页满数据 → 再请求一次确认是否真的超限
+        // 达到 maxPages 且最后一页满数据：再请求一次确认是否真的超限
         if ($page > $maxPages && count($data) === $pageSize) {
             $checkQuery = array_merge(['page_size' => $pageSize, 'page' => $maxPages + 1], $extraQuery);
             $checkData = $this->request('GET', $path, ['query' => $checkQuery]);

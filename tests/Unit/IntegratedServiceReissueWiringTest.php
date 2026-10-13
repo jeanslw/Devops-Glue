@@ -8,20 +8,19 @@ use App\Service\I18nService;
 use PHPUnit\Framework\TestCase;
 
 /**
- * 守卫不变量（v2.9.0）：集成服务的配套凭据（Token 列表里的 `cd-service`）被单独处理过之后，
- * 服务必须仍能自助恢复，且恢复动作要**分对两种语义**：
+ * 集成服务的配套凭据（Token 列表里的 `cd-service`）被单独处理过之后，服务必须仍能自助恢复，
+ * 且恢复动作要分对两种语义：
  *
- *   - 禁用（冻结）：契约行未启用、凭据只是被停用（revoke 只改 enabled、摘要一字未动）→
- *     再次启用即**恢复同一枚**凭据，原明文继续有效，CD 的 CI_API_TOKEN 无需更换；
- *   - 作废（Token 列表 ⛔ 撤销 / 🗑 删除 / 已过期）：凭据不可用也不该复活 →
- *     再次启用**补发**新凭据（CD 必须换明文）。
+ *   - 禁用（冻结）：契约行未启用、凭据只是被停用（revoke 只改 enabled、摘要未动），
+ *     再次启用即恢复同一枚凭据，原明文继续有效，CD 的 CI_API_TOKEN 无需更换；
+ *   - 作废（Token 列表撤销 / 删除 / 已过期）：凭据不可用也不该复活，
+ *     再次启用补发新凭据（CD 必须换明文）。
  *
- * 二者的失败都不会让任何单测变红，只会在浏览器 / 生产上静默卡死或悄悄换掉凭据 —— 前者是
- * 「每次禁用再启用都重新生成一条 API，CD 要跟着改一次配置」，后者是旧的
- * `if ($state['enabled']) return 409`（接口侧永久 409 + 页面侧勾选框按裸 enabled 渲染成勾选态，
- * 点不动也变不了）。故在此显式守住四层：控制器（409 边界 + 恢复/补发两条分支）→ 服务
- * （restore 只改 enabled，绝不碰摘要）→ 前端（勾选态取「可用」、冻结/作废两套文案、
- * 恢复后不弹明文框）→ 双语翻译。
+ * 两种语义走错不会让任何单测变红，只会在浏览器或生产上卡死或悄悄换掉凭据：前者表现为
+ * 每次禁用再启用都重新生成一条 API、CD 要跟着改一次配置，后者表现为接口永久 409 且页面勾选框
+ * 始终是勾选态。故在此守住四层：控制器（409 边界 + 恢复/补发两条分支）、服务
+ * （restore 只改 enabled，不碰摘要）、前端（勾选态取可用、冻结/作废两套文案、
+ * 恢复后不弹明文框）、双语翻译。
  */
 class IntegratedServiceReissueWiringTest extends TestCase
 {
@@ -68,7 +67,7 @@ class IntegratedServiceReissueWiringTest extends TestCase
         );
 
         // 顺序即语义：旧凭据作废必须落在 beginTransaction 与 commit 之间（同事务），
-        // 否则会出现「新凭据已发但旧凭据还活着」或「旧凭据死了新凭据回滚」的中间态。
+        // 否则会出现新凭据已发但旧凭据还活着、或旧凭据失效新凭据回滚的中间态。
         $begin  = strpos($enable, 'beginTransaction()');
         $revoke = strpos($enable, '$this->apiTokens->revoke($previousTokenId);');
         $commit = strpos($enable, '$this->pdo->commit();');
@@ -82,7 +81,7 @@ class IntegratedServiceReissueWiringTest extends TestCase
             $enable,
             '响应必须带 reissued，调用方才能分辨「首次启用」与「补发」'
         );
-        // 补发靠的是仓储的 upsert 语义（行已存在 → UPDATE 重绑新凭据），不需要新方法
+        // 补发靠仓储的 upsert 语义（行已存在则 UPDATE 重绑新凭据），不需要新方法
         $this->assertStringContainsString(
             'public function enable(string $service, string $provision, int $tokenId, string $operator): void',
             $repo
@@ -90,7 +89,7 @@ class IntegratedServiceReissueWiringTest extends TestCase
     }
 
     /**
-     * 禁用（冻结）后再启用 = **恢复同一枚凭据**，绝不另签一枚（运营的硬要求）。
+     * 禁用（冻结）后再启用应恢复同一枚凭据，不另签一枚。
      */
     public function testFrozenCredentialIsRestoredInsteadOfReissued(): void
     {
@@ -112,7 +111,7 @@ class IntegratedServiceReissueWiringTest extends TestCase
         $this->assertIsInt($commit);
         $this->assertTrue($begin < $restore && $restore < $commit, '恢复凭据必须与契约行回写同事务');
 
-        // 恢复分支里绝不能签发新凭据 —— 那正是运营抱怨的「重新生成一条 API，CD 要改一次配置」
+        // 恢复分支里不签发新凭据，否则就是重新生成一条 API、CD 要改一次配置
         $branchStart = strpos($enable, 'if ($reuseTokenId !== null) {');
         $branchEnd   = strpos($enable, '} else {', (int) $branchStart);
         $this->assertIsInt($branchStart);
@@ -129,7 +128,7 @@ class IntegratedServiceReissueWiringTest extends TestCase
         // 响应要让前端能分辨：reused = 复用（无明文），reissued = 补发（有明文）
         $this->assertStringContainsString("'reused'", $enable);
 
-        // restore 与 revoke 对称：只改 enabled 位，绝不能碰 token_hash（动了原明文就永久废了）
+        // restore 与 revoke 对称：只改 enabled 位，不碰 token_hash（改了原明文即失效）
         $this->assertStringContainsString(
             "'UPDATE ' . AppConfig::TABLE_API_TOKENS . ' SET enabled = 1 WHERE id = ?'",
             $tokenService,
@@ -165,8 +164,8 @@ class IntegratedServiceReissueWiringTest extends TestCase
     }
 
     /**
-     * 面板与确认弹窗都必须把「冻结（可恢复）」与「作废（需补发）」分开说，否则运营要么以为
-     * 每次重新启用都会换 Token（正是本次要解决的问题），要么以为被撤销的凭据也能原地复活。
+     * 面板与确认弹窗都把冻结（可恢复）与作废（需补发）分开说，否则用户会以为
+     * 每次重新启用都会换 Token，或以为被撤销的凭据也能原地恢复。
      */
     public function testPanelAndDialogDistinguishRestoreFromReissue(): void
     {
@@ -193,7 +192,7 @@ class IntegratedServiceReissueWiringTest extends TestCase
             '恢复路径必须在弹窗里说明「复用原凭据、明文不再展示、CD 无需改配置」'
         );
 
-        // 恢复的响应没有明文，绝不能走进「弹出 Token 框」那条分支，也不该谎称「已签发」
+        // 恢复的响应没有明文，不应走进弹出 Token 框的分支，也不应显示已签发
         $start = strpos($systemJs, 'if (res.ok && d.reused) {');
         $end   = strpos($systemJs, 'return true;', (int) $start);
         $this->assertIsInt($start);
@@ -235,20 +234,20 @@ class IntegratedServiceReissueWiringTest extends TestCase
             $this->assertNotSame('', trim((string) $en[$key]), 'en 翻译为空: ' . $key);
         }
 
-        // 故障态提示不能再引导用户「先禁用再启用」（旧流程），必须指向「再勾一次即补发」
+        // 故障态提示不引导用户先禁用再启用，而是指向再勾一次即补发
         $this->assertStringContainsString('勾选', (string) $zh['sys.isvc_reissue_hint']);
         $this->assertStringContainsString('Tick Enable', (string) $en['sys.isvc_reissue_hint']);
-        // 冻结态提示必须点明「恢复同一枚 / 无需更换」，否则「禁用再启用」看起来还是会在换 Token
+        // 冻结态提示要点明恢复同一枚、无需更换，否则禁用再启用看起来还是会在换 Token
         $this->assertStringContainsString('同一枚', (string) $zh['sys.isvc_token_frozen']);
         $this->assertStringContainsString('same token', (string) $en['sys.isvc_token_frozen']);
-        // 弹窗正文只讲要点与结果：恢复首行＝同一枚（「CD 无需换配置」交给冻结态卡片与补发首行承担）
+        // 弹窗正文只讲要点与结果：恢复首行为同一枚（CD 无需换配置交给冻结态卡片与补发首行承担）
         $this->assertStringContainsString('同一枚', (string) $zh['sys.isvc_reuse_note']);
         $this->assertStringContainsString('CI_API_TOKEN', (string) $zh['sys.isvc_token_frozen']);
         $this->assertStringContainsString('CI_API_TOKEN', (string) $zh['sys.isvc_reissue_note']);
         $this->assertStringContainsString('same token', (string) $en['sys.isvc_reuse_note']);
         $this->assertStringContainsString('CI_API_TOKEN', (string) $en['sys.isvc_token_frozen']);
         $this->assertStringContainsString('CI_API_TOKEN', (string) $en['sys.isvc_reissue_note']);
-        // 恢复成功的 toast 必须点明「同一枚继续有效」，而不是「已签发」
+        // 恢复成功的 toast 要点明同一枚继续有效，而不是已签发
         $this->assertStringContainsString('同一枚', (string) $zh['sys.isvc_restored']);
         $this->assertStringContainsString('same token', (string) $en['sys.isvc_restored']);
 
@@ -257,7 +256,7 @@ class IntegratedServiceReissueWiringTest extends TestCase
         $this->assertStringNotContainsString('数据表', (string) $zh['sys.isvc_disable_confirm']);
         $this->assertStringNotContainsString(';', (string) $en['sys.isvc_disable_confirm']);
         $this->assertStringNotContainsString('tables', (string) $en['sys.isvc_disable_confirm']);
-        // 两条要点必须点到「停用（仅冻结）」与「数据保留、重新启用即恢复」
+        // 两条要点要覆盖停用（仅冻结）与数据保留、重新启用即恢复
         $this->assertStringContainsString('冻结', (string) $zh['sys.isvc_disable_step1']);
         $this->assertStringContainsString('frozen', (string) $en['sys.isvc_disable_step1']);
         $this->assertStringContainsString('保留', (string) $zh['sys.isvc_disable_step2']);
@@ -268,9 +267,8 @@ class IntegratedServiceReissueWiringTest extends TestCase
      * 取控制器 enable() 的函数体（到 disable() 为止），把断言限定在启用逻辑里。
      */
     /**
-     * 两个确认弹窗的排版不变量：正文只留一句问句，要点固定走 note 的 ①② 多行，且不复述原因。
-     * 破掉的代价很实在 —— 弹窗越长越像说明书，运营只会直接点「确定」，
-     * 「本次是恢复还是补发、要不要改 CD 配置」这种必须看见的结论反而被淹没。
+     * 两个确认弹窗的排版约束：正文只留一句问句，要点固定走 note 的多行文本，且不复述原因。
+     * 弹窗越像说明书，用户越会直接点确定，本次是恢复还是补发、要不要改 CD 配置这类结论反而被淹没。
      */
     public function testDialogsKeepTerseQuestionAndNumberedSteps(): void
     {

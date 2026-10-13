@@ -10,11 +10,11 @@ namespace App\Service;
  *   bcrypt    PASSWORD_BCRYPT，成本 12（默认；PHP 默认成本 10 已偏低，此处显式升到 12）
  *   argon2id  PASSWORD_ARGON2ID，内存 64 MiB / 时间 4 / 并行 1（抗 GPU 更强）
  *
- * password_verify() 依据哈希前缀自动识别算法，切换只影响「新写入」的哈希：
+ * password_verify() 依据哈希前缀自动识别算法，切换只影响新写入的哈希：
  * 存量 bcrypt 哈希照常可校验，无迁移成本。
  *
- * 默认仍用 bcrypt 的原因：argon2id 每次校验固定分配 64 MiB 内存，登录/改密并发时
- * 会抬高 php-fpm 内存水位；在确认容器内存预算充足前，保守默认 bcrypt。
+ * 默认仍用 bcrypt 的原因：argon2id 每次校验固定分配 64 MiB 内存，登录与改密并发时
+ * 会抬高 php-fpm 内存水位；在确认容器内存预算充足前，先保持默认 bcrypt。
  */
 final class PasswordHasher
 {
