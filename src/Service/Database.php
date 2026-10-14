@@ -772,8 +772,10 @@ class Database
      */
     private static function isWidenVarchar(string $actual, string $expected): bool
     {
-        if (!preg_match('/^varchar\((\d+)\)$/', $actual, $a)
-            || !preg_match('/^varchar\((\d+)\)$/', $expected, $b)) {
+        if (
+            !preg_match('/^varchar\((\d+)\)$/', $actual, $a)
+            || !preg_match('/^varchar\((\d+)\)$/', $expected, $b)
+        ) {
             return false;
         }
         return (int) $b[1] >= (int) $a[1];
