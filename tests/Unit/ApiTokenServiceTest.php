@@ -147,7 +147,11 @@ class ApiTokenServiceTest extends TestCase
 
         $list = $this->service->listTokens();
         $this->assertSame(['git', 'build.write'], $list[0]['scopes'], '列表应显示编辑后的 scope');
-        $this->assertSame(['git', 'trigger', 'retry', 'cancel'], $list[0]['capabilities'], '能力清单应随 scope 重算（去重且保持目录顺序）');
+        $this->assertSame(
+            ['git.branches', 'git.tags', 'git.refs', 'trigger', 'retry', 'cancel'],
+            $list[0]['capabilities'],
+            '能力清单应随 scope 重算（去重且保持目录顺序；git 展开为三个只读端点）'
+        );
     }
 
     public function testUpdateScopesKeepsTokenDigestAndPlaintextUsable(): void
@@ -226,4 +230,76 @@ class ApiTokenServiceTest extends TestCase
         $this->assertSame('ci-bot', $row['name']);
         $this->assertNull($this->service->findById(999));
     }
+
+    // ── 补齐 scope（升级自愈：凭据契约扩充后补存量 token，不重新签发）──
+
+    public function testAddScopesUnionsWithoutTouchingDigestOrPlaintext(): void
+    {
+        $created = $this->service->createToken(['name' => 'cd-service', 'scopes' => ['build.read', 'build.write']]);
+        $hash    = hash('sha256', $created['token']);
+        $digest  = $this->pdo->query('SELECT token_hash FROM ' . AppConfig::TABLE_API_TOKENS)->fetch()['token_hash'];
+
+        $this->assertTrue($this->service->addScopes($created['id'], AppConfig::CD_SERVICE_TOKEN_SCOPES));
+
+        $row = $this->service->findById($created['id']);
+        $this->assertSame($digest, $row['token_hash'], '补齐 scope 不得改动摘要：调用方无需换 token');
+        $this->assertNotNull($this->service->resolve($hash), '原明文必须继续可用（CD 无需更换 CI_API_TOKEN）');
+        $this->assertSame(
+            ['build.read', 'build.write', 'git', 'rbac.user.write'],
+            $this->service->resolve($hash)['scopes'],
+            '只补不删：原有顺序不变，新 scope 追加在尾部'
+        );
+    }
+
+    public function testAddScopesNeverRevokesManuallyGrantedScopes(): void
+    {
+        $created = $this->service->createToken(['name' => 'cd-service', 'scopes' => ['build.read', 'main']]);
+
+        $this->service->addScopes($created['id'], ['git']);
+
+        $row = $this->service->findById($created['id']);
+        $this->assertSame('build.read,main,git', $row['scopes'], '补齐只做并集：手工扩权的 scope 不得被自愈收回');
+    }
+
+    public function testAddScopesIgnoresUnknownAndEmptyKeys(): void
+    {
+        $created = $this->service->createToken(['name' => 'cd-service', 'scopes' => ['build.read']]);
+
+        // 与 updateScopes 的严格校验不同：自愈路径不该因脏值失败（目录外/空值静默忽略）
+        $this->assertTrue($this->service->addScopes($created['id'], ['not.a.scope', '', '   ']));
+
+        $row = $this->service->findById($created['id']);
+        $this->assertSame('build.read', $row['scopes'], '目录外/空 scope 应被忽略，且无变化时不写库');
+    }
+
+    public function testAddScopesIsIdempotentWhenAlreadySuperset(): void
+    {
+        $created = $this->service->createToken(['name' => 'cd-service', 'scopes' => AppConfig::CD_SERVICE_TOKEN_SCOPES]);
+
+        $this->assertTrue($this->service->addScopes($created['id'], AppConfig::CD_SERVICE_TOKEN_SCOPES));
+        $this->assertTrue($this->service->addScopes($created['id'], AppConfig::CD_SERVICE_TOKEN_SCOPES));
+
+        $row = $this->service->findById($created['id']);
+        $this->assertSame(
+            implode(',', AppConfig::CD_SERVICE_TOKEN_SCOPES),
+            $row['scopes'],
+            '已是超集时内容不变（幂等：引导每次都会调用它，不得反复追加）'
+        );
+    }
+
+    public function testAddScopesAcceptsCommaSeparatedString(): void
+    {
+        $created = $this->service->createToken(['name' => 'cd-service', 'scopes' => ['build.read']]);
+
+        $this->service->addScopes($created['id'], 'git, build.write');
+
+        $row = $this->service->findById($created['id']);
+        $this->assertSame('build.read,git,build.write', $row['scopes'], '字符串入参按逗号切分并去掉每项空白');
+    }
+
+    public function testAddScopesReturnsFalseForUnknownToken(): void
+    {
+        $this->assertFalse($this->service->addScopes(999, ['git']), 'token 不存在时应返回 false 且不写入');
+    }
+
 }

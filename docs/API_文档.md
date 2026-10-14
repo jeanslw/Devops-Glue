@@ -1,4 +1,4 @@
-# Devops-Glue API 参考 v2.8.9
+# Devops-Glue API 参考 v2.9.0
 
 基础 URL: `http://your-domain.com/api`
 
@@ -87,9 +87,9 @@ GET /healthz
 {
   "status": "ok",
   "db": true,
-  "app_version": "2.8.9",
-  "schema_version": "2.8.9",
-  "seed_version": "2.8.9",
+  "app_version": "2.9.0",
+  "schema_version": "2.9.0",
+  "seed_version": "2.9.0",
   "schema_current": true,
   "schema_ahead": false,
   "auto_migrate": true,
@@ -140,7 +140,7 @@ GET /api/health
   "build_modes": ["jenkins", "gitlab_ci", "gitea_ci"],
   "build_mode_source": "database",
   "db_driver": "mysql",
-  "app_version": "2.8.9",
+  "app_version": "2.9.0",
   "app_env": "production",
   "time": "2026-08-10 12:00:00"
 }
@@ -169,7 +169,7 @@ GET /api/health/static
   "custom_push_enabled": true,
   "custom_push_providers": ["custom_push"],
   "db_driver": "mysql",
-  "app_version": "2.8.9",
+  "app_version": "2.9.0",
   "app_env": "production",
   "time": "2026-08-10 12:00:00"
 }
@@ -323,11 +323,23 @@ custom_push 构建源专用：用户 CI 在构建完成后一次性上报终态�
 
 ```
 GET /api/git/{path}/branches
+GET /api/git/{path}/tags
+GET /api/git/{path}/refs
 ```
 
-`{path}` 为映射中的 Job 名称。返回：`["master","devops","main"]`
+`{path}` 为映射中的 Job 名称（支持 `group/sub/repo` 形式的多级名）。
+
+| 接口 | 方法 | 返回 |
+|---|---|---|
+| `/api/git/{path}/branches` | GET/POST | 分支名数组：`["master","devops","main"]` |
+| `/api/git/{path}/tags` | GET/POST | Tag 名数组：`["v1.0.0","v1.0.1"]` |
+| `/api/git/{path}/refs` | GET/POST | `{"branches":[...],"tags":[...]}`（一次拿全，CD 构建页 ref 下拉推荐） |
 
 支持 GitLab、Gitee、GitHub 和 Gitea。自动从 Job 映射中解析 Git 仓库。
+
+> - `{path}` 无仓库映射、或自动识别出的平台未注册时返回空数组（`[]`）；平台不可达时返回 `404` + `git.query_failed`（不把平台故障伪装成「仓库没有 tag」）。
+> - 需要 `git` scope。CD 服务 Token 由「集成服务 → 启用」自动签发并包含该 scope（v2.9.0 起）；v2.8.x 已签发的存量凭据在升级引导时会**自动补齐**该 scope，无需重新启用服务、也无需更换 Token。
+> - `refs` 等价于同时调用 `branches` 与 `tags`，但只解析一次 Job→仓库映射、只构造一次平台客户端，且两组值必然来自同一仓库快照。任一类型查询失败即整体 404。
 
 ---
 
@@ -342,6 +354,43 @@ GET /api/git/{path}/branches
 | `/api/harbor/{project}/repositories/{repository}/tags` | GET/POST | 标签列表（`/` 需双重编码为 `%2F`） |
 | `/api/harbor/{project}/repositories/{repository}/tags/{tag}/scan` | POST | 触发镜像扫描 |
 | `/api/harbor/{project}/repositories/{repository}/tags/{tag}/scan` | GET | 获取扫描报告 |
+
+---
+
+## 集成服务契约模块 (`/api/integration`)
+
+> **用途：** 供 CD 等集成服务在运行时自检「本服务是否被 Glue 授权、以哪种建表方式授权」，**免于直读共享库的 `ci_integrated_services` 表**（表名/列名/驱动都是耦合面：CI 改库结构会弄坏 CD，将来拆库独立部署更是直接失效）。契约仍由 CI 唯一写入，消费方只读这一个窄接口。
+
+| 接口 | 方法 | 说明 |
+|---|---|---|
+| `/api/integration/services/{service}` | GET | 集成服务契约状态（`service` 目前仅支持 `cd`） |
+
+响应（`format=json` 时包在 `data` 里，默认 `raw` 直接输出对象）：
+
+```json
+{
+  "service": "cd",
+  "enabled": true,
+  "provision": "auto",
+  "token_active": true,
+  "updated_at": "2026-10-14 10:00:00"
+}
+```
+
+**判定口径（消费方必须按此实现，不要自行发明解释）：**
+
+| 响应 | 含义 | 消费方动作 |
+|---|---|---|
+| `200` + `enabled=false` | **未启用**（契约行不存在或 `enabled=0`，两者对外同义） | 拒绝对外服务（零 DDL）；`provision` 此时归一化为 `auto`，仅为日志措辞，**不得**据此建表 |
+| `200` + `enabled=true` + `provision=auto` | 被授权**自动建表 / 补齐既有表缺失列** | 可建表 |
+| `200` + `enabled=true` + `provision=manual` | 禁止建表 | 只认运维预建表，缺表按未部署处理 |
+| `404` | 服务名不在白名单（配置写错） | **不得当成「未启用」**：拼错服务名会静默退化成「一直未启用」而无人察觉 |
+| `401` / `403` | Token 无效 / 缺 `build.read` scope | 先修凭据，不要据此改变业务判定 |
+| 其它错误（含旧版 CI 无此端点时的 404/405、网络异常） | 端点不可用 | **回退到旧口径**（直读契约表），不得把「端点不可用」当成「未启用」 |
+
+> - **scope：** 复用 `build.read`（CD 服务凭据已持有，无需扩权）；控制器内二次校验 `ci.build-records.pull`（由 scope 自动注入）。
+> - **`token_active` 仅供展示**（契约行绑定凭据的活性，如提示「凭据已失效，请在 CI 重新启用集成服务」），它与调用方自己的 Token 通常是同一枚（否则本次调用已被拒），**不可作为闸门条件**。
+> - 本端点刻意**不返回** `token_id` / `token_name` / `token_scopes` / `updated_by`（管理面字段，见 `/api/admin/integrated_services/{service}`）。字段名与管理的同名子集保持一致，便于同时使用两条通道的消费方共用映射。
 
 ---
 
@@ -402,7 +451,7 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 | `/api/admin/tag_cleanup` | POST | 手动立即执行一次过期 tag 清理（等价 `cli/cleanup-pipeline-tags.php`；对应开关未开启或 Harbor 未配置时返回 409 安全跳过；需 `ci.platform-config`） |
 | `/api/admin/tag_backfill` | POST | 手动立即执行一次镜像 Tag 日志回填（等价 `cli/backfill-pipeline-tags.php`；同上，仅补缺失 tag 不覆盖扫描结果；需 `ci.platform-config`） |
 | `/api/admin/operation_logs` | GET | 操作审计日志（支持 `?username=&action=&result=&operator_type=&date_from=&date_to=&page=&per_page=` 筛选；需 `ci.operation-logs`） |
-| `/api/admin/deploy_logs` | GET | CD 部署记录审计列表（只读，经 `v_glue_deploy_logs` 契约视图，不直读 CD 表；支持 `?project=&status=&deploy_type=&date_from=&date_to=&page=&per_page=` 筛选；需 `ci.deploy-logs`） |
+| `/api/admin/deploy_logs` | GET | CD 部署记录审计列表（只读，经 CD 的 `/api/integration/deploy-logs` 只读端点拉取，不直读 CD 表；支持 `?project=&status=&deploy_type=&date_from=&date_to=&page=&per_page=` 筛选；需 `ci.deploy-logs`） |
 | `/api/admin/api_access_logs` | GET | API Token 调用审计列表（只返回 token 展示名等审计字段，绝无 token 原文/hash/body/query；支持 `?result=&method=&token_name=&route=&date_from=&date_to=&page=&per_page=` 筛选；需 `ci.api-logs`） |
 | `/api/admin/users` | GET | 用户列表（admin 可见全部；非 admin 看不到 admin 用户） |
 | `/api/admin/users` | POST | 创建用户（body: `username`、`password`、`role`、`systems`） |
@@ -481,10 +530,10 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 | Scope key | 说明 | 覆盖接口 |
 |---|---|---|
 | `main` | MAIN（只读） | `/api/main/*` |
-| `git` | GIT（只读） | `/api/git/*` |
+| `git` | GIT（只读：分支 / Tag / refs） | `/api/git/*` |
 | `harbor.read` | Harbor 查询 | `/api/harbor/*`（除扫描触发外） |
 | `harbor.scan` | Harbor 扫描触发 | `POST /api/harbor/{project}/repositories/{repo}/tags/{tag}/scan` |
-| `build.read` | 构建查询 | `/api/build/*`（除下方写/回写接口外） |
+| `build.read` | 构建查询 + 集成服务契约 | `/api/build/*`（除下方写/回写接口外）、`/api/integration/*` |
 | `build.write` | 构建执行 | `trigger` / `retry` / `cancel` |
 | `build.report` | 构建回写 | `scan-sync` / `commit-status` / `report`（CI 脚本回调） |
 | `rbac.user.write` | CD 服务账号管理 | `/api/rbac/*` 用户与角色的建/读/改/删 |

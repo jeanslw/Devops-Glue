@@ -59,6 +59,8 @@
             background:#00ff00; box-shadow:0 0 6px #00ff00;
             animation: pulse-dot 2s ease-in-out infinite;
         }
+        .status-dot.degraded { background:#ffb400; box-shadow:0 0 6px #ffb400; animation:none; }
+        .status-dot.unavailable { background:#ff5252; box-shadow:0 0 6px #ff5252; animation:none; }
 
         /* ── 功能卡片：3x2 网格 ── */
         .features { display:grid; grid-template-columns:1fr 1fr 1fr; gap:20px; }
@@ -127,7 +129,7 @@
     <div class="hero">
         <div class="hero-title">
             <h1 data-i18n="index.title">Devops-Glue</h1>
-            <a href="/admin" class="status-badge" data-dg-home><span class="status-dot"></span><span data-i18n="index.running">运行中</span></a>
+            <a href="/admin" class="status-badge" data-dg-home><span class="status-dot" id="status-dot"></span><span id="status-text">运行中</span></a>
         </div>
         <p data-i18n="index.subtitle">Jenkins · Git · Harbor 一站式 DevOps 工具链集成平台</p>
     </div>
@@ -198,6 +200,38 @@
     document.querySelectorAll('[data-dg-home]').forEach(function(a){ a.setAttribute('href', target); });
 })();</script>
 <script>(function(){var l=new URLSearchParams(location.search).get('lang');if(l==='zh'||l==='zh_CN'||l==='zh-CN')l='zh-CN';else if(l==='en')l='en';else l=null;if(l)localStorage.setItem('dg_lang',l);__.init(l);var s=document.getElementById('lang-select');if(s)s.value=__.lang;document.addEventListener('i18n-changed',function(){if(s)s.value=__.lang;});})();</script>
+<script>/* 落地页状态徽标：真实探测 /healthz，把「运行中」切换为运行中/降级/不可用。
+    /healthz 无需鉴权：200+status=ok（就绪）、200/503+status=degraded（降级）；
+    fetch 失败或超时视为不可用。子路径部署时与 data-dg-home 同口径拼前缀。 */
+(function(){
+    var dot  = document.getElementById('status-dot');
+    var text = document.getElementById('status-text');
+    var state = 'running'; // running | degraded | unavailable
+    function render(){
+        if (dot) dot.className = 'status-dot' + (state === 'running' ? '' : ' ' + state);
+        if (text) {
+            var msg = __.t('index.' + state);
+            if (msg !== 'index.' + state) text.textContent = msg;
+        }
+    }
+    function probe(){
+        var base = location.pathname.replace(/\/+$/, '').replace(/\/admin$/, '');
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', (base || '') + '/healthz', true);
+        xhr.timeout = 5000;
+        xhr.onload = function(){
+            var ok = false;
+            try { ok = JSON.parse(xhr.responseText).status === 'ok'; } catch (e) {}
+            state = ok ? 'running' : 'degraded';
+            render();
+        };
+        xhr.onerror = xhr.ontimeout = function(){ state = 'unavailable'; render(); };
+        xhr.send();
+    }
+    document.addEventListener('i18n-changed', render);
+    render();
+    probe();
+})();</script>
 
 </body>
 </html>

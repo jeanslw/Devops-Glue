@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Devops-Glue API",
-    "version": "2.8.9",
+    "version": "2.9.0",
     "description": "DevOps 工具链集成接口 —— Jenkins/GitLab CI、GitLab/Gitee/GitHub/Gitea、Harbor 统一 API。",
     "contact": {
       "email": "jeanslw@qq.com"
@@ -29,11 +29,15 @@
     },
     {
       "name": "Git",
-      "description": "代码仓库分支"
+      "description": "代码仓库分支 / Tag"
     },
     {
       "name": "Harbor",
       "description": "镜像仓库与安全扫描"
+    },
+    {
+      "name": "Integration",
+      "description": "集成服务契约（供 CD 等集成服务自检授权与建表方式）"
     },
     {
       "name": "Admin",
@@ -235,19 +239,19 @@
           },
           "app_version": {
             "type": "string",
-            "example": "2.8.8"
+            "example": "2.9.0"
           },
           "schema_version": {
             "type": "string",
             "nullable": true,
             "description": "已应用的 schema 版本（自动建库模式标记；首次部署未标记时为 null）",
-            "example": "2.8.9"
+            "example": "2.9.0"
           },
           "seed_version": {
             "type": "string",
             "nullable": true,
             "description": "已应用的种子版本（仅 DB_AUTO_MIGRATE=false 手动建库模式记录；自动建库模式为 null，以 schema_version 为准）",
-            "example": "2.8.9"
+            "example": "2.9.0"
           },
           "schema_current": {
             "type": "boolean",
@@ -2608,7 +2612,7 @@
         }
       }
     },
-    "/api/git/{job}/branches": {
+    "/api/git/{path}/branches": {
       "get": {
         "tags": [
           "Git"
@@ -2622,7 +2626,7 @@
         ],
         "parameters": [
           {
-            "name": "job",
+            "name": "path",
             "in": "path",
             "required": true,
             "schema": {
@@ -2644,6 +2648,113 @@
                   "type": "array",
                   "items": {
                     "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
+        }
+      }
+    },
+    "/api/git/{path}/tags": {
+      "get": {
+        "tags": [
+          "Git"
+        ],
+        "summary": "查询 Job 对应的 Git Tag 列表",
+        "description": "CD 构建页可把 tag 当作构建 ref（发布版本按 tag 构建）。job 无仓库映射或平台无法识别时返回空数组；平台连接失败返回 404（不把平台故障伪装成「仓库没有 tag」）。",
+        "operationId": "gitTags",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "php/myapp",
+            "allowReserved": true
+          },
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "tag 名数组",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
+        }
+      }
+    },
+    "/api/git/{path}/refs": {
+      "get": {
+        "tags": [
+          "Git"
+        ],
+        "summary": "一次返回分支 + Tag（构建 ref 候选值）",
+        "description": "等价于同时调用 branches 与 tags，但只解析一次 job→仓库映射、只构造一次平台客户端，且两组值必然来自同一仓库快照。CD 构建页 ref 下拉推荐用本端点。任一类型查询失败即整体 404。",
+        "operationId": "gitRefs",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "php/myapp",
+            "allowReserved": true
+          },
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "分支名数组 + tag 名数组",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "branches": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
                   }
                 }
               }
@@ -5010,6 +5121,334 @@
         }
       }
     },
+    "/api/admin/deploy_logs": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "CD 部署记录审计列表",
+        "description": "只读分页查询 CD 部署审计日志（经 CD 的 /api/integration/deploy-logs 只读端点拉取，不直读 CD 库）。未传 date_from/date_to 时默认查近 30 天；CD 未启用或端点不可用时返回 available=false 的空列表。需 ci.deploy-logs 权限。",
+        "operationId": "adminDeployLogList",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "项目名（模糊匹配）"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "部署状态（精确匹配）"
+          },
+          {
+            "name": "deploy_type",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "部署类型（精确匹配）"
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "起始日期（含当天，YYYY-MM-DD）"
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "结束日期（含当天，YYYY-MM-DD）"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "部署日志列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "available": {
+                      "type": "boolean",
+                      "description": "视图是否可查询（CD 未启用时为 false）"
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "page": {
+                      "type": "integer"
+                    },
+                    "per_page": {
+                      "type": "integer"
+                    },
+                    "total_pages": {
+                      "type": "integer"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "integer"
+                          },
+                          "project": {
+                            "type": "string"
+                          },
+                          "tag": {
+                            "type": "string"
+                          },
+                          "image": {
+                            "type": "string"
+                          },
+                          "deploy_type": {
+                            "type": "string"
+                          },
+                          "target": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "triggered_by": {
+                            "type": "string"
+                          },
+                          "deploy_note": {
+                            "type": "string"
+                          },
+                          "created_at": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "缺少 ci.deploy-logs 权限"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        }
+      }
+    },
+    "/api/admin/api_access_logs": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "API Token 调用审计列表",
+        "description": "只读分页查询 API Token 调用审计日志。只返回 token 展示名等审计字段，绝无 token 原文/hash/body/query。未传 date_from/date_to 时默认查近 30 天。result/method 传入白名单外的值会被忽略。需 ci.api-logs 权限。",
+        "operationId": "adminApiAccessLogList",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "result",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "success",
+                "failure",
+                "denied"
+              ]
+            },
+            "description": "调用结果"
+          },
+          {
+            "name": "method",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "GET",
+                "POST",
+                "PUT",
+                "PATCH",
+                "DELETE"
+              ]
+            },
+            "description": "HTTP 方法"
+          },
+          {
+            "name": "token_name",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Token 展示名（模糊匹配）"
+          },
+          {
+            "name": "route",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "请求路由（模糊匹配）"
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "起始日期（含当天，YYYY-MM-DD）"
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "结束日期（含当天，YYYY-MM-DD）"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "调用日志列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "total": {
+                      "type": "integer"
+                    },
+                    "page": {
+                      "type": "integer"
+                    },
+                    "per_page": {
+                      "type": "integer"
+                    },
+                    "total_pages": {
+                      "type": "integer"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "integer"
+                          },
+                          "username": {
+                            "type": "string"
+                          },
+                          "token_name": {
+                            "type": "string"
+                          },
+                          "scopes": {
+                            "type": "string"
+                          },
+                          "method": {
+                            "type": "string"
+                          },
+                          "route": {
+                            "type": "string"
+                          },
+                          "status_code": {
+                            "type": "integer"
+                          },
+                          "result": {
+                            "type": "string"
+                          },
+                          "error_reason": {
+                            "type": "string"
+                          },
+                          "ip": {
+                            "type": "string"
+                          },
+                          "duration_ms": {
+                            "type": "integer"
+                          },
+                          "created_at": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "缺少 ci.api-logs 权限"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        }
+      }
+    },
     "/.well-known/openid-configuration": {
       "get": {
         "tags": [
@@ -5316,6 +5755,85 @@
           },
           "401": {
             "description": "invalid_token"
+          }
+        }
+      }
+    },
+    "/api/integration/services/{service}": {
+      "get": {
+        "tags": [
+          "Integration"
+        ],
+        "summary": "集成服务契约自检（CD 专用，免于直读共享库）",
+        "description": "供 CD 等集成服务在运行时自检「本服务是否被 Glue 授权、以哪种建表方式授权」，避免直读共享库的 integrated_services 表（表名/列名/驱动都是耦合面，CI 改库结构会弄坏 CD，拆库独立部署更是直接失效）。判定口径：200 + enabled=false 表示**未启用**（契约行不存在或 enabled=0，两者对外同义）→ 服务应拒绝对外服务并零 DDL，此时 provision 归一化为 auto 仅为日志措辞、不得据此建表；200 + enabled=true + provision=auto 表示被授权自动建表/补列；200 + enabled=true + provision=manual 表示禁止建表、只认运维预建表。**404 与「未启用」严格区分**（服务名不在白名单 = 配置写错，不得当成未启用）。token_active 仅供展示（契约行绑定凭据的活性），不得当闸门条件。scope 复用 build.read；字段名与 /api/admin/integrated_services/{service} 的同名子集保持一致。",
+        "operationId": "integrationServiceShow",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "service",
+            "in": "path",
+            "required": true,
+            "description": "集成服务名（integrated_services.service_name）",
+            "schema": {
+              "type": "string"
+            },
+            "example": "cd"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "集成服务契约状态",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "service": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean",
+                      "description": "是否已启用（契约行存在且 enabled=1）"
+                    },
+                    "provision": {
+                      "type": "string",
+                      "enum": [
+                        "auto",
+                        "manual"
+                      ],
+                      "description": "建表授权：auto=允许自动建表/补列；manual=禁止建表，只认运维预建表。未启用时归一化为 auto，仅作日志措辞"
+                    },
+                    "token_active": {
+                      "type": "boolean",
+                      "description": "契约行绑定凭据的活性，仅供展示，不可作为闸门条件"
+                    },
+                    "updated_at": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "契约行最后更新时间；未启用时为 null"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "缺少 build.read scope（或非 API token）"
+          },
+          "404": {
+            "description": "服务名不在白名单（integrated.unknown_service）；与「未启用」（200 + enabled=false）严格区分"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
           }
         }
       }

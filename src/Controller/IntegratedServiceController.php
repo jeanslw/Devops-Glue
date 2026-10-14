@@ -144,7 +144,10 @@ final class IntegratedServiceController extends BaseController
             if ($reuseTokenId !== null) {
                 // 冻结后恢复：把同一枚凭据重新启用 + 回写契约行（provision 允许在恢复时改写）。
                 // 既不签发也不返回明文，CD 手上已有那枚 Token 的明文。
+                // 同时把 scope 补齐到当前契约（只补不删）：存量凭据可能缺 v2.9.0 新增的 git，
+                // 不补的话「禁用再启用」这个运维动作会恢复出一枚仍然调不了 /api/git/* 的凭据。
                 $this->apiTokens->restore($reuseTokenId);
+                $this->apiTokens->addScopes($reuseTokenId, AppConfig::CD_SERVICE_TOKEN_SCOPES);
                 $this->services->enable($service, $provision, $reuseTokenId, $this->currentUser);
                 $tokenId = $reuseTokenId;
                 $plain   = null;

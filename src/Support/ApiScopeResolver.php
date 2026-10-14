@@ -46,6 +46,12 @@ class ApiScopeResolver
             return AppConfig::API_SCOPE_RBAC_USER_WRITE;
         }
 
+        // 集成服务契约（CD 等集成服务的窄只读自检端点）：复用 build.read ——
+        // CD 服务凭据已持有该 scope，不为一个只读端点另行扩权；也避免整段落进未知路径 fail-closed。
+        if (preg_match('#^/api/integration($|/)#', $path)) {
+            return AppConfig::API_SCOPE_BUILD_READ;
+        }
+
         // MAIN：只读
         if (preg_match('#^/api/main($|/)#', $path)) {
             return AppConfig::API_SCOPE_MAIN;

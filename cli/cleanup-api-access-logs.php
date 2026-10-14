@@ -5,7 +5,7 @@
  * 统一清理策略（后台系统设置页平台管理的日志设置控制）：
  *   - ci_api_access_logs（API 调用日志）与 ci_operation_logs（操作日志）
  *     共用同一保留天数与清理开关。
- *   - 部署日志（v_glue_deploy_logs，数据归 CD 系统所有）暂不由本脚本清理。
+ *   - 部署日志（数据归 CD 系统所有，CI 经 CD 只读端点拉取、不落本地库）不由本脚本清理。
  *
  * 用法：
  *   php cli/cleanup-api-access-logs.php [保留天数]

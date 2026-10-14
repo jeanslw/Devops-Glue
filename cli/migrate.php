@@ -81,11 +81,14 @@ if ($dryRun) {
 
     $missingTables  = $pending['missing_tables'];
     $missingColumns = $pending['missing_columns'];
+    $mismatched     = $pending['mismatched_columns'];
+    $safeMismatch   = array_values(array_filter($mismatched, static fn (array $d): bool => $d['safe']));
+    $unsafeMismatch = array_values(array_filter($mismatched, static fn (array $d): bool => !$d['safe']));
     $columnCount    = 0;
     foreach ($missingColumns as $columns) {
         $columnCount += count($columns);
     }
-    $pendingCount   = count($missingTables) + $columnCount;
+    $pendingCount   = count($missingTables) + $columnCount + count($safeMismatch);
     $needsMigration = $pendingCount > 0 || !$status['is_current'];
 
     echo "（dry-run 只读预检：不建表、不写数据）\n";
@@ -104,6 +107,18 @@ if ($dryRun) {
         }
     }
     echo "（注：索引与一次性数据搬迁随迁移幂等执行，不在此报告中）\n";
+    if ($safeMismatch === []) {
+        echo "将对齐的列类型（0）：无\n";
+    } else {
+        echo "将对齐的列类型（" . count($safeMismatch) . "，仅安全扩容 MODIFY）：\n";
+        foreach ($safeMismatch as $d) {
+            echo "  - {$d['table']}.{$d['column']}: {$d['actual']} → {$d['expected']}\n";
+        }
+    }
+    foreach ($unsafeMismatch as $d) {
+        fwrite(STDERR, "⚠️ 不可自动修复的列漂移（需人工评估，迁移不会改动）："
+            . "{$d['table']}.{$d['column']} {$d['actual']} → {$d['expected']}\n");
+    }
 
     if (!$needsMigration) {
         echo "结论：库结构与版本标记均与当前代码一致，无需迁移。\n";

@@ -38,6 +38,37 @@ export async function loadSystemInfo() {
                 : __.t('sys.schema_list_ok');
             sl.style.color = drift.length ? '#dc2626' : '#16a34a';
         }
+        // 列结构对账（Database::columnDrift()，仅 MySQL）：safe=同类 VARCHAR 只增宽，自动模式下
+        // bootstrap 已自愈，这里看到的 safe 残留多为手动建库模式，点「同步库结构」即修；
+        // unsafe=缩容/跨类型，系统永远不自动改，红字提示人工评估。SQLite 与旧响应无此键时保持占位符。
+        const cd = document.getElementById('sys-column-drift');
+        const cdInfo = d.column_drift;
+        if (cd && cdInfo && Array.isArray(cdInfo.items)) {
+            const cdItems = cdInfo.items;
+            if (!cdItems.length) {
+                cd.textContent = __.t('sys.column_drift_ok');
+                cd.style.color = '#16a34a';
+            } else {
+                const fmtDrift = function(list) {
+                    return list.map(function(i) {
+                        return esc(i.table + '.' + i.column) + ': ' + esc(i.actual) + '→' + esc(i.expected);
+                    }).join('; ');
+                };
+                const cdParts = [];
+                const cdSafe = cdItems.filter(function(i) { return i.safe === true; });
+                const cdUnsafe = cdItems.filter(function(i) { return i.safe !== true; });
+                if (cdSafe.length) {
+                    cdParts.push('<span>' + esc(__.t('sys.column_drift_safe', { count: cdSafe.length }))
+                        + '（' + fmtDrift(cdSafe) + '）</span>');
+                }
+                if (cdUnsafe.length) {
+                    cdParts.push('<span>' + esc(__.t('sys.column_drift_unsafe', { count: cdUnsafe.length }))
+                        + '（' + fmtDrift(cdUnsafe) + '）</span>');
+                }
+                cd.innerHTML = cdParts.join('<br>');
+                cd.style.color = cdUnsafe.length ? '#dc2626' : '#d97706';
+            }
+        }
         const tb = document.getElementById('sys-tables');
         tb.innerHTML = '';
         const tables = d.tables || {};

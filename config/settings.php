@@ -81,6 +81,14 @@ return [
         'password' => env('HARBOR_PASSWORD'),
     ],
 
+    // ==================== CD（CI→CD 部署日志只读端点） ====================
+    // 部署日志已解耦：CI 不再读共享库视图，改经 CD 的 /api/integration/deploy-logs 拉取。
+    // 留空则部署日志审计降级为「不可用」占位（不抛错）。token 为 CD 侧入站静态令牌，两端同值。
+    'cd' => [
+        'base_url'  => env('CD_BASE_URL', ''),
+        'api_token' => env('CD_API_TOKEN', ''),
+    ],
+
     // ==================== 自定义 Build Provider（推送式 CI） ====================
     // 默认已配置 CustomPushBuildProvider，开箱即用，无需修改。
     // 启用：管理后台配置模式 Tab 勾选启用 Custom_Push，即时生效。

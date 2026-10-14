@@ -108,6 +108,44 @@ class ApiTokenService
     }
 
     /**
+     * 把 scope 并入既有 token 的 scope 清单（只补不删，幂等）。
+     *
+     * 用于「凭据契约扩充后的存量补齐」：例如 v2.9.0 给 CD 服务凭据新增 git scope（CD 构建页
+     * 改走 /api/git/{path}/refs 取 ref 候选值），已签发的存量凭据需要补齐；若改为重新签发，
+     * CD 侧必须改 CI_API_TOKEN（运维成本 + 停机风险）。
+     *
+     * 与 updateScopes 的严格校验刻意不同，这里偏宽松（自愈路径，不该因脏值失败）：
+     *   - 目录外的 scope 直接忽略（调用方通常传常量契约，脏值不应让补齐中断）；
+     *   - 只做并集，绝不收回管理员手工追加的 scope（有意扩权的 token 不该被自愈悄悄降权）；
+     *   - 已是超集时不写库（避免每次启动产生无意义的 UPDATE）。
+     *
+     * 摘要与明文均不动，故调用方无需更换 token。
+     *
+     * @param mixed $scopes 数组或逗号分隔字符串
+     * @return bool false 表示 token 不存在（此时不写入任何内容）
+     * @throws \PDOException 查询 / 写入失败（ERRMODE_EXCEPTION）
+     */
+    public function addScopes(int $id, mixed $scopes): bool
+    {
+        $row = $this->findById($id);
+        if ($row === null) {
+            return false;
+        }
+
+        $current    = $this->scopesToArray(isset($row['scopes']) ? (string) $row['scopes'] : null);
+        $normalized = array_values(array_unique(array_merge($current, $this->normalizeScopes($scopes))));
+        if ($normalized === $current) {
+            return true;
+        }
+
+        $stmt = $this->pdo->prepare(
+            'UPDATE ' . AppConfig::TABLE_API_TOKENS . ' SET scopes = ? WHERE id = ?'
+        );
+        $stmt->execute([implode(',', $normalized), $id]);
+        return true;
+    }
+
+    /**
      * 列出全部 token（不含明文）。
      * 附上 scope 数组与是否过期的派生字段，方便 UI 直接渲染。
      *

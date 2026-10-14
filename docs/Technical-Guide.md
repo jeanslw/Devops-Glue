@@ -1,4 +1,4 @@
-# Devops-Glue API Technical Guide v2.8.9
+# Devops-Glue API Technical Guide v2.9.0
 
 > This document is intended for developers, operations engineers, and troubleshooting. It covers all business logic, data flows, database table structures, and common issues.
 
@@ -157,8 +157,8 @@ Override rules:
 | `build_mode` | `ci_app_settings` table | DB > `app.env` (fallback) |
 | `job_git_map` | `ci_job_git_map` table | DB only source |
 | `platform_versions` | `ci_platform_versions` table | DB > JSON > defaults |
-| Admin Token | `cache` table (24h TTL) | DB only source |
-| Harbor API version | `cache` table (1h TTL) | Auto-detected and cached |
+| Admin Token | `ci_cache` table (24h TTL) | DB only source |
+| Harbor API version | `ci_cache` table (1h TTL) | Auto-detected and cached |
 
 ### 3.3 Configuration Read Chain
 
@@ -253,7 +253,7 @@ Controller → AppConfig::getXxxConfig()
 | `role` | TEXT DEFAULT 'admin' | admin / super_admin |
 | `updated_at` | DATETIME/TEXT | Update time |
 
-**Initialization:** `seedAdmin()` creates initial user from `app.env` `ADMIN_USER`/`ADMIN_PASSWORD` when `admin_users` table is empty.
+**Initialization:** `seedAdmin()` creates initial user from `app.env` `ADMIN_USER`/`ADMIN_PASSWORD` when `ci_admin_users` table is empty.
 
 #### ci_security_checks (Security Scan Audit)
 
@@ -310,7 +310,7 @@ Controller → AppConfig::getXxxConfig()
 The admin panel's "System Settings → Data Management → Database" card provides a **Backup Database** button (`super_admin` only), implemented by `src/Service/DataBackupService` (the `bin/` tools are not shipped in the image, so the Web side does not depend on the CLI backup tools).
 
 - **Driver**: supports sqlite / mysql, exports per the current `DB_DRIVER`.
-- **Output**: when CD is enabled (the shared database has `cd_*` tables), two zips are produced — `devops-glue_<driver>_<datetime>.zip` (app tables) + `devops-cd_<driver>_<datetime>.zip` (`cd_*` tables); when CD is not enabled, only one is produced. Each zip contains a same-named `.sql` pure-data file (`INSERT` statements, no DDL), excluding `cache` / `ci_platform_versions`; backup only, no Web restore (restore / migration still use `bin/backup.php` and `bin/restore.php`).
+- **Output**: when CD is enabled (the shared database has `cd_*` tables), two zips are produced — `devops-glue_<driver>_<datetime>.zip` (app tables) + `devops-cd_<driver>_<datetime>.zip` (`cd_*` tables); when CD is not enabled, only one is produced. Each zip contains a same-named `.sql` pure-data file (`INSERT` statements, no DDL), excluding `ci_cache` / `ci_platform_versions`; backup only, no Web restore (restore / migration still use `bin/backup.php` and `bin/restore.php`).
 - **Directory resolution** (`backupDir()`): the `BACKUP_DIR` env var takes priority; defaults to `/data/backups` in Docker (the compose volume maps host `./data/backups`); falls back to the repo-root `backups/` when not in Docker and unset (same as the CLI default). The directory is auto-created and rolls over the latest 10 files per driver prefix.
 - **Endpoint & audit**: `POST /api/admin/backup` (super_admin gated), records a `backup_database` entry in the operation log on success.
 - **Privileges required**: same as 4.4 — the MySQL account must hold database-level (or global) `SELECT`/`ALL` on the shared database, otherwise `cd_*` tables are silently skipped (a pre-backup self-check logs a WARN).
@@ -320,8 +320,8 @@ The admin panel's "System Settings → Data Management → Database" card provid
 `cli/backup-db.php` (shipped in the image, scheduled by supervisord's `db-backup` loop) reuses the Web-side `DataBackupService` — the same logic as the admin "Backup Database" button. When CD is enabled (the shared database has `cd_*` tables) it produces **two independent zips** (CI app tables + the CD system's `cd_*` tables), so restoring one never touches the other; when CD is not enabled, only one zip is produced.
 
 - **Switch**: `DB_BACKUP_ENABLED` in the root `.env` (default off; when off it prints a skip message and exits 0, avoiding surprising existing deployments with extra disk writes); the interval is overridden by `DB_BACKUP_INTERVAL`, default 86400 seconds. You can also run `php cli/backup-db.php --force` manually.
-- **Output**: same as the Web side (reuses `DataBackupService`, "same logic") — when CD is enabled it produces `devops-glue_<driver>_<datetime>.zip` (mode=app, app tables) + `devops-cd_<driver>_<datetime>.zip` (mode=cd, `cd_*` tables; written only when `cd_*` tables exist); when CD is not enabled, only one zip is produced. Each zip contains a same-named `.sql` pure-data file; each prefix rolls over the latest 10 files. Both still unconditionally exclude `cache` (session tokens are ephemeral credentials) and `ci_platform_versions` (derived cache).
-- **Base tables only**: the enumeration filters `table_type='BASE TABLE'`, so views (e.g. `v_glue_deploy_logs`) are never exported as tables — otherwise a fake `INSERT` against the view would be generated and restore would inevitably fail.
+- **Output**: same as the Web side (reuses `DataBackupService`, "same logic") — when CD is enabled it produces `devops-glue_<driver>_<datetime>.zip` (mode=app, app tables) + `devops-cd_<driver>_<datetime>.zip` (mode=cd, `cd_*` tables; written only when `cd_*` tables exist); when CD is not enabled, only one zip is produced. Each zip contains a same-named `.sql` pure-data file; each prefix rolls over the latest 10 files. Both still unconditionally exclude `ci_cache` (session tokens are ephemeral credentials) and `ci_platform_versions` (derived cache).
+- **Base tables only**: the enumeration filters `table_type='BASE TABLE'`, so views are never exported as tables — otherwise a fake `INSERT` against the view would be generated and restore would inevitably fail.
 - **Privileges required**: `information_schema.tables` only returns tables the current account has some privilege on. The account must hold database-level (or global) `SELECT`/`ALL` on the shared database, otherwise `cd_*` tables are silently skipped — a pre-backup self-check logs a WARN for this (see `DataBackupService::mysqlVisibilityWarning()`). The Docker default `devops` account already gets database-level `ALL` at first init; bare-metal users must run `GRANT ALL PRIVILEGES ON devops_glue.* TO '<account>';` themselves.
 - **Restore**: `php bin/restore.php <devops-glue_*.zip> --yes` restores the CI app tables; `php bin/restore.php <devops-cd_*.zip> --yes --cd` restores the CD tables (both `.zip` and `.sql` inputs are supported). The file's META mode is validated, so a CI backup cannot be used for a CD restore and vice versa.
 
@@ -372,8 +372,8 @@ Unauthenticated external probe for Uptime Kuma / cloud LB / container orchestrat
 {
   "status": "ok",
   "db": true,
-  "app_version": "2.8.9",
-  "schema_version": "2.8.9",
+  "app_version": "2.9.0",
+  "schema_version": "2.9.0",
   "seed_version": null,
   "schema_current": true,
   "schema_ahead": false,
@@ -436,7 +436,7 @@ Unauthenticated external probe for Uptime Kuma / cloud LB / container orchestrat
   "checks": { "jenkins": true, "jenkins_version": "2.555.3", "git": [...], "harbor": true, "harbor_components": {...} },
   "stats": { "total_maps": 4, "active_maps": 4, "git_platforms": 2, "harbor_repos": 4 },
   "build_mode": "jenkins,gitlab_ci,gitea_ci", "build_modes": ["jenkins","gitlab_ci","gitea_ci"], "build_mode_source": "database",
-  "db_driver": "mysql", "app_version": "2.8.9", "app_env": "production",
+  "db_driver": "mysql", "app_version": "2.9.0", "app_env": "production",
   "time": "2026-07-25 12:00:00"
 }
 ```
@@ -463,7 +463,7 @@ Performs no external probing; returns the stats cards + system info + Custom_Pus
 1. Read `ci_job_git_map` → filter `status=active` → filter by `build_mode`
 2. Group by key extracted from `job_name` or `current_path` or `git_remote`
 3. Each group contains: `git_platform`, `git_remote`, `project_id`, `web_url`, `harbor_repository`, `jobs`
-4. Write to `cache` table (30s TTL) to reduce repeated query overhead
+4. Write to `ci_cache` table (30s TTL) to reduce repeated query overhead
 5. Skip cache in `gitlab_ci` mode (to avoid stale Jenkins data contamination)
 
 #### 5.3.3 MappingManager's Role
@@ -696,9 +696,9 @@ If only `ref` is present without other parameters, auto-convert to `{branches: r
 **Method:** `AdminController::login()`
 
 **Verification Priority:**
-1. Query `admin_users` table, `password_verify()` to check bcrypt hash
-2. `app.env` fallback only when `admin_users` is empty (first deployment); when the DB is unreachable the login endpoint errors out instead. Otherwise the `app.env` password is never accepted; recover a forgotten password via an offline patch — contact the author to obtain it.
-3. Auth success → generate 64-char hex token → write to `cache` table (`admin_token_{token}`, 24h TTL)
+1. Query `ci_admin_users` table, `password_verify()` to check bcrypt hash
+2. `app.env` fallback only when `ci_admin_users` is empty (first deployment); when the DB is unreachable the login endpoint errors out instead. Otherwise the `app.env` password is never accepted; recover a forgotten password via an offline patch — contact the author to obtain it.
+3. Auth success → generate 64-char hex token → write to `ci_cache` table (`admin_token_{token}`, 24h TTL)
 4. Pre-load user permissions to request attribute via `TokenService::loadPermissions()`
 
 > **Note:** This `app.env` fallback only applies to the Devops-Glue API global admin login flow. To create a CD-specific account, create the account in the admin backend and assign CD permissions first, then write it into the CD service's own `app.env` if that service supports it.
@@ -709,7 +709,7 @@ If only `ref` is present without other parameters, auto-convert to `{branches: r
 
 ```
 1. Extract token from Authorization: Bearer xxx
-2. Call TokenService::validate() to verify token in cache table (key=admin_token_{token}, expires_at > now)
+2. Call TokenService::validate() to verify token in ci_cache table (key=admin_token_{token}, expires_at > now)
    ├─ Hit (interactive login session) → call TokenService::loadPermissions() to query role permissions
    └─ Miss → fall back to TokenService::validateApiToken() to verify an API token;
       on hit, ApiScopeResolver resolves the scope required by the route:
@@ -718,11 +718,11 @@ If only `ref` is present without other parameters, auto-convert to `{branches: r
       └─ pass → the scope maps to the permission used for in-controller secondary checks
 3. Write currentUser, currentRole, userPermissions to request attribute
 4. If DB unavailable AND app.env ADMIN_PASSWORD empty → allow (first-start no-password scenario)
-5. If DB unavailable AND admin_users table empty → allow
+5. If DB unavailable AND ci_admin_users table empty → allow
 6. Otherwise → 401
 ```
 
-**On password change:** `TokenService::revoke()` deletes all old tokens from cache table, forces re-login.
+**On password change:** `TokenService::revoke()` deletes all old tokens from ci_cache table, forces re-login.
 
 #### 5.10.3 Docs Page Authentication
 **Swagger UI (`/api/docs`) and OpenAPI JSON (`/api/openapi.json`):**
@@ -748,10 +748,10 @@ The system uses a role-based access control (RBAC) model with **all tables store
 
 | Table | Purpose |
 |---|---|
-| `roles` | Role definitions: `id`, `name`, `description`, `is_system`, `created_at` |
-| `permissions` | Permission catalog: `perm_key` (dot/hyphen-delimited, e.g. `cd.deploy.k8s` / `cd.build-manage`), `description`, `parent_key`, `created_at` |
-| `role_permissions` | Many-to-many join: `role_id`, `perm_key` |
-| `implied_rules` | **Implied permission rules** (separate table): `source_key`, `target_key` — having `source_key` automatically grants `target_key` |
+| `ci_roles` | Role definitions: `id`, `name`, `description`, `is_system`, `created_at` |
+| `ci_permissions` | Permission catalog: `perm_key` (dot/hyphen-delimited, e.g. `cd.deploy.k8s` / `cd.build-manage`), `description`, `parent_key`, `created_at` |
+| `ci_role_permissions` | Many-to-many join: `role_id`, `perm_key` |
+| `ci_implied_rules` | **Implied permission rules** (separate table): `source_key`, `target_key` — having `source_key` automatically grants `target_key` |
 
 **System role:**
 - `super_admin` is the only built-in system role (`is_system=1`) — cannot be edited or deleted from the UI
@@ -793,7 +793,7 @@ The system uses a role-based access control (RBAC) model with **all tables store
 |---|---|---|---|
 | GET | `/api/admin/permissions` | List all permissions (`perm_key` + `description` + `parent_key` + `created_at` + `is_builtin`) + `implied` relations dict + `builtin_implied` (built-in implied rules) | Bearer Token + `ci.permissions.list` |
 | POST | `/api/admin/permissions` | Register new permission (body: `{ perm_key, description, parent_key? }`) | super_admin |
-| DELETE | `/api/admin/permissions/{perm_key}` | Delete permission (cascades `role_permissions` + `implied_rules`; built-in keys are protected) | super_admin |
+| DELETE | `/api/admin/permissions/{perm_key}` | Delete permission (cascades `ci_role_permissions` + `ci_implied_rules`; built-in keys are protected) | super_admin |
 | POST | `/api/admin/implied_rules` | Register implied rule (body: `{ source_key, target_key }`) | super_admin |
 | DELETE | `/api/admin/implied_rules` | Delete implied rule (query: `source_key=&target_key=`; built-in implied rules are protected, user-added ones can be deleted) | super_admin |
 | GET | `/api/admin/roles` | Role list — each role carries its `permissions` array | Bearer Token + admin login |
@@ -817,7 +817,7 @@ The system uses a role-based access control (RBAC) model with **all tables store
 
 **Implied-relation expansion logic** (`expandPermissions()`):
 ```php
-// Pull implied_rules table in one shot
+// Pull ci_implied_rules table in one shot
 foreach ($perms as $pk) {
     if (isset($implied[$pk])) {
         $result = array_merge($result, $implied[$pk]);
@@ -996,7 +996,7 @@ Next API call:
 | SQLite: `unable to open database` | Directory lacks write permission | `chmod 777 config/data/` |
 | MySQL: `Access denied` | Wrong password or insufficient user privileges | `mysql -u root -p` to verify |
 | Table not found error | `DB_AUTO_MIGRATE=false` and tables not manually created | Check `app.env` `DB_AUTO_MIGRATE` value |
-| `admin_users` has data but login fails | Password hash mismatch with in-memory state | Change password via admin panel, or delete table row for `seedAdmin` to recreate |
+| `ci_admin_users` has data but login fails | Password hash mismatch with in-memory state | Change password via admin panel, or delete table row for `seedAdmin` to recreate |
 
 ### 7.2 External Service Connectivity
 
@@ -1029,7 +1029,7 @@ Next API call:
 
 | Symptom | Possible Cause | Diagnosis |
 |---|---|---|
-| Login always 401 | Password mismatch between `admin_users` and `app.env` | Reset via offline patch — contact the author to obtain it |
+| Login always 401 | Password mismatch between `ci_admin_users` and `app.env` | Reset via offline patch — contact the author to obtain it |
 | Token suddenly invalid | Service restart, password changed, or 24h expired | Re-login |
 | Swagger UI inaccessible | Not logged in | Access `/api/docs` will auto-redirect to login page |
 
@@ -1038,7 +1038,7 @@ Next API call:
 | Symptom | Possible Cause | Solution |
 |---|---|---|
 | `/api/health` slow (>3s) | External service timeout | Reduce timeout values (default 3-5s), check network |
-| Mapping list API slow | Cache miss + slow DB query | Verify cache table exists and is writable |
+| Mapping list API slow | Cache miss + slow DB query | Verify ci_cache table exists and is writable |
 | Harbor pagination fetching large data | Many projects/repos/tags | Page limits already set (projects 1000, repos 1000, tags 2000), excess logs warning |
 
 ---
@@ -1149,7 +1149,7 @@ LOG_RETAIN_DAYS=30                 # App log retention days; Logger self-cleans 
 | DELETE | `/api/admin/implied_rules` | Token | Delete implied rule |
 | GET | `/api/admin/me/permissions` | Token | Get current user permissions |
 | GET | `/api/admin/operation_logs` | Token | Operation audit log (filter/pagination) |
-| GET | `/api/admin/deploy_logs` | Token | CD deployment record audit list (via the v_glue_deploy_logs view, filter/pagination) |
+| GET | `/api/admin/deploy_logs` | Token | CD deployment record audit list (fetched from CD's `/api/integration/deploy-logs` endpoint, filter/pagination) |
 | GET | `/api/admin/api_access_logs` | Token | API token call audit list (filter/pagination) |
 | GET | `/api/admin/platform_config` | Token | Platform access status (sanitized) + per-platform tag / API call log settings |
 | PUT | `/api/admin/platform_config` | Token | Update per-platform tag / API call log settings (only keys explicitly provided) |
@@ -1185,6 +1185,8 @@ LOG_RETAIN_DAYS=30                 # App log retention days; Logger self-cleans 
 | GET/POST | `/api/build/{path}/tags` | Token | Pipeline → tag batch list |
 | **Git** | | | |
 | GET/POST | `/api/git/{path}/branches` | Token | Branch list |
+| GET/POST | `/api/git/{path}/tags` | Token | Tag list (usable as a build ref) |
+| GET/POST | `/api/git/{path}/refs` | Token | Branches + tags in one call (CD build-page ref dropdown) |
 | **Harbor** | | | |
 | GET/POST | `/api/harbor/projects` | Token | Project list |
 | GET/POST | `/api/harbor/{project}/repositories` | Token | Repository list |
@@ -1199,6 +1201,8 @@ LOG_RETAIN_DAYS=30                 # App log retention days; Logger self-cleans 
 | GET | `/api/rbac/users/{username}` | API Token | CD service account detail |
 | GET | `/api/rbac/roles` | API Token | Available role list |
 | GET | `/api/rbac/roles/{name}/permissions` | API Token | Permission keys of a role (CD permission mapping; 404 for an unknown role, `["*"]` wildcard for `super_admin`) |
+| **Integration-service contract** (API token + build.read scope; lets CD avoid reading `ci_integrated_services` directly) | | | |
+| GET | `/api/integration/services/{service}` | API Token | Contract state `{service, enabled, provision, token_active, updated_at}`; not enabled = 200 + `enabled=false`, unknown service name = 404 (kept strictly apart) |
 | **OAuth2 / OIDC** | | | |
 | GET/POST | `/oauth/authorize` | No* | Authorization-code flow: consent page / submit consent (*submission verifies account credentials, shares the login rate limiter) |
 | POST | `/oauth/token` | No* | Exchange authorization code for access token (*validates client credentials and the one-time code) |
@@ -1220,4 +1224,4 @@ When adding/modifying table structures, update the following files and **bump `A
 
 ---
 
-*Document version: v2.8.9 | Last updated: 2026-10-10*
+*Document version: v2.9.0 | Last updated: 2026-10-15*

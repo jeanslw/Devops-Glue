@@ -297,7 +297,7 @@ Steps:
 | Scope | Purpose |
 |---|---|
 | `main` | Read-only: job list, mappings, git platforms, git discovery |
-| `git` | Read-only: git branches |
+| `git` | Read-only: git branches / tags (includes the combined `/api/git/{path}/refs`, used by CD's build page to pick a ref) |
 | `harbor.read` | Read-only: Harbor projects / repositories / tags |
 | `harbor.scan` | Trigger Harbor image scans |
 | `build.read` | Read-only: build pipelines / logs / branches |
@@ -342,12 +342,13 @@ Above the token list there is also an **🔌 Integrated services** card; current
 - **How to toggle**: the **Enable** checkbox on the card is the switch (same interaction as the switches on the Platform Management page) — **tick = enable** (issues the service token in the same transaction), **untick = disable (freeze)**. Both directions ask for confirmation first, and cancelling that dialog or a failed request reverts the checkbox to its previous state.
 - **Status**: ⚪ not enabled (if the credential is merely frozen with the service, the card adds a line saying re-enabling restores the same token) / ✅ enabled (auto provision) / ✅ enabled (manual provision) / ⚠️ enabled but credential dead (red; the checkbox then falls back to unticked — see below).
 - **Provision mode (`provision`)**: captured from this platform's **current migration mode** ("Data Management → Migration mode") **at the moment you tick Enable** — **switching the migration mode afterwards does not change it**. While not enabled the card shows "Provision mode when enabled", i.e. what would be written if you enabled now.
-- **Enable (first time)**: tick **Enable** on the right of the card and confirm; in a single transaction it issues a restricted **service token** (`build.read` + `build.write` + `rbac.user.write`; no admin endpoint scopes), whose plaintext is **shown only once** — paste it into CD's `CI_API_TOKEN`. That token (named `cd-service`) appears in the list below right away.
+- **Enable (first time)**: tick **Enable** on the right of the card and confirm; in a single transaction it issues a restricted **service token** (`build.read` + `build.write` + `git` + `rbac.user.write`; no admin endpoint scopes), whose plaintext is **shown only once** — paste it into CD's `CI_API_TOKEN`. That token (named `cd-service`) appears in the list below right away.
 - **Enable (restore)**: if the previous action was **Disable (freeze)**, enabling again does **not** issue a new token — the platform simply re-activates the *very same* one, whose original plaintext keeps working, so **CD's `CI_API_TOKEN` needs no change** (the confirm dialog says "♻ restore" and no plaintext popup appears).
 - **Disable (freeze)**: untick **Enable** and confirm; CD immediately rejects every request and the paired service token is **disabled** (`enabled=0`) in the same transaction. **Disabled ≠ burned**: both the credential record and the binding are kept, CD's tables and data are **not** deleted, and **enabling again restores the very same token** (the original plaintext keeps working — no CD change).
 - **Permission**: this page is `super_admin` only, and enabling / disabling is likewise `super_admin` only.
 - **You can enable again after the credential was revoked / deleted (re-issue)**: if the `cd-service` token is ⛔ revoked (while the service stays enabled) or 🗑 deleted in the list, the service goes offline immediately — the card turns red ("⚠️ Enabled, credential dead") and the checkbox falls back to **unticked**. **Tick Enable again and confirm to re-issue a new credential in the same transaction** (the old one stays burned and never comes back) — no need to untick first. The confirm dialog flags this as "⓪ re-issue"; remember to update CD's `CI_API_TOKEN` with the new plaintext.
 - **To burn / rotate the credential on purpose**: ⛔ revoke or 🗑 delete that `cd-service` row in the list, then tick **Enable** on the card to have a new token issued (and update CD). **To merely pause it**, untick the card instead (freeze — the credential is left untouched), so re-enabling needs no CD change at all. Mixing the two up costs you either "CD must be reconfigured" or "the old credential comes back to life".
+- **CD's authorization self-check**: CD can skip reading the shared database and use the narrow endpoint `GET /api/integration/services/cd` to learn whether it is authorized and with which provisioning mode (requires the `build.read` scope, already included in CD's service token; not enabled returns 200 + `enabled=false`, while only a mistyped service name returns 404 — the two must never be conflated). Both channels read the same contract data, so switching does not affect the card's state display.
 
 ---
 ## 7. Admin Pages Overview (Version Compatibility / Security Audit / Monitor Overview / Build Records / Platform Management / Log Center / Data Management)
@@ -390,7 +391,7 @@ This page centralizes "which external systems the CI platform integrates, and in
 - **Problem it solves**: with several platforms in parallel, quickly answer "is this platform configured, and does it work". When a webhook / build trigger fails, look here first instead of digging through env files.
 
 **③ Other settings cards** — each with its own permission
-- **Build-record push allowlist** (`ci.build_records.push`): which jobs may report final states via `POST /api/build/{job}/report` — without an allowlist any job can report (the security boundary of push-style CI).
+- **Build-record push allowlist** (`ci.build_records.push`): which jobs may report final states via `POST /api/build/{path}/report` — without an allowlist any job can report (the security boundary of push-style CI).
 - Security-related cards such as **OIDC / OAuth clients** and **login security policy** are covered in chapter 6 and are not repeated here.
 
 
@@ -421,7 +422,7 @@ The page has three blocks for three different kinds of operations — do not mix
 
 **① System info card (read-only, `ci.system` permission)** — app version / schema version / seed version / **Migration Mode** (the effective `DB_AUTO_MIGRATE` value: auto = the app creates tables itself; manual = amber hint "tables are provisioned via database/*.sql or cli/migrate.php; the app only seeds") / **Table Consistency** (`schema_list_drift`: green "consistent (with the table definitions in the code)" normally; if it names tables in red, this instance's AppConfig table constants and the table-list probe list are out of sync (an upgrade or hand-patched build bypassed CI), which shows up as **the list missing tables / failing to report a missing table** — upgrade to a build with the fix; table creation and normal operation are unaffected) / database driver / time of the last schema sync. **This card is the first stop when deciding whether a migration is needed.**
 
-**② Table list (read-only)** — each of the 17 business tables is probed for existence and row count, quickly revealing "which table is missing" (the diagnostic entry for empty or half-initialized databases).
+**② Table list (read-only)** — each of the 18 business tables is probed for existence and row count, quickly revealing "which table is missing" (the diagnostic entry for empty or half-initialized databases).
 
 **③ Backup & restore (`super_admin`, write operations)**
 - "Backup Database": a full export-style backup (zip), recorded in the operation log; `php cli/backup-db.php --force` is the equivalent CLI (use it for cron).
@@ -440,9 +441,9 @@ Besides built-in accounts, the system supports logging in with enterprise **LDAP
 ### 8.1 Login order
 
 Once LDAP is enabled, the login check order is: **local account → LDAP → config fallback**. That is:
-1. The local `admin_users` table is checked first;
+1. The local `ci_admin_users` table is checked first;
 2. If the local check fails / no such account, LDAP is checked next;
-3. Only on first deployment (the `admin_users` table is empty) does it fall back to the `app.env` fallback account.
+3. Only on first deployment (the `ci_admin_users` table is empty) does it fall back to the `app.env` fallback account.
 
 ### 8.2 Prerequisites
 

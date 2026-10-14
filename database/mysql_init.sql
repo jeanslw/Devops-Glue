@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS `ci_custom_builds` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ── 5. cache（通用缓存）──
-CREATE TABLE IF NOT EXISTS `cache` (
+CREATE TABLE IF NOT EXISTS `ci_cache` (
     `cache_key`  VARCHAR(255) PRIMARY KEY,
     `value`      MEDIUMTEXT NOT NULL,
     `expires_at` INT
@@ -80,12 +80,12 @@ CREATE TABLE IF NOT EXISTS `ci_app_settings` (
 -- v2.6.3: id 设为主键（BIGINT AUTO_INCREMENT）；username 降为 UNIQUE，
 --         保持原有 username 业务主键语义不变（下游代码均以 username 定位用户），
 --         id 仅作内部自增序号 / 未来跨系统 idp 关联用，旧库由 Database::columnMigrations 幂等补齐。
-CREATE TABLE IF NOT EXISTS `admin_users` (
+CREATE TABLE IF NOT EXISTS `ci_admin_users` (
     `id`            BIGINT AUTO_INCREMENT PRIMARY KEY,
     `username`      VARCHAR(255) NOT NULL UNIQUE,
     `password_hash` TEXT NOT NULL,
-    `role`          VARCHAR(32) NOT NULL DEFAULT 'admin',
-    `systems`       VARCHAR(128) NOT NULL DEFAULT 'ci,cd',
+    `role`          VARCHAR(255) NOT NULL DEFAULT 'admin',
+    `systems`       VARCHAR(255) NOT NULL DEFAULT 'ci,cd',
     `email`         VARCHAR(255) NOT NULL DEFAULT '',
     `avatar_url`    TEXT,
     `status`        TINYINT NOT NULL DEFAULT 1 COMMENT '1=启用, 0=停用',
@@ -97,7 +97,7 @@ CREATE TABLE IF NOT EXISTS `admin_users` (
 -- ── 7.1 user_identities（用户身份源关联表，支持一个 username 绑定 ldap/local 等多种登录方式）──
 -- provider_type + provider_uid 全局唯一，避免不同 LDAP 目录 / 未来 OAuth provider 冲突
 -- credential 只允许 local 身份存 bcrypt hash，其它 provider 一律为 NULL，避免旁路
-CREATE TABLE IF NOT EXISTS `user_identities` (
+CREATE TABLE IF NOT EXISTS `ci_user_identities` (
     `id`            INT AUTO_INCREMENT PRIMARY KEY,
     `username`      VARCHAR(255) NOT NULL COMMENT '关联 admin_users.username，不复制 user 信息',
     `provider_type` VARCHAR(32)  NOT NULL COMMENT 'ldap / local / oauth_*',
@@ -107,7 +107,7 @@ CREATE TABLE IF NOT EXISTS `user_identities` (
     `raw_profile`   MEDIUMTEXT   COMMENT 'JSON 快照，避免每次登录查 LDAP',
     `bound_at`      DATETIME DEFAULT (NOW()),
     `updated_at`    DATETIME DEFAULT (NOW()),
-    UNIQUE KEY `uniq_provider` (`provider_type`(32), `provider_uid`(191)),
+    UNIQUE KEY `uniq_provider` (`provider_type`, `provider_uid`(191)),
     KEY `idx_username` (`username`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -156,7 +156,7 @@ CREATE TABLE IF NOT EXISTS `ci_api_access_logs` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ── 9. roles（角色）──
-CREATE TABLE IF NOT EXISTS `roles` (
+CREATE TABLE IF NOT EXISTS `ci_roles` (
     `id`          INT AUTO_INCREMENT PRIMARY KEY,
     `name`        VARCHAR(255) NOT NULL UNIQUE,
     `description` TEXT,
@@ -165,7 +165,7 @@ CREATE TABLE IF NOT EXISTS `roles` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ── 10. permissions（权限定义；parent_key 用于二级菜单 eg. cd.deploy.single → cd.deploy-manage）──
-CREATE TABLE IF NOT EXISTS `permissions` (
+CREATE TABLE IF NOT EXISTS `ci_permissions` (
     `perm_key`    VARCHAR(128) PRIMARY KEY,
     `description` TEXT,
     `parent_key`  VARCHAR(128) DEFAULT NULL,
@@ -173,21 +173,21 @@ CREATE TABLE IF NOT EXISTS `permissions` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ── 11. role_permissions（角色↔权限）──
-CREATE TABLE IF NOT EXISTS `role_permissions` (
+CREATE TABLE IF NOT EXISTS `ci_role_permissions` (
     `role_id`  INTEGER NOT NULL,
     `perm_key` VARCHAR(128) NOT NULL,
     PRIMARY KEY (`role_id`, `perm_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ── 12. implied_rules（权限隐含关系；数据驱动，CD 可通过 API 注册）──
-CREATE TABLE IF NOT EXISTS `implied_rules` (
+CREATE TABLE IF NOT EXISTS `ci_implied_rules` (
     `source_key` VARCHAR(128) NOT NULL,
     `target_key` VARCHAR(128) NOT NULL,
     PRIMARY KEY (`source_key`, `target_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ── 13. api_tokens（服务账号 / 第三方调用的 API token，独立于 RBAC）──
-CREATE TABLE IF NOT EXISTS `api_tokens` (
+CREATE TABLE IF NOT EXISTS `ci_api_tokens` (
     `id`         INT AUTO_INCREMENT PRIMARY KEY,
     `name`       VARCHAR(255) NOT NULL,
     `token_hash` VARCHAR(64) NOT NULL UNIQUE,
@@ -218,7 +218,7 @@ CREATE TABLE IF NOT EXISTS `ci_pipeline_build_log` (
 -- 行不存在 / enabled=0 = 集成服务未启用（CD 不建表、不提供服务）；enabled=1 时 CD 按 provision 决定
 -- 自动建表（auto）或只认预建表（manual）。关闭只冻结服务，绝不删除集成服务的数据表。
 -- api_token_id 软引用 api_tokens(id)：凭据签发/哈希/scope/撤销均在 API 管理中维护，删除 token 自动置空。
-CREATE TABLE IF NOT EXISTS `integrated_services` (
+CREATE TABLE IF NOT EXISTS `ci_integrated_services` (
     `id`           INT AUTO_INCREMENT PRIMARY KEY,
     `service_name` VARCHAR(32) NOT NULL UNIQUE,
     `enabled`      TINYINT NOT NULL DEFAULT 0,
@@ -228,7 +228,7 @@ CREATE TABLE IF NOT EXISTS `integrated_services` (
     `created_at`   DATETIME DEFAULT (NOW()),
     `updated_at`   DATETIME DEFAULT (NOW()),
     CONSTRAINT `fk_isvc_token` FOREIGN KEY (`api_token_id`)
-        REFERENCES `api_tokens`(`id`) ON DELETE SET NULL
+        REFERENCES `ci_api_tokens`(`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ── 索引 ──

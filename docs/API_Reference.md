@@ -1,4 +1,4 @@
-# Devops-Glue API Reference v2.8.9
+# Devops-Glue API Reference v2.9.0
 
 Base URL: `http://your-domain.com/api`
 
@@ -87,9 +87,9 @@ Unauthenticated external probe for Uptime Kuma / cloud load balancers / containe
 {
   "status": "ok",
   "db": true,
-  "app_version": "2.8.9",
-  "schema_version": "2.8.9",
-  "seed_version": "2.8.9",
+  "app_version": "2.9.0",
+  "schema_version": "2.9.0",
+  "seed_version": "2.9.0",
   "schema_current": true,
   "schema_ahead": false,
   "auto_migrate": true,
@@ -140,7 +140,7 @@ Returns connectivity status of Jenkins, Git platforms, and Harbor, plus system s
   "build_modes": ["jenkins", "gitlab_ci", "gitea_ci"],
   "build_mode_source": "database",
   "db_driver": "mysql",
-  "app_version": "2.8.9",
+  "app_version": "2.9.0",
   "app_env": "production",
   "time": "2026-08-10 12:00:00"
 }
@@ -169,7 +169,7 @@ Does not probe external platforms (Jenkins / Git / Harbor). Returns stats + syst
   "custom_push_enabled": true,
   "custom_push_providers": ["custom_push"],
   "db_driver": "mysql",
-  "app_version": "2.8.9",
+  "app_version": "2.9.0",
   "app_env": "production",
   "time": "2026-08-10 12:00:00"
 }
@@ -322,11 +322,23 @@ Custom variables: any other field (e.g. `env`) is stored in `variables_json`.
 
 ```
 GET /api/git/{path}/branches
+GET /api/git/{path}/tags
+GET /api/git/{path}/refs
 ```
 
-`{path}` is the job name from the mapping. Returns: `["master","devops","main"]`
+`{path}` is the job name from the mapping (multi-segment names such as `group/sub/repo` are supported).
+
+| Endpoint | Method | Returns |
+|---|---|---|
+| `/api/git/{path}/branches` | GET/POST | Array of branch names: `["master","devops","main"]` |
+| `/api/git/{path}/tags` | GET/POST | Array of tag names: `["v1.0.0","v1.0.1"]` |
+| `/api/git/{path}/refs` | GET/POST | `{"branches":[...],"tags":[...]}` (both in one call; recommended for CD's build-page ref dropdown) |
 
 Supports GitLab, Gitee, GitHub, and Gitea. Automatically resolves the Git repository from the job mapping.
+
+> - When `{path}` has no repository mapping, or the auto-detected platform is not registered, an empty array (`[]`) is returned; when the platform is unreachable the endpoint returns `404` + `git.query_failed` (a platform outage is never disguised as "this repository has no tags").
+> - Requires the `git` scope. CD's service token is auto-issued by "Integrated Services → Enable" and includes it (since v2.9.0); credentials issued by v2.8.x are **healed automatically** during the upgrade bootstrap, so the service does not need to be re-enabled and the token does not need to be replaced.
+> - `refs` is equivalent to calling `branches` and `tags` together, but resolves the job→repository mapping once, builds the platform client once, and both lists are guaranteed to come from the same repository snapshot. A failure on either side fails the whole call with 404.
 
 ---
 
@@ -341,6 +353,43 @@ Supports GitLab, Gitee, GitHub, and Gitea. Automatically resolves the Git reposi
 | `/api/harbor/{project}/repositories/{repository}/tags` | GET/POST | Tag list (double-encode `/` as `%2F`) |
 | `/api/harbor/{project}/repositories/{repository}/tags/{tag}/scan` | POST | Trigger image scan |
 | `/api/harbor/{project}/repositories/{repository}/tags/{tag}/scan` | GET | Get scan report |
+
+---
+
+## Integration-Service Contract Module (`/api/integration`)
+
+> **Purpose:** lets integration services such as CD check at runtime whether Glue has authorized them and with which provisioning mode — **without reading the shared `ci_integrated_services` table** (table name, columns and driver are all coupling surfaces: a CI schema change can break CD, and a split deployment would break it outright). CI stays the sole writer of the contract; consumers read this one narrow endpoint.
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/integration/services/{service}` | GET | Integration-service contract state (`service` currently only supports `cd`) |
+
+Response (wrapped in `data` with `format=json`; `raw`, the default, outputs the object directly):
+
+```json
+{
+  "service": "cd",
+  "enabled": true,
+  "provision": "auto",
+  "token_active": true,
+  "updated_at": "2026-10-14 10:00:00"
+}
+```
+
+**Verdict semantics (consumers must implement exactly this — do not invent your own reading):**
+
+| Response | Meaning | Consumer action |
+|---|---|---|
+| `200` + `enabled=false` | **Not enabled** (no contract row, or `enabled=0` — indistinguishable by design) | Refuse to serve (zero DDL); `provision` is normalized to `auto` here for log wording only and **must not** be used to create tables |
+| `200` + `enabled=true` + `provision=auto` | Authorized to **create tables automatically / backfill missing columns** | DDL allowed |
+| `200` + `enabled=true` + `provision=manual` | DDL forbidden | Operator-provisioned tables only; a missing table means "not deployed" |
+| `404` | Service name not in the whitelist (configuration mistake) | **Never treat as "not enabled"**: a mistyped service name would silently degrade into "always not enabled" with no signal |
+| `401` / `403` | Invalid token / missing `build.read` scope | Fix the credential first; do not change business decisions based on it |
+| Any other error (including 404/405 from an older CI without this endpoint, or network failures) | Endpoint unavailable | **Fall back to the previous mechanism** (read the contract table directly); never treat "endpoint unavailable" as "not enabled" |
+
+> - **Scope:** reuses `build.read` (CD's service credential already holds it, so no privilege extension is needed); the controller re-checks `ci.build-records.pull`, injected automatically from the scope.
+> - **`token_active` is advisory only** (liveness of the credential bound to the contract row — e.g. to show "credential invalid, re-enable the integration service in CI"). It is normally the same credential the caller is using (otherwise this call would already have been rejected), so it must **never** be used as a gate condition.
+> - The endpoint deliberately **omits** `token_id` / `token_name` / `token_scopes` / `updated_by` (management-side fields, see `/api/admin/integrated_services/{service}`). Field names mirror that endpoint's subset so consumers using both channels can share one mapping.
 
 ---
 
@@ -401,7 +450,7 @@ Token expires in 24 hours. `super_admin` role returns `"*"` for permissions.
 | `/api/admin/tag_cleanup` | POST | Run stale tag cleanup once, on demand (equivalent to `cli/cleanup-pipeline-tags.php`; returns 409 and skips safely when the switch is off or Harbor is unconfigured; requires `ci.platform-config`) |
 | `/api/admin/tag_backfill` | POST | Run image tag log backfill once, on demand (equivalent to `cli/backfill-pipeline-tags.php`; same guards, fills missing tags only and never overwrites scan results; requires `ci.platform-config`) |
 | `/api/admin/operation_logs` | GET | Operation audit log (filter by `?username=&action=&result=&operator_type=&date_from=&date_to=&page=&per_page=`; requires `ci.operation-logs`) |
-| `/api/admin/deploy_logs` | GET | CD deploy record audit list (read-only, via the `v_glue_deploy_logs` contract view, never reading CD tables directly; filter by `?project=&status=&deploy_type=&date_from=&date_to=&page=&per_page=`; requires `ci.deploy-logs`) |
+| `/api/admin/deploy_logs` | GET | CD deploy record audit list (read-only, fetched from CD's `/api/integration/deploy-logs` endpoint, never reading CD tables directly; filter by `?project=&status=&deploy_type=&date_from=&date_to=&page=&per_page=`; requires `ci.deploy-logs`) |
 | `/api/admin/api_access_logs` | GET | API token access audit list (returns only audit fields such as the token display name — never token plaintext/hash/body/query; filter by `?result=&method=&token_name=&route=&date_from=&date_to=&page=&per_page=`; requires `ci.api-logs`) |
 | `/api/admin/users` | GET | User list (admin sees all; non-admin cannot see admin users) |
 | `/api/admin/users` | POST | Create user (body: `username`, `password`, `role`, `systems`) |
@@ -480,10 +529,10 @@ Token expires in 24 hours. `super_admin` role returns `"*"` for permissions.
 | Scope key | Description | Endpoints covered |
 |---|---|---|
 | `main` | MAIN (read-only) | `/api/main/*` |
-| `git` | GIT (read-only) | `/api/git/*` |
+| `git` | GIT (read-only: branches / tags / refs) | `/api/git/*` |
 | `harbor.read` | Harbor read | `/api/harbor/*` (except scan trigger) |
 | `harbor.scan` | Harbor scan trigger | `POST /api/harbor/{project}/repositories/{repo}/tags/{tag}/scan` |
-| `build.read` | Build read | `/api/build/*` (except write/report below) |
+| `build.read` | Build read + integration-service contract | `/api/build/*` (except write/report below), `/api/integration/*` |
 | `build.write` | Build execution | `trigger` / `retry` / `cancel` |
 | `build.report` | Build report | `scan-sync` / `commit-status` / `report` (CI script callbacks) |
 | `rbac.user.write` | CD service-account management | create/read/update/delete users and list roles via `/api/rbac/*` |

@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Devops-Glue API",
-    "version": "2.8.9",
+    "version": "2.9.0",
     "description": "DevOps toolchain integration API — unified interface for Jenkins / GitLab CI, GitLab / Gitee / GitHub / Gitea, and Harbor.",
     "contact": {
       "email": "jeanslw@qq.com"
@@ -29,11 +29,15 @@
     },
     {
       "name": "Git",
-      "description": "Code Repository Branches"
+      "description": "Code Repository Branches / Tags"
     },
     {
       "name": "Harbor",
       "description": "Image Registry & Security Scan"
+    },
+    {
+      "name": "Integration",
+      "description": "Integration-service contract (lets CD self-check its authorization and provisioning mode)"
     },
     {
       "name": "Admin",
@@ -235,19 +239,19 @@
           },
           "app_version": {
             "type": "string",
-            "example": "2.8.8"
+            "example": "2.9.0"
           },
           "schema_version": {
             "type": "string",
             "nullable": true,
             "description": "Applied schema version (marked in auto-migrate mode; null until first deployment marks it)",
-            "example": "2.8.9"
+            "example": "2.9.0"
           },
           "seed_version": {
             "type": "string",
             "nullable": true,
             "description": "Applied seed version (recorded only with DB_AUTO_MIGRATE=false; null in auto-migrate mode, where schema_version is authoritative)",
-            "example": "2.8.9"
+            "example": "2.9.0"
           },
           "schema_current": {
             "type": "boolean",
@@ -2593,7 +2597,7 @@
         }
       }
     },
-    "/api/git/{job}/branches": {
+    "/api/git/{path}/branches": {
       "get": {
         "tags": [
           "Git"
@@ -2607,7 +2611,7 @@
         ],
         "parameters": [
           {
-            "name": "job",
+            "name": "path",
             "in": "path",
             "required": true,
             "schema": {
@@ -2629,6 +2633,113 @@
                   "type": "array",
                   "items": {
                     "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
+        }
+      }
+    },
+    "/api/git/{path}/tags": {
+      "get": {
+        "tags": [
+          "Git"
+        ],
+        "summary": "List Git tags for a job",
+        "description": "CD's build page can use a tag as the build ref (release builds). Returns an empty array when the job has no repository mapping or the platform cannot be detected; returns 404 when the platform is unreachable (a platform outage is never disguised as \"this repository has no tags\").",
+        "operationId": "gitTags",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "php/myapp",
+            "allowReserved": true
+          },
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of tag names",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
+        }
+      }
+    },
+    "/api/git/{path}/refs": {
+      "get": {
+        "tags": [
+          "Git"
+        ],
+        "summary": "List branches and tags in one call (build-ref candidates)",
+        "description": "Equivalent to calling branches and tags together, but resolves the job-to-repository mapping once and builds the platform client once, and both lists are guaranteed to come from the same repository snapshot. Recommended for CD's build-page ref dropdown. A failure on either side fails the whole call with 404.",
+        "operationId": "gitRefs",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "php/myapp",
+            "allowReserved": true
+          },
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of branch names plus array of tag names",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "branches": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
                   }
                 }
               }
@@ -4995,6 +5106,334 @@
         }
       }
     },
+    "/api/admin/deploy_logs": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "CD deployment audit log list",
+        "description": "Read-only paginated query of CD deployment audit logs (fetched from CD's read-only /api/integration/deploy-logs endpoint; CD tables are never read directly). Defaults to the last 30 days when date_from/date_to are omitted; returns an empty list with available=false when CD is not enabled or the endpoint is unavailable. Requires ci.deploy-logs permission.",
+        "operationId": "adminDeployLogList",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Project name (fuzzy match)"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Deployment status (exact match)"
+          },
+          {
+            "name": "deploy_type",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Deployment type (exact match)"
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Start date (inclusive, YYYY-MM-DD)"
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "End date (inclusive, YYYY-MM-DD)"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deployment log list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "available": {
+                      "type": "boolean",
+                      "description": "Whether the view is queryable (false when CD is not enabled)"
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "page": {
+                      "type": "integer"
+                    },
+                    "per_page": {
+                      "type": "integer"
+                    },
+                    "total_pages": {
+                      "type": "integer"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "integer"
+                          },
+                          "project": {
+                            "type": "string"
+                          },
+                          "tag": {
+                            "type": "string"
+                          },
+                          "image": {
+                            "type": "string"
+                          },
+                          "deploy_type": {
+                            "type": "string"
+                          },
+                          "target": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "triggered_by": {
+                            "type": "string"
+                          },
+                          "deploy_note": {
+                            "type": "string"
+                          },
+                          "created_at": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "Missing ci.deploy-logs permission"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        }
+      }
+    },
+    "/api/admin/api_access_logs": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "API Token call audit log list",
+        "description": "Read-only paginated query of API Token call audit logs. Returns audit fields only (token display name etc.); never the token plaintext/hash/body/query. Defaults to the last 30 days when date_from/date_to are omitted. Values outside the result/method whitelists are ignored. Requires ci.api-logs permission.",
+        "operationId": "adminApiAccessLogList",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "result",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "success",
+                "failure",
+                "denied"
+              ]
+            },
+            "description": "Call result"
+          },
+          {
+            "name": "method",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "GET",
+                "POST",
+                "PUT",
+                "PATCH",
+                "DELETE"
+              ]
+            },
+            "description": "HTTP method"
+          },
+          {
+            "name": "token_name",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Token display name (fuzzy match)"
+          },
+          {
+            "name": "route",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Request route (fuzzy match)"
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Start date (inclusive, YYYY-MM-DD)"
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "End date (inclusive, YYYY-MM-DD)"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Call log list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "total": {
+                      "type": "integer"
+                    },
+                    "page": {
+                      "type": "integer"
+                    },
+                    "per_page": {
+                      "type": "integer"
+                    },
+                    "total_pages": {
+                      "type": "integer"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "integer"
+                          },
+                          "username": {
+                            "type": "string"
+                          },
+                          "token_name": {
+                            "type": "string"
+                          },
+                          "scopes": {
+                            "type": "string"
+                          },
+                          "method": {
+                            "type": "string"
+                          },
+                          "route": {
+                            "type": "string"
+                          },
+                          "status_code": {
+                            "type": "integer"
+                          },
+                          "result": {
+                            "type": "string"
+                          },
+                          "error_reason": {
+                            "type": "string"
+                          },
+                          "ip": {
+                            "type": "string"
+                          },
+                          "duration_ms": {
+                            "type": "integer"
+                          },
+                          "created_at": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "Missing ci.api-logs permission"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        }
+      }
+    },
     "/.well-known/openid-configuration": {
       "get": {
         "tags": [
@@ -5301,6 +5740,85 @@
           },
           "401": {
             "description": "invalid_token"
+          }
+        }
+      }
+    },
+    "/api/integration/services/{service}": {
+      "get": {
+        "tags": [
+          "Integration"
+        ],
+        "summary": "Integration-service contract self-check (for CD; avoids reading the shared database)",
+        "description": "Lets integration services such as CD check at runtime whether Glue has authorized them and with which provisioning mode, instead of reading the shared `integrated_services` table (table name, columns and even the driver are coupling surfaces: a CI schema change can break CD, and a split deployment would break it outright). Verdict semantics: 200 + enabled=false means **not enabled** (no contract row, or enabled=0 — indistinguishable by design) so the service must refuse to serve and perform zero DDL (provision is normalized to auto there purely for log wording and must not be used to create tables); 200 + enabled=true + provision=auto authorizes automatic table creation / column backfill; 200 + enabled=true + provision=manual forbids DDL and accepts only operator-provisioned tables. **404 is strictly different from \"not enabled\"** (the service name is not in the whitelist — a configuration mistake and must not be treated as not-enabled). token_active is advisory only (liveness of the credential bound to the contract row) and must not be used as a gate. The scope reuses build.read; field names mirror the same subset of /api/admin/integrated_services/{service}.",
+        "operationId": "integrationServiceShow",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "service",
+            "in": "path",
+            "required": true,
+            "description": "Integration service name (integrated_services.service_name)",
+            "schema": {
+              "type": "string"
+            },
+            "example": "cd"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Integration-service contract state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "service": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean",
+                      "description": "Whether the service is enabled (contract row exists with enabled=1)"
+                    },
+                    "provision": {
+                      "type": "string",
+                      "enum": [
+                        "auto",
+                        "manual"
+                      ],
+                      "description": "DDL authorization: auto = automatic table creation / column backfill; manual = no DDL, operator-provisioned tables only. Normalized to auto when not enabled (log wording only)"
+                    },
+                    "token_active": {
+                      "type": "boolean",
+                      "description": "Liveness of the credential bound to the contract row; advisory only, never a gate"
+                    },
+                    "updated_at": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Last update of the contract row; null when not enabled"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "Missing build.read scope (or not an API token)"
+          },
+          "404": {
+            "description": "Service name not in the whitelist (integrated.unknown_service); strictly different from \"not enabled\" (200 + enabled=false)"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
           }
         }
       }

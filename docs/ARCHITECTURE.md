@@ -50,7 +50,7 @@
 │  cd_servers       ← CD maintains                           │
 │  cd_deploy_logs   ← CD writes                              │
 │  cd_bots          ← CD maintains                           │
-│  admin_users      ← CI writes /CD read (Shared)            │
+│  ci_admin_users      ← CI writes /CD read (Shared)         │
 └────────────────────────────┬───────────────────────────────┘
 			                 │
 		              ┌──────┴──────┐
@@ -82,7 +82,7 @@ Both run the same entrypoint (`db-init` retry → `exec supervisord`) and share 
 
 ### Distributed timer lock
 
-To guarantee at-most-one timer run even if several worker replicas are started, both CLI scripts take a **lease lock in `cache`** (`Database::tryAcquireLock` / `releaseLock`) before doing work:
+To guarantee at-most-one timer run even if several worker replicas are started, both CLI scripts take a **lease lock in `ci_cache`** (`Database::tryAcquireLock` / `releaseLock`) before doing work:
 
 - Key is `cache_key = 'lock:tag-cleanup'` / `'lock:tag-backfill'`, shared across instances (MySQL multi-instance, or a shared SQLite file).
 - Acquisition deletes expired leases, then `INSERT`s its own — a PK conflict means another instance holds a valid lease → exit 0 ("skip").
@@ -116,7 +116,7 @@ Notes:
 - **Switches default off**: both jobs are gated by `stale_tag_cleanup_enabled` / `backfill_tag_enabled` (default off); enable them on the platform-config page first, otherwise the CLI prints "skip" and exits 0.
 - **Run user**: use the same user as the web process (php-fpm, e.g. `www-data`); otherwise root running first creates a root-owned SQLite file and the web side fails to write.
 - **env loading**: the CLI auto-loads `config/app.env` via `cli/bootstrap.php` (paths relative to `__DIR__`, no cwd dependence), so no `cd` is needed in crontab.
-- **Distributed lock safety**: the CLI has a built-in `cache`-table lease lock, so even misconfigured duplicate crons (or mixing with a container worker) run at most one instance at a time; losing the lock just exits 0.
+- **Distributed lock safety**: the CLI has a built-in `ci_cache`-table lease lock, so even misconfigured duplicate crons (or mixing with a container worker) run at most one instance at a time; losing the lock just exits 0.
 - **Log dir**: the redirected log directory must be writable by the run user.
 
 ## CI Build Modes: Pull-based vs Push-based
