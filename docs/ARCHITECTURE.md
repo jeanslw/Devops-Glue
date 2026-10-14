@@ -50,7 +50,7 @@
 │  cd_servers       ← CD maintains                           │
 │  cd_deploy_logs   ← CD writes                              │
 │  cd_bots          ← CD maintains                           │
-│  admin_users      ← CI writes /CD read (Shared)            │
+│  ci_admin_users      ← CI writes /CD read (Shared)         │
 └────────────────────────────┬───────────────────────────────┘
 			                 │
 		              ┌──────┴──────┐

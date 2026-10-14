@@ -1,4 +1,4 @@
-# Devops-Glue API FAQ v2.8.9
+# Devops-Glue API FAQ v2.9.0
 
 ## Table of Contents
 
@@ -771,4 +771,4 @@ No. API responses always return raw data. i18n only affects the frontend UI and 
 
 ---
 
-*Document version: v2.8.9 | Last updated: 2026-10-10*
+*Document version: v2.9.0 | Last updated: 2026-10-15*
