@@ -272,7 +272,7 @@ Scans all projects for the currently enabled CI sources, auto-extracts Git repos
 
 ### Q: Why don't mapping changes take effect immediately?
 
-The mapping list has a 30-second cache (`cache` table, key=`map_list_{enabled-set}`). Wait 30 seconds for auto-refresh; the cache is also invalidated automatically on any mapping change.
+The mapping list has a 30-second cache (`ci_cache` table, key=`map_list_{enabled-set}`). Wait 30 seconds for auto-refresh; the cache is also invalidated automatically on any mapping change.
 
 ### Q: Duplicate entries appear in "Auto Discover" when multiple CIs are enabled?
 
@@ -292,11 +292,11 @@ No. `api_version` is metadata only; it does not affect actual API routing (route
 
 ### Q: What are the default credentials?
 
-`app.env` values for `ADMIN_USER` / `ADMIN_PASSWORD`. The user is created automatically on first boot and written to the `admin_users` table; thereafter the DB takes precedence.
+`app.env` values for `ADMIN_USER` / `ADMIN_PASSWORD`. The user is created automatically on first boot and written to the `ci_admin_users` table; thereafter the DB takes precedence.
 
 ### Q: Login always returns 401?
 
-The password in `app.env` and the password in `admin_users` table are out of sync.
+The password in `app.env` and the password in `ci_admin_users` table are out of sync.
 
 **Solution:**
 - Reset via an offline patch — contact the author to obtain it
@@ -342,7 +342,7 @@ Total: **25 built-in permissions**. The permission system is fully data-driven. 
 
 ### Q: What are "implied permissions"?
 
-Implied rules live in the dedicated `implied_rules` table (`source_key` → `target_key`), meaning "having A automatically grants B". Direction **MUST strictly follow**:
+Implied rules live in the dedicated `ci_implied_rules` table (`source_key` → `target_key`), meaning "having A automatically grants B". Direction **MUST strictly follow**:
 
 - ✅ **Child → Parent**: e.g. having `cd.bot` automatically shows the parent `cd.notification-manage` menu
 - ❌ **Parent → Child (prohibited)**: adding this direction causes a reverse-dependency bug: "child permissions cannot be revoked while the parent menu is retained"
@@ -372,7 +372,7 @@ Built-in permissions are written by the seed data and have no registration time 
 
 Both conditions must be met: ① the permission is "Registered" (built-in permissions cannot be deleted); ② the current account has the `ci.permissions.register` permission. Without it, even calling the delete endpoint directly returns 403.
 
-> Deleting a registered permission cascades and cleans up related records in `role_permissions` and `implied_rules`.
+> Deleting a registered permission cascades and cleans up related records in `ci_role_permissions` and `ci_implied_rules`.
 
 ### Q: How to create a custom role?
 
@@ -542,16 +542,16 @@ It means the application's own database account has no `CREATE` / `ALTER` privil
 - A pure manual deployment with `DB_AUTO_MIGRATE=false` writes no `schema_version` (the app runs no DDL), so `schema_current` stays `null` (unknown) — the probe deliberately does **not** fall back to `seed_version` (a refreshed seed proves nothing about new business columns): it neither degrades nor falsely claims alignment, even when `seed_version` matches the current version.
 - `schema_ahead=true` means the database schema version is **higher** than the code (decided via `version_compare`) = a likely **code downgrade/rollback**; combined with `schema_current=false` it separates "upgraded without migrating" from "the code was rolled back", and the two need different handling (see the next question).
 
-### Q: After upgrading, "Log Center → Deploy Logs" shows "view not ready / no data" — what now?
+### Q: After upgrading, "Log Center → Deploy Logs" shows "not available / no data" — what now?
 
-- **Read the file log first**: `[部署日志] 契约视图不可用，部署日志审计降级为占位提示` ("contract view unavailable, deploy-log audit degraded to a placeholder", written once per process); its context carries `view` (the name CI expects, `deploy_logs_view`) and the raw database error — for a missing view MySQL states it plainly: `1146 Table 'xxx.deploy_logs_view' doesn't exist`.
-- **Most likely cause: CI and CD disagree on the view name.** The view is created and maintained by Devops-CD and only read by CI; v2.9.0 renamed it from `v_glue_deploy_logs` to `deploy_logs_view`, so **if CD has not been renamed in sync** (its `database/init_mysql.sql` and first-connect DDL still create the old name) this exact log line appears: the audit page degrades to a placeholder while CD's own deploy features work perfectly. Fix: upgrade CD to a build that creates `deploy_logs_view` (or recreate the view in the shared database per CD's docs); the old view can then be dropped.
-- **It may also mean CD was never deployed**: if CD has never connected to the database the view simply does not exist, and the page shows the same placeholder — expected behaviour (there are no deploy records to audit), nothing to do.
-- **Why it degrades instead of erroring**: deploy-log auditing is a side path, and a missing view must not turn the admin UI into a 500; but so that "names do not match" is never misread as "CD has no data", the repository writes one warning log on the first failure so operators can locate it at a glance (no CI-side configuration change is needed).
+- **Read the file log first**: `[部署日志] CD 端点不可用，部署日志审计降级为占位提示` ("CD endpoint unavailable, deploy-log audit degraded to a placeholder", written once per process); its context carries `reason` (the HTTP status, the exception message, or `CD_BASE_URL/CD_API_TOKEN 未配置`) and `url` (the endpoint CI expects, `/api/integration/deploy-logs`).
+- **Most likely causes**: (1) `CD_BASE_URL` / `CD_API_TOKEN` are unset on the CI side — set them to CD's base URL and the matching inbound token (same value on both sides); (2) the endpoint returns non-200 — e.g. 401 when the token does not match, or 503 with an `error_key` (`errors.cd_not_enabled` / `errors.cd_not_deployed` / `errors.db_unavailable` / `errors.ci_contract_unreachable`) when CD itself cannot serve; (3) CD is unreachable or its response is not JSON. Check CD's own health before concluding there are no deploy records.
+- **It may also mean CD was never deployed**: the endpoint simply does not answer, and the page shows the same placeholder — expected behaviour (there are no deploy records to audit), nothing to do beyond configuring `CD_BASE_URL` / `CD_API_TOKEN`.
+- **Why it degrades instead of erroring**: deploy-log auditing is a side path, and an unreachable CD must not turn the admin UI into a 500; but so that "endpoint unreachable" is never misread as "CD has no data", the repository writes one warning log on the first failure so operators can locate it at a glance.
 
 ### Q: `/healthz` or the admin "System Info" reports a "Table Consistency" mismatch (`tables_list_drift`) — what now?
 
-- **What it is**: the in-code self-check (`Database::schemaListDrift()`, pure reflection, no database involved) found that the `TABLE_*` constants in `AppConfig` and the `Database::schemaTables()` probe list disagree. The most common cause is adding an application table but forgetting to add the matching line to the probe list (the `ci_api_access_logs` omission fixed in v2.8.9 was exactly that); it can also be a hand-written table name in the list (a value that is not a constant) or the CD-side read-only contract view `deploy_logs_view` sneaking in.
+- **What it is**: the in-code self-check (`Database::schemaListDrift()`, pure reflection, no database involved) found that the `TABLE_*` constants in `AppConfig` and the `Database::schemaTables()` probe list disagree. The most common cause is adding an application table but forgetting to add the matching line to the probe list (the `ci_api_access_logs` omission fixed in v2.8.9 was exactly that); it can also be a hand-written table name in the list (a value that is not a constant).
 - **Impact**: **visibility only** — the admin "Data Management → Tables" list shows one table fewer than the real database (or one phantom table more), and the `/healthz` `tables_missing` list cannot notice that table's absence either. Table creation / column back-fill is unaffected (the DDL authority is `ensureTables()`), so the probe only degrades (**still HTTP 200**) instead of pulling traffic; at the same time an error log line is written at bootstrap (once per process), the admin "System Info → Table Consistency" row names the tables in red, and `cli/migrate.php` prints a warning (exit code untouched).
 - **What to do**: it means this instance runs code that differs from what CI verified (an image upgrade or a hand-patched build bypassed the CI gate) — update to a build containing the fix. If you are editing the code locally, add the missing table in `Database::schemaTables()` (or verify the names against `AppConfig`) and run `vendor/bin/phpunit`: it names the missing table immediately.
 - **Why the probe never returns 500 and never pulls traffic**: this is a bookkeeping problem, not a data or schema failure; taking the service down over a list typo trades availability away for zero safety. The hard gate lives in the unit test (`DatabaseBootstrapTest::testSchemaProbeListCoversEveryAppOwnedTable`, sharing the same comparison logic as the runtime self-check).
@@ -589,7 +589,7 @@ First decide whether the old code can run against the current database. Migratio
   - **explicit migration**: both the button and `php cli/migrate.php` record `migrate_schema` (with `from → to`; the CLI previously left **no trace at all** in the UI); if the migration happens in the **downgrade direction** (aligning the marker with old code after a rollback), an **additional `schema_downgrade`** row is written (`detail.channel=explicit_migrate`, `seed_mode=prune`) plus a file WARNING — a plain "migrate_schema success" cannot tell you that the marker was pulled back and permissions were converged to the old definitions;
   - the user is always `system` (operator type `system`); the same transition is recorded **once per 10-minute window** (multi-process startups do not spam it; a bootstrap downgrade and an explicit-migration downgrade **never deduplicate against each other** — merge keeps permissions, prune converges them, different consequences, both must be queryable). A downgrade additionally writes a file WARNING. Occasionally two identical downgrade rows share the same second: that is the race of multiple php-fpm workers bootstrapping concurrently (bounded, harmless).
 
-**5. Review RBAC (nothing is lost, but decide whether to converge)**: during a downgrade the seed automatically switches to **merge mode (add-only)** — permissions the new version granted to system roles (e.g. `viewer`) are **kept**, and mappings the current code expects are added back, so a rollback never silently narrows permissions; new `permissions` / `implied_rules` keys are likewise kept (residual rows, no functional impact); **custom roles are untouched**. If you intend to **stay** on the old version and want permissions converged to the old semantics, run `php cli/migrate.php` (or click "Sync Schema") once — an explicit action always **converges** to the current code definitions (prune).
+**5. Review RBAC (nothing is lost, but decide whether to converge)**: during a downgrade the seed automatically switches to **merge mode (add-only)** — permissions the new version granted to system roles (e.g. `viewer`) are **kept**, and mappings the current code expects are added back, so a rollback never silently narrows permissions; new `ci_permissions` / `ci_implied_rules` keys are likewise kept (residual rows, no functional impact); **custom roles are untouched**. If you intend to **stay** on the old version and want permissions converged to the old semantics, run `php cli/migrate.php` (or click "Sync Schema") once — an explicit action always **converges** to the current code definitions (prune).
 
 **6. Spot-check data-level forward compatibility**: new status values / column semantics written by the new version (build status, tag source, scan write-back status, etc.) may be misread by the old code — check by hand and restore from backup if necessary.
 

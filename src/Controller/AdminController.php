@@ -80,11 +80,12 @@ class AdminController extends BaseController
         return $this->operationLog;
     }
 
-    /** 部署日志仓储（懒加载，只读 CD 部署记录审计视图） */
+    /** 部署日志仓储（懒加载，经 CD 只读端点拉取部署记录） */
     private function deployLog(): DeployLogRepository
     {
         if ($this->deployLog === null) {
-            $this->deployLog = new DeployLogRepository($this->pdo);
+            $cd = $this->config->getCdConfig();
+            $this->deployLog = new DeployLogRepository($cd['base_url'] ?? '', $cd['api_token'] ?? '');
         }
         return $this->deployLog;
     }

@@ -333,7 +333,7 @@ class DatabaseBootstrapTest extends TestCase
 
     /**
      * 方向位 schema_ahead：库结构版本高于代码版本，即代码被降级（回滚），current=false + ahead=true。
-     * 方向用 version_compare 判定（'2.10.0' > '2.8.9'）；字符串比较会得出相反结论，故锁住该用例。
+     * 方向用 version_compare 判定（'99.0.0' > 当前版本）；字符串比较会得出相反结论，故锁住该用例。
      */
     public function testSchemaStateReportsAheadOnCodeDowngrade(): void
     {
@@ -341,7 +341,8 @@ class DatabaseBootstrapTest extends TestCase
         $pdo = $this->createMemoryPdo();
         Database::bootstrap($pdo);
 
-        $pdo->exec('UPDATE ' . AppConfig::TABLE_APP_SETTINGS . " SET value = '2.10.0' WHERE setting_key = 'schema_version'");
+        // 恒高于代码版本的字面量（99.0.0），避免随 APP_VERSION 演进失效
+        $pdo->exec('UPDATE ' . AppConfig::TABLE_APP_SETTINGS . " SET value = '99.0.0' WHERE setting_key = 'schema_version'");
         $state = Database::schemaState($pdo);
         $this->assertFalse($state['schema_current'], '版本不一致 → 未对齐');
         $this->assertTrue($state['schema_ahead'], '库版本高于代码 → 疑似降级回滚（须用 version_compare，非字典序）');
@@ -400,9 +401,6 @@ class DatabaseBootstrapTest extends TestCase
      * 由 cli/cleanup-api-access-logs.php 定时清理，却不在探测清单里，表现为新装实例的数据表
      * 卡片比真实库少一张，/healthz 的 tables_missing 也感知不到它的缺失。
      *
-     * 唯一合法例外是 TABLE_CD_DEPLOY_LOG_VIEW（deploy_logs_view）：它是 Devops-CD 侧建立的
-     * 只读契约视图，不由本应用的建表逻辑创建，因此不予探测。
-     *
      * 比对逻辑与运行时自检（Database::schemaListDrift()）共用同一份事实：同一个结论会进 error
      * 日志、后台系统信息的数据表一致性行与 /healthz 的 tables_list_drift，升级或打补丁
      * 绕过 CI 的实例也不会少表。
@@ -421,7 +419,6 @@ class DatabaseBootstrapTest extends TestCase
             . '（漏加会让后台表清单少表、/healthz 的 tables_missing 也看不见它缺失）'
         );
         $this->assertSame([], $drift['probe_unknown'], '探测清单里出现了不是 AppConfig TABLE_* 常量的表名（手写字符串/笔误？）');
-        $this->assertSame([], $drift['probe_excluded'], '探测清单不应包含 CD 侧契约视图 deploy_logs_view');
         $this->assertTrue($drift['ok']);
     }
 
@@ -440,26 +437,22 @@ class DatabaseBootstrapTest extends TestCase
         $this->assertSame([AppConfig::TABLE_API_ACCESS_LOGS], $drift['missing'], '漏加的应用表必须被点名（危险方向）');
         $this->assertSame([AppConfig::TABLE_API_ACCESS_LOGS], $drift['tables']);
         $this->assertSame([], $drift['probe_unknown']);
-        $this->assertSame([], $drift['probe_excluded']);
     }
 
     /**
-     * 反向漂移同样要点名：探测清单里手写一个不存在的表名（后台表清单会凭空多一张假表）、
-     * 以及把 CD 契约视图塞进探测清单（本应用不该探测 CD 侧视图）。
+     * 反向漂移同样要点名：探测清单里手写一个不存在的表名（后台表清单会凭空多一张假表）。
      */
-    public function testSchemaListDriftDetectsUnknownAndExcludedProbeEntries(): void
+    public function testSchemaListDriftDetectsUnknownProbeEntries(): void
     {
         $probed   = Database::missingTables($this->createMemoryPdo());
         $probed[] = 'ci_typo_table';
-        $probed[] = AppConfig::TABLE_CD_DEPLOY_LOG_VIEW;
 
         $drift = Database::schemaListDrift($probed);
 
         $this->assertFalse($drift['ok']);
         $this->assertSame([], $drift['missing'], '自有表一张不少时不报 missing');
         $this->assertSame(['ci_typo_table'], $drift['probe_unknown']);
-        $this->assertSame([AppConfig::TABLE_CD_DEPLOY_LOG_VIEW], $drift['probe_excluded']);
-        $this->assertSame(['ci_typo_table', AppConfig::TABLE_CD_DEPLOY_LOG_VIEW], $drift['tables']);
+        $this->assertSame(['ci_typo_table'], $drift['tables']);
     }
 
     /** 正常代码零漂移：schemaStatus()（后台数据表一致性行的数据源）透出的自检结果必须是 ok。 */
@@ -1024,6 +1017,237 @@ class DatabaseBootstrapTest extends TestCase
         Database::reset();
         Database::init(['driver' => 'sqlite', 'auto_migrate' => $autoMigrate]);
         Database::bootstrap($pdo);
+    }
+
+    /**
+     * v2.9.0 表名收口：存量旧表名库 bootstrap 时应幂等 RENAME 到 ci_ 前缀新名，
+     * 数据/种子保留、旧表回收、外键引用跟随改写（integrated_services → ci_api_tokens）。
+     */
+    public function testLegacyTablesAreRenamedInPlaceWithDataPreserved(): void
+    {
+        Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
+        $pdo = $this->createMemoryPdo();
+        Database::bootstrap($pdo); // 新名建表 + 种子 + 标记
+
+        // 模拟 v2.9.0 之前的存量库：把新名表改回旧名，并清掉版本标记
+        foreach (AppConfig::LEGACY_TABLE_NAMES as $old => $new) {
+            $pdo->exec("ALTER TABLE {$new} RENAME TO {$old}");
+        }
+        $pdo->exec('DELETE FROM ' . AppConfig::TABLE_APP_SETTINGS . " WHERE setting_key IN ('schema_version','seed_version')");
+
+        // bootstrap 的幂等标记是进程内的，跨"升级"场景须 reset 后重新引导
+        Database::reset();
+        Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
+        Database::bootstrap($pdo);
+
+        foreach (AppConfig::LEGACY_TABLE_NAMES as $old => $new) {
+            $this->assertFalse($this->sqliteTableExists($pdo, $old), "{$old} 应被 RENAME 回收");
+            $this->assertTrue($this->sqliteTableExists($pdo, $new), "{$new} 应存在");
+        }
+
+        // 改名前的种子数据原样保留（未重新播种也应存在；prune 重播只会归位不会清空）
+        $roleCount = (int)$pdo->query('SELECT count(*) FROM ' . AppConfig::TABLE_ROLES)->fetchColumn();
+        $this->assertGreaterThan(0, $roleCount, '角色数据应在改名后保留');
+
+        // 外键引用随 RENAME 跟随：删 token 后 ci_integrated_services.api_token_id 置 NULL。
+        // createMemoryPdo 是裸 PDO，须与生产 createPdo 一致显式开启外键强制
+        $pdo->exec('PRAGMA foreign_keys=ON');
+        $pdo->exec('INSERT INTO ' . AppConfig::TABLE_API_TOKENS . ' (name, token_hash, scopes) VALUES (\'svc\', \'ab\'\'cd\', \'cd.build\')');
+        $tokenId = (int)$pdo->lastInsertId();
+        $pdo->exec('INSERT INTO ' . AppConfig::TABLE_INTEGRATED_SERVICES . ' (service_name, enabled, provision, api_token_id) VALUES (\'cd\', 1, \'auto\', ' . $tokenId . ')');
+        $pdo->exec('DELETE FROM ' . AppConfig::TABLE_API_TOKENS . ' WHERE id = ' . $tokenId);
+        $ref = $pdo->query('SELECT api_token_id FROM ' . AppConfig::TABLE_INTEGRATED_SERVICES . " WHERE service_name = 'cd'")->fetchColumn();
+        $this->assertNull($ref, 'RENAME 后 ON DELETE SET NULL 仍应生效');
+    }
+
+    private function sqliteTableExists(\PDO $pdo, string $table): bool
+    {
+        $stmt = $pdo->prepare("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = ?");
+        $stmt->execute([$table]);
+        return (int)$stmt->fetchColumn() > 0;
+    }
+
+    // ────────────── v2.9.0 列结构对账（columnSpecs / columnDrift / reconcileColumns） ──────────────
+
+    /**
+     * SQLite 无 VARCHAR 长度语义：columnDrift() 必须返回空集（不能误报告警），
+     * reconcileColumns() 不报错且每进程只执行一次（幂等去重）。
+     */
+    public function testColumnDriftIsEmptyOnSqliteAndReconcileIsIdempotent(): void
+    {
+        Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
+        $pdo = $this->createMemoryPdo();
+        Database::bootstrap($pdo);
+
+        $this->assertSame([], Database::columnDrift($pdo), 'SQLite 不对账列宽');
+        $this->assertSame([], Database::reconcileColumns($pdo, false), '无漂移时无修复项');
+        // bootstrap 已调度过一次（置位去重标记），再次调用直接返回而不重复对账
+        $this->assertSame([], Database::reconcileColumns($pdo, true));
+    }
+
+    /**
+     * safe 判定纯函数：同类 VARCHAR 只增不减才允许自动 MODIFY。
+     * 锁住三组方向：32→255 扩容安全、512→255 缩容危险、跨类型族危险。
+     */
+    public function testWidenVarcharSafetyClassification(): void
+    {
+        $widen = \Closure::bind(static function (string $a, string $b): bool {
+            return Database::isWidenVarchar($a, $b);
+        }, null, Database::class);
+
+        $this->assertTrue($widen('varchar(32)', 'varchar(255)'), '32→255 是安全扩容');
+        $this->assertTrue($widen('varchar(128)', 'varchar(255)'), '128→255 是安全扩容');
+        $this->assertFalse($widen('varchar(512)', 'varchar(255)'), '512→255 是缩容，有截断风险，禁止自动改');
+        $this->assertFalse($widen('text', 'varchar(255)'), '跨类型族禁止自动改');
+        $this->assertFalse($widen('int', 'varchar(255)'), '跨类型族禁止自动改');
+    }
+
+    /**
+     * 对账清单必须与建表脚本同源：columnSpecs() 登记的每个期望类型都要能在
+     * mysql_init.sql 的同表同列找到一致定义，否则自愈会把库"修"成与新装库不一致的结构。
+     * 这是防遗漏的关键一环——改了建表脚本忘了登记（或反之），本测试即失败。
+     */
+    public function testColumnSpecsMatchMysqlInitScript(): void
+    {
+        $specs = $this->invokePrivateStatic('columnSpecs');
+        $sql   = (string) file_get_contents(__DIR__ . '/../../database/mysql_init.sql');
+
+        foreach ($specs as $table => $columns) {
+            $this->assertMatchesRegularExpression(
+                '/CREATE TABLE IF NOT EXISTS `' . preg_quote($table, '/') . '`/i',
+                $sql,
+                "columnSpecs 登记了 {$table}，但 mysql_init.sql 中找不到该表"
+            );
+            foreach ($columns as $column => $definition) {
+                $actualType = $this->mysqlScriptColumnType($sql, $table, $column);
+                $this->assertNotNull(
+                    $actualType,
+                    "columnSpecs 登记了 {$table}.{$column}，但 mysql_init.sql 建表语句中没有这一列"
+                );
+                $expectedType = $this->invokePrivateStatic('normalizeColumnType', [
+                    $this->invokePrivateStatic('firstTypeToken', [$definition]),
+                ]);
+                $this->assertSame(
+                    $expectedType,
+                    strtolower((string) preg_replace('/\s+/', '', (string) $actualType)),
+                    "{$table}.{$column} 的对账期望与 mysql_init.sql 不一致（两处必须同步修改）"
+                );
+            }
+        }
+    }
+
+    /**
+     * MySQL 端到端（无 MySQL 时自动跳过）：
+     *  ① varchar(32)/(128) 的存量列被 columnDrift 标 safe，reconcileColumns 后扩为 varchar(255)；
+     *  ② 反向把列宽改成 varchar(512)（比期望宽）必须标 safe=false，strict 修复也不改动、不抛异常。
+     */
+    public function testMysqlColumnDriftIsWidenedAndNarrowingIsLeftUntouched(): void
+    {
+        $adminPdo = $this->mysqlTestPdo();
+        if ($adminPdo === null) {
+            $this->markTestSkipped('MySQL 测试实例不可用（GLUE_TEST_MYSQL_* 未配置或连不上），跳过端到端对账测试');
+        }
+
+        $dbName = 'glue_test_reconcile_' . getmypid();
+        $adminPdo->exec("CREATE DATABASE IF NOT EXISTS `{$dbName}` CHARACTER SET utf8mb4");
+        try {
+            $pdo = $this->mysqlTestPdo($dbName);
+            $this->assertNotNull($pdo);
+            $pdo->exec('CREATE TABLE ' . AppConfig::TABLE_ADMIN_USERS . ' (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                role VARCHAR(32) NOT NULL DEFAULT ' . $pdo->quote(AppConfig::ROLE_ADMIN) . ',
+                systems VARCHAR(128) NOT NULL DEFAULT ' . $pdo->quote('ci,cd') . '
+            )');
+
+            Database::reset();
+            Database::init(['driver' => 'mysql', 'auto_migrate' => true]);
+
+            $drift = Database::columnDrift($pdo);
+            $this->assertCount(2, $drift, 'role/systems 两列都应被报告');
+            foreach ($drift as $d) {
+                $this->assertTrue($d['safe'], "{$d['column']} {$d['actual']}→{$d['expected']} 应判为安全扩容");
+            }
+
+            $fixed = Database::reconcileColumns($pdo, true);
+            $this->assertCount(2, $fixed);
+            $this->assertSame('varchar(255)', $this->mysqlColumnType($pdo, AppConfig::TABLE_ADMIN_USERS, 'role'));
+            $this->assertSame('varchar(255)', $this->mysqlColumnType($pdo, AppConfig::TABLE_ADMIN_USERS, 'systems'));
+            $this->assertSame([], Database::columnDrift($pdo), '对齐后对账清零');
+
+            // 反向：实际比期望宽（缩容方向），只告警不动库
+            $pdo->exec('ALTER TABLE ' . AppConfig::TABLE_ADMIN_USERS . ' MODIFY COLUMN role VARCHAR(512)');
+            Database::reset();
+            Database::init(['driver' => 'mysql', 'auto_migrate' => true]);
+            $drift = Database::columnDrift($pdo);
+            $this->assertCount(1, $drift);
+            $this->assertFalse($drift[0]['safe'], '512→255 是缩容，必须 safe=false');
+            Database::reconcileColumns($pdo, true); // strict 也不得对 unsafe 项执行 DDL
+            $this->assertSame(
+                'varchar(512)',
+                $this->mysqlColumnType($pdo, AppConfig::TABLE_ADMIN_USERS, 'role'),
+                '不可自动修复的漂移必须保持原样'
+            );
+        } finally {
+            $adminPdo->exec("DROP DATABASE IF EXISTS `{$dbName}`");
+            Database::reset();
+        }
+    }
+
+    /**
+     * @param list<mixed> $args
+     */
+    private function invokePrivateStatic(string $method, array $args = []): mixed
+    {
+        $m = new \ReflectionMethod(Database::class, $method);
+        $m->setAccessible(true);
+        return $m->invokeArgs(null, $args);
+    }
+
+    /** 从 mysql_init.sql 文本中提取指定表.列的原始类型 token（如 VARCHAR(255)）。 */
+    private function mysqlScriptColumnType(string $sql, string $table, string $column): ?string
+    {
+        if (!preg_match(
+            '/CREATE TABLE IF NOT EXISTS `' . preg_quote($table, '/') . '`(.*?)\n\)/is',
+            $sql,
+            $block
+        )) {
+            return null;
+        }
+        foreach (preg_split('/\r?\n/', $block[1]) as $line) {
+            if (preg_match('/^\s*`?' . preg_quote($column, '/') . '`?\s+([A-Za-z]+(?:\s*\([^)]*\))?)/', $line, $m)) {
+                return $m[1];
+            }
+        }
+        return null;
+    }
+
+    /** 连接 MySQL 测试实例（连不上返回 null，由调用方 skip）；传库名时连接到该库。 */
+    private function mysqlTestPdo(?string $dbName = null): ?\PDO
+    {
+        $host = (string) (getenv('GLUE_TEST_MYSQL_HOST') ?: '127.0.0.1');
+        $port = (string) (getenv('GLUE_TEST_MYSQL_PORT') ?: '3306');
+        $user = (string) (getenv('GLUE_TEST_MYSQL_USER') ?: 'root');
+        $pass = getenv('GLUE_TEST_MYSQL_PASS');
+        $pass = $pass === false ? '123456' : $pass;
+        $dsn  = 'mysql:host=' . $host . ';port=' . $port . ($dbName !== null ? ';dbname=' . $dbName : '') . ';charset=utf8mb4';
+        try {
+            return new \PDO($dsn, $user, $pass, [
+                \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+                \PDO::ATTR_TIMEOUT => 3,
+            ]);
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    private function mysqlColumnType(\PDO $pdo, string $table, string $column): string
+    {
+        $stmt = $pdo->prepare(
+            'SELECT COLUMN_TYPE FROM information_schema.COLUMNS '
+            . 'WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?'
+        );
+        $stmt->execute([$table, $column]);
+        return strtolower((string) $stmt->fetchColumn());
     }
 
     private function createMemoryPdo(): \PDO

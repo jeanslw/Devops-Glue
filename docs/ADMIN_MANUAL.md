@@ -124,7 +124,7 @@ Two databases are supported, selected by `DB_DRIVER`:
 
 > 🔄 **Rollback / downgrade**: migrations here are **additive only** and **no down scripts are provided**, so "old code + new database" usually runs — but know these two things: (1) **permissions are never revoked** — during a downgrade `seedRbac()` automatically switches to **merge mode (add-only)**: permissions the new version granted to system roles such as `viewer` are kept, and mappings the current code expects are added back (custom roles are untouched); if you **stay** on the old version and want the old semantics, run `php cli/migrate.php` once (or click the button — prune converges). (2) the old code may misread status values / column semantics written by the new version (check by hand). See the FAQ entry "I need to roll back (downgrade) to an older version after an upgrade — how?" for the full procedure; `schema_ahead=true` from `GET /healthz` means "the database is newer than the code = a completed rollback", and the marker is rewritten back to the old version on the first request after the rollback, with a warning logged as an audit trail. The **version transition is always written to the operation log** (the automatic bootstrap records `schema_init` / `schema_upgrade` / `schema_downgrade` by direction; an explicit migration records `migrate_schema`; the user is always `system`, deduplicated within 10 minutes per transition) and is searchable by action name in "Log Center → Operation Log".
 
-> **Database backup**: after logging in, click **Back up database** on the "System Settings → Data Management → Database" card (visible to `super_admin` only) to generate a backup on demand. Both SQLite and MySQL are supported; the artifact is `devops-glue_<driver>_<datetime>.zip` (containing a pure-data `.sql` export with the same name, excluding the `cache` / `ci_platform_versions` tables) saved to `BACKUP_DIR`. Under Docker the volume `./data/backups:/data/backups` lands backups in the host `./data/backups`; outside Docker without `BACKUP_DIR` they go to the repo-root `backups/` (auto-created), rolling over the latest 10 files. Backup is **export-only — there is intentionally no online restore**: restoring a database is a high-risk, high-impact event that must be performed by an administrator in person, with an audit trail, so no online restore entry is exposed. To restore, use an offline patch — contact the author to obtain it.
+> **Database backup**: after logging in, click **Back up database** on the "System Settings → Data Management → Database" card (visible to `super_admin` only) to generate a backup on demand. Both SQLite and MySQL are supported; the artifact is `devops-glue_<driver>_<datetime>.zip` (containing a pure-data `.sql` export with the same name, excluding the `ci_cache` / `ci_platform_versions` tables) saved to `BACKUP_DIR`. Under Docker the volume `./data/backups:/data/backups` lands backups in the host `./data/backups`; outside Docker without `BACKUP_DIR` they go to the repo-root `backups/` (auto-created), rolling over the latest 10 files. Backup is **export-only — there is intentionally no online restore**: restoring a database is a high-risk, high-impact event that must be performed by an administrator in person, with an audit trail, so no online restore entry is exposed. To restore, use an offline patch — contact the author to obtain it.
 
 ---
 
@@ -165,7 +165,7 @@ Open `http://localhost:8080/admin` and log in with `ADMIN_USER` / `ADMIN_PASSWOR
 
 - Switch the UI language (Chinese / English) at the top right.
 - Change your password under "User Management → Change Password".
-- Admin authentication is validated against the database first; the `app.env` password only serves as a fallback when the `admin_users` table is empty (first deployment). **There is intentionally no self-service "forgot password" feature**: resetting a password is a high-risk, high-impact event that must be performed by an administrator in person, with an audit trail, so no online recovery entry is exposed. To recover a forgotten password, use an offline patch — contact the author to obtain it.
+- Admin authentication is validated against the database first; the `app.env` password only serves as a fallback when the `ci_admin_users` table is empty (first deployment). **There is intentionally no self-service "forgot password" feature**: resetting a password is a high-risk, high-impact event that must be performed by an administrator in person, with an audit trail, so no online recovery entry is exposed. To recover a forgotten password, use an offline patch — contact the author to obtain it.
 
 The admin panel sidebar contains the following modules:
 
@@ -187,7 +187,7 @@ The admin panel sidebar contains the following modules:
 
 ### 8.1 External LDAP / AD Logins (Optional)
 
-Besides built-in accounts, the system can validate logins against a corporate LDAP / Active Directory server (since v2.6.3). When enabled, the login order is: **local `admin_users` → LDAP → `app.env` fallback**.
+Besides built-in accounts, the system can validate logins against a corporate LDAP / Active Directory server (since v2.6.3). When enabled, the login order is: **local `ci_admin_users` → LDAP → `app.env` fallback**.
 
 - **Prerequisite**: PHP must have the `ldap` extension enabled (`extension=ldap` in `php.ini`). If it is missing, the LDAP provider is skipped automatically and local account logins keep working unchanged.
 - **Two connection modes (pick one)**:
@@ -198,7 +198,7 @@ Besides built-in accounts, the system can validate logins against a corporate LD
     1. Inject the CA cert path into the runtime environment: `LDAPTLS_CACERT=/path/to/ca.pem` (for Docker, mount the ca.pem into the container and set `LDAPTLS_CACERT` in `config/app.env` — php-fpm runs with `clear_env=no` so it is passed through);
     2. Or add `TLS_CACERT /path/to/ca.pem` to `/etc/ldap/ldap.conf` inside the container (persist it by bind-mounting the file).
     Setting `LDAPTLS_REQCERT=never` skips verification for ad-hoc internal testing but removes man-in-the-middle protection — forbidden in production.
-- **Accounts must be pre-bound**: LDAP only proves *who you are*. To sign in, the username you type must already be mapped to your LDAP DN in the `user_identities` table (`provider_type='ldap'`, `provider_uid` = the user DN). Otherwise login is rejected with `auth.ldap_not_bound` — accounts are **never auto-created**. Binding example:
+- **Accounts must be pre-bound**: LDAP only proves *who you are*. To sign in, the username you type must already be mapped to your LDAP DN in the `ci_user_identities` table (`provider_type='ldap'`, `provider_uid` = the user DN). Otherwise login is rejected with `auth.ldap_not_bound` — accounts are **never auto-created**. Binding example:
 
 ```sql
 -- MySQL
@@ -209,7 +209,7 @@ INSERT INTO user_identities (username, provider_type, provider_uid, email, bound
 VALUES ('zhangsan', 'ldap', 'uid=zhangsan,ou=users,dc=example,dc=com', 'zhangsan@example.com', datetime('now'), datetime('now'));
 ```
 
-  Authorization (role, allowed systems, email, etc.) always follows the matching `admin_users` row — LDAP is only the identity source. After a successful LDAP login the stored email and latest LDAP attributes are refreshed automatically; an account disabled in the admin panel (`status=0`) cannot sign in through LDAP either.
+  Authorization (role, allowed systems, email, etc.) always follows the matching `ci_admin_users` row — LDAP is only the identity source. After a successful LDAP login the stored email and latest LDAP attributes are refreshed automatically; an account disabled in the admin panel (`status=0`) cannot sign in through LDAP either.
 - **Failure semantics**: a failed bind (wrong password / unknown user) is reported as a generic credentials error. If the LDAP server itself is unreachable (connection failure, missing extension, …), login falls through to the `app.env` fallback — the system stays usable.
 - **Security**: usernames are escaped before being interpolated into `LDAP_USER_FILTER` / `LDAP_USER_DN_PATTERN`, so it is safe to embed user input in these templates.
 
@@ -728,7 +728,7 @@ Go to "API Management" (requires the relevant permission) and choose the require
 
 ### 16.1 Enable "CD deployment service" in this platform (required)
 
-CD shares the same database with this platform, but **whether it creates tables and serves is decided by the `integrated_services` contract table** (this platform is the only writer; CD is read-only). When not enabled, CD creates no tables and rejects login and every request with 503.
+CD shares the same database with this platform, but **whether it creates tables and serves is decided by the `ci_integrated_services` contract table** (this platform is the only writer; CD consumes it read-only through the contract endpoint). When not enabled, CD creates no tables and rejects login and every request with 503.
 
 > Since v2.9.0 CD may instead self-check that contract through the narrow endpoint `GET /api/integration/services/cd` (no direct read of the shared database — see 16.3); both channels read the same data.
 
@@ -737,12 +737,12 @@ Entry point: "API Management → 🔌 Integrated services" (the card sits above 
 **Enablement flow:**
 
 1. Tick the **Enable** checkbox on the right of the card and confirm. In **one transaction** the platform:
-   - writes `enabled=1` to `integrated_services`;
+   - writes `enabled=1` to `ci_integrated_services`;
    - captures the provision mode from this platform **current** migration mode (`DB_AUTO_MIGRATE`) — it is sampled only at enable time and does **not** change when you switch migration mode later:
      - `auto` (automatic schema mode): CD is authorized to **create/upgrade its tables automatically** in the shared database, for both MySQL and SQLite;
      - `manual` (manual schema mode): CD **never creates tables** and only accepts pre-created tables — import CD's bundled `database/init_mysql.sql` first, then enable;
    - auto-issues a service token restricted to the scopes `build.read`, `build.write`, `git`, `rbac.user.write` (no access to any management endpoint).
-     - `git` is read-only and lets CD fetch branches / tags as build refs (`/api/git/{job}/refs`).
+     - `git` is read-only and lets CD fetch branches / tags as build refs (`/api/git/{path}/refs`).
      - Credentials issued by v2.8.x lack `git`: after upgrading to v2.9.0 the **first bootstrap heals them automatically** (union only, digest and plaintext untouched, so CD's `CI_API_TOKEN` needs no replacement). No need to disable and re-enable the integrated service.
 2. The plaintext token in the popup is shown **only once** (only its SHA-256 digest is stored); copy it somewhere safe immediately.
 3. Put the token into CD's `app.env` as described in section 16.2, then start CD.
@@ -782,7 +782,7 @@ If sharing the same database with CD, point CD's `DB_HOST` to the same MySQL ins
 
 ### 16.3 CD's authorization self-check (narrow HTTP endpoint instead of reading the shared database)
 
-CD must know whether it is authorized and with which provisioning mode. The old mechanism read the shared `integrated_services` table directly, which ties CD to CI's schema (a CI table change can break CD, and a split deployment would break it outright). Since v2.9.0 there is a narrow endpoint:
+CD must know whether it is authorized and with which provisioning mode. The old mechanism read the shared contract table directly (now named `ci_integrated_services`), which ties CD to CI's schema (a CI table change can break CD, and a split deployment would break it outright). Since v2.9.0 there is a narrow endpoint:
 
 ```bash
 curl -H "Authorization: Bearer $CI_API_TOKEN" \
@@ -861,7 +861,7 @@ ADMIN_PASSWORD=               # Created on first boot; DB takes precedence after
 
 # Note:
 #   - For super_admin login, the system first validates against the admin_users DB record.
-#   - The system falls back to app.env ADMIN_USER/ADMIN_PASSWORD only when the admin_users table is empty (first deployment).
+#   - The system falls back to app.env ADMIN_USER/ADMIN_PASSWORD only when the ci_admin_users table is empty (first deployment).
 #   - This ADMIN_USER/ADMIN_PASSWORD pair is only used by the Devops-Glue API global admin fallback logic.
 #   - To create a CD-specific account, create the account in the admin backend, assign Devops-Glue CD permissions, and then write it into the Devops-Glue CD's own app.env if that service supports it.
 

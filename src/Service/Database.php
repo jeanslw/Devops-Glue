@@ -12,6 +12,9 @@ class Database
     /** 探测清单漂移只在本进程内记一次日志（bootstrap() 未置位时会重跑，不去重将反复刷同一条）。 */
     private static bool $schemaListDriftLogged = false;
 
+    /** 列结构对账每进程只执行一次（版本相等短路时也要跑，不能每请求重复 MODIFY）。 */
+    private static bool $columnReconcileDone = false;
+
     /** 返回已引导的 PDO；未引导时抛异常，避免在 null 上调用方法。 */
     private static function pdo(): \PDO
     {
@@ -111,6 +114,15 @@ class Database
                 self::seedRbac($seedMode); // 表已存在，补/同步种子数据
                 $needSeedMark = true;
             }
+        }
+        // 自愈与种子走公共段：手动建库模式（上方 else 分支只补种子）同样需要把 CD 服务凭据
+        // scope 补齐到当前契约，否则手动模式升级后 CD 调新增 scope 的端点会 403。
+        self::healCdServiceTokenScopes(self::pdo());
+        // 列结构对账只在自动模式自愈：同版本内迭代列定义时，schema_version 已相等会短路掉
+        // ensureTables()，没有这一步存量库的列宽漂移永远不会被修。只放宽（安全扩容）不收紧。
+        // 手动建库模式 DDL 归运维，不在引导期动结构，漂移由后台系统信息面板暴露。
+        if (self::$config['auto_migrate'] ?? true) {
+            self::reconcileColumns(self::pdo(), false);
         }
         self::seedAdmin();
         self::verifySeed();
@@ -329,9 +341,6 @@ class Database
      * 手写清单，新增应用表时必须同步补一行，否则后台数据表清单与 /healthz 的探测结果
      * 会少一张表（DatabaseBootstrapTest 中有对应断言）。
      *
-     * 不含 TABLE_CD_DEPLOY_LOG_VIEW（deploy_logs_view，v2.9.0 前名为 v_glue_deploy_logs）：
-     * 该视图由 Devops-CD 建立并维护，CI 侧只读、从不 DDL，故不该进这份探测清单。
-     *
      * @return list<string>
      */
     private static function schemaTables(): array
@@ -371,54 +380,44 @@ class Database
      *     ok: bool,
      *     tables: list<string>,
      *     missing: list<string>,
-     *     probe_unknown: list<string>,
-     *     probe_excluded: list<string>
+     *     probe_unknown: list<string>
      * }
-     *   - ok             三项漂移均为空
-     *   - tables         受影响表名的并集（按 missing、probe_unknown、probe_excluded 排列）
-     *   - missing        应用自有表未进探测清单，后台表清单与探针会少这张表
-     *   - probe_unknown  探测清单中不是任何 TABLE_* 常量值的项
-     *   - probe_excluded 探测清单中出现的显式排除项（CD 侧视图）
+     *   - ok            两项漂移均为空
+     *   - tables        受影响表名的并集（按 missing、probe_unknown 排列）
+     *   - missing       应用自有表未进探测清单，后台表清单与探针会少这张表
+     *   - probe_unknown 探测清单中不是任何 TABLE_* 常量值的项
      */
     public static function schemaListDrift(?array $probeList = null): array
     {
         $probe = $probeList ?? self::schemaTables();
 
-        $owned = []; // 应用自有表：AppConfig 全部 TABLE_* 常量（除 CD 契约视图）
-        $known = []; // 全部已知表名（含 CD 契约视图）：用于识别探测清单里「不是常量」的项
+        $owned = []; // 应用自有表：AppConfig 全部 TABLE_* 常量
         $ref   = new \ReflectionClass(\App\Config\AppConfig::class);
         foreach ($ref->getConstants() as $name => $value) {
             if (!str_starts_with((string)$name, 'TABLE_') || !is_string($value)) {
                 continue;
             }
-            $known[$value] = true;
-            if ($value !== \App\Config\AppConfig::TABLE_CD_DEPLOY_LOG_VIEW) {
-                $owned[$value] = true;
-            }
+            $owned[$value] = true;
         }
 
-        $missing       = [];
+        $missing      = [];
         foreach (array_keys($owned) as $table) {
             if (!in_array($table, $probe, true)) {
                 $missing[] = $table;
             }
         }
-        $probeUnknown  = [];
-        $probeExcluded = [];
+        $probeUnknown = [];
         foreach ($probe as $table) {
-            if ($table === \App\Config\AppConfig::TABLE_CD_DEPLOY_LOG_VIEW) {
-                $probeExcluded[] = $table;
-            } elseif (!isset($known[$table])) {
+            if (!isset($owned[$table])) {
                 $probeUnknown[] = $table;
             }
         }
 
         return [
-            'ok'             => $missing === [] && $probeUnknown === [] && $probeExcluded === [],
-            'tables'         => array_merge($missing, $probeUnknown, $probeExcluded),
-            'missing'        => $missing,
-            'probe_unknown'  => $probeUnknown,
-            'probe_excluded' => $probeExcluded,
+            'ok'            => $missing === [] && $probeUnknown === [],
+            'tables'        => array_merge($missing, $probeUnknown),
+            'missing'       => $missing,
+            'probe_unknown' => $probeUnknown,
         ];
     }
 
@@ -439,7 +438,6 @@ class Database
         \App\Helper\Log::error('schema 探测清单与 AppConfig 表常量不一致（后台「数据表清单」可能少表）', [
             'missing_from_probe' => $drift['missing'],
             'probe_unknown'      => $drift['probe_unknown'],
-            'probe_excluded'     => $drift['probe_excluded'],
             'hint'               => '请在 Database::schemaTables() 补上 AppConfig 中缺失的表（新增应用表时必须同步）；'
                 . 'CI 由 DatabaseBootstrapTest::testSchemaProbeListCoversEveryAppOwnedTable 守着该不变量',
         ]);
@@ -459,8 +457,12 @@ class Database
      *         ok: bool,
      *         tables: list<string>,
      *         missing: list<string>,
-     *         probe_unknown: list<string>,
-     *         probe_excluded: list<string>
+     *         probe_unknown: list<string>
+     *     },
+     *     column_drift: array{
+     *         safe_count: int,
+     *         unsafe_count: int,
+     *         items: list<array{table:string, column:string, actual:string, expected:string, safe:bool}>
      *     }
      * }
      */
@@ -481,6 +483,8 @@ class Database
         } catch (\Throwable $e) {
             $recorded = null;
         }
+        $columnDrift = self::columnDrift(self::pdo());
+        $safeCount   = count(array_filter($columnDrift, static fn (array $d): bool => $d['safe']));
         return [
             'driver'         => self::$driver,
             'schema_version' => $recorded,
@@ -491,6 +495,12 @@ class Database
             'tables'         => $status,
             // 探测清单自检结果（纯反射，与库无关）：后台系统信息的数据表一致性行按此渲染。
             'schema_list_drift' => self::schemaListDrift(),
+            // 列结构对账（查实际库）：safe 漂移会在自动模式引导时自愈，unsafe 仅提示人工评估。
+            'column_drift' => [
+                'safe_count'   => $safeCount,
+                'unsafe_count' => count($columnDrift) - $safeCount,
+                'items'        => $columnDrift,
+            ],
         ];
     }
 
@@ -543,7 +553,7 @@ class Database
     /**
      * 已记录的结构版本是否高于当前代码版本（方向位，/healthz 与 bootstrap() 共用）。
      *
-     * 无记录时返回 false。用 version_compare 比较，避免 '2.10.0' 与 '2.9.0' 的字典序问题。
+     * 无记录时返回 false。用 version_compare 比较，避免 '2.20.0' 与 '2.3.0' 的字典序问题。
      */
     private static function isVersionAhead(?string $recorded): bool
     {
@@ -586,12 +596,17 @@ class Database
     /**
      * 只读预检：计算若现在迁移会补哪些表 / 哪些列（不建连、不 bootstrap、不写库）。
      *
-     * 与 ensureTables() 同源（columnMigrations() + schemaTables()），结论与实跑一致；
-     * 供 cli/migrate.php --dry-run 使用。只覆盖缺失表与缺失列：索引与数据搬迁随迁移幂等执行，
-     * 表不存在时整表新建，其列不单独报告。
+     * 与 ensureTables() 同源（columnMigrations() + schemaTables() + columnSpecs()），结论与实跑一致；
+     * 供 cli/migrate.php --dry-run 使用。覆盖缺失表、缺失列与列类型漂移（mismatched_columns）：
+     * 其中 safe=true 的安全扩容会随迁移对齐，unsafe 仅由 dry-run 提示人工评估，迁移不改动。
+     * 索引与数据搬迁随迁移幂等执行，表不存在时整表新建，其列不单独报告。
      *
      * @param \PDO $pdo 调用方自建连接
-     * @return array{missing_tables: list<string>, missing_columns: array<string, list<string>>}
+     * @return array{
+     *     missing_tables: list<string>,
+     *     missing_columns: array<string, list<string>>,
+     *     mismatched_columns: list<array{table:string, column:string, actual:string, expected:string, safe:bool}>
+     * }
      */
     public static function pendingChanges(\PDO $pdo): array
     {
@@ -608,8 +623,9 @@ class Database
         }
 
         return [
-            'missing_tables'  => self::missingTables($pdo),
-            'missing_columns' => $missingColumns,
+            'missing_tables'     => self::missingTables($pdo),
+            'missing_columns'    => $missingColumns,
+            'mismatched_columns' => self::columnDrift($pdo),
         ];
     }
 
@@ -664,10 +680,165 @@ class Database
     }
 
     /**
-     * 手动触发迁移：建缺失表 + 补列 + RBAC/管理员种子 + 自检 + 标记 schema 当前。
+     * 列结构对账清单（仅 MySQL）：表 => 列 => 完整 MODIFY 列子句。
+     *
+     * columnMigrations() 解决「列不存在」（ADD COLUMN），本清单解决「列存在但类型/宽度落后于
+     * 建表定义」——典型场景：未发布版本内多轮 DDL，schema_version 已与代码相等，bootstrap 短路，
+     * 存量库的列定义停留在旧宽度（varchar(32) vs 建表脚本 varchar(255)）。
+     *
+     * 维护约定：
+     *  - 改 mysql_init.sql 中既有列的类型/宽度时，在此同步登记；SQLite 无长度语义，不登记；
+     *  - 只登记可安全放宽的变更（如 VARCHAR 扩容）。缩容、跨类型族即使登记也只在面板告警，
+     *    不会自动执行（safe=false），杜绝数据截断；
+     *  - 登记的期望类型必须与 mysql_init.sql 的 CREATE TABLE 一致，由
+     *    DatabaseBootstrapTest 守护（清单与脚本漂移则测试失败）。
+     *
+     * @return array<string, array<string, string>>
+     */
+    private static function columnSpecs(): array
+    {
+        return [
+            \App\Config\AppConfig::TABLE_ADMIN_USERS => [
+                'role'    => "VARCHAR(255) NOT NULL DEFAULT '" . \App\Config\AppConfig::ROLE_ADMIN . "'",
+                'systems' => "VARCHAR(255) NOT NULL DEFAULT 'ci,cd'",
+            ],
+        ];
+    }
+
+    /**
+     * 只读对账：列存在但实际类型与 columnSpecs() 期望不一致的清单。
+     *
+     * safe=true 仅当类型族相同且宽度只增（如 varchar(32)→varchar(255)）；其余漂移
+     * （缩容 varchar(512)→varchar(255)、跨类型族 text→varchar 等）safe=false，只报告。
+     * SQLite 无 VARCHAR 长度概念（类型亲和且不截断），列宽漂移无实际危害，返回空集。
+     *
+     * @param \PDO $pdo 调用方自建连接
+     * @return list<array{table:string, column:string, actual:string, expected:string, definition:string, safe:bool}>
+     */
+    public static function columnDrift(\PDO $pdo): array
+    {
+        if (self::$driver !== 'mysql') {
+            return [];
+        }
+        $drift = [];
+        foreach (self::columnSpecs() as $table => $columns) {
+            if (!self::tableExists($pdo, $table)) {
+                continue; // 整表缺失由 missing_tables 兜住
+            }
+            $stmt = $pdo->prepare(
+                'SELECT COLUMN_TYPE FROM information_schema.COLUMNS '
+                . 'WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?'
+            );
+            foreach ($columns as $column => $definition) {
+                $stmt->execute([$table, $column]);
+                $actual = $stmt->fetchColumn();
+                if ($actual === false) {
+                    continue; // 列不存在由 missing_columns / ADD COLUMN 循环兜住
+                }
+                $actualType   = self::normalizeColumnType((string) $actual);
+                $expectedType = self::normalizeColumnType(self::firstTypeToken($definition));
+                if ($actualType === $expectedType) {
+                    continue;
+                }
+                $drift[] = [
+                    'table'      => $table,
+                    'column'     => $column,
+                    'actual'     => $actualType,
+                    'expected'   => $expectedType,
+                    'definition' => $definition,
+                    'safe'       => self::isWidenVarchar($actualType, $expectedType),
+                ];
+            }
+        }
+        return $drift;
+    }
+
+    /** 取列定义子句的首个 token（类型），如 "VARCHAR(255) NOT NULL DEFAULT 'x'" → "VARCHAR(255)"。 */
+    private static function firstTypeToken(string $definition): string
+    {
+        $parts = explode(' ', trim($definition), 2);
+        return $parts[0];
+    }
+
+    /** 归一化类型 token：小写、去空白（varchar(255) 各部分间可能有空格）。 */
+    private static function normalizeColumnType(string $type): string
+    {
+        return strtolower(preg_replace('/\s+/', '', $type) ?? $type);
+    }
+
+    /**
+     * 是否为同类 VARCHAR 扩容（actual → expected，长度只增不减）。
+     * 非 varchar 或期望长度更小（缩容）均返回 false。
+     */
+    private static function isWidenVarchar(string $actual, string $expected): bool
+    {
+        if (!preg_match('/^varchar\((\d+)\)$/', $actual, $a)
+            || !preg_match('/^varchar\((\d+)\)$/', $expected, $b)) {
+            return false;
+        }
+        return (int) $b[1] >= (int) $a[1];
+    }
+
+    /**
+     * 列结构自愈：对 columnDrift() 中 safe=true 的漂移执行 MODIFY COLUMN。
+     *
+     * 每进程只执行一次（$columnReconcileDone）；表/列名来自代码常量与白名单清单，不接受外部输入。
+     * strict=true（ensureTables / 显式迁移链路）：任一 MODIFY 失败抛出，与 ADD COLUMN 循环同为
+     * fail-fast，尚未 markSchemaCurrent，下次启动重试。
+     * strict=false（bootstrap 公共段，含版本相等短路路径）：失败仅记 error 日志，不阻断业务请求；
+     * 成功对齐记 warning 留痕（结构被自动变更，运维应可见），漂移仍在系统信息面板展示。
+     *
+     * @return list<array{table:string, column:string, actual:string, expected:string}> 本次已对齐的列
+     */
+    public static function reconcileColumns(\PDO $pdo, bool $strict): array
+    {
+        if (self::$columnReconcileDone) {
+            return [];
+        }
+        self::$columnReconcileDone = true;
+
+        $fixed = [];
+        foreach (self::columnDrift($pdo) as $d) {
+            if (!$d['safe']) {
+                \App\Helper\Log::warning('列结构存在不可自动修复的漂移（需人工评估，未执行任何 DDL）', [
+                    'table' => $d['table'],
+                    'column' => $d['column'],
+                    'actual' => $d['actual'],
+                    'expected' => $d['expected'],
+                ]);
+                continue;
+            }
+            try {
+                $pdo->exec("ALTER TABLE {$d['table']} MODIFY COLUMN {$d['column']} {$d['definition']}");
+                $fixed[] = [
+                    'table' => $d['table'],
+                    'column' => $d['column'],
+                    'actual' => $d['actual'],
+                    'expected' => $d['expected'],
+                ];
+            } catch (\Throwable $e) {
+                if ($strict) {
+                    throw $e;
+                }
+                \App\Helper\Log::error('列结构自动对齐失败，不阻断启动（可在后台手动同步库结构重试）', [
+                    'table' => $d['table'],
+                    'column' => $d['column'],
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+        if ($fixed !== []) {
+            \App\Helper\Log::warning('列结构自动对齐完成（安全扩容 MODIFY）', ['fixed' => $fixed]);
+        }
+        return $fixed;
+    }
+
+    /**
+     * 手动触发迁移：建缺失表 + 补列 + 安全扩容列对齐 + RBAC/管理员种子 + 自检 + 标记 schema 当前。
      *
      * 入口：后台同步库结构按钮（super_admin 专用）、cli/migrate.php（发布流水线，无视
      * DB_AUTO_MIGRATE）。自带连接，空库或手动建库模式漏跑脚本时也能一次建全。
+     * 返回值同 schemaStatus()（含迁移后重新对账的 column_drift，正常应为零项）。
      *
      * @return array{
      *     driver: string,
@@ -675,7 +846,9 @@ class Database
      *     app_version: string,
      *     is_current: bool,
      *     auto_migrate: bool,
-     *     tables: array<string, bool>
+     *     tables: array<string, bool>,
+     *     schema_list_drift: array{ok:bool, tables:list<string>, missing:list<string>, probe_unknown:list<string>},
+     *     column_drift: array{safe_count:int, unsafe_count:int, items:list<array<string, mixed>>}
      * }
      */
     public static function migrateNow(): array
@@ -685,7 +858,8 @@ class Database
         // 属于降级方向的显式动作，需与自动引导同等留痕。
         $prevSchema = self::recordedVersion(self::SCHEMA_VERSION_KEY);
         $prevSeed   = self::recordedVersion(self::SEED_VERSION_KEY);
-        self::ensureTables();      // 建表 + RBAC 种子 + 索引 + JSON 迁移
+        self::ensureTables();      // 建表 + 旧表名 RENAME + RBAC 种子 + 索引 + JSON 迁移
+        self::healCdServiceTokenScopes(self::pdo()); // CD 服务凭据 scope 自愈（与 bootstrap 公共段一致）
         self::seedAdmin();          // 补管理员种子（与 bootstrap() 一致，缺管理员时自愈）
         self::verifySeed();         // 自检种子不变量，缺失直接抛异常，不标记当前
         self::markSchemaCurrent();  // 自检通过后才标记当前版本
@@ -876,6 +1050,7 @@ class Database
         self::$pdo = null;
         self::$bootstrapped = false;
         self::$schemaListDriftLogged = false;
+        self::$columnReconcileDone = false;
     }
 
     public static function driver(): string
@@ -968,6 +1143,10 @@ class Database
     {
         $pdo = self::pdo();
         $isMySQL = self::$driver === 'mysql';
+
+        // v2.9.0 表名收口：先把存量旧表名 RENAME 到 ci_ 前缀，再走 CREATE IF NOT EXISTS——
+        // 存量库改名后建表全部跳过，新装库无旧表直接建新名，两条路径汇合同一结构。
+        self::renameLegacyTables($pdo);
 
         // 字段类型映射
         $PK       = $isMySQL ? 'INT AUTO_INCREMENT PRIMARY KEY' : 'INTEGER PRIMARY KEY AUTOINCREMENT';
@@ -1303,6 +1482,11 @@ class Database
             }
         }
 
+        // 列已存在但类型/宽度落后于建表定义（同版本内迭代 DDL、跨版本升级都可能发生）：
+        // 只对 columnSpecs() 登记的安全扩容执行 MODIFY；缩容/跨类型族只在对账结果里告警。
+        // 与上方 ADD 循环同属 fail-fast：失败抛出，尚未 markSchemaCurrent，下次引导重试。
+        self::reconcileColumns($pdo, true);
+
         // 种子数据：RBAC（权限定义 / 隐含规则 / 系统角色 / 角色↔权限），幂等可重复执行
         // seedMode 透传：降级回滚时用 merge（只补不删），避免回滚把系统角色权限收窄。
         self::seedRbac($seedMode);
@@ -1310,7 +1494,7 @@ class Database
         // ── 索引（跨驱动幂等：MySQL 无 IF NOT EXISTS，先查 information_schema）──
         self::createIndex('idx_pipeline_artifacts_project_key', \App\Config\AppConfig::TABLE_PIPELINE_ARTIFACTS, 'project_key');
         self::createIndex('idx_pipeline_artifacts_created', \App\Config\AppConfig::TABLE_PIPELINE_ARTIFACTS, 'created_at');
-        self::createIndex('idx_job_git_map_current_path', \App\Config\AppConfig::TABLE_JOB_GIT_MAP, 'current_path');
+        self::createIndex('idx_job_git_map_current_path', \App\Config\AppConfig::TABLE_JOB_GIT_MAP, $isMySQL ? 'current_path(255)' : 'current_path');
         self::createIndex('idx_security_checks_project', \App\Config\AppConfig::TABLE_SECURITY_CHECKS, 'project, check_type');
         self::createIndex('idx_security_checks_sha', \App\Config\AppConfig::TABLE_SECURITY_CHECKS, 'sha');
         self::createIndex('idx_custom_builds_job', \App\Config\AppConfig::TABLE_CUSTOM_BUILDS, 'job_name');
@@ -1321,6 +1505,11 @@ class Database
         self::createIndex('idx_api_access_logs_created', \App\Config\AppConfig::TABLE_API_ACCESS_LOGS, 'created_at');
         self::createIndex('idx_api_access_logs_token', \App\Config\AppConfig::TABLE_API_ACCESS_LOGS, 'token_name');
         self::createIndex('idx_api_access_logs_result', \App\Config\AppConfig::TABLE_API_ACCESS_LOGS, 'result');
+        // user_identities.username 查询索引：MySQL 的 CREATE TABLE 已带内联 KEY idx_username，
+        // SQLite 建表语句无索引，需与 sqlite_init.sql 一致单独补建
+        if (!$isMySQL) {
+            self::createIndex('idx_user_identities_username', \App\Config\AppConfig::TABLE_USER_IDENTITIES, 'username');
+        }
 
         // 一次性 JSON 迁移（仅 SQLite）
         if (!$isMySQL) {
@@ -1334,9 +1523,30 @@ class Database
 
         // 存量脏数据清理：job_name/current_path 去除首尾空白（幂等，TRIM 语义两驱动一致）。
         self::trimJobGitMapWhitespace($pdo);
+    }
 
-        // 升级自愈：把 CD 契约行绑定的服务凭据 scope 补齐到当前契约（纯能力补齐，失败不阻断启动）。
-        self::healCdServiceTokenScopes($pdo);
+    /**
+     * v2.9.0 表名收口迁移：把存量旧表名 RENAME 到 ci_ 前缀新名（幂等）。
+     *
+     * 触发条件：旧表存在且新表不存在。MySQL / SQLite 同用 ALTER TABLE … RENAME TO 语法；
+     * 两驱动的数据、索引随表移动，引用方的外键定义自动跟随改写（integrated_services 的
+     * api_token_id → api_tokens 在任一改名顺序下都不会悬空）。
+     * 新旧表并存（新表已手工建好而旧表未清）时不改名、记告警，以新表为准。
+     * 任一表改名失败即抛出：改名只做一半会让种子/鉴权写进旧表，比启动失败更难排查。
+     */
+    private static function renameLegacyTables(\PDO $pdo): void
+    {
+        foreach (\App\Config\AppConfig::LEGACY_TABLE_NAMES as $old => $new) {
+            if (!self::tableExists($pdo, $old)) {
+                continue; // 新装库 / 已迁移库：无旧表
+            }
+            if (self::tableExists($pdo, $new)) {
+                \App\Helper\Log::warning('改名迁移跳过：新旧表并存，以新表为准', ['old' => $old, 'new' => $new]);
+                continue;
+            }
+            $pdo->exec("ALTER TABLE {$old} RENAME TO {$new}");
+            \App\Helper\Log::error('表名收口迁移完成', ['old' => $old, 'new' => $new]);
+        }
     }
 
     /**
@@ -1360,7 +1570,7 @@ class Database
     /**
      * 把 CD 契约行绑定的服务凭据 scope 补齐到 AppConfig::CD_SERVICE_TOKEN_SCOPES。
      *
-     * 为什么必须自愈：v2.9.0 给 CD 服务凭据新增了 git scope（CD 构建页改走 /api/git/{job}/refs
+     * 为什么必须自愈：v2.9.0 给 CD 服务凭据新增了 git scope（CD 构建页改走 /api/git/{path}/refs
      * 取 ref 候选值）。2.8.x 签发的存量凭据不含 git，若只改常量，旧部署升级后 CD 调 git 端点会被
      * AuthMiddleware 挡成 403，而管理员并不知道需要手动去「集成服务」页禁用再启用一次。
      *

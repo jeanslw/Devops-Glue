@@ -111,7 +111,7 @@ class ApiTokenService
      * 把 scope 并入既有 token 的 scope 清单（只补不删，幂等）。
      *
      * 用于「凭据契约扩充后的存量补齐」：例如 v2.9.0 给 CD 服务凭据新增 git scope（CD 构建页
-     * 改走 /api/git/{job}/refs 取 ref 候选值），已签发的存量凭据需要补齐；若改为重新签发，
+     * 改走 /api/git/{path}/refs 取 ref 候选值），已签发的存量凭据需要补齐；若改为重新签发，
      * CD 侧必须改 CI_API_TOKEN（运维成本 + 停机风险）。
      *
      * 与 updateScopes 的严格校验刻意不同，这里偏宽松（自愈路径，不该因脏值失败）：

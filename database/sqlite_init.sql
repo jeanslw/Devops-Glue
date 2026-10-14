@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS ci_custom_builds (
 );
 
 -- ── 5. cache（通用缓存）──
-CREATE TABLE IF NOT EXISTS cache (
+CREATE TABLE IF NOT EXISTS ci_cache (
     cache_key  TEXT PRIMARY KEY,
     value      TEXT NOT NULL,
     expires_at INTEGER
@@ -78,7 +78,7 @@ CREATE TABLE IF NOT EXISTS ci_app_settings (
 -- ── 7. admin_users（管理员账号）──
 -- v2.6.3: id 设为主键（INTEGER AUTOINCREMENT）；username 降为 UNIQUE，
 --         保持原有 username 业务主键语义不变；旧库由 Database::columnMigrations 幂等补齐。
-CREATE TABLE IF NOT EXISTS admin_users (
+CREATE TABLE IF NOT EXISTS ci_admin_users (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     username      TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
@@ -93,7 +93,7 @@ CREATE TABLE IF NOT EXISTS admin_users (
 
 
 -- ── 7.1 user_identities（用户身份源关联表，与 admin_users 拆分）──
-CREATE TABLE IF NOT EXISTS user_identities (
+CREATE TABLE IF NOT EXISTS ci_user_identities (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     username      TEXT NOT NULL,           -- 关联 admin_users.username
     provider_type TEXT NOT NULL,           -- ldap / local / oauth_*
@@ -152,7 +152,7 @@ CREATE TABLE IF NOT EXISTS ci_api_access_logs (
 );
 
 -- ── 9. roles（角色）──
-CREATE TABLE IF NOT EXISTS roles (
+CREATE TABLE IF NOT EXISTS ci_roles (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     name        TEXT NOT NULL UNIQUE,
     description TEXT,
@@ -161,7 +161,7 @@ CREATE TABLE IF NOT EXISTS roles (
 );
 
 -- ── 10. permissions（权限定义；parent_key 用于二级菜单 eg. cd.deploy.single → cd.deploy-manage）──
-CREATE TABLE IF NOT EXISTS permissions (
+CREATE TABLE IF NOT EXISTS ci_permissions (
     perm_key    TEXT PRIMARY KEY,
     description TEXT,
     parent_key  TEXT DEFAULT NULL,
@@ -169,21 +169,21 @@ CREATE TABLE IF NOT EXISTS permissions (
 );
 
 -- ── 11. role_permissions（角色↔权限）──
-CREATE TABLE IF NOT EXISTS role_permissions (
+CREATE TABLE IF NOT EXISTS ci_role_permissions (
     role_id  INTEGER NOT NULL,
     perm_key TEXT NOT NULL,
     PRIMARY KEY (role_id, perm_key)
 );
 
 -- ── 12. implied_rules（权限隐含关系；数据驱动，CD 可通过 API 注册）──
-CREATE TABLE IF NOT EXISTS implied_rules (
+CREATE TABLE IF NOT EXISTS ci_implied_rules (
     source_key TEXT NOT NULL,
     target_key TEXT NOT NULL,
     PRIMARY KEY (source_key, target_key)
 );
 
 -- ── 13. api_tokens（服务账号 / 第三方调用的 API token，独立于 RBAC）──
-CREATE TABLE IF NOT EXISTS api_tokens (
+CREATE TABLE IF NOT EXISTS ci_api_tokens (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     name       TEXT NOT NULL,
     token_hash TEXT NOT NULL UNIQUE,
@@ -214,7 +214,7 @@ CREATE TABLE IF NOT EXISTS ci_pipeline_build_log (
 -- 行不存在 / enabled=0 = 集成服务未启用（CD 不建表、不提供服务）；enabled=1 时 CD 按 provision 决定
 -- 自动建表（auto）或只认预建表（manual）。关闭只冻结服务，绝不删除集成服务的数据表。
 -- api_token_id 软引用 api_tokens(id)：凭据签发/哈希/scope/撤销均在 API 管理中维护，删除 token 自动置空。
-CREATE TABLE IF NOT EXISTS integrated_services (
+CREATE TABLE IF NOT EXISTS ci_integrated_services (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     service_name TEXT NOT NULL UNIQUE,
     enabled      INTEGER NOT NULL DEFAULT 0,
@@ -223,7 +223,7 @@ CREATE TABLE IF NOT EXISTS integrated_services (
     updated_by   TEXT DEFAULT '',
     created_at   TEXT DEFAULT (datetime('now','localtime')),
     updated_at   TEXT DEFAULT (datetime('now','localtime')),
-    FOREIGN KEY (api_token_id) REFERENCES api_tokens(id) ON DELETE SET NULL
+    FOREIGN KEY (api_token_id) REFERENCES ci_api_tokens(id) ON DELETE SET NULL
 );
 
 -- ── 索引 ──

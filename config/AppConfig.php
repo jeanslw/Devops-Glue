@@ -22,23 +22,37 @@ final class AppConfig
     public const TABLE_PIPELINE_BUILD_LOG = 'ci_pipeline_build_log'; // 拉取式记录「镜像 Tag」日志兜底的懒解析缓存（sha→tag）
     public const TABLE_CUSTOM_BUILDS     = 'ci_custom_builds';
     public const TABLE_SECURITY_CHECKS   = 'ci_security_checks';
-    public const TABLE_ADMIN_USERS       = 'admin_users';
+    public const TABLE_ADMIN_USERS       = 'ci_admin_users';
     public const TABLE_PLATFORM_VERSIONS = 'ci_platform_versions';
     public const TABLE_APP_SETTINGS      = 'ci_app_settings';
-    public const TABLE_CACHE             = 'cache';
-    public const TABLE_ROLES             = 'roles';
-    public const TABLE_PERMISSIONS       = 'permissions';
-    public const TABLE_ROLE_PERMISSIONS  = 'role_permissions';
-    public const TABLE_IMPLIED_RULES     = 'implied_rules';
-    public const TABLE_API_TOKENS        = 'api_tokens';
-    public const TABLE_USER_IDENTITIES   = 'user_identities'; // 身份源关联表（v2.6.3 引入，支持 ldap/local 等多登录方式）
+    public const TABLE_CACHE             = 'ci_cache';
+    public const TABLE_ROLES             = 'ci_roles';
+    public const TABLE_PERMISSIONS       = 'ci_permissions';
+    public const TABLE_ROLE_PERMISSIONS  = 'ci_role_permissions';
+    public const TABLE_IMPLIED_RULES     = 'ci_implied_rules';
+    public const TABLE_API_TOKENS        = 'ci_api_tokens';
+    public const TABLE_USER_IDENTITIES   = 'ci_user_identities'; // 身份源关联表（v2.6.3 引入，支持 ldap/local 等多登录方式）
     public const TABLE_OPERATION_LOGS    = 'ci_operation_logs'; // 后台操作审计日志
     public const TABLE_API_ACCESS_LOGS   = 'ci_api_access_logs'; // API token 调用日志（只记名不记 token）
-    // CD 部署记录契约视图（只读审计）。视图由 Devops-CD 建立并维护，CI 侧只 SELECT、从不 DDL，
-    // 故不进 Database::schemaTables() 探测清单；两侧必须同名——v2.9.0 由 v_glue_deploy_logs 更名而来，
-    // 改名须先升 CD（视图建在新名下）再升 CI，否则部署日志审计页降级为占位提示（详见 DeployLogRepository）。
-    public const TABLE_CD_DEPLOY_LOG_VIEW = 'deploy_logs_view';
-    public const TABLE_INTEGRATED_SERVICES = 'integrated_services'; // 集成服务启用契约表（CI 唯一写入；CD 等集成服务只读 enabled/provision）
+    public const TABLE_INTEGRATED_SERVICES = 'ci_integrated_services'; // 集成服务启用契约表（CI 唯一写入；CD 经契约端点读取，不直读本表）
+
+    /**
+     * v2.9.0 表名收口：共享库内 CI 自有表统一加 ci_ 前缀，旧表名 → 新表名。
+     * 存量库由 Database::renameLegacyTables() 幂等 RENAME（数据/索引/外键引用自动跟随）；
+     * bin/restore.php 恢复旧版本备份时按此清单把旧表名翻译成新表名后重放。
+     * 新增表不再进入此清单——它是 v2.9.0 一次性迁移的事实记录。
+     */
+    public const LEGACY_TABLE_NAMES = [
+        'admin_users'        => 'ci_admin_users',
+        'cache'              => 'ci_cache',
+        'roles'              => 'ci_roles',
+        'permissions'        => 'ci_permissions',
+        'role_permissions'   => 'ci_role_permissions',
+        'implied_rules'      => 'ci_implied_rules',
+        'api_tokens'         => 'ci_api_tokens',
+        'user_identities'    => 'ci_user_identities',
+        'integrated_services' => 'ci_integrated_services',
+    ];
 
     // ── 集成服务（integrated_services.service_name 的取值）──
     public const SERVICE_CD             = 'cd';   // Devops-CD 部署服务

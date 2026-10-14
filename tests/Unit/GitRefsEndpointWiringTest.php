@@ -103,8 +103,8 @@ class GitRefsEndpointWiringTest extends TestCase
     public function testOpenApiDocumentsTagsAndRefs(): void
     {
         $expectedSchemas = [
-            '/api/git/{job}/tags' => 'array',
-            '/api/git/{job}/refs' => 'object',
+            '/api/git/{path}/tags' => 'array',
+            '/api/git/{path}/refs' => 'object',
         ];
 
         // 中英双份 OpenAPI 必须同步：漏一份 = 对应语言的对接方（含 CD）看不到端点
@@ -130,10 +130,12 @@ class GitRefsEndpointWiringTest extends TestCase
     {
         $db = $this->read('src/Service/Database.php');
 
-        $this->assertStringContainsString(
-            'self::healCdServiceTokenScopes($pdo);',
-            $db,
-            'ensureTables() 必须调用自愈：否则 2.8.x 升级上来的 CD 凭据没有 git，一路 403'
+        // v2.9.0：自愈从 ensureTables 提升到 bootstrap 公共段（手动建库模式升级同样生效），
+        // migrateNow（后台"同步库结构"/cli/migrate.php）保持同一接线
+        $this->assertSame(
+            2,
+            substr_count($db, 'self::healCdServiceTokenScopes(self::pdo())'),
+            'bootstrap() 与 migrateNow() 两处都必须调用自愈：否则存量 CD 凭据缺 git scope，升级后一路 403'
         );
         $this->assertStringContainsString('public function addScopes(', $this->read('src/Service/ApiTokenService.php'));
         $this->assertStringContainsString(
@@ -158,4 +160,3 @@ class GitRefsEndpointWiringTest extends TestCase
         return (string) file_get_contents($file);
     }
 }
-

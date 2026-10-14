@@ -2612,7 +2612,7 @@
         }
       }
     },
-    "/api/git/{job}/branches": {
+    "/api/git/{path}/branches": {
       "get": {
         "tags": [
           "Git"
@@ -2626,7 +2626,7 @@
         ],
         "parameters": [
           {
-            "name": "job",
+            "name": "path",
             "in": "path",
             "required": true,
             "schema": {
@@ -2659,7 +2659,7 @@
         }
       }
     },
-    "/api/git/{job}/tags": {
+    "/api/git/{path}/tags": {
       "get": {
         "tags": [
           "Git"
@@ -2674,7 +2674,7 @@
         ],
         "parameters": [
           {
-            "name": "job",
+            "name": "path",
             "in": "path",
             "required": true,
             "schema": {
@@ -2707,7 +2707,7 @@
         }
       }
     },
-    "/api/git/{job}/refs": {
+    "/api/git/{path}/refs": {
       "get": {
         "tags": [
           "Git"
@@ -2722,7 +2722,7 @@
         ],
         "parameters": [
           {
-            "name": "job",
+            "name": "path",
             "in": "path",
             "required": true,
             "schema": {
@@ -5114,6 +5114,334 @@
           },
           "409": {
             "description": "该服务尚未启用"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        }
+      }
+    },
+    "/api/admin/deploy_logs": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "CD 部署记录审计列表",
+        "description": "只读分页查询 CD 部署审计日志（经 CD 的 /api/integration/deploy-logs 只读端点拉取，不直读 CD 库）。未传 date_from/date_to 时默认查近 30 天；CD 未启用或端点不可用时返回 available=false 的空列表。需 ci.deploy-logs 权限。",
+        "operationId": "adminDeployLogList",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "项目名（模糊匹配）"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "部署状态（精确匹配）"
+          },
+          {
+            "name": "deploy_type",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "部署类型（精确匹配）"
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "起始日期（含当天，YYYY-MM-DD）"
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "结束日期（含当天，YYYY-MM-DD）"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "部署日志列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "available": {
+                      "type": "boolean",
+                      "description": "视图是否可查询（CD 未启用时为 false）"
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "page": {
+                      "type": "integer"
+                    },
+                    "per_page": {
+                      "type": "integer"
+                    },
+                    "total_pages": {
+                      "type": "integer"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "integer"
+                          },
+                          "project": {
+                            "type": "string"
+                          },
+                          "tag": {
+                            "type": "string"
+                          },
+                          "image": {
+                            "type": "string"
+                          },
+                          "deploy_type": {
+                            "type": "string"
+                          },
+                          "target": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "triggered_by": {
+                            "type": "string"
+                          },
+                          "deploy_note": {
+                            "type": "string"
+                          },
+                          "created_at": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "缺少 ci.deploy-logs 权限"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        }
+      }
+    },
+    "/api/admin/api_access_logs": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "API Token 调用审计列表",
+        "description": "只读分页查询 API Token 调用审计日志。只返回 token 展示名等审计字段，绝无 token 原文/hash/body/query。未传 date_from/date_to 时默认查近 30 天。result/method 传入白名单外的值会被忽略。需 ci.api-logs 权限。",
+        "operationId": "adminApiAccessLogList",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "result",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "success",
+                "failure",
+                "denied"
+              ]
+            },
+            "description": "调用结果"
+          },
+          {
+            "name": "method",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "GET",
+                "POST",
+                "PUT",
+                "PATCH",
+                "DELETE"
+              ]
+            },
+            "description": "HTTP 方法"
+          },
+          {
+            "name": "token_name",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Token 展示名（模糊匹配）"
+          },
+          {
+            "name": "route",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "请求路由（模糊匹配）"
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "起始日期（含当天，YYYY-MM-DD）"
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "结束日期（含当天，YYYY-MM-DD）"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "调用日志列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "total": {
+                      "type": "integer"
+                    },
+                    "page": {
+                      "type": "integer"
+                    },
+                    "per_page": {
+                      "type": "integer"
+                    },
+                    "total_pages": {
+                      "type": "integer"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "integer"
+                          },
+                          "username": {
+                            "type": "string"
+                          },
+                          "token_name": {
+                            "type": "string"
+                          },
+                          "scopes": {
+                            "type": "string"
+                          },
+                          "method": {
+                            "type": "string"
+                          },
+                          "route": {
+                            "type": "string"
+                          },
+                          "status_code": {
+                            "type": "integer"
+                          },
+                          "result": {
+                            "type": "string"
+                          },
+                          "error_reason": {
+                            "type": "string"
+                          },
+                          "ip": {
+                            "type": "string"
+                          },
+                          "duration_ms": {
+                            "type": "integer"
+                          },
+                          "created_at": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "缺少 ci.api-logs 权限"
           },
           "500": {
             "$ref": "#/components/responses/500"

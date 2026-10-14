@@ -297,7 +297,7 @@ Steps:
 | Scope | Purpose |
 |---|---|
 | `main` | Read-only: job list, mappings, git platforms, git discovery |
-| `git` | Read-only: git branches / tags (includes the combined `/api/git/{job}/refs`, used by CD's build page to pick a ref) |
+| `git` | Read-only: git branches / tags (includes the combined `/api/git/{path}/refs`, used by CD's build page to pick a ref) |
 | `harbor.read` | Read-only: Harbor projects / repositories / tags |
 | `harbor.scan` | Trigger Harbor image scans |
 | `build.read` | Read-only: build pipelines / logs / branches |
@@ -391,7 +391,7 @@ This page centralizes "which external systems the CI platform integrates, and in
 - **Problem it solves**: with several platforms in parallel, quickly answer "is this platform configured, and does it work". When a webhook / build trigger fails, look here first instead of digging through env files.
 
 **③ Other settings cards** — each with its own permission
-- **Build-record push allowlist** (`ci.build_records.push`): which jobs may report final states via `POST /api/build/{job}/report` — without an allowlist any job can report (the security boundary of push-style CI).
+- **Build-record push allowlist** (`ci.build_records.push`): which jobs may report final states via `POST /api/build/{path}/report` — without an allowlist any job can report (the security boundary of push-style CI).
 - Security-related cards such as **OIDC / OAuth clients** and **login security policy** are covered in chapter 6 and are not repeated here.
 
 
@@ -422,7 +422,7 @@ The page has three blocks for three different kinds of operations — do not mix
 
 **① System info card (read-only, `ci.system` permission)** — app version / schema version / seed version / **Migration Mode** (the effective `DB_AUTO_MIGRATE` value: auto = the app creates tables itself; manual = amber hint "tables are provisioned via database/*.sql or cli/migrate.php; the app only seeds") / **Table Consistency** (`schema_list_drift`: green "consistent (with the table definitions in the code)" normally; if it names tables in red, this instance's AppConfig table constants and the table-list probe list are out of sync (an upgrade or hand-patched build bypassed CI), which shows up as **the list missing tables / failing to report a missing table** — upgrade to a build with the fix; table creation and normal operation are unaffected) / database driver / time of the last schema sync. **This card is the first stop when deciding whether a migration is needed.**
 
-**② Table list (read-only)** — each of the 17 business tables is probed for existence and row count, quickly revealing "which table is missing" (the diagnostic entry for empty or half-initialized databases).
+**② Table list (read-only)** — each of the 18 business tables is probed for existence and row count, quickly revealing "which table is missing" (the diagnostic entry for empty or half-initialized databases).
 
 **③ Backup & restore (`super_admin`, write operations)**
 - "Backup Database": a full export-style backup (zip), recorded in the operation log; `php cli/backup-db.php --force` is the equivalent CLI (use it for cron).
@@ -441,9 +441,9 @@ Besides built-in accounts, the system supports logging in with enterprise **LDAP
 ### 8.1 Login order
 
 Once LDAP is enabled, the login check order is: **local account → LDAP → config fallback**. That is:
-1. The local `admin_users` table is checked first;
+1. The local `ci_admin_users` table is checked first;
 2. If the local check fails / no such account, LDAP is checked next;
-3. Only on first deployment (the `admin_users` table is empty) does it fall back to the `app.env` fallback account.
+3. Only on first deployment (the `ci_admin_users` table is empty) does it fall back to the `app.env` fallback account.
 
 ### 8.2 Prerequisites
 

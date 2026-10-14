@@ -131,6 +131,13 @@ class Settings
         return str_contains($username, 'robot$');
     }
 
+    // CD（CI→CD 部署日志只读端点）
+    /** @return array<string,mixed> */
+    public function getCdConfig(): array
+    {
+        return $this->config['cd'] ?? [];
+    }
+
     /**
      * 获取用户自定义 Git Provider 列表
      * @return list<array{class?: string, config?: array<string,mixed>}> 每个元素包含 class (完整类名) 和 config (构造参数数组)

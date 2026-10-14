@@ -2597,7 +2597,7 @@
         }
       }
     },
-    "/api/git/{job}/branches": {
+    "/api/git/{path}/branches": {
       "get": {
         "tags": [
           "Git"
@@ -2611,7 +2611,7 @@
         ],
         "parameters": [
           {
-            "name": "job",
+            "name": "path",
             "in": "path",
             "required": true,
             "schema": {
@@ -2644,7 +2644,7 @@
         }
       }
     },
-    "/api/git/{job}/tags": {
+    "/api/git/{path}/tags": {
       "get": {
         "tags": [
           "Git"
@@ -2659,7 +2659,7 @@
         ],
         "parameters": [
           {
-            "name": "job",
+            "name": "path",
             "in": "path",
             "required": true,
             "schema": {
@@ -2692,7 +2692,7 @@
         }
       }
     },
-    "/api/git/{job}/refs": {
+    "/api/git/{path}/refs": {
       "get": {
         "tags": [
           "Git"
@@ -2707,7 +2707,7 @@
         ],
         "parameters": [
           {
-            "name": "job",
+            "name": "path",
             "in": "path",
             "required": true,
             "schema": {
@@ -5099,6 +5099,334 @@
           },
           "409": {
             "description": "Service is not enabled"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        }
+      }
+    },
+    "/api/admin/deploy_logs": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "CD deployment audit log list",
+        "description": "Read-only paginated query of CD deployment audit logs (fetched from CD's read-only /api/integration/deploy-logs endpoint; CD tables are never read directly). Defaults to the last 30 days when date_from/date_to are omitted; returns an empty list with available=false when CD is not enabled or the endpoint is unavailable. Requires ci.deploy-logs permission.",
+        "operationId": "adminDeployLogList",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Project name (fuzzy match)"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Deployment status (exact match)"
+          },
+          {
+            "name": "deploy_type",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Deployment type (exact match)"
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Start date (inclusive, YYYY-MM-DD)"
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "End date (inclusive, YYYY-MM-DD)"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deployment log list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "available": {
+                      "type": "boolean",
+                      "description": "Whether the view is queryable (false when CD is not enabled)"
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "page": {
+                      "type": "integer"
+                    },
+                    "per_page": {
+                      "type": "integer"
+                    },
+                    "total_pages": {
+                      "type": "integer"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "integer"
+                          },
+                          "project": {
+                            "type": "string"
+                          },
+                          "tag": {
+                            "type": "string"
+                          },
+                          "image": {
+                            "type": "string"
+                          },
+                          "deploy_type": {
+                            "type": "string"
+                          },
+                          "target": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "triggered_by": {
+                            "type": "string"
+                          },
+                          "deploy_note": {
+                            "type": "string"
+                          },
+                          "created_at": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "Missing ci.deploy-logs permission"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        }
+      }
+    },
+    "/api/admin/api_access_logs": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "API Token call audit log list",
+        "description": "Read-only paginated query of API Token call audit logs. Returns audit fields only (token display name etc.); never the token plaintext/hash/body/query. Defaults to the last 30 days when date_from/date_to are omitted. Values outside the result/method whitelists are ignored. Requires ci.api-logs permission.",
+        "operationId": "adminApiAccessLogList",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "result",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "success",
+                "failure",
+                "denied"
+              ]
+            },
+            "description": "Call result"
+          },
+          {
+            "name": "method",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "GET",
+                "POST",
+                "PUT",
+                "PATCH",
+                "DELETE"
+              ]
+            },
+            "description": "HTTP method"
+          },
+          {
+            "name": "token_name",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Token display name (fuzzy match)"
+          },
+          {
+            "name": "route",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Request route (fuzzy match)"
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Start date (inclusive, YYYY-MM-DD)"
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "End date (inclusive, YYYY-MM-DD)"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Call log list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "total": {
+                      "type": "integer"
+                    },
+                    "page": {
+                      "type": "integer"
+                    },
+                    "per_page": {
+                      "type": "integer"
+                    },
+                    "total_pages": {
+                      "type": "integer"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "integer"
+                          },
+                          "username": {
+                            "type": "string"
+                          },
+                          "token_name": {
+                            "type": "string"
+                          },
+                          "scopes": {
+                            "type": "string"
+                          },
+                          "method": {
+                            "type": "string"
+                          },
+                          "route": {
+                            "type": "string"
+                          },
+                          "status_code": {
+                            "type": "integer"
+                          },
+                          "result": {
+                            "type": "string"
+                          },
+                          "error_reason": {
+                            "type": "string"
+                          },
+                          "ip": {
+                            "type": "string"
+                          },
+                          "duration_ms": {
+                            "type": "integer"
+                          },
+                          "created_at": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "Missing ci.api-logs permission"
           },
           "500": {
             "$ref": "#/components/responses/500"

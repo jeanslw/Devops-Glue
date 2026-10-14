@@ -359,7 +359,7 @@ GET /api/git/{path}/refs
 
 ## 集成服务契约模块 (`/api/integration`)
 
-> **用途：** 供 CD 等集成服务在运行时自检「本服务是否被 Glue 授权、以哪种建表方式授权」，**免于直读共享库的 `integrated_services` 表**（表名/列名/驱动都是耦合面：CI 改库结构会弄坏 CD，将来拆库独立部署更是直接失效）。契约仍由 CI 唯一写入，消费方只读这一个窄接口。
+> **用途：** 供 CD 等集成服务在运行时自检「本服务是否被 Glue 授权、以哪种建表方式授权」，**免于直读共享库的 `ci_integrated_services` 表**（表名/列名/驱动都是耦合面：CI 改库结构会弄坏 CD，将来拆库独立部署更是直接失效）。契约仍由 CI 唯一写入，消费方只读这一个窄接口。
 
 | 接口 | 方法 | 说明 |
 |---|---|---|
@@ -451,7 +451,7 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 | `/api/admin/tag_cleanup` | POST | 手动立即执行一次过期 tag 清理（等价 `cli/cleanup-pipeline-tags.php`；对应开关未开启或 Harbor 未配置时返回 409 安全跳过；需 `ci.platform-config`） |
 | `/api/admin/tag_backfill` | POST | 手动立即执行一次镜像 Tag 日志回填（等价 `cli/backfill-pipeline-tags.php`；同上，仅补缺失 tag 不覆盖扫描结果；需 `ci.platform-config`） |
 | `/api/admin/operation_logs` | GET | 操作审计日志（支持 `?username=&action=&result=&operator_type=&date_from=&date_to=&page=&per_page=` 筛选；需 `ci.operation-logs`） |
-| `/api/admin/deploy_logs` | GET | CD 部署记录审计列表（只读，经 `deploy_logs_view` 契约视图，不直读 CD 表；支持 `?project=&status=&deploy_type=&date_from=&date_to=&page=&per_page=` 筛选；需 `ci.deploy-logs`） |
+| `/api/admin/deploy_logs` | GET | CD 部署记录审计列表（只读，经 CD 的 `/api/integration/deploy-logs` 只读端点拉取，不直读 CD 表；支持 `?project=&status=&deploy_type=&date_from=&date_to=&page=&per_page=` 筛选；需 `ci.deploy-logs`） |
 | `/api/admin/api_access_logs` | GET | API Token 调用审计列表（只返回 token 展示名等审计字段，绝无 token 原文/hash/body/query；支持 `?result=&method=&token_name=&route=&date_from=&date_to=&page=&per_page=` 筛选；需 `ci.api-logs`） |
 | `/api/admin/users` | GET | 用户列表（admin 可见全部；非 admin 看不到 admin 用户） |
 | `/api/admin/users` | POST | 创建用户（body: `username`、`password`、`role`、`systems`） |

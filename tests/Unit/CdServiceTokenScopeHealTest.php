@@ -12,7 +12,7 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * 升级自愈：存量 cd-service 凭据的 scope 补齐
- * （v2.9.0 起 CD 构建页改走 /api/git/{job}/refs 取 ref 候选值，而 /api/git/* 判 git scope）。
+ * （v2.9.0 起 CD 构建页改走 /api/git/{path}/refs 取 ref 候选值，而 /api/git/* 判 git scope）。
  *
  * 只改 AppConfig::CD_SERVICE_TOKEN_SCOPES 常量是不够的：2.8.x 已签发的凭据里没有 git，
  * 旧部署升级后 CD 会一路 403，而管理员并不知道要去「集成服务」页禁用再启用一次。
