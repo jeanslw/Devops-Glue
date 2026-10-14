@@ -356,6 +356,43 @@ Supports GitLab, Gitee, GitHub, and Gitea. Automatically resolves the Git reposi
 
 ---
 
+## Integration-Service Contract Module (`/api/integration`)
+
+> **Purpose:** lets integration services such as CD check at runtime whether Glue has authorized them and with which provisioning mode — **without reading the shared `integrated_services` table** (table name, columns and driver are all coupling surfaces: a CI schema change can break CD, and a split deployment would break it outright). CI stays the sole writer of the contract; consumers read this one narrow endpoint.
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/integration/services/{service}` | GET | Integration-service contract state (`service` currently only supports `cd`) |
+
+Response (wrapped in `data` with `format=json`; `raw`, the default, outputs the object directly):
+
+```json
+{
+  "service": "cd",
+  "enabled": true,
+  "provision": "auto",
+  "token_active": true,
+  "updated_at": "2026-10-14 10:00:00"
+}
+```
+
+**Verdict semantics (consumers must implement exactly this — do not invent your own reading):**
+
+| Response | Meaning | Consumer action |
+|---|---|---|
+| `200` + `enabled=false` | **Not enabled** (no contract row, or `enabled=0` — indistinguishable by design) | Refuse to serve (zero DDL); `provision` is normalized to `auto` here for log wording only and **must not** be used to create tables |
+| `200` + `enabled=true` + `provision=auto` | Authorized to **create tables automatically / backfill missing columns** | DDL allowed |
+| `200` + `enabled=true` + `provision=manual` | DDL forbidden | Operator-provisioned tables only; a missing table means "not deployed" |
+| `404` | Service name not in the whitelist (configuration mistake) | **Never treat as "not enabled"**: a mistyped service name would silently degrade into "always not enabled" with no signal |
+| `401` / `403` | Invalid token / missing `build.read` scope | Fix the credential first; do not change business decisions based on it |
+| Any other error (including 404/405 from an older CI without this endpoint, or network failures) | Endpoint unavailable | **Fall back to the previous mechanism** (read the contract table directly); never treat "endpoint unavailable" as "not enabled" |
+
+> - **Scope:** reuses `build.read` (CD's service credential already holds it, so no privilege extension is needed); the controller re-checks `ci.build-records.pull`, injected automatically from the scope.
+> - **`token_active` is advisory only** (liveness of the credential bound to the contract row — e.g. to show "credential invalid, re-enable the integration service in CI"). It is normally the same credential the caller is using (otherwise this call would already have been rejected), so it must **never** be used as a gate condition.
+> - The endpoint deliberately **omits** `token_id` / `token_name` / `token_scopes` / `updated_by` (management-side fields, see `/api/admin/integrated_services/{service}`). Field names mirror that endpoint's subset so consumers using both channels can share one mapping.
+
+---
+
 ## Admin Module (`/api/admin`)
 
 All admin endpoints (except `login` and `logout`) require Bearer Token (obtained via `POST /api/admin/login`).
@@ -495,7 +532,7 @@ Token expires in 24 hours. `super_admin` role returns `"*"` for permissions.
 | `git` | GIT (read-only: branches / tags / refs) | `/api/git/*` |
 | `harbor.read` | Harbor read | `/api/harbor/*` (except scan trigger) |
 | `harbor.scan` | Harbor scan trigger | `POST /api/harbor/{project}/repositories/{repo}/tags/{tag}/scan` |
-| `build.read` | Build read | `/api/build/*` (except write/report below) |
+| `build.read` | Build read + integration-service contract | `/api/build/*` (except write/report below), `/api/integration/*` |
 | `build.write` | Build execution | `trigger` / `retry` / `cancel` |
 | `build.report` | Build report | `scan-sync` / `commit-status` / `report` (CI script callbacks) |
 | `rbac.user.write` | CD service-account management | create/read/update/delete users and list roles via `/api/rbac/*` |

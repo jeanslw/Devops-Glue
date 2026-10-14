@@ -29,11 +29,15 @@
     },
     {
       "name": "Git",
-      "description": "Code Repository Branches"
+      "description": "Code Repository Branches / Tags"
     },
     {
       "name": "Harbor",
       "description": "Image Registry & Security Scan"
+    },
+    {
+      "name": "Integration",
+      "description": "Integration-service contract (lets CD self-check its authorization and provisioning mode)"
     },
     {
       "name": "Admin",
@@ -5408,6 +5412,85 @@
           },
           "401": {
             "description": "invalid_token"
+          }
+        }
+      }
+    },
+    "/api/integration/services/{service}": {
+      "get": {
+        "tags": [
+          "Integration"
+        ],
+        "summary": "Integration-service contract self-check (for CD; avoids reading the shared database)",
+        "description": "Lets integration services such as CD check at runtime whether Glue has authorized them and with which provisioning mode, instead of reading the shared `integrated_services` table (table name, columns and even the driver are coupling surfaces: a CI schema change can break CD, and a split deployment would break it outright). Verdict semantics: 200 + enabled=false means **not enabled** (no contract row, or enabled=0 — indistinguishable by design) so the service must refuse to serve and perform zero DDL (provision is normalized to auto there purely for log wording and must not be used to create tables); 200 + enabled=true + provision=auto authorizes automatic table creation / column backfill; 200 + enabled=true + provision=manual forbids DDL and accepts only operator-provisioned tables. **404 is strictly different from \"not enabled\"** (the service name is not in the whitelist — a configuration mistake and must not be treated as not-enabled). token_active is advisory only (liveness of the credential bound to the contract row) and must not be used as a gate. The scope reuses build.read; field names mirror the same subset of /api/admin/integrated_services/{service}.",
+        "operationId": "integrationServiceShow",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "service",
+            "in": "path",
+            "required": true,
+            "description": "Integration service name (integrated_services.service_name)",
+            "schema": {
+              "type": "string"
+            },
+            "example": "cd"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Integration-service contract state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "service": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean",
+                      "description": "Whether the service is enabled (contract row exists with enabled=1)"
+                    },
+                    "provision": {
+                      "type": "string",
+                      "enum": [
+                        "auto",
+                        "manual"
+                      ],
+                      "description": "DDL authorization: auto = automatic table creation / column backfill; manual = no DDL, operator-provisioned tables only. Normalized to auto when not enabled (log wording only)"
+                    },
+                    "token_active": {
+                      "type": "boolean",
+                      "description": "Liveness of the credential bound to the contract row; advisory only, never a gate"
+                    },
+                    "updated_at": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Last update of the contract row; null when not enabled"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "Missing build.read scope (or not an API token)"
+          },
+          "404": {
+            "description": "Service name not in the whitelist (integrated.unknown_service); strictly different from \"not enabled\" (200 + enabled=false)"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
           }
         }
       }

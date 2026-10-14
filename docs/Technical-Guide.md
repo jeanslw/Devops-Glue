@@ -1201,6 +1201,8 @@ LOG_RETAIN_DAYS=30                 # App log retention days; Logger self-cleans 
 | GET | `/api/rbac/users/{username}` | API Token | CD service account detail |
 | GET | `/api/rbac/roles` | API Token | Available role list |
 | GET | `/api/rbac/roles/{name}/permissions` | API Token | Permission keys of a role (CD permission mapping; 404 for an unknown role, `["*"]` wildcard for `super_admin`) |
+| **Integration-service contract** (API token + build.read scope; lets CD avoid reading `integrated_services` directly) | | | |
+| GET | `/api/integration/services/{service}` | API Token | Contract state `{service, enabled, provision, token_active, updated_at}`; not enabled = 200 + `enabled=false`, unknown service name = 404 (kept strictly apart) |
 | **OAuth2 / OIDC** | | | |
 | GET/POST | `/oauth/authorize` | No* | Authorization-code flow: consent page / submit consent (*submission verifies account credentials, shares the login rate limiter) |
 | POST | `/oauth/token` | No* | Exchange authorization code for access token (*validates client credentials and the one-time code) |

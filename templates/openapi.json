@@ -29,11 +29,15 @@
     },
     {
       "name": "Git",
-      "description": "代码仓库分支"
+      "description": "代码仓库分支 / Tag"
     },
     {
       "name": "Harbor",
       "description": "镜像仓库与安全扫描"
+    },
+    {
+      "name": "Integration",
+      "description": "集成服务契约（供 CD 等集成服务自检授权与建表方式）"
     },
     {
       "name": "Admin",
@@ -5423,6 +5427,85 @@
           },
           "401": {
             "description": "invalid_token"
+          }
+        }
+      }
+    },
+    "/api/integration/services/{service}": {
+      "get": {
+        "tags": [
+          "Integration"
+        ],
+        "summary": "集成服务契约自检（CD 专用，免于直读共享库）",
+        "description": "供 CD 等集成服务在运行时自检「本服务是否被 Glue 授权、以哪种建表方式授权」，避免直读共享库的 integrated_services 表（表名/列名/驱动都是耦合面，CI 改库结构会弄坏 CD，拆库独立部署更是直接失效）。判定口径：200 + enabled=false 表示**未启用**（契约行不存在或 enabled=0，两者对外同义）→ 服务应拒绝对外服务并零 DDL，此时 provision 归一化为 auto 仅为日志措辞、不得据此建表；200 + enabled=true + provision=auto 表示被授权自动建表/补列；200 + enabled=true + provision=manual 表示禁止建表、只认运维预建表。**404 与「未启用」严格区分**（服务名不在白名单 = 配置写错，不得当成未启用）。token_active 仅供展示（契约行绑定凭据的活性），不得当闸门条件。scope 复用 build.read；字段名与 /api/admin/integrated_services/{service} 的同名子集保持一致。",
+        "operationId": "integrationServiceShow",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "service",
+            "in": "path",
+            "required": true,
+            "description": "集成服务名（integrated_services.service_name）",
+            "schema": {
+              "type": "string"
+            },
+            "example": "cd"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "集成服务契约状态",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "service": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean",
+                      "description": "是否已启用（契约行存在且 enabled=1）"
+                    },
+                    "provision": {
+                      "type": "string",
+                      "enum": [
+                        "auto",
+                        "manual"
+                      ],
+                      "description": "建表授权：auto=允许自动建表/补列；manual=禁止建表，只认运维预建表。未启用时归一化为 auto，仅作日志措辞"
+                    },
+                    "token_active": {
+                      "type": "boolean",
+                      "description": "契约行绑定凭据的活性，仅供展示，不可作为闸门条件"
+                    },
+                    "updated_at": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "契约行最后更新时间；未启用时为 null"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "缺少 build.read scope（或非 API token）"
+          },
+          "404": {
+            "description": "服务名不在白名单（integrated.unknown_service）；与「未启用」（200 + enabled=false）严格区分"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
           }
         }
       }

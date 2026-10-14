@@ -730,6 +730,8 @@ Go to "API Management" (requires the relevant permission) and choose the require
 
 CD shares the same database with this platform, but **whether it creates tables and serves is decided by the `integrated_services` contract table** (this platform is the only writer; CD is read-only). When not enabled, CD creates no tables and rejects login and every request with 503.
 
+> Since v2.9.0 CD may instead self-check that contract through the narrow endpoint `GET /api/integration/services/cd` (no direct read of the shared database — see 16.3); both channels read the same data.
+
 Entry point: "API Management → 🔌 Integrated services" (the card sits above the token list). That page is **super_admin only** (the status endpoint requires the `ci.system` permission; enabling/disabling is **super_admin only**).
 
 **Enablement flow:**
@@ -777,6 +779,31 @@ CI_ADMIN_PASS=Service_Password
 > The two methods are mutually exclusive — do not configure both.
 
 If sharing the same database with CD, point CD's `DB_HOST` to the same MySQL instance.
+
+### 16.3 CD's authorization self-check (narrow HTTP endpoint instead of reading the shared database)
+
+CD must know whether it is authorized and with which provisioning mode. The old mechanism read the shared `integrated_services` table directly, which ties CD to CI's schema (a CI table change can break CD, and a split deployment would break it outright). Since v2.9.0 there is a narrow endpoint:
+
+```bash
+curl -H "Authorization: Bearer $CI_API_TOKEN" \
+  http://devops-glue/api/integration/services/cd
+```
+
+```json
+{ "service": "cd", "enabled": true, "provision": "auto", "token_active": true, "updated_at": "2026-10-14 10:00:00" }
+```
+
+- `200` + `enabled=false` = **not enabled** (no contract row, or `enabled=0`) → CD must refuse to serve and perform zero DDL; `provision` is normalized to `auto` there for log wording only and **must not** be used to create tables;
+- `200` + `enabled=true` + `provision=auto` = authorized to **create tables / backfill columns automatically**; `provision=manual` = DDL forbidden, operator-provisioned tables only;
+- **`404` is strictly different from "not enabled"**: a mistyped service name is a configuration error and must not be read as not-enabled (otherwise the typo silently degrades into "always not enabled");
+- `token_active` is advisory only (it tells you whether the contract's credential is dead) and must **never** be a gate condition;
+- Requires the `build.read` scope (already included in CD's service credential — nothing to tick);
+- **Upgrade compatibility**: a v2.8.x CI has no such endpoint; on 404/405 or a network error CD should fall back to the old mechanism (read the contract table directly) and must **never** treat "endpoint unavailable" as "not enabled".
+
+```bash
+# Legacy mechanism (still supported, but ties CD to the shared schema)
+mysql -h <db> -e "SELECT enabled, provision FROM <db>.integrated_services WHERE service_name='cd'"
+```
 
 ---
 

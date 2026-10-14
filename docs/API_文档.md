@@ -357,6 +357,43 @@ GET /api/git/{path}/refs
 
 ---
 
+## 集成服务契约模块 (`/api/integration`)
+
+> **用途：** 供 CD 等集成服务在运行时自检「本服务是否被 Glue 授权、以哪种建表方式授权」，**免于直读共享库的 `integrated_services` 表**（表名/列名/驱动都是耦合面：CI 改库结构会弄坏 CD，将来拆库独立部署更是直接失效）。契约仍由 CI 唯一写入，消费方只读这一个窄接口。
+
+| 接口 | 方法 | 说明 |
+|---|---|---|
+| `/api/integration/services/{service}` | GET | 集成服务契约状态（`service` 目前仅支持 `cd`） |
+
+响应（`format=json` 时包在 `data` 里，默认 `raw` 直接输出对象）：
+
+```json
+{
+  "service": "cd",
+  "enabled": true,
+  "provision": "auto",
+  "token_active": true,
+  "updated_at": "2026-10-14 10:00:00"
+}
+```
+
+**判定口径（消费方必须按此实现，不要自行发明解释）：**
+
+| 响应 | 含义 | 消费方动作 |
+|---|---|---|
+| `200` + `enabled=false` | **未启用**（契约行不存在或 `enabled=0`，两者对外同义） | 拒绝对外服务（零 DDL）；`provision` 此时归一化为 `auto`，仅为日志措辞，**不得**据此建表 |
+| `200` + `enabled=true` + `provision=auto` | 被授权**自动建表 / 补齐既有表缺失列** | 可建表 |
+| `200` + `enabled=true` + `provision=manual` | 禁止建表 | 只认运维预建表，缺表按未部署处理 |
+| `404` | 服务名不在白名单（配置写错） | **不得当成「未启用」**：拼错服务名会静默退化成「一直未启用」而无人察觉 |
+| `401` / `403` | Token 无效 / 缺 `build.read` scope | 先修凭据，不要据此改变业务判定 |
+| 其它错误（含旧版 CI 无此端点时的 404/405、网络异常） | 端点不可用 | **回退到旧口径**（直读契约表），不得把「端点不可用」当成「未启用」 |
+
+> - **scope：** 复用 `build.read`（CD 服务凭据已持有，无需扩权）；控制器内二次校验 `ci.build-records.pull`（由 scope 自动注入）。
+> - **`token_active` 仅供展示**（契约行绑定凭据的活性，如提示「凭据已失效，请在 CI 重新启用集成服务」），它与调用方自己的 Token 通常是同一枚（否则本次调用已被拒），**不可作为闸门条件**。
+> - 本端点刻意**不返回** `token_id` / `token_name` / `token_scopes` / `updated_by`（管理面字段，见 `/api/admin/integrated_services/{service}`）。字段名与管理的同名子集保持一致，便于同时使用两条通道的消费方共用映射。
+
+---
+
 ## Admin 模块 (`/api/admin`)
 
 所有 Admin 接口（除 `login` 和 `logout` 外）需要 Bearer Token（通过 `POST /api/admin/login` 获取）。
@@ -496,7 +533,7 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 | `git` | GIT（只读：分支 / Tag / refs） | `/api/git/*` |
 | `harbor.read` | Harbor 查询 | `/api/harbor/*`（除扫描触发外） |
 | `harbor.scan` | Harbor 扫描触发 | `POST /api/harbor/{project}/repositories/{repo}/tags/{tag}/scan` |
-| `build.read` | 构建查询 | `/api/build/*`（除下方写/回写接口外） |
+| `build.read` | 构建查询 + 集成服务契约 | `/api/build/*`（除下方写/回写接口外）、`/api/integration/*` |
 | `build.write` | 构建执行 | `trigger` / `retry` / `cancel` |
 | `build.report` | 构建回写 | `scan-sync` / `commit-status` / `report`（CI 脚本回调） |
 | `rbac.user.write` | CD 服务账号管理 | `/api/rbac/*` 用户与角色的建/读/改/删 |

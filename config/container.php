@@ -32,6 +32,7 @@ use App\Controller\MainController;
 use App\Controller\GitController;
 use App\Controller\HarborController;
 use App\Controller\AdminController;
+use App\Controller\ServiceContractController;
 use App\Controller\IntegratedServiceController;
 use App\Controller\RbacController;
 use App\Controller\BuildController;
@@ -451,6 +452,14 @@ return [
             $c->get(IntegratedServiceRepository::class),
             $c->get(ApiTokenService::class),
             $c->get(Settings::class)
+        );
+    },
+
+    // 集成服务契约窄只读控制器（供 CD 等集成服务 HTTP 自检；API token + build.read scope）
+    ServiceContractController::class => function (\Psr\Container\ContainerInterface $c) {
+        return new ServiceContractController(
+            $c->get(I18nService::class),
+            $c->get(IntegratedServiceRepository::class)
         );
     },
 

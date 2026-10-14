@@ -7,6 +7,7 @@ use App\Controller\HealthzController;
 use App\Controller\MainController;
 use App\Controller\HarborController;
 use App\Controller\AdminController;
+use App\Controller\ServiceContractController;
 use App\Controller\IntegratedServiceController;
 use App\Controller\RbacController;
 use App\Controller\BuildController;
@@ -120,6 +121,12 @@ $app->group('/api', function (RouteCollectorProxy $api) {
             $auth->map(['POST'], '/integrated_services/{service}/disable', [IntegratedServiceController::class, 'disable']);
         })->add(AuthMiddleware::class);
     });
+
+    // 集成服务契约（窄只读端点，供 CD 等集成服务 HTTP 自检「是否被授权 / 以哪种方式建表」，
+    // 免于直读共享库的 integrated_services 表；scope 复用 build.read，与管理面 /api/admin/integrated_services/* 分离）
+    $api->group('/integration', function (RouteCollectorProxy $integration) {
+        $integration->map(['GET'], '/services/{service}', [ServiceContractController::class, 'show']);
+    })->add(AuthMiddleware::class);
 
     // RBAC 接口（CD 服务账号专用，仅 API token + rbac.user.write scope）
     $api->group('/rbac', function (RouteCollectorProxy $rbac) {
