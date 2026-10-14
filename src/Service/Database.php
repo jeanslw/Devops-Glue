@@ -488,7 +488,7 @@ class Database
             // DB_AUTO_MIGRATE 实际生效值：后台系统信息的迁移模式行按此渲染
             'auto_migrate'   => self::isAutoMigrateEnabled(),
             'tables'         => $status,
-            // 探测清单自检结果（纯反射，与库无关）：后台系统信息的数据表清单一致性行按此渲染。
+            // 探测清单自检结果（纯反射，与库无关）：后台系统信息的数据表一致性行按此渲染。
             'schema_list_drift' => self::schemaListDrift(),
         ];
     }

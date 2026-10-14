@@ -404,7 +404,7 @@ class DatabaseBootstrapTest extends TestCase
      * 只读契约视图，不由本应用的建表逻辑创建，因此不予探测。
      *
      * 比对逻辑与运行时自检（Database::schemaListDrift()）共用同一份事实：同一个结论会进 error
-     * 日志、后台系统信息的数据表清单一致性行与 /healthz 的 tables_list_drift，升级或打补丁
+     * 日志、后台系统信息的数据表一致性行与 /healthz 的 tables_list_drift，升级或打补丁
      * 绕过 CI 的实例也不会少表。
      */
     public function testSchemaProbeListCoversEveryAppOwnedTable(): void
@@ -462,7 +462,7 @@ class DatabaseBootstrapTest extends TestCase
         $this->assertSame(['ci_typo_table', AppConfig::TABLE_CD_DEPLOY_LOG_VIEW], $drift['tables']);
     }
 
-    /** 正常代码零漂移：schemaStatus()（后台数据表清单一致性行的数据源）透出的自检结果必须是 ok。 */
+    /** 正常代码零漂移：schemaStatus()（后台数据表一致性行的数据源）透出的自检结果必须是 ok。 */
     public function testSchemaStatusExposesCleanListDriftCheck(): void
     {
         Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
