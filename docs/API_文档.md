@@ -323,11 +323,23 @@ custom_push 构建源专用：用户 CI 在构建完成后一次性上报终态�
 
 ```
 GET /api/git/{path}/branches
+GET /api/git/{path}/tags
+GET /api/git/{path}/refs
 ```
 
-`{path}` 为映射中的 Job 名称。返回：`["master","devops","main"]`
+`{path}` 为映射中的 Job 名称（支持 `group/sub/repo` 形式的多级名）。
+
+| 接口 | 方法 | 返回 |
+|---|---|---|
+| `/api/git/{path}/branches` | GET/POST | 分支名数组：`["master","devops","main"]` |
+| `/api/git/{path}/tags` | GET/POST | Tag 名数组：`["v1.0.0","v1.0.1"]` |
+| `/api/git/{path}/refs` | GET/POST | `{"branches":[...],"tags":[...]}`（一次拿全，CD 构建页 ref 下拉推荐） |
 
 支持 GitLab、Gitee、GitHub 和 Gitea。自动从 Job 映射中解析 Git 仓库。
+
+> - `{path}` 无仓库映射、或自动识别出的平台未注册时返回空数组（`[]`）；平台不可达时返回 `404` + `git.query_failed`（不把平台故障伪装成「仓库没有 tag」）。
+> - 需要 `git` scope。CD 服务 Token 由「集成服务 → 启用」自动签发并包含该 scope（v2.9.0 起）；v2.8.x 已签发的存量凭据在升级引导时会**自动补齐**该 scope，无需重新启用服务、也无需更换 Token。
+> - `refs` 等价于同时调用 `branches` 与 `tags`，但只解析一次 Job→仓库映射、只构造一次平台客户端，且两组值必然来自同一仓库快照。任一类型查询失败即整体 404。
 
 ---
 
@@ -481,7 +493,7 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 | Scope key | 说明 | 覆盖接口 |
 |---|---|---|
 | `main` | MAIN（只读） | `/api/main/*` |
-| `git` | GIT（只读） | `/api/git/*` |
+| `git` | GIT（只读：分支 / Tag / refs） | `/api/git/*` |
 | `harbor.read` | Harbor 查询 | `/api/harbor/*`（除扫描触发外） |
 | `harbor.scan` | Harbor 扫描触发 | `POST /api/harbor/{project}/repositories/{repo}/tags/{tag}/scan` |
 | `build.read` | 构建查询 | `/api/build/*`（除下方写/回写接口外） |

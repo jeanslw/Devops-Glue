@@ -1333,6 +1333,9 @@ class Database
 
         // 存量脏数据清理：job_name/current_path 去除首尾空白（幂等，TRIM 语义两驱动一致）。
         self::trimJobGitMapWhitespace($pdo);
+
+        // 升级自愈：把 CD 契约行绑定的服务凭据 scope 补齐到当前契约（纯能力补齐，失败不阻断启动）。
+        self::healCdServiceTokenScopes($pdo);
     }
 
     /**
@@ -1350,6 +1353,43 @@ class Database
         } catch (\Throwable $e) {
             // 清理失败不应阻断启动（属优化性修复），仅记录告警
             \App\Helper\Log::error('trimJobGitMapWhitespace 失败', ['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * 把 CD 契约行绑定的服务凭据 scope 补齐到 AppConfig::CD_SERVICE_TOKEN_SCOPES。
+     *
+     * 为什么必须自愈：v2.9.0 给 CD 服务凭据新增了 git scope（CD 构建页改走 /api/git/{job}/refs
+     * 取 ref 候选值）。2.8.x 签发的存量凭据不含 git，若只改常量，旧部署升级后 CD 调 git 端点会被
+     * AuthMiddleware 挡成 403，而管理员并不知道需要手动去「集成服务」页禁用再启用一次。
+     *
+     * 补齐只增不删（ApiTokenService::addScopes：并集、已是超集则不写库），token 摘要与明文都不动，
+     * 因此 CD 侧无需更换 CI_API_TOKEN。未启用过 CD 时没有契约行，直接跳过（不种子、不建凭据）。
+     */
+    private static function healCdServiceTokenScopes(\PDO $pdo): void
+    {
+        try {
+            $linkTable = \App\Config\AppConfig::TABLE_INTEGRATED_SERVICES;
+            if (
+                !self::tableExists($pdo, $linkTable)
+                || !self::tableExists($pdo, \App\Config\AppConfig::TABLE_API_TOKENS)
+            ) {
+                return;
+            }
+
+            $stmt = $pdo->prepare(
+                'SELECT api_token_id FROM ' . $linkTable . ' WHERE service_name = ? LIMIT 1'
+            );
+            $stmt->execute([\App\Config\AppConfig::SERVICE_CD]);
+            $tokenId = $stmt->fetchColumn();
+            if ($tokenId === false || (int) $tokenId <= 0) {
+                return;
+            }
+
+            (new ApiTokenService($pdo))->addScopes((int) $tokenId, \App\Config\AppConfig::CD_SERVICE_TOKEN_SCOPES);
+        } catch (\Throwable $e) {
+            // 属能力补齐而非结构变更：失败不阻断启动，仅记告警，管理员在集成服务页重新启用即可补齐
+            \App\Helper\Log::error('healCdServiceTokenScopes 失败', ['error' => $e->getMessage()]);
         }
     }
 

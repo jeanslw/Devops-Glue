@@ -707,7 +707,7 @@ Go to "API Management" (requires the relevant permission) and choose the require
 | Scope | Description |
 |---|---|
 | `main` | Read-only: job list, mapping, Git platforms, Git discovery |
-| `git` | Read-only: Git branches |
+| `git` | Read-only: Git branches / tags (`/api/git/*`, usable as build-ref candidates) |
 | `harbor.read` | Read-only: Harbor projects / repositories / tags |
 | `harbor.scan` | Trigger Harbor image scans |
 | `build.read` | Read-only: build pipelines / logs / branches |
@@ -739,7 +739,9 @@ Entry point: "API Management → 🔌 Integrated services" (the card sits above 
    - captures the provision mode from this platform **current** migration mode (`DB_AUTO_MIGRATE`) — it is sampled only at enable time and does **not** change when you switch migration mode later:
      - `auto` (automatic schema mode): CD is authorized to **create/upgrade its tables automatically** in the shared database, for both MySQL and SQLite;
      - `manual` (manual schema mode): CD **never creates tables** and only accepts pre-created tables — import CD's bundled `database/init_mysql.sql` first, then enable;
-   - auto-issues a service token restricted to the scopes `build.read`, `build.write`, `rbac.user.write` (no access to any management endpoint).
+   - auto-issues a service token restricted to the scopes `build.read`, `build.write`, `git`, `rbac.user.write` (no access to any management endpoint).
+     - `git` is read-only and lets CD fetch branches / tags as build refs (`/api/git/{job}/refs`).
+     - Credentials issued by v2.8.x lack `git`: after upgrading to v2.9.0 the **first bootstrap heals them automatically** (union only, digest and plaintext untouched, so CD's `CI_API_TOKEN` needs no replacement). No need to disable and re-enable the integrated service.
 2. The plaintext token in the popup is shown **only once** (only its SHA-256 digest is stored); copy it somewhere safe immediately.
 3. Put the token into CD's `app.env` as described in section 16.2, then start CD.
 4. On CD's first connection to the shared database: under `auto` it creates/migrates tables and starts serving; under `manual` it starts serving only after verifying all 14 CD tables exist, otherwise it returns 503 with an import hint.

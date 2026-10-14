@@ -322,11 +322,23 @@ Custom variables: any other field (e.g. `env`) is stored in `variables_json`.
 
 ```
 GET /api/git/{path}/branches
+GET /api/git/{path}/tags
+GET /api/git/{path}/refs
 ```
 
-`{path}` is the job name from the mapping. Returns: `["master","devops","main"]`
+`{path}` is the job name from the mapping (multi-segment names such as `group/sub/repo` are supported).
+
+| Endpoint | Method | Returns |
+|---|---|---|
+| `/api/git/{path}/branches` | GET/POST | Array of branch names: `["master","devops","main"]` |
+| `/api/git/{path}/tags` | GET/POST | Array of tag names: `["v1.0.0","v1.0.1"]` |
+| `/api/git/{path}/refs` | GET/POST | `{"branches":[...],"tags":[...]}` (both in one call; recommended for CD's build-page ref dropdown) |
 
 Supports GitLab, Gitee, GitHub, and Gitea. Automatically resolves the Git repository from the job mapping.
+
+> - When `{path}` has no repository mapping, or the auto-detected platform is not registered, an empty array (`[]`) is returned; when the platform is unreachable the endpoint returns `404` + `git.query_failed` (a platform outage is never disguised as "this repository has no tags").
+> - Requires the `git` scope. CD's service token is auto-issued by "Integrated Services → Enable" and includes it (since v2.9.0); credentials issued by v2.8.x are **healed automatically** during the upgrade bootstrap, so the service does not need to be re-enabled and the token does not need to be replaced.
+> - `refs` is equivalent to calling `branches` and `tags` together, but resolves the job→repository mapping once, builds the platform client once, and both lists are guaranteed to come from the same repository snapshot. A failure on either side fails the whole call with 404.
 
 ---
 
@@ -480,7 +492,7 @@ Token expires in 24 hours. `super_admin` role returns `"*"` for permissions.
 | Scope key | Description | Endpoints covered |
 |---|---|---|
 | `main` | MAIN (read-only) | `/api/main/*` |
-| `git` | GIT (read-only) | `/api/git/*` |
+| `git` | GIT (read-only: branches / tags / refs) | `/api/git/*` |
 | `harbor.read` | Harbor read | `/api/harbor/*` (except scan trigger) |
 | `harbor.scan` | Harbor scan trigger | `POST /api/harbor/{project}/repositories/{repo}/tags/{tag}/scan` |
 | `build.read` | Build read | `/api/build/*` (except write/report below) |

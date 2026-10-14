@@ -2640,6 +2640,113 @@
         }
       }
     },
+    "/api/git/{job}/tags": {
+      "get": {
+        "tags": [
+          "Git"
+        ],
+        "summary": "List Git tags for a job",
+        "description": "CD's build page can use a tag as the build ref (release builds). Returns an empty array when the job has no repository mapping or the platform cannot be detected; returns 404 when the platform is unreachable (a platform outage is never disguised as \"this repository has no tags\").",
+        "operationId": "gitTags",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "php/myapp",
+            "allowReserved": true
+          },
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of tag names",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
+        }
+      }
+    },
+    "/api/git/{job}/refs": {
+      "get": {
+        "tags": [
+          "Git"
+        ],
+        "summary": "List branches and tags in one call (build-ref candidates)",
+        "description": "Equivalent to calling branches and tags together, but resolves the job-to-repository mapping once and builds the platform client once, and both lists are guaranteed to come from the same repository snapshot. Recommended for CD's build-page ref dropdown. A failure on either side fails the whole call with 404.",
+        "operationId": "gitRefs",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "php/myapp",
+            "allowReserved": true
+          },
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of branch names plus array of tag names",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "branches": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
+        }
+      }
+    },
     "/api/harbor/projects": {
       "get": {
         "tags": [

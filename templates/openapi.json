@@ -2655,6 +2655,113 @@
         }
       }
     },
+    "/api/git/{job}/tags": {
+      "get": {
+        "tags": [
+          "Git"
+        ],
+        "summary": "查询 Job 对应的 Git Tag 列表",
+        "description": "CD 构建页可把 tag 当作构建 ref（发布版本按 tag 构建）。job 无仓库映射或平台无法识别时返回空数组；平台连接失败返回 404（不把平台故障伪装成「仓库没有 tag」）。",
+        "operationId": "gitTags",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "php/myapp",
+            "allowReserved": true
+          },
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "tag 名数组",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
+        }
+      }
+    },
+    "/api/git/{job}/refs": {
+      "get": {
+        "tags": [
+          "Git"
+        ],
+        "summary": "一次返回分支 + Tag（构建 ref 候选值）",
+        "description": "等价于同时调用 branches 与 tags，但只解析一次 job→仓库映射、只构造一次平台客户端，且两组值必然来自同一仓库快照。CD 构建页 ref 下拉推荐用本端点。任一类型查询失败即整体 404。",
+        "operationId": "gitRefs",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "php/myapp",
+            "allowReserved": true
+          },
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "分支名数组 + tag 名数组",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "branches": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
+        }
+      }
+    },
     "/api/harbor/projects": {
       "get": {
         "tags": [

@@ -157,7 +157,11 @@ $app->group('/api', function (RouteCollectorProxy $api) {
     })->add(AuthMiddleware::class);
 
     $api->group('/git', function (RouteCollectorProxy $git) {
+        // {path:.+} 允许 group/sub/repo 形式的多级 job/仓库标识（内部再做平台侧编码）。
+        // tags / refs 供 CD 构建页做 ref 候选值（refs 一次返回分支 + tag，省一次映射解析）。
         $git->map(['GET', 'POST'], '/{path:.+}/branches', [GitController::class, 'branches']);
+        $git->map(['GET', 'POST'], '/{path:.+}/tags', [GitController::class, 'tags']);
+        $git->map(['GET', 'POST'], '/{path:.+}/refs', [GitController::class, 'refs']);
     })->add(AuthMiddleware::class);
 
     $api->group('/harbor', function (RouteCollectorProxy $harbor) {

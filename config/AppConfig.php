@@ -46,12 +46,18 @@ final class AppConfig
      * CD 启用向导自动签发的服务 token 限定 scope：
      *   - build.read  ：读取构建记录/pipelines/tags/日志（CD Build 页与部署选 tag）
      *   - build.write ：触发构建 / retry / cancel（CD Build 页操作）
+     *   - git         ：读 job 绑定 Git 仓库的分支 / tag（CD 构建页 ref 下拉，/api/git/*）
      *   - rbac.user.write：CD 账号管理通道（/api/rbac/*，读用户/角色 + 建改删 cd 账号）
-     * 刻意不给 main/git/harbor 等无关 scope —— 启用即最小权限。
+     * 刻意不给 main/harbor 等无关 scope —— 启用即最小权限。
+     *
+     * git 是纯只读 scope（/api/git/* 整组只有分支/tag/refs 查询），纳入它不构成任何写能力。
+     * v2.9.0 才加入：2.8.x 签发的 cd-service 凭据不含 git，升级时由
+     * Database::healCdServiceTokenScopes() 按本常量自动补齐，管理员无需重新启用集成服务、CD 也无需换 Token。
      */
     public const CD_SERVICE_TOKEN_SCOPES = [
         self::API_SCOPE_BUILD_READ,
         self::API_SCOPE_BUILD_WRITE,
+        self::API_SCOPE_GIT,
         self::API_SCOPE_RBAC_USER_WRITE,
     ];
 
@@ -369,7 +375,7 @@ final class AppConfig
      */
     public const API_SCOPE_CAPABILITIES = [
         self::API_SCOPE_MAIN         => ['main'],
-        self::API_SCOPE_GIT          => ['git'],
+        self::API_SCOPE_GIT          => ['git.branches', 'git.tags', 'git.refs'],
         self::API_SCOPE_HARBOR_READ  => ['harbor.read'],
         self::API_SCOPE_HARBOR_SCAN  => ['harbor.scan'],
         self::API_SCOPE_BUILD_READ   => ['build.read'],

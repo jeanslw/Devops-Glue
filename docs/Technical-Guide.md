@@ -1185,6 +1185,8 @@ LOG_RETAIN_DAYS=30                 # App log retention days; Logger self-cleans 
 | GET/POST | `/api/build/{path}/tags` | Token | Pipeline → tag batch list |
 | **Git** | | | |
 | GET/POST | `/api/git/{path}/branches` | Token | Branch list |
+| GET/POST | `/api/git/{path}/tags` | Token | Tag list (usable as a build ref) |
+| GET/POST | `/api/git/{path}/refs` | Token | Branches + tags in one call (CD build-page ref dropdown) |
 | **Harbor** | | | |
 | GET/POST | `/api/harbor/projects` | Token | Project list |
 | GET/POST | `/api/harbor/{project}/repositories` | Token | Repository list |
