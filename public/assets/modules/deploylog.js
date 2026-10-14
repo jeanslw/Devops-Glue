@@ -16,8 +16,13 @@ export async function loadDeployLogs(page) {
     const project = document.getElementById('deploylog-project').value.trim();
     const status = document.getElementById('deploylog-status').value;
     const deployType = document.getElementById('deploylog-deploy-type').value;
-    const dateFrom = document.getElementById('deploylog-date-from').value;
-    const dateTo = document.getElementById('deploylog-date-to').value;
+    const fromInput = document.getElementById('deploylog-date-from');
+    const toInput = document.getElementById('deploylog-date-to');
+    // 未手填时预填近 30 天，与 CD 契约默认窗口一致（空框却只返回 30 天会让用户误以为看到全量）
+    if (!fromInput.value) fromInput.value = deploylogDefaultFrom();
+    if (!toInput.value) toInput.value = deploylogDefaultTo();
+    const dateFrom = fromInput.value;
+    const dateTo = toInput.value;
     if (project) q.set('project', project);
     if (status) q.set('status', status);
     if (deployType) q.set('deploy_type', deployType);
@@ -67,8 +72,8 @@ export function resetDeployLogs() {
     document.getElementById('deploylog-project').value = '';
     document.getElementById('deploylog-status').value = '';
     document.getElementById('deploylog-deploy-type').value = '';
-    document.getElementById('deploylog-date-from').value = '';
-    document.getElementById('deploylog-date-to').value = '';
+    document.getElementById('deploylog-date-from').value = deploylogDefaultFrom();
+    document.getElementById('deploylog-date-to').value = deploylogDefaultTo();
     loadDeployLogs(1);
 }
 
@@ -92,6 +97,23 @@ function deploylogTypeLabel(type) {
     const key = 'deploylog.type_' + type;
     const label = __.t(key);
     return label === key ? type : label;
+}
+
+function deploylogDefaultFrom() {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return deploylogToDateInput(d);
+}
+
+function deploylogDefaultTo() {
+    return deploylogToDateInput(new Date());
+}
+
+function deploylogToDateInput(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + day;
 }
 
 function renderDeploylogPagination(data) {

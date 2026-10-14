@@ -45,7 +45,7 @@ class DeployLogRepository
 
     /**
      * 分页查询，支持筛选：project（模糊）、status、deploy_type、date_from/date_to（含边界）。
-     * 未传日期时由 CD 侧默认近 30 天，避免全量拉取。
+     * 未传日期时由 CD 侧默认近 30 天（前端审计页亦预填近 30 天，口径一致），避免全量拉取。
      *
      * @param array<string,mixed> $filters
      * @return array{
@@ -121,6 +121,8 @@ class DeployLogRepository
 
     /**
      * 降级为空集（available=false），首次失败记一条 warning，之后静默。
+     *
+     * @return array{available: bool, total: int, page: int, per_page: int, total_pages: int, items: list<array<string,mixed>>}
      */
     private function unavailable(int $page, int $perPage, string $reason): array
     {
