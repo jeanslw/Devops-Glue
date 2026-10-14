@@ -280,7 +280,7 @@
             "items": {
               "type": "string"
             },
-            "description": "In-code bookkeeping self-check (Database::schemaListDrift(), pure reflection, no database involved): present when the AppConfig TABLE_* constants and the Database::schemaTables() probe list disagree, listing the tables that \"the admin table list / this probe's tables_missing will fail to report\", and counted into status=degraded (still HTTP 200, never pulled from the LB). It never appears for correct code; when it does, this instance's code has an unsynced list (an upgrade or hand-patched build bypassed CI). The same finding is written to the error log and called out in red on the admin \"Table List Consistency\" row",
+            "description": "In-code bookkeeping self-check (Database::schemaListDrift(), pure reflection, no database involved): present when the AppConfig TABLE_* constants and the Database::schemaTables() probe list disagree, listing the tables that \"the admin table list / this probe's tables_missing will fail to report\", and counted into status=degraded (still HTTP 200, never pulled from the LB). It never appears for correct code; when it does, this instance's code has an unsynced list (an upgrade or hand-patched build bypassed CI). The same finding is written to the error log and called out in red on the admin \"Table Consistency\" row",
             "example": [
               "ci_api_access_logs"
             ]

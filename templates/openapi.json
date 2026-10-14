@@ -280,7 +280,7 @@
             "items": {
               "type": "string"
             },
-            "description": "代码台账自检（Database::schemaListDrift()，纯反射、与库无关）：AppConfig 的 TABLE_* 表常量与 Database::schemaTables() 探测清单不一致时出现，列出「后台数据表清单 / 本探针的 tables_missing 会漏报的表名」，并计入 status=degraded（HTTP 仍 200，不摘流）。正常代码恒不出现；出现即该实例代码未同步清单（升级/手工打补丁绕过了 CI），同时会写一条 error 文件日志并在后台「数据表清单一致性」行红字点名",
+            "description": "代码台账自检（Database::schemaListDrift()，纯反射、与库无关）：AppConfig 的 TABLE_* 表常量与 Database::schemaTables() 探测清单不一致时出现，列出「后台数据表清单 / 本探针的 tables_missing 会漏报的表名」，并计入 status=degraded（HTTP 仍 200，不摘流）。正常代码恒不出现；出现即该实例代码未同步清单（升级/手工打补丁绕过了 CI），同时会写一条 error 文件日志并在后台「数据表一致性」行红字点名",
             "example": [
               "ci_api_access_logs"
             ]
