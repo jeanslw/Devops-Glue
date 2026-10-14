@@ -104,7 +104,7 @@ function backupConnect(): array
  * 表名只接受 [a-zA-Z0-9_]，防止异常表名拼进 SQL。
  *
  * MySQL 走 information_schema 且限定 table_type='BASE TABLE'：
- *   - 只取基础表，视图（如 v_glue_deploy_logs）不会被当成表导出（SHOW TABLES 会带上视图，
+ *   - 只取基础表，视图（如 deploy_logs_view）不会被当成表导出（SHOW TABLES 会带上视图，
  *     导出视图会生成一条对视图执行 SELECT * 的假 INSERT，恢复时必然失败）
  *   - 顺带能看到共享库里 cd 系统的表，与是否启用 CD 无关
  * SQLite 的 type='table' 本就排除视图。

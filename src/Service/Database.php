@@ -329,7 +329,8 @@ class Database
      * 手写清单，新增应用表时必须同步补一行，否则后台数据表清单与 /healthz 的探测结果
      * 会少一张表（DatabaseBootstrapTest 中有对应断言）。
      *
-     * 不含 TABLE_CD_DEPLOY_LOG_VIEW（v_glue_deploy_logs）：该视图由 Devops-CD 建立并维护。
+     * 不含 TABLE_CD_DEPLOY_LOG_VIEW（deploy_logs_view，v2.9.0 前名为 v_glue_deploy_logs）：
+     * 该视图由 Devops-CD 建立并维护，CI 侧只读、从不 DDL，故不该进这份探测清单。
      *
      * @return list<string>
      */

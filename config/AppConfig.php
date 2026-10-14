@@ -34,7 +34,10 @@ final class AppConfig
     public const TABLE_USER_IDENTITIES   = 'user_identities'; // 身份源关联表（v2.6.3 引入，支持 ldap/local 等多登录方式）
     public const TABLE_OPERATION_LOGS    = 'ci_operation_logs'; // 后台操作审计日志
     public const TABLE_API_ACCESS_LOGS   = 'ci_api_access_logs'; // API token 调用日志（只记名不记 token）
-    public const TABLE_CD_DEPLOY_LOG_VIEW = 'v_glue_deploy_logs'; // CD 部署记录契约视图（只读审计）
+    // CD 部署记录契约视图（只读审计）。视图由 Devops-CD 建立并维护，CI 侧只 SELECT、从不 DDL，
+    // 故不进 Database::schemaTables() 探测清单；两侧必须同名——v2.9.0 由 v_glue_deploy_logs 更名而来，
+    // 改名须先升 CD（视图建在新名下）再升 CI，否则部署日志审计页降级为占位提示（详见 DeployLogRepository）。
+    public const TABLE_CD_DEPLOY_LOG_VIEW = 'deploy_logs_view';
     public const TABLE_INTEGRATED_SERVICES = 'integrated_services'; // 集成服务启用契约表（CI 唯一写入；CD 等集成服务只读 enabled/provision）
 
     // ── 集成服务（integrated_services.service_name 的取值）──

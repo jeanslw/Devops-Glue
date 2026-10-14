@@ -400,7 +400,7 @@ class DatabaseBootstrapTest extends TestCase
      * 由 cli/cleanup-api-access-logs.php 定时清理，却不在探测清单里，表现为新装实例的数据表
      * 卡片比真实库少一张，/healthz 的 tables_missing 也感知不到它的缺失。
      *
-     * 唯一合法例外是 TABLE_CD_DEPLOY_LOG_VIEW（v_glue_deploy_logs）：它是 Devops-CD 侧建立的
+     * 唯一合法例外是 TABLE_CD_DEPLOY_LOG_VIEW（deploy_logs_view）：它是 Devops-CD 侧建立的
      * 只读契约视图，不由本应用的建表逻辑创建，因此不予探测。
      *
      * 比对逻辑与运行时自检（Database::schemaListDrift()）共用同一份事实：同一个结论会进 error
@@ -421,7 +421,7 @@ class DatabaseBootstrapTest extends TestCase
             . '（漏加会让后台表清单少表、/healthz 的 tables_missing 也看不见它缺失）'
         );
         $this->assertSame([], $drift['probe_unknown'], '探测清单里出现了不是 AppConfig TABLE_* 常量的表名（手写字符串/笔误？）');
-        $this->assertSame([], $drift['probe_excluded'], '探测清单不应包含 CD 侧契约视图 v_glue_deploy_logs');
+        $this->assertSame([], $drift['probe_excluded'], '探测清单不应包含 CD 侧契约视图 deploy_logs_view');
         $this->assertTrue($drift['ok']);
     }
 

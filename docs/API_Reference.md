@@ -450,7 +450,7 @@ Token expires in 24 hours. `super_admin` role returns `"*"` for permissions.
 | `/api/admin/tag_cleanup` | POST | Run stale tag cleanup once, on demand (equivalent to `cli/cleanup-pipeline-tags.php`; returns 409 and skips safely when the switch is off or Harbor is unconfigured; requires `ci.platform-config`) |
 | `/api/admin/tag_backfill` | POST | Run image tag log backfill once, on demand (equivalent to `cli/backfill-pipeline-tags.php`; same guards, fills missing tags only and never overwrites scan results; requires `ci.platform-config`) |
 | `/api/admin/operation_logs` | GET | Operation audit log (filter by `?username=&action=&result=&operator_type=&date_from=&date_to=&page=&per_page=`; requires `ci.operation-logs`) |
-| `/api/admin/deploy_logs` | GET | CD deploy record audit list (read-only, via the `v_glue_deploy_logs` contract view, never reading CD tables directly; filter by `?project=&status=&deploy_type=&date_from=&date_to=&page=&per_page=`; requires `ci.deploy-logs`) |
+| `/api/admin/deploy_logs` | GET | CD deploy record audit list (read-only, via the `deploy_logs_view` contract view, never reading CD tables directly; filter by `?project=&status=&deploy_type=&date_from=&date_to=&page=&per_page=`; requires `ci.deploy-logs`) |
 | `/api/admin/api_access_logs` | GET | API token access audit list (returns only audit fields such as the token display name — never token plaintext/hash/body/query; filter by `?result=&method=&token_name=&route=&date_from=&date_to=&page=&per_page=`; requires `ci.api-logs`) |
 | `/api/admin/users` | GET | User list (admin sees all; non-admin cannot see admin users) |
 | `/api/admin/users` | POST | Create user (body: `username`, `password`, `role`, `systems`) |

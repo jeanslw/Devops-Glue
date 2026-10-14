@@ -321,7 +321,7 @@ The admin panel's "System Settings → Data Management → Database" card provid
 
 - **Switch**: `DB_BACKUP_ENABLED` in the root `.env` (default off; when off it prints a skip message and exits 0, avoiding surprising existing deployments with extra disk writes); the interval is overridden by `DB_BACKUP_INTERVAL`, default 86400 seconds. You can also run `php cli/backup-db.php --force` manually.
 - **Output**: same as the Web side (reuses `DataBackupService`, "same logic") — when CD is enabled it produces `devops-glue_<driver>_<datetime>.zip` (mode=app, app tables) + `devops-cd_<driver>_<datetime>.zip` (mode=cd, `cd_*` tables; written only when `cd_*` tables exist); when CD is not enabled, only one zip is produced. Each zip contains a same-named `.sql` pure-data file; each prefix rolls over the latest 10 files. Both still unconditionally exclude `cache` (session tokens are ephemeral credentials) and `ci_platform_versions` (derived cache).
-- **Base tables only**: the enumeration filters `table_type='BASE TABLE'`, so views (e.g. `v_glue_deploy_logs`) are never exported as tables — otherwise a fake `INSERT` against the view would be generated and restore would inevitably fail.
+- **Base tables only**: the enumeration filters `table_type='BASE TABLE'`, so views (e.g. `deploy_logs_view`) are never exported as tables — otherwise a fake `INSERT` against the view would be generated and restore would inevitably fail.
 - **Privileges required**: `information_schema.tables` only returns tables the current account has some privilege on. The account must hold database-level (or global) `SELECT`/`ALL` on the shared database, otherwise `cd_*` tables are silently skipped — a pre-backup self-check logs a WARN for this (see `DataBackupService::mysqlVisibilityWarning()`). The Docker default `devops` account already gets database-level `ALL` at first init; bare-metal users must run `GRANT ALL PRIVILEGES ON devops_glue.* TO '<account>';` themselves.
 - **Restore**: `php bin/restore.php <devops-glue_*.zip> --yes` restores the CI app tables; `php bin/restore.php <devops-cd_*.zip> --yes --cd` restores the CD tables (both `.zip` and `.sql` inputs are supported). The file's META mode is validated, so a CI backup cannot be used for a CD restore and vice versa.
 
@@ -1149,7 +1149,7 @@ LOG_RETAIN_DAYS=30                 # App log retention days; Logger self-cleans 
 | DELETE | `/api/admin/implied_rules` | Token | Delete implied rule |
 | GET | `/api/admin/me/permissions` | Token | Get current user permissions |
 | GET | `/api/admin/operation_logs` | Token | Operation audit log (filter/pagination) |
-| GET | `/api/admin/deploy_logs` | Token | CD deployment record audit list (via the v_glue_deploy_logs view, filter/pagination) |
+| GET | `/api/admin/deploy_logs` | Token | CD deployment record audit list (via the deploy_logs_view view, filter/pagination) |
 | GET | `/api/admin/api_access_logs` | Token | API token call audit list (filter/pagination) |
 | GET | `/api/admin/platform_config` | Token | Platform access status (sanitized) + per-platform tag / API call log settings |
 | PUT | `/api/admin/platform_config` | Token | Update per-platform tag / API call log settings (only keys explicitly provided) |

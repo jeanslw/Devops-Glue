@@ -5,30 +5,46 @@ namespace App\Service;
 use App\Config\AppConfig;
 
 /**
- * CD 部署记录只读审计仓储（经 v_glue_deploy_logs 契约视图读取，不直读 cd_deploy_logs）。
+ * CD 部署记录只读审计仓储（经 deploy_logs_view 契约视图读取，不直读 cd_deploy_logs）。
  *
  * 设计原则：
  *  - 只读：仅提供分页列表，不提供写入/删除。
  *  - 审计字段：只查契约视图内的审计列，不含 output/stage_times 等大字段。
- *  - 容错：视图缺失或查询异常不抛 500，返回空集且 available=false，由前端展示占位。
+ *  - 容错：视图缺失或查询异常不抛 500，返回空集且 available=false，由前端展示占位；
+ *    但首次失败会记一条 warning 文件日志（含视图名与原因），把「视图不存在」与「确实没数据」
+ *    区分开——否则两侧视图名不一致时，页面只剩一句占位提示，故障原因无从查起。
+ *
+ * 视图由 Devops-CD 建立并维护（CI 侧只 SELECT、从不 DDL），因此不进 Database::schemaTables()
+ * 探测清单。v2.9.0 由 v_glue_deploy_logs 更名为 deploy_logs_view，两侧必须同名：改名须先升 CD
+ * （视图建在新名下）再升 CI，否则本仓储判定视图不可用、部署日志审计页降级为占位提示。
  */
 class DeployLogRepository
 {
     private const DEFAULT_RANGE_DAYS = 30; // 未指定日期时默认只查近 30 天
+
+    /** 视图不可用的 warning 是否已记过（每进程一次，避免列表页反复刷新把日志刷爆） */
+    private static bool $unavailableLogged = false;
 
     public function __construct(private \PDO $pdo)
     {
     }
 
     /**
-     * 契约视图是否可用（CD 是否已建 v_glue_deploy_logs）。
+     * 契约视图是否可用（CD 是否已建 deploy_logs_view，且与 CI 侧同名）。
      */
     public function isAvailable(): bool
     {
         try {
             $this->pdo->query('SELECT 1 FROM ' . AppConfig::TABLE_CD_DEPLOY_LOG_VIEW . ' LIMIT 1');
             return true;
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            if (!self::$unavailableLogged) {
+                self::$unavailableLogged = true;
+                \App\Helper\Log::warning('[部署日志] 契约视图不可用，部署日志审计降级为占位提示', [
+                    'view'  => AppConfig::TABLE_CD_DEPLOY_LOG_VIEW,
+                    'error' => $e->getMessage(),
+                ]);
+            }
             return false;
         }
     }

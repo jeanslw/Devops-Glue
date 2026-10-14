@@ -85,7 +85,7 @@ class DataBackupService
     private function listTables(): array
     {
         if ($this->driver === 'mysql') {
-            // 只取基础表（information_schema + table_type='BASE TABLE'）：视图（如 v_glue_deploy_logs）
+            // 只取基础表（information_schema + table_type='BASE TABLE'）：视图（如 deploy_logs_view）
             // 不会被当成表导出——SHOW TABLES 会带上视图，导出视图会生成对视图执行 SELECT * 的假 INSERT，
             // 恢复时必然失败。
             $names = $this->pdo->query(

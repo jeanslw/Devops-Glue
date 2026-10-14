@@ -49,6 +49,7 @@
 │  ci_custom_builds ← Custom_Push write                      │
 │  cd_servers       ← CD maintains                           │
 │  cd_deploy_logs   ← CD writes                              │
+│  deploy_logs_view ← CI read-only (CD-owned view)           │
 │  cd_bots          ← CD maintains                           │
 │  admin_users      ← CI writes /CD read (Shared)            │
 └────────────────────────────┬───────────────────────────────┘
