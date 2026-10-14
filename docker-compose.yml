@@ -30,6 +30,8 @@ services:
       - ./data/backups:/data/backups
     ports:
       - "8080:80"
+      # 宿主机 IPv6 发布（可选）
+      #- "[::]:8080:80"
       # HTTPS：想启用去掉注释，并在 nginx.conf 放开 443 listen 段、证书放 config/certs/
       # HTTPS: to enable, uncomment, un-comment the 443 listen block in nginx.conf, and put certs in config/certs/
       #- "8443:443"
