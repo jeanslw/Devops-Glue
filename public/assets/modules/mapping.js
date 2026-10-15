@@ -124,7 +124,7 @@ export async function loadMaps() {
                         })()}
                         <button class="btn btn-sm btn-edit" onclick='editMap(${js(m)})'>✏️ ${__.t('common.edit')}</button>
                         <button class="btn btn-sm btn-del" onclick="deleteMap('${escJs(esc(m.job_name))}')">🗑 ${__.t('common.delete')}</button>
-                        <button class="btn btn-sm" onclick="copyPipelineIds('${escJs(esc(m.job_name))}')" style="color:#4f46e5;font-size:12px;margin-left:6px;border:none;background:none;cursor:pointer;" title="复制 Pipeline ID">📋</button>
+                        <button class="btn btn-sm" onclick="copyPipelineIds('${escJs(esc(m.job_name))}')" style="color:#4f46e5;font-size:12px;margin-left:6px;border:none;background:none;cursor:pointer;" title="${esc(__.t('js.copy_pipeline_id'))}">📋</button>
                     </td>
                 </tr>`;
             }).join('');
@@ -351,12 +351,12 @@ export async function copyPipelineIds(jobName) {
             throw new Error(msg);
         }
         const text = await res.text();
-        if (!text.trim()) { toast('无 Pipeline 记录', false); return; }
+        if (!text.trim()) { toast(__.t('js.no_pipeline_records'), false); return; }
         navigator.clipboard.writeText(text).then(
-            () => toast('Pipeline ID 已复制', true),
-            () => toast('复制失败，请检查浏览器权限', false)
+            () => toast(__.t('js.pipeline_id_copied'), true),
+            () => toast(__.t('js.copy_failed_perm'), false)
         );
     } catch (e) {
-        toast('获取失败: ' + e.message, false);
+        toast(__.t('js.fetch_failed') + ': ' + e.message, false);
     }
 }

@@ -385,6 +385,11 @@ return [
     'js.total_items'            => '共 {total} 条',
     'js.auto_detect'            => '— 自动检测（IP 地址需手动选）—',
     'js.edit_mapping'           => '编辑映射',
+    'js.copy_pipeline_id'       => '复制 Pipeline ID',
+    'js.no_pipeline_records'    => '无 Pipeline 记录',
+    'js.pipeline_id_copied'     => 'Pipeline ID 已复制',
+    'js.copy_failed_perm'       => '复制失败，请检查浏览器权限',
+    'js.fetch_failed'           => '获取失败',
     'js.discover_confirm'       => '将自动扫描项目并导入映射表',
     'js.discover_note'          => '将自动扫描当前已配置平台的 Git/Jenkins 项目并导入映射；Git 和 Jenkins 平台，相同仓库地址的项目可能会有重复。',
     'js.discover_ok'            => '扫描成功：发现 {found} 项，新增 {saved} 项',
@@ -886,6 +891,8 @@ return [
     'sys.backup_done'     => '备份完成',
     'sys.backup_failed'   => '备份失败',
     'sys.backup_no_tables' => '没有任何应用表可备份（数据库未初始化？）',
+    'sys.backup_warn_no_grant_info' => '无法读取当前账户授权信息，无法确认表可见性完整（{error}）',
+    'sys.backup_warn_no_grants'     => '当前 MySQL 账户对库「{db}」无库级/全局权限，information_schema 仅返回其有权限的表，cd_* 表可能被静默漏备。请授予库级权限：GRANT ALL PRIVILEGES ON `{db}`.* TO 当前账户;',
 
     // 集成服务卡片（integrated_services 契约）
     'sys.panel_integrated'      => '🔌 集成服务',

@@ -127,7 +127,7 @@ return [
 
     // ==================== 管理后台 ====================
     'admin' => [
-        'user'     => env('ADMIN_USER', 'admin'),
+        'user'     => env('ADMIN_USER', 'root'),
         'password' => env('ADMIN_PASSWORD', ''),
         // 旧版 base64(user:password) 文档令牌兼容开关（默认关）。
         // 该格式无过期/无吊销且等价于明文凭证；现代随机 token 已覆盖 /docs 访问，此兼容仅按需开启。

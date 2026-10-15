@@ -49,6 +49,7 @@ class AdminAuthService
                     'role'    => $dbUser['role'],
                     'email'   => (string)($dbUser['email'] ?? ''),
                     'isRoot'  => strtolower($username) === $rootUser,
+                    'must_change_password' => ((int)($dbUser['must_change_password'] ?? 0)) === 1,
                 ];
             }
         }

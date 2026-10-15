@@ -162,6 +162,9 @@ services:
 #      SECRET_KEY: "${SECRET_KEY:?请先在根 .env 设置 SECRET_KEY（openssl rand -base64 32）再启用 devops-cd}"
 #    ports:
 #      - "8081:8081"
+#    # 联合部署 + Docker + WSL 极端环境：
+#    extra_hosts:
+#      - "localhost:host-gateway"
 #    restart: unless-stopped
 #    logging:
 #      driver: json-file

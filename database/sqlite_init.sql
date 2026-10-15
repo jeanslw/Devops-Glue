@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS ci_admin_users (
     email         TEXT NOT NULL DEFAULT '',
     avatar_url    TEXT,
     status        INTEGER NOT NULL DEFAULT 1,    -- 1=启用, 0=停用
+    must_change_password INTEGER NOT NULL DEFAULT 0,  -- 首次登录强制改密：1=需改密
     created_at    TEXT DEFAULT (datetime('now','localtime')),
     updated_at    TEXT DEFAULT (datetime('now','localtime'))
 );

@@ -669,6 +669,7 @@ class Database
                 'avatar_url' => 'TEXT',                                        // 头像 URL
                 'status'     => ($isMySQL ? 'TINYINT' : 'INTEGER') . " NOT NULL DEFAULT 1", // 1=启用 0=停用
                 'created_at' => "{$TS_TYPE} NULL DEFAULT NULL",                // 注册时间（存量行为 NULL，新行为 NOW）
+                'must_change_password' => ($isMySQL ? 'TINYINT' : 'INTEGER') . ' NOT NULL DEFAULT 0', // 首次登录强制改密（seed 建号置 1）
                 // 注：id 主键不通过此 ALTER 自动补——MySQL 中 AUTO_INCREMENT 主键列无法幂等补加、
                 // 且涉及旧主键（username）变更风险；存量库 id 主键由部署方手动迁移。
             ],
@@ -1237,6 +1238,7 @@ class Database
             email {$VARCHAR} NOT NULL DEFAULT '',
             avatar_url TEXT,
             status " . ($isMySQL ? 'TINYINT' : 'INTEGER') . " NOT NULL DEFAULT 1,
+            must_change_password " . ($isMySQL ? 'TINYINT' : 'INTEGER') . " NOT NULL DEFAULT 0,
             created_at {$TS_TYPE} DEFAULT ({$NOW}),
             updated_at {$TS_TYPE} DEFAULT ({$NOW})
         ){$ENGINE}");

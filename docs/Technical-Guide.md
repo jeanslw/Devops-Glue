@@ -915,10 +915,11 @@ The report endpoint reuses the `build.report` scope, authenticated via API Token
 ```
 default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';
 img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self';
-object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+object-src 'none'; frame-ancestors 'none'; base-uri 'self'
 ```
 
 - `'unsafe-inline'` cannot be removed for now: `admin.html` has many inline `onclick` and inline `style`. First-party JS has been verified to contain no `eval` / `new Function`, so `unsafe-eval` is not enabled. Once inline handlers are extracted to external event bindings, this can be narrowed to `script-src 'self'; style-src 'self'`.
+- `form-action` is deliberately omitted: Chrome/Safari enforce it across post-submit 302 redirects, which silently blocks the OIDC login redirect (Glue → CD cross-origin callback) as a `form-action 'self'` violation. The effective anti-form-injection defenses are `script-src` / `object-src` / `base-uri`; `form-action` is not needed.
 - ⚠️ **Mind the inheritance semantics when editing nginx headers**: a child block (`location` / `if`) containing **any** `add_header` discards all inherited parent `server`-level `add_header` directives — they are not additive. There are **two** static-asset locations (① `.css` / `.js` with `Cache-Control: no-cache`; ② images / fonts with `expires 30d` + `immutable`), and both carry `add_header Cache-Control`, so **both** must repeat the 5 security headers verbatim (marked in the file as a "security header group"; change one, change the other two).
 - HSTS stays commented inside the HTTPS block; enable it after HTTPS is turned on.
 

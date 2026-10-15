@@ -138,7 +138,12 @@ export async function doBackup() {
         if (res.ok) {
             const names = (Array.isArray(d.files) ? d.files : []).map(function(f) { return f.name || ''; }).filter(Boolean);
             const label = names.length ? names.join(' · ') : (d.file || '');
-            const warns = Array.isArray(d.warnings) ? d.warnings.filter(Boolean) : [];
+            const warns = (Array.isArray(d.warnings) ? d.warnings : []).map(function(w) {
+                if (!(w && typeof w === 'object' && w.key)) return '';
+                const p = {};
+                Object.keys(w.params || {}).forEach(function(k) { p[k.replace(/^\{|\}$/g, '')] = w.params[k]; });
+                return __.t(w.key, p);
+            }).filter(Boolean);
             if (warns.length) {
                 st.textContent = '⚠️ ' + __.t('sys.backup_done') + ' · ' + label + ' — ' + warns.join(' ');
                 st.style.color = '#d97706';

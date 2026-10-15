@@ -36,7 +36,7 @@ class SettingsTest extends TestCase
 
     public function testGetRootAdminUserDefault(): void
     {
-        $this->assertEquals('admin', (new Settings([]))->getRootAdminUser());
+        $this->assertEquals('root', (new Settings([]))->getRootAdminUser());
     }
 
     public function testGetRootAdminUserCustom(): void

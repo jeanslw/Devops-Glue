@@ -306,6 +306,7 @@ class AdminUserRepositoryTest extends TestCase
             email TEXT NOT NULL DEFAULT "",
             status INTEGER NOT NULL DEFAULT 1,
             avatar_url TEXT,
+            must_change_password INTEGER NOT NULL DEFAULT 0,
             created_at TEXT,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         )');
