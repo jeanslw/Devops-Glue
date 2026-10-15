@@ -385,6 +385,11 @@ return [
     'js.total_items'            => '{total} total',
     'js.auto_detect'            => '— Auto-detect (manual select for IP addresses) —',
     'js.edit_mapping'           => 'Edit Mapping',
+    'js.copy_pipeline_id'       => 'Copy Pipeline ID',
+    'js.no_pipeline_records'    => 'No pipeline records',
+    'js.pipeline_id_copied'     => 'Pipeline ID copied',
+    'js.copy_failed_perm'       => 'Copy failed, please check browser clipboard permissions',
+    'js.fetch_failed'           => 'Failed to fetch',
     'js.discover_confirm'       => 'This will auto-scan projects and import mappings',
     'js.discover_note'          => 'This will auto-scan Git/Jenkins projects on the currently configured platforms and import mappings; projects with the same repository address may be duplicated across Git and Jenkins platforms.',
     'js.discover_ok'            => 'Scan completed: {found} found, {saved} added',
@@ -888,6 +893,8 @@ return [
     'sys.backup_done'     => 'Backup complete',
     'sys.backup_failed'   => 'Backup failed',
     'sys.backup_no_tables' => 'No application tables available to back up (database not initialized?)',
+    'sys.backup_warn_no_grant_info' => 'Could not read the current account grants; cannot confirm full table visibility ({error}).',
+    'sys.backup_warn_no_grants'     => 'The current MySQL account lacks database-level (or global) privileges on "{db}"; information_schema only returns tables it can access, so cd_* tables may be silently skipped. Grant database-level privileges: GRANT ALL PRIVILEGES ON `{db}`.* TO <account>;',
 
     // Integrated services card (integrated_services contract)
     'sys.panel_integrated'      => '🔌 Integrated services',

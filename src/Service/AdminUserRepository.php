@@ -17,7 +17,7 @@ class AdminUserRepository
     {
         $username = $this->normalizeUsername($username);
         $stmt = $this->pdo->prepare(
-            "SELECT username, password_hash, systems, role, email, status, avatar_url FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE username = ?"
+            "SELECT username, password_hash, systems, role, email, status, avatar_url, must_change_password FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE username = ?"
         );
         $stmt->execute([$username]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -46,6 +46,7 @@ class AdminUserRepository
         $stmt = $this->pdo->prepare(
             "UPDATE " . AppConfig::TABLE_ADMIN_USERS
             . " SET password_hash = ?, updated_at = " . Database::sqlNow()
+            . ", must_change_password = 0"
             . " WHERE username = ?"
         );
         $stmt->execute([$passwordHash, $username]);
@@ -169,6 +170,7 @@ class AdminUserRepository
         if ($passwordHash !== null) {
             $fields[] = 'password_hash = ?';
             $params[] = $passwordHash;
+            $fields[] = 'must_change_password = 0';
         }
         if ($email !== null) {
             $fields[] = 'email = ?';
@@ -262,16 +264,29 @@ class AdminUserRepository
         $cnt = (int)$pdo->query("SELECT count(*) c FROM " . AppConfig::TABLE_ADMIN_USERS)->fetch()['c'];
         if ($cnt === 0) {
             // 统一小写存储，与登录/建号规范化一致（SQLite 大小写敏感）
-            $user = strtolower($_ENV['ADMIN_USER'] ?? 'admin');
+            $user = strtolower($_ENV['ADMIN_USER'] ?? 'root');
             $pass = $_ENV['ADMIN_PASSWORD'] ?? '';
             if ($pass !== '') {
                 $hash = PasswordHasher::hash($pass);
-                $pdo->prepare("INSERT INTO " . AppConfig::TABLE_ADMIN_USERS . " (username, password_hash, role, systems, email) VALUES (?, ?, ?, 'ci,cd', ?)")
+                $pdo->prepare("INSERT INTO " . AppConfig::TABLE_ADMIN_USERS . " (username, password_hash, role, systems, email, must_change_password) VALUES (?, ?, ?, 'ci,cd', ?, 1)")
                     ->execute([$user, $hash, AppConfig::ROLE_SUPER_ADMIN, $adminEmail]);
+            }
+        } else {
+            // 存量库：ADMIN_USER/ADMIN_PASSWORD 仅首次建库（表空时）生效，此后登录以库为准。
+            // 运维改了 config 以为能改账号/密码时，这里显式告警，避免「改了却静默不生效」的困惑。
+            $envUser = strtolower(trim((string)($_ENV['ADMIN_USER'] ?? 'root')));
+            $envPass = (string)($_ENV['ADMIN_PASSWORD'] ?? '');
+            $stmt = $pdo->prepare("SELECT password_hash FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE username = ? LIMIT 1");
+            $stmt->execute([$envUser]);
+            $dbHash = $stmt->fetchColumn();
+            if ($dbHash === false) {
+                \App\Helper\Log::warning("config 的 ADMIN_USER='{$envUser}' 在库中不存在：该配置仅首次建库生效，登录以库中账号为准");
+            } elseif ($envPass !== '' && !password_verify($envPass, (string)$dbHash)) {
+                \App\Helper\Log::warning("config 的 ADMIN_PASSWORD 与库中 '{$envUser}' 的密码不一致：该配置仅首次建库生效，已忽略；改密请用离线 CLI 或后台「修改密码」");
             }
         }
 
-        $rootUser = strtolower($_ENV['ADMIN_USER'] ?? 'admin');
+        $rootUser = strtolower($_ENV['ADMIN_USER'] ?? 'root');
         $pdo->prepare("UPDATE " . AppConfig::TABLE_ADMIN_USERS . " SET role = ? WHERE username = ? AND role = ?")
             ->execute([AppConfig::ROLE_SUPER_ADMIN, $rootUser, AppConfig::ROLE_ADMIN]);
 

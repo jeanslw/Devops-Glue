@@ -20,7 +20,8 @@ class DataBackupService
 {
     private PDO $pdo;
     private string $driver;
-    private string $lastWarning = '';
+    /** @var array{key:string, params:array<string,string>} 最近一次 backup() 检测到的权限告警（i18n 键 + 参数，键为空串表示无告警） */
+    private array $lastWarning = ['key' => '', 'params' => []];
 
     public function __construct(PDO $pdo)
     {
@@ -38,12 +39,23 @@ class DataBackupService
     }
 
     /**
-     * 最近一次 backup() 检测到的权限告警（空串表示无告警）。
-     * 供调用方在备份后读取并呈现——Web 前端 toast 提示 / cron 写入操作日志。
+     * 最近一次 backup() 检测到的权限告警 i18n 键（空串表示无告警）。
+     * 供调用方在备份后读取并翻译呈现——Web 前端 toast 提示 / cron 写入操作日志。
      */
-    public function lastWarning(): string
+    public function lastWarningKey(): string
     {
-        return $this->lastWarning;
+        return $this->lastWarning['key'];
+    }
+
+    /**
+     * 权限告警 i18n 键的替换参数（键含花括号，如 {db} / {error}，后端 strtr 直接替换）。
+     * 前端 __.t() 需剥掉花括号后再替换（见 system.js doBackup）。
+     *
+     * @return array<string,string>
+     */
+    public function lastWarningParams(): array
+    {
+        return $this->lastWarning['params'];
     }
 
     /**
@@ -181,19 +193,21 @@ class DataBackupService
     /**
      * 备份前自检：MySQL 下确认当前账户对当前库有库级或全局权限。
      * information_schema.tables 会按权限过滤，账户对某些表（尤其 cd_*）无任何权限时，
-     * 这些表会被漏掉且不报错（比报错更危险）。返回告警文本；无风险时返回空串。
-     * SQLite 无权限模型，返回空串。
+     * 这些表会被漏掉且不报错（比报错更危险）。返回 i18n 告警键 + 参数；无风险时键为空串。
+     * SQLite 无权限模型，返回空键。
+     *
+     * @return array{key:string, params:array<string,string>}
      */
-    private function mysqlVisibilityWarning(): string
+    private function mysqlVisibilityWarning(): array
     {
         if ($this->driver !== 'mysql') {
-            return '';
+            return ['key' => '', 'params' => []];
         }
         $db = (string) $this->pdo->query('SELECT DATABASE()')->fetchColumn();
         try {
             $grants = $this->pdo->query('SHOW GRANTS FOR CURRENT_USER()')->fetchAll(PDO::FETCH_COLUMN);
         } catch (\Throwable $e) {
-            return "无法读取当前账户授权信息，无法确认表可见性完整（{$e->getMessage()}）";
+            return ['key' => 'sys.backup_warn_no_grant_info', 'params' => ['{error}' => $e->getMessage()]];
         }
         foreach ($grants as $grant) {
             $g = (string) $grant;
@@ -202,14 +216,13 @@ class DataBackupService
                 continue;
             }
             if (stripos($g, 'ON *.*') !== false) {
-                return ''; // 全局权限，库内表全可见
+                return ['key' => '', 'params' => []]; // 全局权限，库内表全可见
             }
             if (stripos($g, "ON `{$db}`.*") !== false || stripos($g, "ON {$db}.*") !== false) {
-                return ''; // 库级权限，库内表全可见
+                return ['key' => '', 'params' => []]; // 库级权限，库内表全可见
             }
         }
-        return "当前 MySQL 账户对库「{$db}」无库级/全局权限，information_schema 仅返回其有权限的表，"
-            . "cd_* 表可能被静默漏备。请授予库级权限：GRANT ALL PRIVILEGES ON `{$db}`.* TO 当前账户;";
+        return ['key' => 'sys.backup_warn_no_grants', 'params' => ['{db}' => $db]];
     }
 
     /**

@@ -144,7 +144,7 @@ async function doLogin() {
             document.getElementById('login-page').style.display = 'none';
             document.getElementById('app-page').style.display = 'block';
             setTopUser();
-            doSwitch(resolveTab());
+            doSwitch(data.must_change_password ? 'password' : resolveTab());
             loadSettings();
         } else {
             errEl.textContent = data.message || __.t('js.login_failed');

@@ -41,7 +41,9 @@ if (!$force && !in_array(envVal('DB_BACKUP_ENABLED', '0'), ['1', 'true', 'on', '
 try {
     $service = new DataBackupService($pdo);
     $files   = $service->backup(10);
-    $warning = $service->lastWarning();
+    $warning = $service->lastWarningKey() !== ''
+        ? (new \App\Service\I18nService(dirname(__DIR__) . '/lang'))->trans($service->lastWarningKey(), $service->lastWarningParams())
+        : '';
 
     if ($warning !== '') {
         echo date('Y-m-d H:i:s') . " ⚠ 备份权限告警: {$warning}\n";

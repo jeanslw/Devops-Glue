@@ -259,14 +259,14 @@ class Settings
     }
 
     /**
-     * 根管理员用户名（从 app.env ADMIN_USER 读取，默认 'admin'）
+     * 根管理员用户名（从 app.env ADMIN_USER 读取，默认 'root'）
      * 这是唯一的根账号标识，所有权限判断都从这里取，不散落写死
      */
     public function getRootAdminUser(): string
     {
         // 统一小写：与登录输入、建号、seedAdminFromEnv 的规范化保持一致，
         // 否则根账号保护比对（===）在大小写不一致时会被绕过
-        return strtolower($this->config['admin']['user'] ?? 'admin');
+        return strtolower($this->config['admin']['user'] ?? 'root');
     }
 
     /**

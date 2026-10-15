@@ -133,8 +133,8 @@ export async function loadRoleList() {
             if (r.is_system) {
                 actions = '<span style="color:#9ca3af;font-size:12px;" title="' + __.t('role.sys_cannot_edit') + '">' + __.t('role.locked') + '</span>';
             } else {
-                actions = '<button class="btn btn-sm btn-edit" onclick="showRoleForm(' + r.id + ',\'' + escJs(esc(r.name)) + '\',\'' + escJs(esc(r.description||'')) + '\',' + js(rPerms) + ')" data-i18n-title="map.edit" title="编辑">✏️</button> '
-                    + '<button class="btn btn-sm btn-del" onclick="deleteRole(' + r.id + ',\'' + escJs(esc(r.name)) + '\')" data-i18n-title="map.delete" title="删除">🗑</button>';
+                actions = '<button class="btn btn-sm btn-edit" onclick="showRoleForm(' + r.id + ',\'' + escJs(esc(r.name)) + '\',\'' + escJs(esc(r.description||'')) + '\',' + js(rPerms) + ')" title="' + esc(__.t('common.edit')) + '">✏️</button> '
+                    + '<button class="btn btn-sm btn-del" onclick="deleteRole(' + r.id + ',\'' + escJs(esc(r.name)) + '\')" title="' + esc(__.t('common.delete')) + '">🗑</button>';
             }
             const roleKey = 'user.role_' + r.name;
             const i18nName = __.t(roleKey);

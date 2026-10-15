@@ -89,6 +89,7 @@ CREATE TABLE IF NOT EXISTS `ci_admin_users` (
     `email`         VARCHAR(255) NOT NULL DEFAULT '',
     `avatar_url`    TEXT,
     `status`        TINYINT NOT NULL DEFAULT 1 COMMENT '1=启用, 0=停用',
+    `must_change_password` TINYINT NOT NULL DEFAULT 0 COMMENT '首次登录强制改密：1=需改密',
     `created_at`    DATETIME DEFAULT (NOW()),
     `updated_at`    DATETIME DEFAULT (NOW())
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

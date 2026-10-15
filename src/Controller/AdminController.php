@@ -286,6 +286,7 @@ class AdminController extends BaseController
             'user'        => $user,
             'is_root'     => $isRoot,
             'permissions' => $perms,
+            'must_change_password' => !empty($result['must_change_password']),
         ], $request);
     }
 
@@ -2093,13 +2094,15 @@ class AdminController extends BaseController
             return $resp;
         }
         try {
-            $service = new \App\Service\DataBackupService($this->pdo);
-            $files   = $service->backup(10);
-            $warning = $service->lastWarning();
+            $service       = new \App\Service\DataBackupService($this->pdo);
+            $files         = $service->backup(10);
+            $warningKey    = $service->lastWarningKey();
+            $warningParams = $service->lastWarningParams();
 
             $detail = ['driver' => $service->driver(), 'files' => count($files)];
-            if ($warning !== '') {
-                $detail['warning'] = $warning;
+            if ($warningKey !== '') {
+                // 操作日志存默认语言（zh_CN）文本，便于运维审计；前端弹窗按请求语言另行翻译
+                $detail['warning'] = $this->i18n->trans($warningKey, $warningParams);
             }
             $this->opLog()->record(
                 $this->currentUser,
@@ -2123,7 +2126,8 @@ class AdminController extends BaseController
             return $this->output($response, [
                 'success'  => true,
                 'files'    => $out,
-                'warnings' => $warning !== '' ? [$warning] : [],
+                // 前端按当前界面语言翻译（与 localStorage 语言一致，避免后端 Accept-Language 与前端界面语言不一致）
+                'warnings' => $warningKey !== '' ? [['key' => $warningKey, 'params' => $warningParams]] : [],
             ], $request);
         } catch (\Throwable $e) {
             if ($this->currentUser !== '') {
