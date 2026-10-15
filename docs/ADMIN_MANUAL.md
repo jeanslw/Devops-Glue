@@ -824,7 +824,7 @@ After completing the above steps in order, verify the system is usable:
 
 ## Appendix A: Environment Variables Reference
 
-Copy `config/app.env.example` to `config/app.env` and fill in your actual credentials.
+Copy `config/app.env.example` to `config/app.env` and fill in your real credentials. The template is organized into 9 numbered sections (this appendix mirrors them): 1 CI Systems / 2 Git Platforms / 3 Harbor / 4 Admin Panel / 5 LDAP / 6 OIDC Provider / 7 CD pairing / 8 Database & Runtime Data / 9 Application. Loading priority: `app.env.local` > real environment variables (Docker `env_file` / shell export) > `app.env.{APP_ENV}` > `app.env`; variables load at process start, so restart the service after editing (loading logic in `src/Support/EnvFileLoader.php`).
 
 ```ini
 # ============ CI Systems ============
@@ -864,6 +864,9 @@ ADMIN_PASSWORD=               # Created on first boot; DB takes precedence after
 #   - The system falls back to app.env ADMIN_USER/ADMIN_PASSWORD only when the ci_admin_users table is empty (first deployment).
 #   - This ADMIN_USER/ADMIN_PASSWORD pair is only used by the Devops-Glue API global admin fallback logic.
 #   - To create a CD-specific account, create the account in the admin backend, assign Devops-Glue CD permissions, and then write it into the Devops-Glue CD's own app.env if that service supports it.
+# PASSWORD_HASH_ALGO=bcrypt      # hash algorithm for NEW passwords: bcrypt (default) | argon2id
+# ADMIN_LEGACY_TOKEN=false       # legacy base64 token for /docs access, off by default
+# ADMIN_EMAIL=admin@example.com  # optional, seeded super-admin email; recommended when SSO is enabled
 
 # ============ LDAP external identity source (optional) ============
 # Requires the PHP ldap extension (php.ini: extension=ldap); local logins are unaffected when disabled.
@@ -885,7 +888,26 @@ LDAP_NETWORK_TIMEOUT=5
 LDAPTLS_CACERT=/path/to/ca.pem
 LDAPTLS_REQCERT=never          # internal testing only, skip cert verification; forbidden in production
 
-# ============ Database ============
+# ============ OIDC Provider (SSO issuer & signing) ============
+OIDC_ISSUER=                  # Glue's public issuer; behind a reverse proxy set it explicitly,
+                              # or it derives an internal address (clients see a signature failure; see docs/Single-Sign-On.md)
+# OIDC_RSA_PRIVATE_KEY=       # id_token signing key (RS256 PEM, \n-escaped); empty = auto-generated to OIDC_KEY_FILE
+# OIDC_KEY_FILE=              # persistence path of the auto-generated key (absolute path required)
+# OIDC_ID_TOKEN_TTL=3600      # id_token TTL in seconds
+# JENKINS_OIDC_SECRET=        # Jenkins OIDC client secret (must match the Jenkins side)
+# JENKINS_OIDC_REDIRECT_URI=http://localhost/securityRealm/finishLogin
+# Harbor / GitLab OIDC clients are NOT registered by default: register them in oauth_clients
+# (see the commented examples in config/settings.example.php); secrets are injected via env the same way.
+
+# ============ Devops-Glue CD pairing ============
+# [CD-paired] = must match the Devops-Glue CD side character-for-character (see the "CD pairing keys" table at the end of this appendix)
+# CD_OIDC_SECRET=             # [CD-paired] CD OIDC client secret (client_id is fixed: cd)
+# CD_OIDC_REDIRECT_URI=https://cd.example.com/oauth/callback   # [CD-paired] CD callback URL
+# CD_OIDC_SYSTEM=cd           # account-system ownership of this client (default cd)
+# CD_BASE_URL=https://cd.example.com   # read-only endpoint for CI to fetch CD deploy logs; empty = audit page degrades
+# CD_API_TOKEN=               # [CD-paired] CD-side inbound static token (must match the CD side)
+
+# ============ Database & Runtime Data ============
 DB_DRIVER=mysql               # sqlite or mysql
 DB_HOST=127.0.0.1
 DB_PORT=3306
@@ -895,16 +917,89 @@ DB_PASS=your_password
 DB_PATH=config/data/data.db   # SQLite only
 DB_AUTO_MIGRATE=true          # Auto-create tables; false = run scripts in database/ manually (use php cli/migrate.php to create tables / add columns)
 
+# LOG_PATH=/applogs/                   # app log directory (rotated daily by Logger)
+# LOG_RETAIN_DAYS=30                   # app log retention days (0=keep forever)
+# BACKUP_DIR=/data/backups             # backup output directory (bare-metal default: repo-root backups/)
+# DB_BACKUP_ENABLED=0                  # Docker daily backup loop (CI/CD split files), 0=off
+# DB_BACKUP_INTERVAL=86400             # backup loop interval in seconds
+# GITLAB_ID_CACHE=                     # GitLab project-ID resolution cache path
+
 # ============ Application ============
 APP_ENV=production            # production / staging / development
-APP_DEBUG=false
-API_BASE_URL=http://127.0.0.1:8080
-LOG_PATH=/applogs/
+APP_DEBUG=false               # debug mode: true shows detailed errors, false returns a generic 500
+API_BASE_URL=http://127.0.0.1:8080   # external API base URL (Swagger UI / OpenAPI docs)
+# CORS_ORIGIN=https://your-frontend.com   # CORS allowed origins (default * = all, comma-separated)
+# SYSTEM_TYPE=ci              # instance type: ci (default) / cd / both, affects login permission checks
 TRUSTED_PROXY_HOPS=0          # Number of reverse proxies in front (nginx etc.):
                               # 0 = direct (default, X-Forwarded-For ignored);
                               # 1 = one proxy (real IP taken from the rightmost XFF entry,
                               #     login-failure lockout is bucketed by that IP); increase for more layers
 ```
+
+### CD pairing keys (CI↔CD)
+
+Keys marked `[CD-paired]` are not one-sided Glue settings — they must match the Devops-Glue CD side character-for-character:
+
+| Glue key | CD-side counterpart | Rule |
+|---|---|---|
+| `CD_OIDC_SECRET` | CD backend `client_secret` | Any strong random string (Glue only compares byte-for-byte via `hash_equals`; no format requirement). Generate: `php -r "echo bin2hex(random_bytes(32));"`. Sync the same value to both sides via an ops channel; never commit it to git |
+| `CD_OIDC_REDIRECT_URI` | CD OIDC callback URL | scheme/host/port/path must match exactly; `client_id` is fixed as `cd` (the Glue `oauth_clients` array key) |
+| `CD_API_TOKEN` | CD-side inbound static token | Bearer token CI sends when fetching CD deploy logs; identical on both sides (constant-time compare) |
+
+Symptoms of a pairing mismatch: a `CD_OIDC_SECRET` mismatch → Glue answers `invalid_client` (401) when CD exchanges the token; a `CD_OIDC_REDIRECT_URI` mismatch → rejected at the authorize step; either value empty → the `cd` client is dropped entirely (fail-closed) and CD cannot sign in via Glue.
+
+### Joint CI+CD deployment: shared vs. per-service variables
+
+A joint deployment involves two services plus one shared MySQL:
+
+- **CI** = this service (devops-glue, PHP): configured via `config/app.env` (under Docker some keys are injected/overridden by the repo-root `.env`)
+- **CD** = the standalone Python service in the Devops_CD repo: when co-deployed it reads the **repo-root `.env`** via `env_file`; when deployed standalone it uses Devops_CD's own `.env`
+- **Shared database**: inside the same `DB_NAME` database, CI writes the `ci_*` tables and CD writes the `cd_*` tables
+
+**① Shared keys (one value — a single entry in the root `.env` covers both services when co-deployed)**
+
+| Key | Notes |
+|---|---|
+| `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASS` | Both services connect to the **same** shared database (`DB_HOST=mysql` when co-deployed; point both sides at the same MySQL when split) |
+| `HARBOR_BASE_URL` / `HARBOR_USER` / `HARBOR_PASSWORD` | CD pushes images / looks up tags against the same Harbor CI uses |
+| `TZ` | Timezone |
+| `DB_ROOT_PASS` | Used only by the MySQL container on **first-time volume initialization**; not an application credential (neither CI nor CD reads it at runtime) |
+
+**② CI-only keys (CD never reads them)**
+
+Everything else in Appendix A — CI systems, Git platforms, admin panel, LDAP, the OIDC provider (including the three `CD_OIDC_*` pairing keys), `CD_BASE_URL` / `CD_API_TOKEN`, backup/log/cache, and the application keys (`APP_ENV` / `API_BASE_URL` / `CORS_ORIGIN` / `SYSTEM_TYPE` / `TRUSTED_PROXY_HOPS` etc.) — is read only by CI. Note that although `CD_OIDC_*`, `CD_BASE_URL` and `CD_API_TOKEN` start with "CD", they are configured on this service (the CI side).
+
+**③ CD's own keys (CI never reads them; they live in CD's config)**
+
+| Key | Notes |
+|---|---|
+| `SECRET_KEY` | CD's session-encryption key (`openssl rand -base64 32`; when co-deployed, compose refuses to start if it is empty) |
+| `CI_API_URL` / `CI_API_TOKEN` | CD→CI calls: when co-deployed `CI_API_URL` is pinned to `http://devops-glue` by compose; `CI_API_TOKEN` is the plaintext token issued by this platform's "Integrated Services" page (see chapter 16) |
+| CD's inbound static token | Same value as CI's `CD_API_TOKEN` (the Bearer CI sends when fetching CD deploy logs) |
+| CD OIDC client's `client_secret` and callback URL | Same values as CI's `CD_OIDC_SECRET` / `CD_OIDC_REDIRECT_URI` (see the "CD pairing keys" table above) |
+
+In one sentence: **shared keys are "configure once, effective for both sides"; pairing keys are "written on both sides, must be identical"** — paired keys are never read from each other; they are kept in sync via an ops channel.
+
+The three Docker deployment modes (single co-deployed compose / two composes on one host with the shared `devops-net` network / cross-host with port 3306 exposed) and the exact steps are covered in the FAQ entry "How do I deploy the CI and CD services together?".
+
+### Bare-metal deployment: what to configure
+
+On bare metal (nginx + php-fpm, no Docker) there is no root-`.env` injection — **all configuration goes into `config/app.env`** (start with `cp config/app.env.example config/app.env`). Minimal checklist:
+
+1. **Database**: simplest is `DB_DRIVER=sqlite` (zero external dependencies); or `DB_DRIVER=mysql` + `DB_HOST=127.0.0.1` + an application account — import `database/mysql_init.sql` manually and grant privileges yourself (the Docker default account already has database-level ALL; bare-metal users must run `GRANT ALL PRIVILEGES ON devops_glue.* TO '<account>';`).
+2. **At least one Git platform**: the URL + token of any platform from section 2.
+3. **Admin**: `ADMIN_USER` / `ADMIN_PASSWORD` (seeds the root admin on first boot only; the database takes precedence afterwards).
+4. **When exposing SSO externally**: set `OIDC_ISSUER` explicitly to the fully reachable external URL (mandatory behind a reverse proxy — runtime derivation ignores X-Forwarded-* and yields an internal address, surfacing as signature-verification failures).
+
+Web tier: point nginx's `root` at the project's `public/` directory and rewrite to `index.php` via `try_files` — the repo's `config/docker/nginx.conf` is a ready-made template (replace the container path `/app` with your actual deployment path).
+
+Scheduled jobs: in Docker they are driven by the worker container's supervisord sleep-loop; on bare metal use system cron to call the two CLIs (`cli/cleanup-pipeline-tags.php` hourly and `cli/backfill-pipeline-tags.php` every 30 minutes; the container keys `TAG_CLEANUP_INTERVAL` / `TAG_BACKFILL_INTERVAL` are replaced by the cron schedule on bare metal). The cron examples and caveats (run as the same user as php-fpm, log directory must be writable, the two admin-panel switches must be enabled first or the CLIs skip, and the CLIs carry a `ci_cache` distributed lock) are in the Architecture guide's "Bare-metal deployment" section.
+
+Additional notes:
+
+- Logs need no logrotate: Logger rotates and prunes by `LOG_RETAIN_DAYS` (default 30 days) itself.
+- Backups: with `BACKUP_DIR` unset, output goes to the repo-root `backups/`; `DB_BACKUP_ENABLED` / `DB_BACKUP_INTERVAL` exist only for the Docker container backup loop and have no effect on bare metal.
+- For joint deployments, see the previous section for shared vs. per-service keys; a standalone bare-metal CD deployment works the same way — each side reads only its own config file.
 
 ---
 
