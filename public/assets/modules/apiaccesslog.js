@@ -58,8 +58,10 @@ export async function loadApiAccessLogs(page) {
         }
     } catch(e) {
         toast(__.t('js.network_error') + ': ' + e.message, false, true);
+    } finally {
+        // 所有退出路径（401 / !res.ok / 网络异常 / 正常完成）都必须关掉加载态，与 deploylog.js 保持一致
+        loading.style.display = 'none';
     }
-    loading.style.display = 'none';
 }
 
 export function resetApiAccessLogs() {

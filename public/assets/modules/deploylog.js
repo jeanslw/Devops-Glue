@@ -64,8 +64,11 @@ export async function loadDeployLogs(page) {
         }
     } catch(e) {
         toast(__.t('js.network_error') + ': ' + e.message, false, true);
+    } finally {
+        // 所有退出路径（available=false 降级 / !res.ok / 401 / 网络异常 / 正常完成）都必须关掉加载态，
+        // 否则「CD 模块未启用」提示会与「加载中…」同屏并存
+        loading.style.display = 'none';
     }
-    loading.style.display = 'none';
 }
 
 export function resetDeployLogs() {
