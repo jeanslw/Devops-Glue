@@ -611,7 +611,7 @@ The browser has a strongly cached copy of the old JS/CSS. Before v2.8.9, nginx s
 
 v2.8.9 fixes this in two layers: JS/CSS are served with `no-cache` (revalidated on every request, 304 when unchanged), and every asset URL in the templates carries `?v={{APP_VERSION}}` (a new URL per release, so the new file is fetched directly). **If you cached the assets during an older release, one manual hard refresh (Ctrl+F5) is enough**; upgrades no longer need it afterwards.
 
-Troubleshooting: open the browser dev tools → Network and check the `Cache-Control` of the `system.js` response. If it still says `public, immutable` with an `Expires` 30 days out, you are either hitting a not-yet-expired cache entry (hard refresh once) or still running the old nginx config (the container mounts the copy from your **deployment directory** — check which path with `docker inspect devops-glue --format "{{range .Mounts}}{{println .Source}}{{end}}"`; after fixing the right file, `docker exec devops-glue nginx -s reload` applies it — no image rebuild needed).
+Troubleshooting: open the browser dev tools → Network and check the `Cache-Control` of the `system.js` response. If it still says `public, immutable` with an `Expires` 30 days out, you are either hitting a not-yet-expired cache entry (hard refresh once) or still running the old nginx config (the `nginx` container mounts the copy from your **deployment directory** — check which path with `docker inspect devops-glue-nginx --format "{{range .Mounts}}{{println .Source}}{{end}}"`; after fixing the right file, `docker exec devops-glue-nginx nginx -s reload` applies it — no image rebuild needed).
 
 ### Q: Health check `/api/health` is slow?
 

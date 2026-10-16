@@ -58,6 +58,18 @@ class Database
      */
     private const SYSTEM_AUDIT_DEDUPE_WINDOW = 600;
 
+    /** 自动迁移互斥锁（分布式变体）：锁名 / 租约 TTL（16 表 + ~50 条语句，秒级；崩租自动过期防死锁） */
+    private const MIGRATION_LOCK_KEY = 'schema_migration';
+    private const MIGRATION_LOCK_TTL = 300;
+
+    /** 竞争者等待参数：轮询间隔 / 等待上限——对齐即跳过、超时降级硬跑（幂等） */
+    private const MIGRATION_POLL_INTERVAL_SECONDS = 0.5;
+    private const MIGRATION_WAIT_TIMEOUT_SECONDS  = 30;
+
+    /** @internal 仅单测缩短竞争等待窗口用（业务代码勿调用）；null = 用上面的默认常量 */
+    private static ?int $migrationWaitOverride = null;
+    private static ?float $migrationPollOverride = null;
+
     // ── 初始化 ──
 
     /**
@@ -101,7 +113,13 @@ class Database
             if (!self::isVersionCurrent($recorded)) {
                 // 降级（记录版本高于代码版本）用合并播种：只补不删；显式迁移仍走 prune 收敛。
                 $seedMode = self::isVersionAhead($recorded) ? self::SEED_MODE_MERGE : self::SEED_MODE_PRUNE;
-                self::ensureTables($seedMode); // 建表 + RBAC 种子 + 索引 + JSON 迁移
+                self::runExclusively(self::SCHEMA_VERSION_KEY, function () use ($seedMode): void {
+                    // 持锁后**重读**标记：另一节点可能刚完成迁移并释放了锁——本次就无需再跑（双检）。
+                    if (self::isVersionCurrent(self::recordedVersion(self::SCHEMA_VERSION_KEY))) {
+                        return;
+                    }
+                    self::ensureTables($seedMode); // 建表 + RBAC 种子 + 索引 + JSON 迁移
+                });
                 $needMark = true;
             }
         } else {
@@ -111,7 +129,13 @@ class Database
             $recorded = self::recordedVersion(self::SEED_VERSION_KEY);
             if (!self::isVersionCurrent($recorded)) {
                 $seedMode = self::isVersionAhead($recorded) ? self::SEED_MODE_MERGE : self::SEED_MODE_PRUNE;
-                self::seedRbac($seedMode); // 表已存在，补/同步种子数据
+                self::runExclusively(self::SEED_VERSION_KEY, function () use ($seedMode): void {
+                    // 持锁后重读标记（双检）：另一节点可能刚完成播种并释放了锁——本次就无需再跑
+                    if (self::isVersionCurrent(self::recordedVersion(self::SEED_VERSION_KEY))) {
+                        return;
+                    }
+                    self::seedRbac($seedMode); // 表已存在，补/同步种子数据
+                });
                 $needSeedMark = true;
             }
         }
@@ -1072,6 +1096,127 @@ class Database
             return (bool)(self::$config['auto_migrate'] ?? true);
         }
         return self::parseAutoMigrate();
+    }
+
+    // ── 分布式锁（基于 ci_cache 的租约锁，用于定时任务单实例化）──
+
+    /**
+     * 互斥执行自动迁移（bootstrap 自动分支）：多实例同时发现版本标记过期时，保证同一时刻只有一个
+     * 实例跑 DDL / 种子，其余实例等待其完成——消除「补列 check-then-act 撞 1060」「并发 REPLACE
+     * 死锁 1213 触发 rbac_seed_failed 误报」这类启动期竞争噪声。
+     *
+     * 三种路径：
+     *  - 抢到锁（持有者）：执行 $critical，finally 释放（TTL 兜底，崩租自动过期）；
+     *  - 抢不到且 ci_cache 表存在（竞争者）：轮询 $waitKey 版本标记，对齐即跳过（另一节点已完成）；
+     *    每轮顺带重试抢锁（持有者崩溃 / 租约过期后接管）；等待超时降级为硬跑——所有写操作幂等，
+     *    行为等同无锁主干，绝不因锁卡死启动；
+     *  - 抢不到且 ci_cache 表不存在（空库首启 / 锁表异常，无从互斥）：直接硬跑，不为不可能的
+     *    竞争空等 30 秒——与主干单机行为完全一致。
+     *
+     * $critical 自带双检（持锁后重读版本标记）：接管场景下若上一持有者已完成则跳过。
+     *
+     * @param string  $waitKey   竞争者轮询对齐的版本键（自动模式 = SCHEMA_VERSION_KEY、手动模式 = SEED_VERSION_KEY）
+     * @param \Closure $critical  需要互斥执行的迁移动作
+     */
+    private static function runExclusively(string $waitKey, \Closure $critical): void
+    {
+        $token = self::tryAcquireLock(self::MIGRATION_LOCK_KEY, self::MIGRATION_LOCK_TTL);
+        if ($token !== null) {
+            try {
+                $critical();
+            } finally {
+                self::releaseLock(self::MIGRATION_LOCK_KEY, $token);
+            }
+            return;
+        }
+        if (!self::lockTableAvailable()) {
+            $critical(); // 空库首启：无从互斥，直接硬跑（幂等）
+            return;
+        }
+        $timeout  = self::$migrationWaitOverride ?? self::MIGRATION_WAIT_TIMEOUT_SECONDS;
+        $interval = self::$migrationPollOverride ?? self::MIGRATION_POLL_INTERVAL_SECONDS;
+        $deadline = microtime(true) + $timeout;
+        while (microtime(true) < $deadline) {
+            usleep((int) round($interval * 1000000));
+            if (self::isVersionCurrent(self::recordedVersion($waitKey))) {
+                return; // 另一节点已完成迁移，本次跳过
+            }
+            $token = self::tryAcquireLock(self::MIGRATION_LOCK_KEY, self::MIGRATION_LOCK_TTL);
+            if ($token !== null) {
+                try {
+                    $critical(); // 接管：上一持有者已崩 / 租约过期（闭包双检决定是否真的要跑）
+                } finally {
+                    self::releaseLock(self::MIGRATION_LOCK_KEY, $token);
+                }
+                return;
+            }
+        }
+        $critical(); // 等待超时降级：幂等硬跑，绝不因锁卡死启动
+    }
+
+    /** ci_cache 表当前是否可读（区分「锁被他人持有」与「空库首启无从互斥」） */
+    private static function lockTableAvailable(): bool
+    {
+        try {
+            self::getPdo()->query('SELECT 1 FROM ' . \App\Config\AppConfig::TABLE_CACHE . ' LIMIT 1');
+            return true;
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
+     * @internal 仅单测缩短竞争等待窗口（真实默认 30s/0.5s 会拖慢测试）；传 null 恢复默认。
+     */
+    public static function setMigrationWaitForTest(?int $timeoutSeconds, ?float $pollSeconds): void
+    {
+        self::$migrationWaitOverride = $timeoutSeconds;
+        self::$migrationPollOverride = $pollSeconds;
+    }
+
+    /**
+     * 尝试获取分布式锁（租约）：成功返回持有者 token（非空字符串），失败返回 null。
+     *
+     * 跨实例共享：锁以 ci_cache 的 cache_key 为主键，MySQL 多实例 / SQLite 共享单文件下均生效，
+     * 使「单 worker 容器 + DB 锁」的定时任务拆分在多实例部署下仍保证同一时刻只有一个实例执行。
+     * 抢占协议：
+     *   1) 先删除「已过期」的租约（expires_at <= 当前时间，即持有者异常退出 / 任务超时未续约）；
+     *   2) 再用普通 INSERT 写入自己的租约——唯一键冲突说明存在有效锁，返回 null。
+     *      （不能用 sqlUpsert/REPLACE：那会在冲突时删除旧行再插入，等于「偷锁」，破坏互斥。）
+     *   value 存持有者 token（host:pid:随机），供 releaseLock 精确释放，避免误删他者已接管的锁。
+     * ttl 由调用方按单轮任务耗时给出；任务超时后锁自动过期，下个调度周期可被接管，无死锁。
+     */
+    public static function tryAcquireLock(string $name, int $ttlSeconds = 600): ?string
+    {
+        try {
+            $pdo   = self::getPdo();
+            $key   = 'lock:' . $name;
+            $now   = time();
+            $token = gethostname() . ':' . getmypid() . ':' . bin2hex(random_bytes(4));
+            $pdo->prepare("DELETE FROM " . \App\Config\AppConfig::TABLE_CACHE . " WHERE cache_key = ? AND expires_at <= ?")
+                ->execute([$key, $now]);
+            $pdo->prepare("INSERT INTO " . \App\Config\AppConfig::TABLE_CACHE . " (cache_key, value, expires_at) VALUES (?, ?, ?)")
+                ->execute([$key, $token, $now + $ttlSeconds]);
+            return $token;
+        } catch (\Throwable $e) {
+            // 唯一键冲突（已有有效锁）或库异常：安全降级为「不抢锁」。
+            return null;
+        }
+    }
+
+    /**
+     * 释放锁：仅当锁仍由本 token 持有时删除（防止任务超时被接管后误删他者的锁）。
+     * 释放失败不致命——锁会在 ttl 到期后自动过期。
+     */
+    public static function releaseLock(string $name, string $token): void
+    {
+        try {
+            $pdo = self::getPdo();
+            $pdo->prepare("DELETE FROM " . \App\Config\AppConfig::TABLE_CACHE . " WHERE cache_key = ? AND value = ?")
+                ->execute(['lock:' . $name, $token]);
+        } catch (\Throwable $e) {
+            // 忽略：锁自动过期兜底
+        }
     }
 
     // ── SQL helper（屏蔽 SQLite/MySQL 语法差异）──

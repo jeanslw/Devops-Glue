@@ -56,10 +56,30 @@ if ($retainDays < 1) {
     exit(1);
 }
 
-$deletedApi = (new ApiAccessLogRepository($pdo))->purge($retainDays);
-$deletedOps = (new OperationLogRepository($pdo))->purge($retainDays);
+// 分布式锁：多实例（多 worker 容器）部署时保证同一时刻只有一个实例执行清理。
+// 未抢到锁说明他者正在清理，直接跳过；任务结束（成功或失败）后精确释放，
+// 仅进程被 kill 等硬退出时靠 ttl 自动过期兜底。
+$lockName  = 'api-log-cleanup';
+$lockToken = Database::tryAcquireLock($lockName, 600);
+if ($lockToken === null) {
+    echo "跳过：已有另一实例在执行清理（分布式锁未获取）。\n";
+    exit(0);
+}
 
-echo date('Y-m-d H:i:s')
-    . " ✓ 审计日志清理完成：保留 {$retainDays} 天，"
-    . "删除 API 调用日志 {$deletedApi} 条、操作日志 {$deletedOps} 条\n";
-exit(0);
+// 注意：不能在 try/catch 内 exit——PHP 的 exit 会跳过 finally，导致锁不释放。
+// 用标志位收集失败，finally 内统一释放，再在块外按结果退出。
+$failed = false;
+try {
+    $deletedApi = (new ApiAccessLogRepository($pdo))->purge($retainDays);
+    $deletedOps = (new OperationLogRepository($pdo))->purge($retainDays);
+
+    echo date('Y-m-d H:i:s')
+        . " ✓ 审计日志清理完成：保留 {$retainDays} 天，"
+        . "删除 API 调用日志 {$deletedApi} 条、操作日志 {$deletedOps} 条\n";
+} catch (\Throwable $e) {
+    fwrite(STDERR, "错误：审计日志清理失败: {$e->getMessage()}\n");
+    $failed = true;
+} finally {
+    Database::releaseLock($lockName, $lockToken);
+}
+exit($failed ? 1 : 0);

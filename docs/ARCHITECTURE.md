@@ -65,34 +65,44 @@
 > - **SQLite**: Zero-configuration, suitable for single-host development/testing. For container deployments, mount the `config/data/` directory as a shared volume so both processes can access the same `.db` file.
 > - **MySQL 8.0+ / MariaDB 10.4+**: Recommended for production. Supports concurrent reads and writes, no shared volume required.
 
-## Deployment Topology (Distributed)
+## Deployment Topology (Container Split)
 
-The CI web layer is **stateless** — token auth (no `$_SESSION`), all state in the shared DB — so it can scale out horizontally. The only single-instance part is the scheduled timer jobs (`tag-cleanup` / `tag-backfill`), moved into a dedicated worker container.
+The CI web layer is **stateless** — token auth (no `$_SESSION`), all state in the shared DB — so it can scale out horizontally. The only single-instance part is the scheduled timer jobs, moved into a dedicated worker container. Containers are split three ways:
 
-### Single image, two roles
+| Service | Image | Runs | Port | Replicas |
+|---|---|---|---|---|
+| `nginx` | `nginx:1.22-alpine` (official) | Edge: serves static files, fastcgi-forwards PHP to `web` | 80 → host 8080 | 1 |
+| `web` | `devops-glue:latest` | pure php-fpm (no nginx / supervisor) | 9000 (FastCGI, internal) | 1..N (stateless) |
+| `worker` | `devops-glue:latest` | supervisord → 4 cron loops | — | 1 |
 
-The `devops-glue:latest` image carries everything (nginx + php-fpm + supervisor + app code + CLI scripts). The same image runs as two roles, distinguished only by which supervisor config is bind-mounted onto `/etc/supervisor/conf.d/supervisord.conf`:
+- **`nginx`** is the only HTTP entry point. `./public` is bind-mounted read-only onto `/app/public` for static serving; every `.php` request is `fastcgi_pass` to the `glue_php` upstream (`web:9000`).
+- **`web`** runs the image's default `CMD` (`php-fpm -F`) with no container_name/ports, so `docker compose up -d --scale web=N` scales it horizontally; after scaling, restart `nginx` to re-resolve the upstream's Docker DNS.
+- **`worker`** overrides the command to `supervisord -n -c /etc/supervisor/conf.d/supervisord.conf`, running the four cron loops below.
 
-| Service | Mounted supervisor config | Programs it runs | Port |
-|---|---|---|---|
-| `devops-glue` (web) | `supervisord.conf` | nginx + php-fpm | 8080 |
-| `devops-glue-worker` (worker) | `supervisord-worker.conf` | tag-cleanup + tag-backfill | — |
+### Worker timer jobs
 
-Both run the same entrypoint (`db-init` retry → `exec supervisord`) and share the same DB (`data/db` for SQLite, or the MySQL instance), each under its own supervisor process — so scaling the web layer never duplicates the timers.
+| program | CLI | Interval env (default) |
+|---|---|---|
+| `tag-cleanup` | `cli/cleanup-pipeline-tags.php` | `TAG_CLEANUP_INTERVAL` (3600s) |
+| `tag-backfill` | `cli/backfill-pipeline-tags.php` | `TAG_BACKFILL_INTERVAL` (1800s) |
+| `api-log-cleanup` | `cli/cleanup-api-access-logs.php` | `API_ACCESS_LOG_CLEANUP_INTERVAL` (86400s) |
+| `db-backup` | `cli/backup-db.php` | `DB_BACKUP_INTERVAL` (86400s) |
 
 ### Distributed timer lock
 
-To guarantee at-most-one timer run even if several worker replicas are started, both CLI scripts take a **lease lock in `ci_cache`** (`Database::tryAcquireLock` / `releaseLock`) before doing work:
+To guarantee at-most-one timer run even if several worker replicas are started, the CLIs take a **lease lock in `ci_cache`** (`Database::tryAcquireLock` / `releaseLock`) before doing work:
 
-- Key is `cache_key = 'lock:tag-cleanup'` / `'lock:tag-backfill'`, shared across instances (MySQL multi-instance, or a shared SQLite file).
+- Key is `cache_key = 'lock:<name>'`, shared across instances (MySQL multi-instance, or a shared SQLite file).
 - Acquisition deletes expired leases, then `INSERT`s its own — a PK conflict means another instance holds a valid lease → exit 0 ("skip").
-- The lease auto-expires after its TTL (600s), so a crashed holder can't deadlock the schedule; release is token-scoped so a timeout-takeover can't delete the new holder's lock.
+- The lease auto-expires after its TTL, so a crashed holder can't deadlock the schedule; release is token-scoped so a timeout-takeover can't delete the new holder's lock.
 
 ```
-                 devops-glue × N  (nginx + php-fpm, stateless)   ← scale out
+                 nginx  × 1  (edge: static + fastcgi)  ──────┐
+                                                             ▼
+                 web  × N  (php-fpm, stateless)   ← scale out
                           │
                           ▼   shared DB (MySQL / SQLite)
-        devops-glue-worker × 1  (tag-cleanup + tag-backfill, DB lock)
+                 worker  × 1  (4 cron loops, DB lease lock)
 ```
 
 > **SQLite**: still a single file — mount one shared `data/db` volume; the lock serializes via the same file's WAL busy-timeout. For true multi-instance concurrency, use MySQL.
