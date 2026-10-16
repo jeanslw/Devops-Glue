@@ -17,43 +17,42 @@
 
 ## 1. Application Settings
 
-After installation and login (default address `http://localhost:8080/admin`), the first step is **connection configuration** — letting the system reach your Jenkins, Git platforms, and Harbor. These credentials are usually stored in the `config/app.env` file (filled in by whoever deployed it). This section explains what each item means and the key points.
+After installation and login (default address `http://localhost:8080/admin`), the first step is **connection configuration** — letting the system reach your Jenkins, Git platforms, and Harbor. Since v2.10.0 these credentials are maintained on the admin "System Settings → Platform Management → Platform Connections" page (no longer in env; migrate old env values once with `cli/migrate-platform-connections.php`). This section explains what each item means and the key points.
 
 ### 1.1 Jenkins (CI build source)
 
-Settings: `JENKINS_BASE_URL`, `JENKINS_USER`, `JENKINS_TOKEN`.
+On the Platform Connections page, fill in the **Jenkins** row:
 
-- **URL `JENKINS_BASE_URL`**: your Jenkins address, e.g. `http://your-jenkins:8080`. Mind the protocol and port.
-- **User `JENKINS_USER`**: a Jenkins account with sufficient rights — a dedicated bot account is recommended over a personal one.
-- **Token `JENKINS_TOKEN`**: an **API Token** generated in Jenkins (Profile → Credentials / Token), **not** your login password. Using a token is safer.
+- **URL**: your Jenkins address, e.g. `http://your-jenkins:8080`. Mind the protocol and port.
+- **Username**: a Jenkins account with sufficient rights — a dedicated bot account is recommended over a personal one.
+- **Token**: an **API Token** generated in Jenkins (Profile → Credentials / Token), **not** your login password. Using a token is safer.
 
 > **Key points**: A token is not a password — generate a dedicated API Token in Jenkins. The account only needs routine build rights (read jobs, list branches, trigger builds, check status); no admin rights required.
 
 ### 1.2 Git Platforms
 
-The system supports GitLab, GitHub, Gitee, and Gitea (custom platforms can also be added). Each platform is a similar group of settings:
+The system supports GitLab, GitHub, Gitee, and Gitea (custom platforms can also be added). On the Platform Connections page, fill in the **address and token** for each platform:
 
-| Setting | Meaning | Key points |
+| Platform | Meaning | Key points |
 |---|---|---|
-| `GITLAB_BASE_URL` / `GITLAB_TOKEN` | GitLab address and access token | For self-hosted GitLab, use the intranet address; use a personal token with `api`/`read_api` scope |
-| `GITHUB_BASE_URL` / `GITHUB_TOKEN` | GitHub address and access token | Use `https://api.github.com` and a Personal Access Token |
-| `GITEE_BASE_URL` / `GITEE_TOKEN` | Gitee address and access token | Use `https://gitee.com/api/v5` |
-| `GITEA_BASE_URL` / `GITEA_TOKEN` | Gitea address and access token | For self-hosted Gitea, use the intranet address and a Gitea API token |
-| `DEFAULT_GIT_PLATFORM` | Fallback platform when the URL can't be auto-detected | Set `gitlab`/`gitea` etc. for self-hosted instances to avoid mis-detection |
+| GitLab | GitLab address and access token | For self-hosted GitLab, use the intranet address; use a personal token with `api`/`read_api` scope |
+| GitHub | GitHub address and access token | The address defaults to `https://api.github.com`; use a Personal Access Token |
+| Gitee | Gitee address and access token | The address defaults to `https://gitee.com/api/v5` |
+| Gitea | Gitea address and access token | For self-hosted Gitea, use the intranet address and a Gitea API token |
 
 > **Key points**
 > - Each platform token only needs the common rights: read repositories, list branches, write commit status.
-> - Self-hosted GitLab/Gitea domains usually contain no platform keyword, so the platform may not be auto-recognized. Set `DEFAULT_GIT_PLATFORM` as a fallback.
+> - Self-hosted GitLab/Gitea domains usually contain no platform keyword, so the platform may not be auto-recognized. Set `DEFAULT_GIT_PLATFORM` in `config/app.env` as a fallback (this key still lives in env and is not migrated).
 
 ### 1.3 Harbor (image registry)
 
-Settings: `HARBOR_BASE_URL`, `HARBOR_USER`, `HARBOR_PASSWORD`.
+On the Platform Connections page, fill in the **Harbor** row's **URL / username / password**.
 
 Harbor supports two account types; the key point depends on your Harbor version:
 
 - **Robot account (Harbor v2.2.0 and later) — recommended**
   - Create a robot account in the Harbor project and grant the needed permissions (at least **read / list tags**; add scan rights if you want to trigger scans).
-  - Fill the robot account's **username and token** into `HARBOR_USER` / `HARBOR_PASSWORD`.
+  - Fill the robot account's **username and token** into the username / password fields.
   - Robot accounts are safer than normal accounts and are recommended.
 
 - **Regular account (before v2.2.0)**
@@ -386,13 +385,18 @@ This page centralizes "which external systems the CI platform integrates, and in
 - Choose which build providers are enabled: `Jenkins` / `GitLab CI` / `Gitea Actions` / `Custom_Push` (push-style CI where your pipeline reports the final build state once). Changes take effect immediately and are stored in `ci_app_settings.build_mode`; the `build_provider` field in mapping management follows this list.
 - **Problem it solves**: gradually migrating your CI system (e.g. Jenkins → GitLab CI) — old and new jobs coexist and can be switched one by one, with no downtime.
 
-**② Platform Connectivity Status** — `ci.platform.edit`
-- A table listing Git (GitLab/GitHub/Gitee/Gitea/custom) and Harbor integrations: base URL, whether a token is configured, connectivity verification. Each row has a "Test connection" button (probed live; the result is only displayed, not persisted).
-- **Problem it solves**: with several platforms in parallel, quickly answer "is this platform configured, and does it work". When a webhook / build trigger fails, look here first instead of digging through env files.
+**② Platform Connections (v2.10.0)** — `ci.platform-config`
+- A table listing the **address and credentials** of the six platforms — Jenkins / GitLab / GitHub / Gitee / Gitea / Harbor — one row each: URL, username, token / password. Token- and password-type fields show only "configured / not configured", never the plaintext; leave a field empty to keep its current value. A dot plus "✓ configured / ✗ not configured" in the top-right shows whether the row is complete; each row has a "Delete" button, with "Save" at the bottom.
+- **Credentials are stored in the DB (`ci_platform_connections`) and encrypted with `DATA_ENC_KEY`**: changes here write to the DB and take effect immediately — no env edit or restart needed. Older env connection values are migrated once with `php cli/migrate-platform-connections.php`.
+- **Problem it solves**: with several platforms in parallel, quickly add or change a connection; when a webhook / build trigger fails, look here first (is it configured, is the value right) instead of digging through env files.
 
-**③ Other settings cards** — each with its own permission
+**③ OIDC / SSO Config Card (v2.10.0)** — `ci.platform-config`
+- Maintains the three SSO items: **issuer** (the externally reachable full URL — must be set explicitly behind a reverse proxy), **id_token TTL** (seconds), and the **client whitelist** (client_id + redirect_uri + secret + owning system + enable toggle; add/remove entries). The secret only shows "configured", never the plaintext; enabling a client requires both secret and redirect_uri, otherwise the save is rejected.
+- **Stored in the DB (`ci_app_settings` / `ci_oauth_clients`) and encrypted with `DATA_ENC_KEY`**; older env values are migrated once with `php cli/migrate-oidc.php`. The signing private key stays in env / files and is not maintained here.
+
+**④ Other settings cards** — each with its own permission
 - **Build-record push allowlist** (`ci.build_records.push`): which jobs may report final states via `POST /api/build/{path}/report` — without an allowlist any job can report (the security boundary of push-style CI).
-- Security-related cards such as **OIDC / OAuth clients** and **login security policy** are covered in chapter 6 and are not repeated here.
+- Platform-level setting cards such as **stale tag cleanup / build-log backfill / log keyword / log settings** also live on this page (see sections 3.4–3.7).
 
 
 ---

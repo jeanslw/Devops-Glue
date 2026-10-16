@@ -545,18 +545,18 @@
         .pc-tag-cards .mode-card-actions .btn { padding:7px 12px; font-size:12.5px; }
         .pc-tag-cards .mode-card-actions .mode-save-status { margin-left:0; line-height:1.5; }
         .pc-tag-cards .mode-card-actions .btn:disabled { opacity:.5; cursor:not-allowed; }
+        /* 四个 cron 任务卡片缩小：紧凑内边距 + 去掉最小高度 + 收紧间距 */
+        .pc-tag-cards .mode-card { padding:12px; min-height:0; gap:8px; }
+        .pc-tag-cards .mode-card-hd { font-size:13px; }
         .mode-card {
             display:flex; flex-direction:column; gap:12px;
-            border:1px solid #e5e7eb; border-radius:14px;
-            background:linear-gradient(180deg,#ffffff,#f8fafc);
+            border:1px solid #e5e7eb; border-radius:8px;
+            background:#ffffff;
             padding:18px 18px 16px;
-            transition:border-color .15s, box-shadow .15s;
+            transition:border-color .15s;
             min-height:180px;
         }
-        .mode-card:hover {
-            border-color:#4f46e5;
-            box-shadow:0 4px 14px rgba(79,70,229,.08);
-        }
+        .mode-card:hover { border-color:#c7d2fe; }
         .mode-card-hd {
             display:flex; align-items:center; gap:10px; flex-wrap:nowrap;
             font-size:14px; font-weight:700; color:#1f2937;
@@ -599,6 +599,34 @@
             color:#9ca3af; font-size:11px; line-height:1.7;
         }
         .mode-card-notes li { margin:2px 0; }
+        /* OIDC / SSO 配置卡（客户端列表） */
+        .oidc-row {
+            display:flex; flex-direction:column; gap:8px;
+            padding:10px 12px; border:1px solid #e5e7eb; border-radius:8px; margin-bottom:8px;
+        }
+        .oidc-row-hd { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+        .oidc-cid { font-weight:700; font-family:monospace; }
+        .oidc-cid-input { width:160px; }
+        .oidc-grid {
+            display:grid; grid-template-columns:120px 1fr; gap:8px 12px; align-items:center;
+        }
+        .oidc-grid .oidc-lbl { margin-bottom:0; }
+
+        /* 平台连接配置（Git 平台 / Harbor / Jenkins，连接值迁入 DB 后的可编辑表单） */
+        .pc-row {
+            display:flex; flex-direction:column; gap:8px;
+            padding:10px 12px; border:1px solid #e5e7eb; border-radius:8px; margin-bottom:8px;
+        }
+        .pc-row-hd { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+        .pc-name { font-weight:700; }
+        .pc-grid {
+            display:grid; grid-template-columns:140px 1fr; gap:8px 12px; align-items:center;
+        }
+        .pc-grid .pc-lbl { margin-bottom:0; }
+        .pc-grid input {
+            width:100%; box-sizing:border-box; padding:6px 8px;
+            border:1px solid #d1d5db; border-radius:6px; font-size:13px; background:#fff; color:#111827;
+        }
 
         /* ── 配置模式：CI 流程图（拉取式 / 推送式，含响应式）── */
         #mode-display .mf-badges { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:20px; }
@@ -810,9 +838,12 @@
 }
 [data-theme="dark"] .mode-card {
     border:1px solid #334155;
-    background:linear-gradient(180deg,#1e293b,#16213a);
+    background:#1e293b;
 }
-[data-theme="dark"] .mode-card:hover { border-color:#6366f1; box-shadow:0 4px 14px rgba(79,70,229,.2); }
+[data-theme="dark"] .mode-card:hover { border-color:#6366f1; }
+[data-theme="dark"] .oidc-row { border-color:#334155; }
+[data-theme="dark"] .pc-row { border-color:#334155; }
+[data-theme="dark"] .pc-grid input { background:#0f172a; color:#e5e7eb; border-color:#475569; }
 [data-theme="dark"] .mode-card-actions { border-top-color:#334155; }
 [data-theme="dark"] #build-mode-value { background:#334155; color:#e5e7eb; }
 

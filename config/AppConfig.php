@@ -13,7 +13,7 @@ namespace App\Config;
  */
 final class AppConfig
 {
-    public const APP_VERSION = '2.9.1';
+    public const APP_VERSION = '2.10.0';
 
 
     // ── 表名常量 ──
@@ -35,6 +35,8 @@ final class AppConfig
     public const TABLE_OPERATION_LOGS    = 'ci_operation_logs'; // 后台操作审计日志
     public const TABLE_API_ACCESS_LOGS   = 'ci_api_access_logs'; // API token 调用日志（只记名不记 token）
     public const TABLE_INTEGRATED_SERVICES = 'ci_integrated_services'; // 集成服务启用契约表（CI 唯一写入；CD 经契约端点读取，不直读本表）
+    public const TABLE_OAUTH_CLIENTS      = 'ci_oauth_clients'; // OIDC/OAuth 客户端白名单（DB 唯一权威，彻底移除 env）
+    public const TABLE_PLATFORM_CONNECTIONS = 'ci_platform_connections'; // Git/Harbor/Jenkins 连接配置（DB 唯一权威，彻底移除 env）
 
     /**
      * 表名收口清单（旧表名 → 新表名）：存量库由 Database::renameLegacyTables() 幂等 RENAME
@@ -325,6 +327,11 @@ final class AppConfig
     public const DEFAULT_API_ACCESS_LOG_RETAIN_DAYS = 90;
     public const MAX_API_ACCESS_LOG_RETAIN_DAYS = 3650;
     public const SETTING_API_ACCESS_LOG_CLEANUP_ENABLED = 'api_access_log_cleanup_enabled';
+
+    // ── OIDC provider 配置（ci_app_settings 键；DB 唯一权威，不读 env、不自动种子化）──
+    public const SETTING_OIDC_ISSUER       = 'oidc_issuer';
+    public const SETTING_OIDC_ID_TOKEN_TTL = 'oidc_id_token_ttl';
+    public const DEFAULT_OIDC_ID_TOKEN_TTL = 3600;
 
     // ── 缓存键前缀常量 ──
     public const CACHE_KEY_ADMIN_TOKEN_PREFIX = 'admin_token_';

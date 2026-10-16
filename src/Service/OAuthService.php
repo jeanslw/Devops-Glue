@@ -10,7 +10,7 @@ use App\Config\AppConfig;
  * 供外部系统用 Devops-Glue 账号登录。
  * 授权码：一次性、60 秒过期、绑定 client_id + redirect_uri。
  * 访问令牌：存 cache 表，默认 1 小时过期。
- * 客户端白名单：settings.php 的 oauth_clients 配置。
+ * 客户端白名单：ci_oauth_clients（DB 唯一权威，无 env 兜底）。
  */
 class OAuthService
 {

@@ -39,6 +39,9 @@ use App\Controller\BuildController;
 use App\Controller\OAuthController;
 use App\Service\OAuthService;
 use App\Service\OidcService;
+use App\Service\OAuthClientRepository;
+use App\Service\PlatformConnectionRepository;
+use App\Service\Encryptor;
 
 use App\Middleware\CorsMiddleware;
 use App\Middleware\AuthMiddleware;
@@ -60,14 +63,40 @@ return [
         return \App\Service\Database::getPdo();
     },
 
-    // 运行时配置（只读 settings.php / env 合并数组）
+    // 运行时配置（只读 settings.php / env 合并数组）。
+    // Git/Harbor/Jenkins 连接配置：DB（ci_platform_connections）唯一权威，覆盖 settings.php 里的结构占位，
+    // 使所有经 Settings 访问器的消费者（ProviderRegistry / harborClient / gitlabHttpClient 等）零改动拿到 DB 值。
     Settings::class => function (\Psr\Container\ContainerInterface $c) use ($settings) {
+        $conns = $c->get(PlatformConnectionRepository::class)->resolveConnections();
+        $settings['git'] = array_merge($settings['git'], [
+            'gitlab' => $conns['gitlab'],
+            'github' => $conns['github'],
+            'gitee'  => $conns['gitee'],
+            'gitea'  => $conns['gitea'],
+        ]);
+        $settings['harbor']  = $conns['harbor'];
+        $settings['jenkins'] = $conns['jenkins'];
         return new Settings($settings, $c->get(PlatformVersionRepository::class));
     },
 
     // ci_app_settings 运行时开关/配置（build_mode、custom_push、tag 关键字等）
     AppSettingRepository::class => function (\Psr\Container\ContainerInterface $c) {
         return new AppSettingRepository($c->get(\PDO::class));
+    },
+
+    // 敏感字段对称加密（AES-256-GCM）；密钥 DATA_ENC_KEY 显式配置，缺失即抛异常（fail-closed）
+    Encryptor::class => function () {
+        return new Encryptor();
+    },
+
+    // OIDC/OAuth 客户端白名单（ci_oauth_clients：DB 唯一权威，彻底移除 env）
+    OAuthClientRepository::class => function (\Psr\Container\ContainerInterface $c) {
+        return new OAuthClientRepository($c->get(\PDO::class), $c->get(Encryptor::class));
+    },
+
+    // Git/Harbor/Jenkins 连接配置（ci_platform_connections：DB 唯一权威，彻底移除 env）
+    PlatformConnectionRepository::class => function (\Psr\Container\ContainerInterface $c) {
+        return new PlatformConnectionRepository($c->get(\PDO::class), $c->get(Encryptor::class));
     },
 
     // 平台 API 版本覆盖（ci_platform_versions）
@@ -433,6 +462,8 @@ return [
             $c->get(MappingManager::class),
             $c->get(AppSettingRepository::class),
             $c->get(PlatformVersionRepository::class),
+            $c->get(OAuthClientRepository::class),
+            $c->get(PlatformConnectionRepository::class),
             $c->get(\PDO::class),
             $c->get(AdminAuthService::class),
             $c->get(AdminUserRepository::class),
@@ -577,15 +608,26 @@ return [
 
     // ---------- OAuth2 / OIDC Provider（Jenkins / Harbor / GitLab 用 Glue 账号登录）----------
 
-    OAuthService::class => function (\Psr\Container\ContainerInterface $c) use ($settings) {
+    OAuthService::class => function (\Psr\Container\ContainerInterface $c) {
         return new OAuthService(
             $c->get(\PDO::class),
-            $settings['oauth_clients'] ?? []
+            // 客户端白名单唯一权威是 DB（ci_oauth_clients），彻底移除 env 兜底。
+            $c->get(OAuthClientRepository::class)->resolveClients([])
         );
     },
 
     OidcService::class => function (\Psr\Container\ContainerInterface $c) use ($settings) {
-        return new OidcService($settings['oidc'] ?? []);
+        $repo = $c->get(AppSettingRepository::class);
+        $oidc = $settings['oidc'] ?? [];
+        $issuer = $repo->getOidcIssuer();
+        if ($issuer !== null) {
+            $oidc['issuer'] = $issuer;
+        }
+        $ttl = $repo->getOidcIdTokenTtl();
+        if ($ttl !== null) {
+            $oidc['id_token_ttl'] = $ttl;
+        }
+        return new OidcService($oidc);
     },
 
     OAuthController::class => function (\Psr\Container\ContainerInterface $c) {

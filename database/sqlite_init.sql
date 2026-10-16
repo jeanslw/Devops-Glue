@@ -227,6 +227,31 @@ CREATE TABLE IF NOT EXISTS ci_integrated_services (
     FOREIGN KEY (api_token_id) REFERENCES ci_api_tokens(id) ON DELETE SET NULL
 );
 
+-- ── 16. oauth_clients（OIDC/OAuth 客户端白名单；DB 覆盖 env，env 为兜底）──
+-- secret/redirect_uri 留空/纯空白即 fail-closed（该客户端被剔除）。
+CREATE TABLE IF NOT EXISTS ci_oauth_clients (
+    client_id    TEXT PRIMARY KEY,
+    secret       TEXT,
+    redirect_uri TEXT,
+    system       TEXT NOT NULL DEFAULT 'ci',
+    enabled      INTEGER NOT NULL DEFAULT 1,
+    description  TEXT DEFAULT '',
+    created_at   TEXT DEFAULT (datetime('now','localtime')),
+    updated_at   TEXT DEFAULT (datetime('now','localtime'))
+);
+
+-- ── ci_platform_connections（Git/Harbor/Jenkins 连接配置，DB 唯一权威，彻底移除 env）──
+CREATE TABLE IF NOT EXISTS ci_platform_connections (
+    platform    TEXT PRIMARY KEY,
+    url         TEXT,
+    token       TEXT,
+    username    TEXT,
+    password    TEXT,
+    description TEXT DEFAULT '',
+    created_at  TEXT DEFAULT (datetime('now','localtime')),
+    updated_at  TEXT DEFAULT (datetime('now','localtime'))
+);
+
 -- ── 索引 ──
 CREATE INDEX IF NOT EXISTS idx_pipeline_artifacts_project_key ON ci_pipeline_artifacts(project_key);
 CREATE INDEX IF NOT EXISTS idx_pipeline_artifacts_created    ON ci_pipeline_artifacts(created_at);

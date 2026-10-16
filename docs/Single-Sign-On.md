@@ -51,13 +51,11 @@ Key features:
 If Glue has no private key when first issuing an `id_token`, it **auto-generates RSA-2048** and persists it to `OIDC_KEY_FILE` (`chmod 0600` after writing).
 Bare metal defaults to `config/data/oidc_rsa.pem`; **the Docker image ENV is `/data/cache/oidc_rsa.pem`** (compose mounts `./data/cache`, so the key survives rebuilds). If an existing key still lives at `/app/config/data/oidc_rsa.pem` inside the container, copy it to `./data/cache/oidc_rsa.pem` on the host before recreating, or `kid`/JWKS will change and every downstream SSO client will break.
 
-In production, strongly prefer **pinning the key explicitly** so that `kid` and JWKS stay stable across restarts / multiple instances. Configure in `config/app.env`:
+In production, strongly prefer **pinning the key explicitly** so that `kid` and JWKS stay stable across restarts / multiple instances.
+
+> **Since v2.10.0**: the issuer and the id_token lifetime (`OIDC_ID_TOKEN_TTL`) have moved into the DB (maintained on the "System Settings → Platform Management → OIDC / SSO Config" page; env is only a fallback for when the DB is unset, or a source for migration); **the signing private key stays in env / files**. Of the block below, only `OIDC_RSA_PRIVATE_KEY` / `OIDC_KEY_FILE` are still effective:
 
 ```ini
-# Glue's external address as the OIDC issuer. Empty = derived at runtime from request scheme+host+port.
-# In production, set this explicitly to the full externally reachable URL (e.g. https://glue.example.com).
-OIDC_ISSUER=https://glue.example.com
-
 # id_token signing private key (RS256, RSA >= 2048-bit PEM). Empty = auto-generate and persist to OIDC_KEY_FILE.
 # Multi-line PEM uses \n escapes, or inject it via a k8s secret.
 # OIDC_RSA_PRIVATE_KEY=
@@ -65,11 +63,13 @@ OIDC_ISSUER=https://glue.example.com
 # Persistence path when auto-generating (bare metal: config/data/oidc_rsa.pem; Docker: /data/cache/oidc_rsa.pem)
 # OIDC_KEY_FILE=/data/cache/oidc_rsa.pem
 
-# id_token lifetime in seconds (default 3600)
-# OIDC_ID_TOKEN_TTL=3600
+# The two keys below have moved to the DB (v2.10.0) and are kept only for one-time
+# migration via cli/migrate-oidc.php, or as a fallback when the DB value is unset:
+# OIDC_ISSUER=https://glue.example.com   # issuer: maintained on the OIDC / SSO Config page
+# OIDC_ID_TOKEN_TTL=3600                 # id_token lifetime in seconds
 ```
 
-> ⚠️ `OIDC_ISSUER` must be the URL each system **actually uses to reach Glue** (scheme + host, plus port when non-default),
+> ⚠️ The issuer (on the OIDC / SSO Config page) must be the URL each system **actually uses to reach Glue** (scheme + host, plus port when non-default),
 > and it must match the `issuer` in the discovery document exactly — OIDC clients verify that `issuer` matches the request URL and reject the login otherwise.
 >
 > **Verify before integration** (when left empty it is derived from the request `scheme+host`; behind a reverse proxy that
@@ -80,36 +80,20 @@ OIDC_ISSUER=https://glue.example.com
 > curl -s https://glue.example.com/.well-known/openid-configuration | jq .issuer,.jwks_uri
 > ```
 >
-> Both must be the externally reachable address the clients actually use; deployments behind nginx / Ingress must set `OIDC_ISSUER` explicitly.
+> Both must be the externally reachable address the clients actually use; deployments behind nginx / Ingress must set the issuer explicitly on the OIDC / SSO Config page.
 
 ### 2.2 Register clients
 
-Register one client per system in `oauth_clients` in `config/settings.php` (`client_id` + `secret` + an exactly-matching `redirect_uri`).
-`redirect_uri` is injected via env as well (see `JENKINS_OIDC_REDIRECT_URI` in `config/app.env.example`), so environment-specific callback URLs never get hardcoded into git:
+Register one client per system (`client_id` + `secret` + an exactly-matching `redirect_uri`) on the "System Settings → Platform Management → OIDC / SSO Config" page. Only the `jenkins` and `cd` clients are built in by default (migrated from the old env by `cli/migrate-oidc.php` on upgrade, and also addable/removable on this page):
 
-```php
-'oauth_clients' => [
-    'jenkins' => [
-        'secret'       => env('JENKINS_OIDC_SECRET', ''),
-        'redirect_uri' => env('JENKINS_OIDC_REDIRECT_URI', 'http://localhost/securityRealm/finishLogin'),
-    ],
-    // Devops-Glue CD: BFF confidential client (client_secret stays on CD's backend; the browser
-    // only holds CD's own cookie). The callback has no sane default — empty drops the whole client;
-    // `system` declares which system the accounts signing in through this client belong to.
-    'cd' => [
-        'secret'       => env('CD_OIDC_SECRET', ''),
-        'redirect_uri' => env('CD_OIDC_REDIRECT_URI', ''),
-        'system'       => env('CD_OIDC_SYSTEM', 'cd'),
-    ],
-    // harbor / gitlab clients must be registered as needed (secret and redirect_uri
-    // both injected via env); unregistered client_ids are rejected fail-closed at authorize.
-],
-```
+- **jenkins**: `redirect_uri` defaults to `http://localhost/securityRealm/finishLogin` (change it to the real callback in production).
+- **cd** (Devops-Glue CD): BFF confidential client (`client_secret` stays on CD's backend; the browser only holds CD's own cookie). The callback has no sane default — empty drops the whole client; `system` declares which system the accounts signing in through this client belong to (default `cd`).
+- **harbor / gitlab**: add them as needed; unregistered `client_id`s are rejected fail-closed at authorize.
 
 > ⚠️ Security convention (fail-closed): a client whose `secret` or `redirect_uri` is empty or whitespace-only is **dropped** (treated as unconfigured).
 > Do not use an empty secret as a default — that would let the token endpoint be bypassed with an empty secret. Every client must have a strong random secret.
 >
-> ⚠️ `redirect_uri` uses **exact matching** (`hash_equals`). The callback URL configured on each system must match character-for-character (scheme, host, port, path), or `authorize` rejects the request. In production set `JENKINS_OIDC_REDIRECT_URI` (and the equivalents for the other clients) to the real callbacks; do not commit LAN IPs to git.
+> ⚠️ `redirect_uri` uses **exact matching** (`hash_equals`). The callback URL configured on each system must match character-for-character (scheme, host, port, path), or `authorize` rejects the request. In production set the callback to the real value; do not commit LAN IPs to git.
 >
 > ℹ️ `system` (optional, falls back to `ci`) declares **which system the accounts signing in through this client belong to**; authorization checks the account's `systems` against it. The CD client declares `cd`, so CD accounts created in the backend (`systems` containing `cd`) can sign in while `systems=ci` accounts get `auth.no_cd_access`. Jenkins / Harbor / GitLab do not declare the key, so their behaviour is unchanged. Note: without it there is no per-system admission check, and a rejected account is reported with the CI message `auth.no_ci_access`.
 
@@ -121,7 +105,7 @@ After restarting Glue, open `https://glue.example.com/.well-known/jwks.json` and
 
 ## 3. Integration Examples
 
-In the examples below, `<issuer>` = `OIDC_ISSUER` (e.g. `https://glue.example.com`), and the client credentials match the `secret` registered in 2.2.
+In the examples below, `<issuer>` = the issuer configured on the OIDC / SSO Config page (e.g. `https://glue.example.com`), and the client credentials match the `secret` registered in 2.2.
 
 ### 3.1 Harbor
 
@@ -132,7 +116,7 @@ auth_mode: oidc_auth
 oidc_name: Devops-Glue
 oidc_endpoint: <issuer>                 # e.g. https://glue.example.com
 oidc_client_id: harbor
-oidc_client_secret: <secret>            # matches the harbor client secret in settings.php
+oidc_client_secret: <secret>            # matches the harbor client secret on the OIDC / SSO Config page
 oidc_scope: openid,profile,email
 oidc_groups_claim: groups               # read roles from the id_token groups claim
 oidc_user_claim: preferred_username
@@ -156,7 +140,7 @@ jenkins:
     oic:
       wellKnownOpenIDConfigurationUrl: "<issuer>/.well-known/openid-configuration"
       clientId: jenkins
-      clientSecret: <secret>            # matches the jenkins client secret in settings.php
+      clientSecret: <secret>            # matches the jenkins client secret on the OIDC / SSO Config page
       userNameField: preferred_username
       fullNameFieldName: name
       emailFieldName: email
@@ -203,7 +187,7 @@ gitlab_rails['omniauth_providers'] = [
       uid_field: "preferred_username",
       client_options: {
         identifier: "gitlab",
-        secret: "<secret>",            # matches the gitlab client secret in settings.php
+        secret: "<secret>",            # matches the gitlab client secret on the OIDC / SSO Config page
         redirect_uri: "https://gitlab.example.com/users/auth/openid_connect/callback"
       }
     }

@@ -271,20 +271,10 @@ class AdminUserRepository
                 $pdo->prepare("INSERT INTO " . AppConfig::TABLE_ADMIN_USERS . " (username, password_hash, role, systems, email, must_change_password) VALUES (?, ?, ?, 'ci,cd', ?, 1)")
                     ->execute([$user, $hash, AppConfig::ROLE_SUPER_ADMIN, $adminEmail]);
             }
-        } else {
-            // 存量库：ADMIN_USER/ADMIN_PASSWORD 仅首次建库（表空时）生效，此后登录以库为准。
-            // 运维改了 config 以为能改账号/密码时，这里显式告警，避免「改了却静默不生效」的困惑。
-            $envUser = strtolower(trim((string)($_ENV['ADMIN_USER'] ?? 'root')));
-            $envPass = (string)($_ENV['ADMIN_PASSWORD'] ?? '');
-            $stmt = $pdo->prepare("SELECT password_hash FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE username = ? LIMIT 1");
-            $stmt->execute([$envUser]);
-            $dbHash = $stmt->fetchColumn();
-            if ($dbHash === false) {
-                \App\Helper\Log::warning("config 的 ADMIN_USER='{$envUser}' 在库中不存在：该配置仅首次建库生效，登录以库中账号为准");
-            } elseif ($envPass !== '' && !password_verify($envPass, (string)$dbHash)) {
-                \App\Helper\Log::warning("config 的 ADMIN_PASSWORD 与库中 '{$envUser}' 的密码不一致：该配置仅首次建库生效，已忽略；改密请用离线 CLI 或后台「修改密码」");
-            }
         }
+        // 表非空后，config 的 ADMIN_USER/ADMIN_PASSWORD 即失效：DB 是唯一权威，登录/改密均以库中
+        // super_admin 为准。此处不比对、不告警——用户改密后 config 里的种子密码自然过期，即使与
+        // 库中密码恰好一致也不作为任何依据。
 
         $rootUser = strtolower($_ENV['ADMIN_USER'] ?? 'root');
         $pdo->prepare("UPDATE " . AppConfig::TABLE_ADMIN_USERS . " SET role = ? WHERE username = ? AND role = ?")
@@ -297,6 +287,24 @@ class AdminUserRepository
                 "UPDATE " . AppConfig::TABLE_ADMIN_USERS
                 . " SET email = ? WHERE username = ? AND (email IS NULL OR email = '' OR email = ? OR email = ?)"
             )->execute([$adminEmail, $rootUser, $defaultAdminEmail, $deploymentPlaceholderEmail]);
+        } catch (\Throwable $e) {
+            \App\Helper\Log::exception($e);
+        }
+
+        // 安全提示：seed 账号仍在用初始种子密码（must_change_password=1，尚未完成首次登录强制改密）
+        // 时告警。种子密码写在 config，属已知值；不尽快改密等于留下「已知口令的 super_admin」。
+        // 旧库可能尚无 must_change_password 列，失败不阻断启动（同 email 回填）。
+        try {
+            $stmt = $pdo->prepare(
+                'SELECT username FROM ' . AppConfig::TABLE_ADMIN_USERS . ' WHERE must_change_password = 1 LIMIT 1'
+            );
+            $stmt->execute();
+            $pending = $stmt->fetchColumn();
+            if ($pending !== false) {
+                \App\Helper\Log::warning(
+                    "账号 '{$pending}' 仍使用首次建库的初始种子密码（尚未完成首次登录强制改密），请尽快登录并修改密码"
+                );
+            }
         } catch (\Throwable $e) {
             \App\Helper\Log::exception($e);
         }

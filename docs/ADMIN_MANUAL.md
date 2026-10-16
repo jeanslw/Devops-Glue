@@ -1,4 +1,4 @@
-# Devops-Glue API Admin Manual v2.9.0
+# Devops-Glue API Admin Manual v2.10.0
 
 > This manual is organized in a "from zero to usable" order, covering the installation, initialization, and full configuration of Devops-Glue API. Once you complete it in order, you will be able to: log in to the admin panel, connect CI / Git / Harbor platforms, configure build mode and mapping, manage permissions and roles, issue API tokens, and have the companion Devops-Glue CD call it correctly.
 
@@ -38,6 +38,7 @@ Devops-Glue API is a Slim4-based unified API layer that provides a single manage
 
 | Devops-Glue API | Devops-Glue CD |
 |:---:|:---:|
+| v2.10.0 | v1.6.0 |
 | v2.9.0 | v1.6.0 |
 | v2.8.9 | v1.5.7 |
 | v2.8.8 | v1.5.6 |
@@ -93,12 +94,12 @@ cp config/app.env.example config/app.env
 
 Edit `config/app.env` and fill in at least the following key items:
 
-- **CI system**: `JENKINS_BASE_URL` / `JENKINS_USER` / `JENKINS_TOKEN`
-- **Git platform**: `GITLAB_BASE_URL` / `GITLAB_TOKEN` (plus `GITHUB_*` / `GITEE_*` / `GITEA_*` as needed)
-- **Harbor**: `HARBOR_BASE_URL` / `HARBOR_USER` / `HARBOR_PASSWORD`
-- **Admin panel**: `ADMIN_USER` / `ADMIN_PASSWORD` (creates the root admin account on first boot)
+- **Admin panel**: `ADMIN_USER` / `ADMIN_PASSWORD` (creates the root admin account on first boot only; the database takes precedence afterwards)
 - **Database**: `DB_DRIVER` / `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASS` (for MySQL); Docker Compose additionally requires `DB_ROOT_PASS` (MySQL root password, used only on first-time volume init)
+- **Sensitive-field encryption key**: `DATA_ENC_KEY` (base64-encoded 32 bytes; fail-closed when missing — see [Appendix A](#appendix-a-environment-variables-reference))
 - **Reverse proxy**: `TRUSTED_PROXY_HOPS` (set 1 behind a reverse proxy such as nginx, 0 for direct access — see Appendix A)
+
+> **Since v2.10.0**: the Jenkins / Git / Harbor connections and the OIDC/SSO configuration are no longer written in env — after logging in, maintain them on the "System Settings → Platform Management" page (see chapters 9–11). The connection values from older env files are migrated once with `php cli/migrate-platform-connections.php` / `php cli/migrate-oidc.php`.
 
 See [Appendix A](#appendix-a-environment-variables-reference) for the full list and descriptions.
 
@@ -221,13 +222,9 @@ Environment variables: see [Appendix A](#appendix-a-environment-variables-refere
 
 Devops-Glue integrates CI in two complementary ways, so **theoretically all CI systems are supported**: built-in pull-based (Jenkins and GitLab CI) and push-based Custom_Push (any CI script can report build results).
 
-**Jenkins** — fill in `app.env`:
+> **Since v2.10.0, connection config lives in the DB**: the six platform connections (Jenkins / Git / Harbor) and the OIDC/SSO config are maintained on the admin "System Settings → Platform Management" page — the upper part is **Platform Connections** (addresses and credentials for the six platforms), the card below is **OIDC / SSO Config** (issuer, id_token TTL, client whitelist). Plaintext token/password/secret are never shown, only "configured"; leave a field empty to keep its current value. When upgrading from an older version, first run `php cli/migrate-platform-connections.php` and `php cli/migrate-oidc.php` to move the old env values into the DB once; sensitive fields are stored encrypted with `DATA_ENC_KEY` (see [Appendix A](#appendix-a-environment-variables-reference)). The signing private key stays in env / files.
 
-```ini
-JENKINS_BASE_URL=http://your-jenkins:8080
-JENKINS_USER=admin
-JENKINS_TOKEN=your_token
-```
+**Jenkins**: on "System Settings → Platform Management → Platform Connections", fill in the Jenkins row's **URL / username / token** (username defaults to `admin`; the token is the API Token generated in Jenkins's personal settings, not the login password).
 
 **GitLab CI** — reuses the GitLab platform configuration (see next step).
 
@@ -237,38 +234,16 @@ After configuration, verify the connection on the "Monitor" page.
 
 ## 10. Connect Git Platforms
 
-Fill in each platform's `BASE_URL` and `TOKEN` in `app.env` as needed:
+On "System Settings → Platform Management → Platform Connections", fill in the **URL and token** for GitLab / GitHub / Gitee / Gitea as needed (GitHub / Gitee SaaS addresses are pre-filled with defaults; change them to your own host for self-hosted instances). Each platform token only needs common permissions: "read repositories, list branches, write back commit status".
 
-```ini
-GITLAB_BASE_URL=http://your-gitlab
-GITLAB_TOKEN=your_token
-
-GITHUB_BASE_URL=https://api.github.com
-GITHUB_TOKEN=your_token
-
-GITEE_BASE_URL=https://gitee.com/api/v5
-GITEE_TOKEN=your_token
-
-GITEA_BASE_URL=http://your-gitea
-GITEA_TOKEN=your_token
-
-DEFAULT_GIT_PLATFORM=gitlab   # Fallback when URL cannot be auto-detected
-```
-
-- The system auto-detects the platform from repository URL keywords; self-hosted GitLab/Gitea domains often lack platform keywords and fall back to `DEFAULT_GIT_PLATFORM`, so explicit configuration is recommended.
+- The system auto-detects the platform from repository URL keywords; self-hosted GitLab/Gitea domains often lack platform keywords and fall back to `DEFAULT_GIT_PLATFORM`, so it is recommended to set the fallback platform explicitly in `config/app.env`.
 - To integrate a non-built-in platform, see [Appendix D](#appendix-d-custom-git-platform-integration).
 
 ---
 
 ## 11. Connect Harbor
 
-Fill in `app.env`:
-
-```ini
-HARBOR_BASE_URL=http://your-harbor
-HARBOR_USER=admin
-HARBOR_PASSWORD=your_password
-```
+On "System Settings → Platform Management → Platform Connections", fill in the Harbor row's **URL / username / password** (username defaults to `admin`; for a robot account use `robot$xxx` + its secret).
 
 Harbor is used to associate build artifacts (image repositories) and to trigger image scans in the security audit.
 
@@ -279,8 +254,8 @@ Harbor is used to associate build artifacts (image repositories) and to trigger 
 > | v1.x / v2.0.x / v2.1.x | ❌ No. The robot token is a JWT (legacy) and only works with Docker/Helm CLI |
 > | v2.2.0+ | ✅ Yes. The robot account uses a secret, so Basic Auth works against the REST API |
 >
-> - **Harbor ≥ 2.2.0**: `HARBOR_USER` may be `robot$xxx`, with `HARBOR_PASSWORD` set to the secret shown when creating the robot account.
-> - **Harbor < 2.2.0**: use a **normal account** (username/password) for `HARBOR_USER` / `HARBOR_PASSWORD`.
+> - **Harbor ≥ 2.2.0**: the username may be `robot$xxx`, with the password set to the secret shown when creating the robot account.
+> - **Harbor < 2.2.0**: use a **normal account** (username/password).
 >
 > The admin "Platform API Version" page detects the concrete Harbor version in real time and clearly shows whether robot accounts are supported.
 
@@ -826,8 +801,11 @@ After completing the above steps in order, verify the system is usable:
 
 Copy `config/app.env.example` to `config/app.env` and fill in your real credentials. The template is organized into 9 numbered sections (this appendix mirrors them): 1 CI Systems / 2 Git Platforms / 3 Harbor / 4 Admin Panel / 5 LDAP / 6 OIDC Provider / 7 CD pairing / 8 Database & Runtime Data / 9 Application. Loading priority: `app.env.local` > real environment variables (Docker `env_file` / shell export) > `app.env.{APP_ENV}` > `app.env`; variables load at process start, so restart the service after editing (loading logic in `src/Support/EnvFileLoader.php`).
 
+> **Since v2.10.0**: keys marked "moved to DB" below (Jenkins / Git / Harbor connections, OIDC issuer / ttl / clients) are no longer read by the application — they are kept only for the one-time `cli/migrate-*` migration or for reference when downgrading; edit them on the "System Settings → Platform Management" page. `DATA_ENC_KEY` is a new required key.
+
 ```ini
 # ============ CI Systems ============
+# Moved to DB: JENKINS_BASE_URL / JENKINS_USER / JENKINS_TOKEN go into ci_platform_connections; kept only for one-time migration by cli/migrate-platform-connections.php
 JENKINS_BASE_URL=http://your-jenkins:8080
 JENKINS_USER=admin
 JENKINS_TOKEN=your_token
@@ -836,6 +814,7 @@ BUILD_MODE=jenkins,gitlab_ci,gitea_ci   # enabled CI sources, comma-separated (s
 BUILD_TIMEOUT=300         # Build timeout in seconds
 
 # ============ Git Platforms ============
+# Moved to DB: GIT*_BASE_URL / GIT*_TOKEN go into ci_platform_connections; kept only for one-time migration by cli/migrate-platform-connections.php
 GITLAB_BASE_URL=http://your-gitlab
 GITLAB_TOKEN=your_token
 
@@ -848,9 +827,10 @@ GITEE_TOKEN=your_token
 GITEA_BASE_URL=http://your-gitea
 GITEA_TOKEN=your_token
 
-DEFAULT_GIT_PLATFORM=gitlab   # Fallback when URL cannot be auto-detected
+DEFAULT_GIT_PLATFORM=gitlab   # Fallback when URL cannot be auto-detected (still read by the app, not migrated)
 
 # ============ Harbor ============
+# Moved to DB: HARBOR_BASE_URL / HARBOR_USER / HARBOR_PASSWORD go into ci_platform_connections; kept only for one-time migration by cli/migrate-platform-connections.php
 HARBOR_BASE_URL=http://your-harbor
 HARBOR_USER=admin
 HARBOR_PASSWORD=your_password
@@ -889,23 +869,34 @@ LDAPTLS_CACERT=/path/to/ca.pem
 LDAPTLS_REQCERT=never          # internal testing only, skip cert verification; forbidden in production
 
 # ============ OIDC Provider (SSO issuer & signing) ============
+# Moved to DB: issuer / id_token_ttl go into ci_app_settings, the client whitelist into ci_oauth_clients
+# (maintained on the "System Settings → Platform Management" page); the env keys below are kept only for
+# the one-time cli/migrate-oidc.php migration and as the issuer fallback when unset in DB.
+# OIDC_RSA_PRIVATE_KEY / OIDC_KEY_FILE stay in env / files and are not migrated.
 OIDC_ISSUER=                  # Glue's public issuer; behind a reverse proxy set it explicitly,
                               # or it derives an internal address (clients see a signature failure; see docs/Single-Sign-On.md)
 # OIDC_RSA_PRIVATE_KEY=       # id_token signing key (RS256 PEM, \n-escaped); empty = auto-generated to OIDC_KEY_FILE
 # OIDC_KEY_FILE=              # persistence path of the auto-generated key (absolute path required)
 # OIDC_ID_TOKEN_TTL=3600      # id_token TTL in seconds
-# JENKINS_OIDC_SECRET=        # Jenkins OIDC client secret (must match the Jenkins side)
+# JENKINS_OIDC_SECRET=        # Jenkins OIDC client secret (must match the Jenkins side; moved to DB, migration only)
 # JENKINS_OIDC_REDIRECT_URI=http://localhost/securityRealm/finishLogin
-# Harbor / GitLab OIDC clients are NOT registered by default: register them in oauth_clients
-# (see the commented examples in config/settings.example.php); secrets are injected via env the same way.
+# Harbor / GitLab OIDC clients are NOT registered by default: add them on the "System Settings → Platform Management → OIDC / SSO Config" page.
 
 # ============ Devops-Glue CD pairing ============
 # [CD-paired] = must match the Devops-Glue CD side character-for-character (see the "CD pairing keys" table at the end of this appendix)
+# The three CD_OIDC_* keys below have moved to the DB (cd client → ci_oauth_clients, maintained on the
+# "OIDC / SSO Config" page) and are kept only for the one-time cli/migrate-oidc.php migration;
+# CD_BASE_URL / CD_API_TOKEN remain env keys.
 # CD_OIDC_SECRET=             # [CD-paired] CD OIDC client secret (client_id is fixed: cd)
 # CD_OIDC_REDIRECT_URI=https://cd.example.com/oauth/callback   # [CD-paired] CD callback URL
 # CD_OIDC_SYSTEM=cd           # account-system ownership of this client (default cd)
 # CD_BASE_URL=https://cd.example.com   # read-only endpoint for CI to fetch CD deploy logs; empty = audit page degrades
 # CD_API_TOKEN=               # [CD-paired] CD-side inbound static token (must match the CD side)
+
+# ============ Sensitive-field encryption ============
+DATA_ENC_KEY=                 # symmetric key encrypting ci_platform_connections (token/username/password) and ci_oauth_clients (secret)
+                              # base64-encoded 32 bytes; generate: php -r "echo base64_encode(random_bytes(32));"
+                              # missing = fail-closed error; leaked = all credentials decryptable; same value across replicas; loss = stored ciphertexts permanently unreadable
 
 # ============ Database & Runtime Data ============
 DB_DRIVER=mysql               # sqlite or mysql
@@ -942,11 +933,11 @@ Keys marked `[CD-paired]` are not one-sided Glue settings — they must match th
 
 | Glue key | CD-side counterpart | Rule |
 |---|---|---|
-| `CD_OIDC_SECRET` | CD backend `client_secret` | Any strong random string (Glue only compares byte-for-byte via `hash_equals`; no format requirement). Generate: `php -r "echo bin2hex(random_bytes(32));"`. Sync the same value to both sides via an ops channel; never commit it to git |
-| `CD_OIDC_REDIRECT_URI` | CD OIDC callback URL | scheme/host/port/path must match exactly; `client_id` is fixed as `cd` (the Glue `oauth_clients` array key) |
+| cd client `secret` (on the OIDC / SSO Config page; the old env key `CD_OIDC_SECRET` is migration-only) | CD backend `client_secret` | Any strong random string (Glue only compares byte-for-byte via `hash_equals`; no format requirement). Generate: `php -r "echo bin2hex(random_bytes(32));"`. Sync the same value to both sides via an ops channel; never commit it to git |
+| cd client `redirect_uri` (on the OIDC / SSO Config page; the old env key `CD_OIDC_REDIRECT_URI` is migration-only) | CD OIDC callback URL | scheme/host/port/path must match exactly; `client_id` is fixed as `cd` |
 | `CD_API_TOKEN` | CD-side inbound static token | Bearer token CI sends when fetching CD deploy logs; identical on both sides (constant-time compare) |
 
-Symptoms of a pairing mismatch: a `CD_OIDC_SECRET` mismatch → Glue answers `invalid_client` (401) when CD exchanges the token; a `CD_OIDC_REDIRECT_URI` mismatch → rejected at the authorize step; either value empty → the `cd` client is dropped entirely (fail-closed) and CD cannot sign in via Glue.
+Symptoms of a pairing mismatch: a cd-client `secret` mismatch → Glue answers `invalid_client` (401) when CD exchanges the token; a `redirect_uri` mismatch → rejected at the authorize step; either value empty → the `cd` client is dropped entirely (fail-closed) and CD cannot sign in via Glue.
 
 ### Joint CI+CD deployment: shared vs. per-service variables
 
@@ -967,7 +958,7 @@ A joint deployment involves two services plus one shared MySQL:
 
 **② CI-only keys (CD never reads them)**
 
-Everything else in Appendix A — CI systems, Git platforms, admin panel, LDAP, the OIDC provider (including the three `CD_OIDC_*` pairing keys), `CD_BASE_URL` / `CD_API_TOKEN`, backup/log/cache, and the application keys (`APP_ENV` / `API_BASE_URL` / `CORS_ORIGIN` / `SYSTEM_TYPE` / `TRUSTED_PROXY_HOPS` etc.) — is read only by CI. Note that although `CD_OIDC_*`, `CD_BASE_URL` and `CD_API_TOKEN` start with "CD", they are configured on this service (the CI side).
+Everything else in Appendix A — CI systems, Git platforms, admin panel, LDAP, the OIDC provider (its issuer/ttl and client whitelist have moved to the DB and are read only by CI), `CD_BASE_URL` / `CD_API_TOKEN`, backup/log/cache, and the application keys (`APP_ENV` / `API_BASE_URL` / `CORS_ORIGIN` / `SYSTEM_TYPE` / `TRUSTED_PROXY_HOPS` etc.) — is read only by CI. Note that although `CD_BASE_URL` and `CD_API_TOKEN` start with "CD", they are configured on this service (the CI side).
 
 **③ CD's own keys (CI never reads them; they live in CD's config)**
 
@@ -976,7 +967,7 @@ Everything else in Appendix A — CI systems, Git platforms, admin panel, LDAP, 
 | `SECRET_KEY` | CD's session-encryption key (`openssl rand -base64 32`; when co-deployed, compose refuses to start if it is empty) |
 | `CI_API_URL` / `CI_API_TOKEN` | CD→CI calls: when co-deployed `CI_API_URL` is pinned to `http://devops-glue` by compose; `CI_API_TOKEN` is the plaintext token issued by this platform's "Integrated Services" page (see chapter 16) |
 | CD's inbound static token | Same value as CI's `CD_API_TOKEN` (the Bearer CI sends when fetching CD deploy logs) |
-| CD OIDC client's `client_secret` and callback URL | Same values as CI's `CD_OIDC_SECRET` / `CD_OIDC_REDIRECT_URI` (see the "CD pairing keys" table above) |
+| CD OIDC client's `client_secret` and callback URL | Same values as the cd client's `secret` / `redirect_uri` on CI's "OIDC / SSO Config" page (see the "CD pairing keys" table above) |
 
 In one sentence: **shared keys are "configure once, effective for both sides"; pairing keys are "written on both sides, must be identical"** — paired keys are never read from each other; they are kept in sync via an ops channel.
 
@@ -989,7 +980,8 @@ On bare metal (nginx + php-fpm, no Docker) there is no root-`.env` injection —
 1. **Database**: simplest is `DB_DRIVER=sqlite` (zero external dependencies); or `DB_DRIVER=mysql` + `DB_HOST=127.0.0.1` + an application account — import `database/mysql_init.sql` manually and grant privileges yourself (the Docker default account already has database-level ALL; bare-metal users must run `GRANT ALL PRIVILEGES ON devops_glue.* TO '<account>';`).
 2. **At least one Git platform**: the URL + token of any platform from section 2.
 3. **Admin**: `ADMIN_USER` / `ADMIN_PASSWORD` (seeds the root admin on first boot only; the database takes precedence afterwards).
-4. **When exposing SSO externally**: set `OIDC_ISSUER` explicitly to the fully reachable external URL (mandatory behind a reverse proxy — runtime derivation ignores X-Forwarded-* and yields an internal address, surfacing as signature-verification failures).
+4. **When exposing SSO externally**: set the issuer explicitly on the "System Settings → Platform Management → OIDC / SSO Config" page to the fully reachable external URL (mandatory behind a reverse proxy — runtime derivation ignores X-Forwarded-* and yields an internal address, surfacing as signature-verification failures).
+5. **Sensitive-field encryption key**: `DATA_ENC_KEY` (base64-encoded 32 bytes; generate `php -r "echo base64_encode(random_bytes(32));"`). Missing = fail-closed error; must be backed up — loss makes stored tokens/secrets permanently unreadable.
 
 Web tier: point nginx's `root` at the project's `public/` directory and rewrite to `index.php` via `try_files` — the repo's `config/docker/nginx.conf` is a ready-made template (replace the container path `/app` with your actual deployment path).
 

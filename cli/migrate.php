@@ -155,12 +155,28 @@ $recordMigration = static function (string $result, array $detail) use ($pdo, $b
     );
 };
 
+// 逐表建表结果：让操作者一眼看到哪张表建成功、哪张表失败。
+$printTableLog = static function (array $log): void {
+    if ($log === []) {
+        echo "建表过程：无（表均已存在，无需 CREATE）\n";
+        return;
+    }
+    foreach ($log as $row) {
+        $line = '  [' . (!empty($row['ok']) ? '✓ 成功' : '✗ 失败') . '] ' . $row['table'];
+        if (!empty($row['error'])) {
+            $line .= ' — ' . $row['error'];
+        }
+        echo $line . "\n";
+    }
+};
+
 try {
     // 直接迁移：migrateNow() 自带连接（不依赖 bootstrap），因此空库 / 漏跑建表脚本
     // 也能一次建全，不会在补种子阶段先抛异常。
     $status = Database::migrateNow(); // 建表 + 补列 + 种子 + 自检 + 标记 schema 当前
 } catch (\Throwable $e) {
     fwrite(STDERR, "错误：数据库迁移失败: {$e->getMessage()}\n");
+    $printTableLog(Database::lastTableBuildLog());
     $recordMigration('failure', ['error' => $e->getMessage()]);
     exit(1);
 }
@@ -182,4 +198,5 @@ $recordMigration('success', ['driver' => $status['driver'], 'schema_version' => 
 echo '✓ 数据库迁移完成（driver=' . $status['driver']
     . ', schema_version=' . ($status['schema_version'] ?? '(未标记)')
     . ', app_version=' . AppConfig::APP_VERSION . "）\n";
+$printTableLog(Database::lastTableBuildLog());
 exit(0);

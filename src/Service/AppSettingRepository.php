@@ -45,6 +45,12 @@ class AppSettingRepository
         $this->pdo->prepare($sql)->execute([$key, $value]);
     }
 
+    private function deleteString(string $key): void
+    {
+        $this->pdo->prepare('DELETE FROM ' . AppConfig::TABLE_APP_SETTINGS . ' WHERE setting_key = ?')
+            ->execute([$key]);
+    }
+
     private function getBoolFlag(string $key, bool $default): bool
     {
         $value = $this->getString($key);
@@ -275,5 +281,55 @@ class AppSettingRepository
     public function setApiAccessLogCleanupEnabled(bool $enabled): void
     {
         $this->setString(AppConfig::SETTING_API_ACCESS_LOG_CLEANUP_ENABLED, $enabled ? '1' : '0');
+    }
+
+    // ─── OIDC provider 配置（ci_app_settings 键；DB 唯一权威，不读 env、不自动种子化）──
+
+    /**
+     * OIDC issuer（null = DB 未设置，由控制器/服务从请求推导）。
+     * 统一 rtrim('/')，与 OidcService::issuer() 一致，避免尾斜杠造成相等性漂移。
+     */
+    public function getOidcIssuer(): ?string
+    {
+        $value = $this->getString(AppConfig::SETTING_OIDC_ISSUER);
+        if ($value === null) {
+            return null;
+        }
+        $issuer = rtrim(trim($value), '/');
+        return $issuer === '' ? null : $issuer;
+    }
+
+    /**
+     * 设置 OIDC issuer；空串清除 DB 行（回退请求推导）。
+     */
+    public function setOidcIssuer(string $issuer): void
+    {
+        $issuer = rtrim(trim($issuer), '/');
+        if ($issuer === '') {
+            $this->deleteString(AppConfig::SETTING_OIDC_ISSUER);
+            return;
+        }
+        $this->setString(AppConfig::SETTING_OIDC_ISSUER, $issuer);
+    }
+
+    /**
+     * OIDC id_token 有效期（秒）。null = 未设置或非法（回退代码默认 DEFAULT_OIDC_ID_TOKEN_TTL）。
+     */
+    public function getOidcIdTokenTtl(): ?int
+    {
+        $value = $this->getString(AppConfig::SETTING_OIDC_ID_TOKEN_TTL);
+        if ($value === null) {
+            return null;
+        }
+        $ttl = (int)trim($value);
+        return $ttl > 0 ? $ttl : null;
+    }
+
+    public function setOidcIdTokenTtl(int $ttl): void
+    {
+        if ($ttl < 1) {
+            throw new \InvalidArgumentException('非法的 OIDC id_token 有效期: ' . $ttl);
+        }
+        $this->setString(AppConfig::SETTING_OIDC_ID_TOKEN_TTL, (string)$ttl);
     }
 }

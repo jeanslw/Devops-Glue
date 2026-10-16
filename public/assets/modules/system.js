@@ -4,6 +4,8 @@ import { toast, confirmDialog } from '../core/toast.js';
 import { getRole } from '../core/auth.js';
 import { applyTagSettings, applyApiLogSettings } from './mode.js';
 import { loadApiTokens } from './apiTokens.js';
+import { loadOidcConfig } from './oidc.js';
+import { loadPlatformConnections } from './platforms.js';
 
 export async function loadSystemInfo() {
     const loading = document.getElementById('sys-loading');
@@ -98,6 +100,20 @@ export async function loadSystemInfo() {
     }
 }
 
+function renderMigrateLog(log) {
+    const box = document.getElementById('sys-migrate-log');
+    if (!box) return;
+    if (!Array.isArray(log) || log.length === 0) { box.innerHTML = ''; return; }
+    box.innerHTML = log.map(function (r) {
+        const ok = !!r.ok;
+        const row = '<span style="color:' + (ok ? '#16a34a' : '#dc2626') + ';font-weight:600;flex-shrink:0;">' + (ok ? '✓' : '✗') + '</span>'
+            + '<span style="word-break:break-all;">' + esc(r.table) + '</span>'
+            + '<span style="margin-left:auto;white-space:nowrap;color:' + (ok ? '#16a34a' : '#dc2626') + ';">' + (ok ? __.t('sys.migrate_tbl_ok') : __.t('sys.migrate_tbl_fail')) + '</span>'
+            + (r.error ? '<span style="flex-basis:100%;color:#dc2626;font-size:11px;word-break:break-all;">' + esc(r.error) + '</span>' : '');
+        return '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:3px 0;font-size:13px;border-bottom:1px solid #f3f4f6;">' + row + '</div>';
+    }).join('');
+}
+
 export async function doMigrate() {
     if (!await confirmDialog({ title: __.t('common.confirm'), message: __.t('sys.migrate_confirm'), note: __.t('sys.migrate_note'), confirmText: __.t('sys.migrate_btn') })) return;
     const st = document.getElementById('sys-migrate-status');
@@ -110,6 +126,7 @@ export async function doMigrate() {
         if (res.ok) {
             st.textContent = '✅ ' + __.t('sys.migrated');
             st.style.color = '#16a34a';
+            renderMigrateLog(d.status && d.status.table_build_log ? d.status.table_build_log : []);
             toast(__.t('sys.migrated'), true);
             loadSystemInfo();
         } else {
@@ -117,6 +134,7 @@ export async function doMigrate() {
             // 409 = 账号无 DDL 权限（可操作提示，非故障）：橙色 + warn 级 toast，与真正的失败(红)区分
             st.textContent = (denied ? '⚠️ ' : '❌ ') + (d.message || __.t('sys.migrate_failed'));
             st.style.color = denied ? '#d97706' : '#dc2626';
+            renderMigrateLog(d.tables || []);
             toast(d.message || __.t('sys.migrate_failed'), denied ? 'warn' : false);
         }
     } catch(e) {
@@ -229,28 +247,8 @@ export async function loadPlatformConfig() {
         if (!res.ok) { toast(d.message || 'load failed', false); loading.style.display = 'none'; return; }
         applyTagSettings(d);
         applyApiLogSettings(d);
-        const wrap = document.getElementById('pc-platforms');
-        wrap.innerHTML = '';
-        const platforms = d.platforms || {};
-        const defs = [
-            ['jenkins', '🤖 Jenkins'],
-            ['gitlab', '🦊 GitLab'],
-            ['github', '🐙 GitHub'],
-            ['gitee', '🐈 Gitee'],
-            ['gitea', '🦎 Gitea'],
-            ['harbor', '🐳 Harbor'],
-        ];
-        defs.forEach(function(def) {
-            const label = def[1];
-            const p = platforms[def[0]] || {};
-            const ok = !!p.configured;
-            const row = document.createElement('div');
-            row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 0;font-size:13px;border-bottom:1px solid #f3f4f6;flex-wrap:wrap;';
-            row.innerHTML = '<span style="width:10px;height:10px;border-radius:50%;background:' + (ok ? '#16a34a' : '#dc2626') + ';flex-shrink:0;"></span>'
-                + '<span style="font-weight:600;min-width:120px;">' + esc(label) + '</span>'
-                + '<span style="margin-left:auto;color:' + (ok ? '#16a34a' : '#dc2626') + ';font-weight:600;">' + (ok ? '✓ ' : '✗ ') + (ok ? __.t('sys.configured') : __.t('sys.not_configured')) + '</span>';
-            wrap.appendChild(row);
-        });
+        loadOidcConfig();
+        loadPlatformConnections();
         loading.style.display = 'none';
         body.style.display = 'block';
     } catch(e) {

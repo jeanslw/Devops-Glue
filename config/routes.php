@@ -103,6 +103,10 @@ $app->group('/api', function (RouteCollectorProxy $api) {
             $auth->map(['GET'], '/api_access_logs', [AdminController::class, 'apiAccessLogList']);
             $auth->map(['GET'], '/platform_config', [AdminController::class, 'platformConfig']);
             $auth->map(['PUT'], '/platform_config', [AdminController::class, 'updatePlatformConfig']);
+            $auth->map(['GET'], '/oidc_config', [AdminController::class, 'oidcConfig']);
+            $auth->map(['PUT'], '/oidc_config', [AdminController::class, 'updateOidcConfig']);
+            $auth->map(['GET'], '/platform_connections', [AdminController::class, 'platformConnections']);
+            $auth->map(['PUT'], '/platform_connections', [AdminController::class, 'updatePlatformConnections']);
             // 手动触发 tag 定时任务（与开关同权限 ci.platform-config，后端仍校验开关必须先开启）
             $auth->map(['POST'], '/tag_cleanup', [AdminController::class, 'runTagCleanup']);
             $auth->map(['POST'], '/tag_backfill', [AdminController::class, 'runTagBackfill']);

@@ -1,29 +1,31 @@
 <?php
 // config/settings.example.php
 return [
+    // Git/Harbor/Jenkins 连接配置已迁入 DB（ci_platform_connections，后台「平台接入状态」可编辑），
+    // 彻底移除 env：下方 url/user/token/password 仅结构占位，实际值由容器从 DB 注入，不要再填 env。
     'jenkins' => [
-        'url'   => env('JENKINS_BASE_URL', 'http://your-jenkins'),
-        'user'  => env('JENKINS_USER', 'admin'),
-        'token' => env('JENKINS_TOKEN', ''),
+        'url'   => '',
+        'user'  => 'admin',
+        'token' => '',
     ],
     'git' => [
         'default_platform' => env('DEFAULT_GIT_PLATFORM', 'gitlab'),
 
         'gitlab' => [
-            'base_url' => env('GITLAB_BASE_URL', 'http://your-gitlab'),
-            'token'    => env('GITLAB_TOKEN', ''),
+            'base_url' => '',
+            'token'    => '',
         ],
         'gitee' => [
-            'base_url' => env('GITEE_BASE_URL', 'https://gitee.com/api/v5'),
-            'token'    => env('GITEE_TOKEN', ''),
+            'base_url' => 'https://gitee.com/api/v5',
+            'token'    => '',
         ],
         'github' => [
-            'base_url' => env('GITHUB_BASE_URL', 'https://api.github.com'),
-            'token'    => env('GITHUB_TOKEN', ''),
+            'base_url' => 'https://api.github.com',
+            'token'    => '',
         ],
         'gitea' => [
-            'base_url' => env('GITEA_BASE_URL', ''),
-            'token'    => env('GITEA_TOKEN', ''),
+            'base_url' => '',
+            'token'    => '',
         ],
         'custom_providers' => [
             // 示例：自定义 Git 平台（凭证通过 env() 从 .env 读取）
@@ -41,9 +43,9 @@ return [
         ],
     ],
     'harbor' => [
-        'url'      => env('HARBOR_BASE_URL', ''),
-        'username' => env('HARBOR_USER', 'admin'),
-        'password' => env('HARBOR_PASSWORD', ''),
+        'url'      => '',
+        'username' => 'admin',
+        'password' => '',
     ],
     'build' => [
         // 自定义 Build Provider（推送式 CI）：默认已配置，开箱即用，无需修改。
@@ -111,45 +113,28 @@ return [
     /*
      * OAuth2 / OIDC 客户端白名单（供外部系统用 Glue 账号登录）
      *
-     * 每个客户端需配置：
-     *   client_id     — 客户端标识（数组键名，如 jenkins / harbor）
-     *   secret        — 客户端密钥（必须设强随机字符串；空/纯空白会被 fail-closed 剔除）
-     *   redirect_uri  — 授权回调地址（必须与外部系统配置逐字符一致，含 scheme/host/端口/路径）
-     *
-     * 各家回调地址：
-     *   Jenkins — http://your-jenkins/securityRealm/finishLogin
-     *   Harbor  — https://your-harbor/c/oidc/callback
-     *   GitLab  — https://your-gitlab/users/auth/openid_connect/callback
+     * 已迁入 DB（ci_oauth_clients，后台「平台接入状态 → OIDC/SSO」页可编辑），
+     * 彻底移除 env：此数组恒为空，唯一权威由 OAuthClientRepository 从 DB 读取。
+     * 客户端在后台配置：client_id（如 jenkins / cd）、secret（强随机串）、
+     * redirect_uri（与外部系统回调逐字符一致）；secret/redirect_uri 留空即 fail-closed 剔除。
      */
-    'oauth_clients' => [
-        // 'jenkins' => [
-        //     'secret'       => env('JENKINS_OIDC_SECRET', ''),
-        //     'redirect_uri' => 'http://your-jenkins/securityRealm/finishLogin',
-        // ],
-        // 'harbor' => [
-        //     'secret'       => env('HARBOR_OIDC_SECRET', ''),
-        //     'redirect_uri' => 'https://your-harbor/c/oidc/callback',
-        // ],
-        // 'gitlab' => [
-        //     'secret'       => env('GITLAB_OIDC_SECRET', ''),
-        //     'redirect_uri' => 'https://your-gitlab/users/auth/openid_connect/callback',
-        // ],
-    ],
+    'oauth_clients' => [],
 
     /*
      * OIDC Provider 配置（Glue 作为 OIDC Provider，供 Jenkins / Harbor / GitLab 单点登录）
      *
-     *   issuer       — Glue 对外地址（issuer）。留空则运行时从请求 scheme+host+port 推导；
-     *                  生产环境建议显式配置为对外可达的完整 URL（如 https://glue.example.com）。
-     *   private_key  — id_token 签名私钥（RS256，RSA >= 2048 位 PEM）。留空则自动生成并持久化到 key_file。
+     *   issuer / id_token_ttl — 已迁入 DB（ci_app_settings，后台 OIDC 配置页可编辑），
+     *                           此处不再读 env，仅结构占位。
+     *   private_key  — id_token 签名私钥（RS256，RSA >= 2048 位 PEM）。保留 env 覆盖：
+     *                  多副本部署必须注入固定 OIDC_RSA_PRIVATE_KEY，否则各副本 kid 不一致、验签失败；
+     *                  留空则自动生成并持久化到 key_file。
      *   key_file     — 自动生成私钥时的持久化路径（落盘后 chmod 0600）。
-     *   id_token_ttl — id_token 有效期（秒）。
      */
     'oidc' => [
-        'issuer'       => env('OIDC_ISSUER', ''),
+        'issuer'       => '',
+        'id_token_ttl' => 3600,
         'private_key'  => env('OIDC_RSA_PRIVATE_KEY', ''),
         'key_file'     => env('OIDC_KEY_FILE', __DIR__ . '/data/oidc_rsa.pem'),
-        'id_token_ttl' => (int) env('OIDC_ID_TOKEN_TTL', '3600'),
     ],
 ];
 

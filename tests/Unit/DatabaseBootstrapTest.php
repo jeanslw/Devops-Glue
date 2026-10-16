@@ -1229,6 +1229,45 @@ class DatabaseBootstrapTest extends TestCase
     }
 
     /**
+     * 防 DDL 语法漂移：在真实 MySQL 上全量跑 ensureTables() 的 MySQL 分支建表语句。
+     *
+     * 回归背景：ci_oauth_clients 的 `system` 列是 MySQL 保留字，mysql_init.sql 加了反引号、
+     * ensureTables() 的 PHP 建表语句却漏了。因 ensureTables() 只在 schema_version 变更时才执行，
+     * 该错误一直潜伏，直到升 APP_VERSION 触发全量建表才在真实 MySQL 上 1064 → 500。
+     * SQLite 对保留字不敏感、永远测不出这类漂移，故必须在真实 MySQL 上执行 DDL 校验。
+     */
+    public function testEnsureTablesDdlIsValidOnMysql(): void
+    {
+        $adminPdo = $this->mysqlTestPdo();
+        if ($adminPdo === null) {
+            $this->markTestSkipped('MySQL 测试实例不可用（GLUE_TEST_MYSQL_* 未配置或连不上），跳过 DDL 语法校验');
+        }
+
+        $dbName = 'glue_test_ddl_' . getmypid();
+        $adminPdo->exec("CREATE DATABASE IF NOT EXISTS `{$dbName}` CHARACTER SET utf8mb4");
+        try {
+            $pdo = $this->mysqlTestPdo($dbName);
+            $this->assertNotNull($pdo);
+
+            Database::reset();
+            Database::init(['driver' => 'mysql', 'auto_migrate' => true]);
+            // 全量 ensureTables（MySQL 分支）+ RBAC/管理员种子；任何保留字/类型/语法错误在此抛 PDOException。
+            Database::bootstrap($pdo);
+
+            // 全部应用表都应在 MySQL 上建成（缺表说明建表被短路或部分失败）
+            $this->assertSame([], Database::missingTables($pdo));
+            // 版本标记对齐，证明迁移完整跑通而非中途静默跳过
+            $version = $pdo->query(
+                'SELECT value FROM ' . AppConfig::TABLE_APP_SETTINGS . " WHERE setting_key = 'schema_version'"
+            )->fetchColumn();
+            $this->assertSame(AppConfig::APP_VERSION, $version);
+        } finally {
+            $adminPdo->exec("DROP DATABASE IF EXISTS `{$dbName}`");
+            Database::reset();
+        }
+    }
+
+    /**
      * MySQL 端到端（无 MySQL 时自动跳过）：
      *  ① varchar(32)/(128) 的存量列被 columnDrift 标 safe，reconcileColumns 后扩为 varchar(255)；
      *  ② 反向把列宽改成 varchar(512)（比期望宽）必须标 safe=false，strict 修复也不改动、不抛异常。

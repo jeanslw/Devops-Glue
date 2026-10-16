@@ -38,6 +38,9 @@ metadata:
 #
 # ⚠️ OIDC_RSA_PRIVATE_KEY：生产多副本必须固定（openssl genrsa 2048 生成后写死，
 #    多行 PEM 用 \n 转义或直接换行）。留空 = 每副本自动生成不同私钥，SSO 会坏。
+# ⚠️ DATA_ENC_KEY：敏感字段对称加密密钥（必填，缺失即 fail-closed）。本 Secret 同时
+#    挂载到 web（replicas=3）与 worker 两个 Deployment，全部 Pod 读到同一值——这是
+#    「多副本同 key」的唯一保证；换值/丢值 = 库内 token/secret 密文永久不可解。
 # ⚠️ TRUSTED_PROXY_HOPS 默认 0：LB 用 fastcgi_pass 直连 php-fpm，REMOTE_ADDR 即客户端 IP，
 #    无 X-Forwarded-For 跳。仅当 LB 之前还隔着不保留源 IP 的反代/云 LB 时，才按层数递增，
 #    并需同步在 LB 的 nginx 配置里补 `fastcgi_param HTTP_X_FORWARDED_FOR $http_x_forwarded_for;`。
@@ -52,9 +55,8 @@ stringData:
   app.env: |
     APP_ENV=production
     APP_DEBUG=false
-    # 对外可达的完整 URL（Swagger/OIDC issuer 等使用）
+    # 对外可达的完整 URL（Swagger 等使用）
     API_BASE_URL=https://glue.example.com
-    OIDC_ISSUER=https://glue.example.com
 
     # 构建模式：已启用 CI 源集合（首次运行种子，后台「配置模式」写入 DB 后以此为准）
     BUILD_MODE=jenkins,gitlab_ci,gitea_ci
@@ -67,21 +69,9 @@ stringData:
     DB_USER=devops
     DB_PASS=CHANGE_ME_DB_PASS
 
-    # ── Jenkins / Harbor / Git 多平台（按需填写，未用的留空）──
-    JENKINS_BASE_URL=http://your-jenkins:8080
-    JENKINS_USER=admin
-    JENKINS_TOKEN=CHANGE_ME
-    HARBOR_BASE_URL=http://your-harbor
-    HARBOR_USER=admin
-    HARBOR_PASSWORD=CHANGE_ME
-    GITLAB_BASE_URL=http://your-gitlab
-    GITLAB_TOKEN=CHANGE_ME
-    GITHUB_BASE_URL=https://api.github.com
-    GITHUB_TOKEN=
-    GITEE_BASE_URL=https://gitee.com/api/v5
-    GITEE_TOKEN=
-    GITEA_BASE_URL=https://your-gitea
-    GITEA_TOKEN=
+    # ── Jenkins / Harbor / Git 多平台连接已迁入 DB（ci_platform_connections）──
+    # 升级时手动跑一次 cli/migrate-platform-connections.php 搬库，或后台「平台接入状态」页配置；
+    # 此处不再通过 env 注入。
 
     # ── 管理后台种子账号（仅首启建号，之后后台修改）──
     ADMIN_USER=admin
@@ -90,6 +80,11 @@ stringData:
     # 反代跳数：LB 用 fastcgi_pass（非 proxy_pass），REMOTE_ADDR 直达客户端 IP，故默认 0。
     # 仅当 LB 前还有不保留源 IP 的云反代/代理协议时按层数递增（见文件头 ⚠️）。
     TRUSTED_PROXY_HOPS=0
+
+    # ── 敏感字段加密密钥（必填，多副本必须同值，见上方 Secret 头 ⚠️）──
+    # base64 编码的 32 字节，生成：php -r "echo base64_encode(random_bytes(32));"
+    # 本 Secret 同时挂载到 web 与 worker，全部 Pod 读到同一值；务必备份、不进 git。
+    DATA_ENC_KEY=CHANGE_ME_DATA_ENC_KEY
 
     # ── OIDC SSO 签名私钥（多副本必须固定，见文件头 ⚠️）──
     OIDC_RSA_PRIVATE_KEY=CHANGE_ME_FIXED_RSA_PEM

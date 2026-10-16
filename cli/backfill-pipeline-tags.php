@@ -26,6 +26,7 @@ use App\Config\AppConfig;
 use App\Service\Database;
 use App\Service\HarborService;
 use App\Service\PipelineTagService;
+use App\Service\PlatformConnectionRepository;
 use GuzzleHttp\Client;
 
 // ── 1. 初始化数据库（Database::getPdo() 内部 createPdo()+bootstrap()，建表+种子+自检，只跑一次）──
@@ -48,15 +49,16 @@ if (!$backfillEnabled) {
     exit(0);
 }
 
-// ── 4. 构造 HarborService（未配置时传 null，服务会安全跳过）──
+// ── 4. 构造 HarborService（未配置时传 null，服务会安全跳过；连接值从 DB 解析）──
 $harbor = null;
-$harborUrl = rtrim(envVal('HARBOR_BASE_URL'), '/');
+$harborCfg = (new PlatformConnectionRepository($pdo))->resolveConnections()['harbor'] ?? [];
+$harborUrl = rtrim($harborCfg['url'] ?? '', '/');
 if ($harborUrl !== '') {
     $harborClient = new Client([
         'base_uri' => $harborUrl,
         'auth'     => [
-            envVal('HARBOR_USER', 'admin'),
-            envVal('HARBOR_PASSWORD'),
+            $harborCfg['username'] ?? 'admin',
+            $harborCfg['password'] ?? '',
         ],
         'headers'         => ['Accept' => 'application/json'],
         'connect_timeout' => 5,   // TCP 握手超时，防止 hang
@@ -67,7 +69,7 @@ if ($harborUrl !== '') {
 
 // ── 5. 执行回填 ──
 if ($harbor === null) {
-    echo "跳过：Harbor 未配置（HARBOR_BASE_URL 为空），ci_pipeline_artifacts 未做回填。\n";
+    echo "跳过：Harbor 未配置（平台连接 URL 为空），ci_pipeline_artifacts 未做回填。\n";
     exit(0);
 }
 

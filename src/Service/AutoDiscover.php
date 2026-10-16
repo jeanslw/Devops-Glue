@@ -255,7 +255,7 @@ class AutoDiscover
             // 快速验证认证
             $test = $this->gitlabClient->get("{$base}/api/v4/user");
             if ($test->getStatusCode() === 401) {
-                throw new \RuntimeException('GitLab Token 无效，请检查 GITLAB_TOKEN');
+                throw new \RuntimeException('GitLab Token 无效，请检查后台平台连接里的 GitLab Token');
             }
             $page = 1;
             $seen = [];  // 归一化 key，仅本 provider 内去重
@@ -331,7 +331,7 @@ class AutoDiscover
             while ($page <= 10) {
                 $resp = $this->giteaClient->get("{$base}/api/v1/user/repos?limit=100&page={$page}");
                 if ($resp->getStatusCode() === 401) {
-                    throw new \RuntimeException('Gitea Token 无效，请检查 GITEA_TOKEN');
+                    throw new \RuntimeException('Gitea Token 无效，请检查后台平台连接里的 Gitea Token');
                 }
                 if ($resp->getStatusCode() >= 400) {
                     break;

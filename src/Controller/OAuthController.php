@@ -353,13 +353,13 @@ class OAuthController extends BaseController
     }
 
     /**
-     * 确定 issuer：优先 OIDC_ISSUER 配置，缺省从当前请求 scheme+host 推导
+     * 确定 issuer：优先后台 OIDC 配置的 issuer（DB），缺省从当前请求 scheme+host 推导
      *
      * 推导路径有意不读 X-Forwarded-Proto / X-Forwarded-Host（可伪造，会污染 discovery 文档），
      * 因此经 nginx / Ingress 反向代理时，推导出的 issuer 很可能是内网地址（如 http://devops-glue），
      * 有两种后果：一是 OIDC 客户端 `iss` 校验失败；二是更隐蔽的，discovery 的 `jwks_uri` 也指向内网，
      * 客户端拉不到公钥，表现为验签失败而不是网络不通，容易误判为密钥问题。
-     * 因此凡经反向代理对外提供 SSO 的部署，必须显式配置 `OIDC_ISSUER=<对外地址>`；
+     * 因此凡经反向代理对外提供 SSO 的部署，必须在后台 OIDC 配置页设置 issuer=<对外地址>；
      *   联调前核对方式：`curl -s <issuer>/.well-known/openid-configuration | jq .issuer,.jwks_uri`。
      */
     private function resolveIssuer(Request $request): string
