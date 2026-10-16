@@ -87,6 +87,7 @@ $app->group('/api', function (RouteCollectorProxy $api) {
             $auth->map(['PUT'], '/users/{username}/password', [AdminController::class, 'userModifyPassword']);
             $auth->map(['PUT'], '/users/{username}/status', [AdminController::class, 'userSetStatus']);
             $auth->map(['DELETE'], '/users/{username}', [AdminController::class, 'userDelete']);
+            $auth->map(['POST'], '/login_locks/clear', [AdminController::class, 'clearLoginLocks']);
             $auth->map(['GET'], '/roles', [AdminController::class, 'roleList']);
             $auth->map(['POST'], '/roles', [AdminController::class, 'roleCreate']);
             $auth->map(['PUT'], '/roles/{id}', [AdminController::class, 'roleUpdate']);

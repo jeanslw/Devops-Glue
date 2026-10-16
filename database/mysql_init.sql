@@ -200,8 +200,8 @@ CREATE TABLE IF NOT EXISTS `ci_api_tokens` (
     `created_at` DATETIME DEFAULT (NOW())
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- ── 14. ci_pipeline_build_log（拉取式记录「镜像 Tag」日志兜底的懒解析缓存 sha→tag）──
-CREATE TABLE IF NOT EXISTS `ci_pipeline_build_log` (
+-- ── 14. ci_build_tag_cache（拉取式记录「镜像 Tag」日志兜底的懒解析缓存 sha→tag）──
+CREATE TABLE IF NOT EXISTS `ci_build_tag_cache` (
     `id`          INT AUTO_INCREMENT PRIMARY KEY,
     `project_key` VARCHAR(255) DEFAULT '',
     `provider`    VARCHAR(255) DEFAULT '',

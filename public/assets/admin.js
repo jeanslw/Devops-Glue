@@ -31,7 +31,7 @@ import {
 import {
     loadUsers, toggleUserStatus, showUserForm, showUserEditForm, hideUserForm,
     submitUserForm, deleteUser, modifyUserPassword, closePasswordModal,
-    submitPasswordChange, changePassword
+    submitPasswordChange, changePassword, clearLoginLocks
 } from './modules/users.js';
 import {
     loadRoleList, showRoleForm, hideRoleForm, submitRoleForm, deleteRole, togglePermGroup
@@ -259,7 +259,7 @@ Object.assign(window, {
     runStaleTagCleanup, runTagBackfill, saveApiLogSettings, onApiLogRetainChange, onApiLogCleanupToggle,
     loadPullProjects, loadPullRecords, openPullLog, pullShowLog, closePullLog, loadPushRecords,
     applyBuildRecordsMenuVisibility, resolvePullTag, reparsePullTag,
-    loadUsers, toggleUserStatus, showUserForm, showUserEditForm, hideUserForm, submitUserForm, deleteUser, modifyUserPassword, closePasswordModal, submitPasswordChange, changePassword,
+    loadUsers, toggleUserStatus, showUserForm, showUserEditForm, hideUserForm, submitUserForm, deleteUser, modifyUserPassword, closePasswordModal, submitPasswordChange, changePassword, clearLoginLocks,
     loadRoleList, showRoleForm, hideRoleForm, submitRoleForm, deleteRole, togglePermGroup,
     loadPermList, deletePermission, registerPermission, loadImpliedRules, showImpliedForm, hideImpliedForm, submitImpliedForm, deleteImpliedRule,
     loadApiTokens, showApiTokenForm, hideApiTokenForm, submitApiTokenForm, copyApiToken, revokeApiToken, deleteApiToken,

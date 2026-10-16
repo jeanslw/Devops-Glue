@@ -1121,7 +1121,7 @@ class BuildController extends BaseController
                 }
             }
 
-            // 兜底缓存：日志懒解析落库的 sha 到 tag 映射（ci_pipeline_build_log，主源未命中时补位）
+            // 兜底缓存：日志懒解析落库的 sha 到 tag 映射（ci_build_tag_cache，主源未命中时补位）
             $shas = array_values(array_unique(array_filter(
                 array_map(fn($p) => (string) ($p['sha'] ?? ''), $pipelines),
                 fn($s) => $s !== ''
@@ -1129,7 +1129,7 @@ class BuildController extends BaseController
             if ($shas) {
                 $sph = implode(',', array_fill(0, count($shas), '?'));
                 $cstmt = $this->pdo->prepare(
-                    "SELECT sha, tag FROM " . AppConfig::TABLE_PIPELINE_BUILD_LOG
+                    "SELECT sha, tag FROM " . AppConfig::TABLE_BUILD_TAG_CACHE
                     . " WHERE sha IN ({$sph}) AND tag != ''"
                 );
                 $cstmt->execute($shas);
@@ -1164,7 +1164,7 @@ class BuildController extends BaseController
      *
      * 镜像 Tag 的日志兜底懒解析：对一条 status=success 且未命中 harbor-scan 回写的 pipeline，
      * 遍历其 jobs 日志，按可配置关键字 + 本项目 harbor 仓库路径命中后尽力提取 tag，
-     * 并落库到 ci_pipeline_build_log（sha 到 tag 缓存），下次列表直接命中，不再重复拉日志。
+     * 并落库到 ci_build_tag_cache（sha 到 tag 缓存），下次列表直接命中，不再重复拉日志。
      * Body 可带 force=1 强制重解析：跳过缓存、覆盖旧 tag，用于修正历史解析错误。
      *
      * @param array<string,string> $args
@@ -1210,7 +1210,7 @@ class BuildController extends BaseController
         // 缓存命中：非强制时直接返回（含已解析但无 tag 的空结果，避免重复拉日志）
         if (!$force && $sha !== '') {
             try {
-                $c = $this->pdo->prepare("SELECT tag FROM " . AppConfig::TABLE_PIPELINE_BUILD_LOG . " WHERE sha = ?");
+                $c = $this->pdo->prepare("SELECT tag FROM " . AppConfig::TABLE_BUILD_TAG_CACHE . " WHERE sha = ?");
                 $c->execute([$sha]);
                 $cached = $c->fetchColumn();
                 if ($cached !== false) {
@@ -1246,7 +1246,7 @@ class BuildController extends BaseController
         if ($sha !== '') {
             try {
                 $sql = \App\Service\Database::sqlUpsert(
-                    AppConfig::TABLE_PIPELINE_BUILD_LOG,
+                    AppConfig::TABLE_BUILD_TAG_CACHE,
                     'project_key, provider, project_id, sha, pipeline_id, tag, repository, source, updated_at',
                     '?, ?, ?, ?, ?, ?, ?, ?, ' . \App\Service\Database::sqlNow()
                 );

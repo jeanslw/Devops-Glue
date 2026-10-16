@@ -329,7 +329,7 @@ The two are independent and can be enabled simultaneously (e.g. `jenkins + custo
 The "Image Tag" column of pull records is determined in this order:
 
 1. **Primary source (Harbor scan-sync writeback)**: after the artifact is pushed to Harbor, the scan writeback success (`ci_security_checks` rows where `check_type='harbor-scan'` and `writeback_status='success'`) yields `sha→tag` directly.
-2. **Log fallback (log-derived tag)**: when the primary source misses, Devops-Glue fetches the build log and extracts the tag by the configured **log keyword** + this project's `harbor_repository` path (`repo:tag` or `-t/--tag`), **preferring the tag whose trailing number equals the current build number** (to avoid picking the previous build's tag). The result is cached in `ci_pipeline_build_log` (`source='log'`) so subsequent lists hit the cache without re-fetching logs.
+2. **Log fallback (log-derived tag)**: when the primary source misses, Devops-Glue fetches the build log and extracts the tag by the configured **log keyword** + this project's `harbor_repository` path (`repo:tag` or `-t/--tag`), **preferring the tag whose trailing number equals the current build number** (to avoid picking the previous build's tag). The result is cached in `ci_build_tag_cache` (`source='log'`) so subsequent lists hit the cache without re-fetching logs.
 
 The related settings live on the **System Settings → Platform Config** page:
 

@@ -33,6 +33,8 @@ export async function loadUsers() {
         const result = await res.json();
         const allUsers = Array.isArray(result) ? result : (result.data || []);
         const currentUserRole = getRole();
+        const clearLocksBtn = document.getElementById('clear-login-locks-btn');
+        if (clearLocksBtn) clearLocksBtn.style.display = currentUserRole === 'super_admin' ? 'inline-block' : 'none';
         const users = isAdminRole(currentUserRole) ? allUsers : allUsers.filter(u => !isAdminRole(u.role));
         const tbody = document.getElementById('user-tbody');
         if (!users.length) {
@@ -233,6 +235,23 @@ export async function deleteUser(username) {
         if (handle401(res)) return;
         if (res.ok) { await loadUsers(); toast(__.t('user.deleted'), true); }
         else { const data = await res.json(); alert(data.message || __.t('common.failed')); }
+    } catch (e) { alert(e.message); }
+}
+
+export async function clearLoginLocks() {
+    if (!await confirmDialog({ title: '🔓 ' + __.t('user.clear_login_locks'), message: __.t('user.clear_login_locks_hint'), confirmText: __.t('common.confirm') })) return;
+    try {
+        const res = await fetch('/api/admin/login_locks/clear', { method: 'POST', headers: authHeaders() });
+        if (handle401(res)) return;
+        const data = await res.json();
+        if (res.ok) {
+            const msg = data.cleared > 0
+                ? __.t('user.login_locks_cleared').replace('{n}', data.cleared)
+                : __.t('user.login_locks_none');
+            toast(msg, true);
+        } else {
+            alert(data.message || __.t('common.failed'));
+        }
     } catch (e) { alert(e.message); }
 }
 

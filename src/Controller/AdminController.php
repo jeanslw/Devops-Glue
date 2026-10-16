@@ -1093,6 +1093,29 @@ class AdminController extends BaseController
     }
 
     /**
+     * POST /api/admin/login_locks/clear — 解除所有登录失败锁定
+     *
+     * 全局清除 ci_cache 里 login_fail_* 限流计数（IP + 用户名维度），
+     * 供被连续输错密码锁定的账号立即恢复登录。硬门槛：仅 super_admin（同重置他人密码）。
+     */
+    public function clearLoginLocks(Request $request, Response $response): Response
+    {
+        $this->initAuthFromRequest($request);
+        if ($this->currentRole !== AppConfig::ROLE_SUPER_ADMIN) {
+            return $this->jsonError($response, 'user.unlock_forbidden', 403);
+        }
+        try {
+            $stmt = $this->pdo->prepare("DELETE FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key LIKE ?");
+            $stmt->execute([AppConfig::CACHE_KEY_LOGIN_FAIL_PREFIX . '%']);
+            $cleared = $stmt->rowCount();
+            $this->opLog()->record($this->currentUser, 'clear_login_locks', '', ['cleared' => $cleared], $this->clientIp($request), 'success');
+            return $this->output($response, ['success' => true, 'cleared' => $cleared], $request);
+        } catch (\Exception $e) {
+            return $this->jsonError($response, $this->__('build.modify_failed') . ': ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
      * PUT /api/admin/users/{username}/status — 启用/停用用户
      * Body: { "enabled": true|false }
      * 保护：root 账号不可停用；不能停用自己。
