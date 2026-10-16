@@ -70,14 +70,28 @@ if ($harbor === null) {
     exit(0);
 }
 
+// 分布式锁：多实例（多 worker 容器）部署时保证同一时刻只有一个实例执行清理。
+// 未抢到锁说明他者正在清理，直接跳过；任务结束（成功或失败）后精确释放，
+// 仅进程被 kill 等硬退出时靠 ttl 自动过期兜底。
+$lockName  = 'tag-cleanup';
+$lockToken = Database::tryAcquireLock($lockName, 600);
+if ($lockToken === null) {
+    echo "跳过：已有另一实例在执行清理（分布式锁未获取）。\n";
+    exit(0);
+}
+
+// 注意：不能在 try/catch 内 exit——PHP 的 exit 会跳过 finally，导致锁不释放。
+// 用标志位收集失败，finally 内统一释放，再在块外按结果退出。
+$failed = false;
 try {
     $svc  = new PipelineTagService($pdo, $harbor);
     $stat = $svc->cleanupStaleTags();
+    echo "✓ 清理完成：删除 {$stat['deleted']} 条"
+        . "（核对 {$stat['checked']} / Harbor 不可达跳过 {$stat['unreachable']} / 空 harbor_repository 或 tag 跳过 {$stat['unverifiable']}）\n";
 } catch (\Throwable $e) {
     fwrite(STDERR, "错误：清理失败: {$e->getMessage()}\n");
-    exit(1);
+    $failed = true;
+} finally {
+    Database::releaseLock($lockName, $lockToken);
 }
-
-echo "✓ 清理完成：删除 {$stat['deleted']} 条"
-    . "（核对 {$stat['checked']} / Harbor 不可达跳过 {$stat['unreachable']} / 空 harbor_repository 或 tag 跳过 {$stat['unverifiable']}）\n";
-exit(0);
+exit($failed ? 1 : 0);

@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Devops-Glue API",
-    "version": "2.9.0",
+    "version": "2.9.1",
     "description": "DevOps 工具链集成接口 —— Jenkins/GitLab CI、GitLab/Gitee/GitHub/Gitea、Harbor 统一 API。",
     "contact": {
       "email": "jeanslw@qq.com"
@@ -239,19 +239,19 @@
           },
           "app_version": {
             "type": "string",
-            "example": "2.9.0"
+            "example": "2.9.1"
           },
           "schema_version": {
             "type": "string",
             "nullable": true,
             "description": "已应用的 schema 版本（自动建库模式标记；首次部署未标记时为 null）",
-            "example": "2.9.0"
+            "example": "2.9.1"
           },
           "seed_version": {
             "type": "string",
             "nullable": true,
             "description": "已应用的种子版本（仅 DB_AUTO_MIGRATE=false 手动建库模式记录；自动建库模式为 null，以 schema_version 为准）",
-            "example": "2.9.0"
+            "example": "2.9.1"
           },
           "schema_current": {
             "type": "boolean",

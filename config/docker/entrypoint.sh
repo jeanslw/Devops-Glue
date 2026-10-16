@@ -44,4 +44,5 @@ while [ "$i" -le "$DB_INIT_MAX_RETRIES" ]; do
     i=$((i + 1))
 done
 chown -R www-data:www-data /data/db 2>/dev/null || true
-exec /usr/bin/supervisord -n -c /etc/supervisor/conf.d/supervisord.conf
+# 分发到 CMD：web 容器 = php-fpm -F；worker 容器（compose 覆盖 command）= supervisord 跑 cron。
+exec "$@"

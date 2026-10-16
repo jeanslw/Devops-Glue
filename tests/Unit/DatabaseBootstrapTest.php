@@ -1011,6 +1011,98 @@ class DatabaseBootstrapTest extends TestCase
         return ($row === false) ? null : (string) $row;
     }
 
+    // ────────────── 分布式变体：自动迁移的租约锁互斥（runExclusively） ──────────────
+
+    /** 无竞争：持有者执行迁移并在 finally 释放锁（不留残余租约行）。 */
+    public function testMigrationLockHolderRunsAndReleasesLock(): void
+    {
+        Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
+        $pdo = $this->createMemoryPdo();
+        Database::bootstrap($pdo); // 首启：ci_cache 表尚不存在 → 无从互斥直接硬跑（与主干一致）
+
+        $this->setVersion($pdo, 'schema_version', '0.0.0');
+        $this->reBootstrap($pdo, true); // 此刻 ci_cache 已存在 → 走持有者路径
+
+        $this->assertSame(AppConfig::APP_VERSION, $this->version($pdo, 'schema_version'), '迁移完成、标记对齐');
+        $this->assertSame(0, $this->cacheRowCount($pdo, 'lock:schema_migration'), '完成后必须释放锁（不留残余租约）');
+    }
+
+    /** 竞争者 + 持有者崩溃（租约过期）：先等待、约 1 秒后接管完成迁移并释放，而非空等超时。 */
+    public function testMigrationLoserTakesOverWhenLeaseExpires(): void
+    {
+        Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
+        $pdo = $this->createMemoryPdo();
+        Database::bootstrap($pdo);
+        $this->setVersion($pdo, 'schema_version', '0.0.0');
+
+        // 模拟另一节点持锁后崩溃：租约过期后可被接管。注意 expires_at 用秒级 time()：
+        // TTL=2s 的实际寿命是 1~2s（秒边界效应），故下方断言下界取 0.8s、留足余量。
+        $holder = Database::tryAcquireLock('schema_migration', 2);
+        if ($holder === null) {
+            self::fail('测试前置失败：无法抢到模拟锁');
+        }
+
+        Database::reset();
+        Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
+        Database::setMigrationWaitForTest(5, 0.2); // 缩短等待窗口，真实默认 30s/0.5s
+        try {
+            $start   = microtime(true);
+            Database::bootstrap($pdo);
+            $elapsed = microtime(true) - $start;
+
+            $this->assertSame(AppConfig::APP_VERSION, $this->version($pdo, 'schema_version'), '接管后完成迁移');
+            $this->assertGreaterThan(0.8, $elapsed, '确实等待过（租约过期后才接管，TTL=2 实际寿命 1~2s）');
+            $this->assertLessThan(5.0, $elapsed, '在等待窗口内接管，未走到超时硬跑');
+        } finally {
+            Database::setMigrationWaitForTest(null, null);
+        }
+        $this->assertSame(0, $this->cacheRowCount($pdo, 'lock:schema_migration'), '接管者完成后同样释放锁');
+    }
+
+    /** 竞争者 + 持有者健在（租约不过期）：轮询超时后降级硬跑（幂等），且不动他人持有的锁。 */
+    public function testMigrationLoserHardRunsAfterWaitTimeout(): void
+    {
+        Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
+        $pdo = $this->createMemoryPdo();
+        Database::bootstrap($pdo);
+        $this->setVersion($pdo, 'schema_version', '0.0.0');
+
+        $holder = Database::tryAcquireLock('schema_migration', 300); // 模拟健在的持有者：租约不过期
+        if ($holder === null) {
+            self::fail('测试前置失败：无法抢到模拟锁');
+        }
+
+        Database::reset();
+        Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
+        Database::setMigrationWaitForTest(1, 0.1);
+        try {
+            Database::bootstrap($pdo); // 竞争者：轮询 1s 超时 → 降级硬跑
+        } finally {
+            Database::setMigrationWaitForTest(null, null);
+        }
+
+        $this->assertSame(AppConfig::APP_VERSION, $this->version($pdo, 'schema_version'), '超时降级硬跑也必须完成迁移');
+        $rows = $this->cacheRows($pdo, 'lock:schema_migration');
+        $this->assertCount(1, $rows, '硬跑路径不碰他人持有的锁');
+        $this->assertSame($holder, (string) $rows[0]['value'], '锁仍由原持有者持有');
+        Database::releaseLock('schema_migration', $holder);
+    }
+
+    /** @return list<array<string,mixed>> */
+    private function cacheRows(\PDO $pdo, string $key): array
+    {
+        $stmt = $pdo->prepare('SELECT cache_key, value FROM ' . AppConfig::TABLE_CACHE . ' WHERE cache_key = ?');
+        $stmt->execute([$key]);
+        /** @var list<array<string,mixed>> $rows */
+        $rows = $stmt->fetchAll();
+        return $rows;
+    }
+
+    private function cacheRowCount(\PDO $pdo, string $lockName): int
+    {
+        return count($this->cacheRows($pdo, 'lock:' . $lockName));
+    }
+
     /** 模拟新进程再引导一次：同一 PDO，清掉进程内的幂等标记。 */
     private function reBootstrap(\PDO $pdo, bool $autoMigrate): void
     {
