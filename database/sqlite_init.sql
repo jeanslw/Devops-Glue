@@ -196,8 +196,8 @@ CREATE TABLE IF NOT EXISTS ci_api_tokens (
     created_at TEXT DEFAULT (datetime('now','localtime'))
 );
 
--- ── 14. ci_pipeline_build_log（拉取式记录「镜像 Tag」日志兜底的懒解析缓存 sha→tag）──
-CREATE TABLE IF NOT EXISTS ci_pipeline_build_log (
+-- ── 14. ci_build_tag_cache（拉取式记录「镜像 Tag」日志兜底的懒解析缓存 sha→tag）──
+CREATE TABLE IF NOT EXISTS ci_build_tag_cache (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     project_key TEXT DEFAULT '',
     provider    TEXT DEFAULT '',

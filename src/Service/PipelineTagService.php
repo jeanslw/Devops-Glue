@@ -116,7 +116,7 @@ class PipelineTagService
     }
 
     /**
-     * 回填：把 ci_pipeline_build_log 中日志推导出的 tag（source='log'）经 Harbor 校验存在后，
+     * 回填：把 ci_build_tag_cache 中日志推导出的 tag（source='log'）经 Harbor 校验存在后，
      * 提升写入 ci_pipeline_artifacts；仅当该 (provider, project_id, pipeline_iid)
      * 尚无 tag 时才写，不覆盖 scanSync 的结果。
      *
@@ -135,7 +135,7 @@ class PipelineTagService
         try {
             $rows = $this->pdo->query(
                 'SELECT project_key, provider, project_id, pipeline_id, tag, repository '
-                . 'FROM ' . AppConfig::TABLE_PIPELINE_BUILD_LOG
+                . 'FROM ' . AppConfig::TABLE_BUILD_TAG_CACHE
                 . " WHERE source = 'log' AND tag != '' AND provider != '' AND project_id != '' AND repository != ''"
             )->fetchAll();
         } catch (\Throwable $e) {

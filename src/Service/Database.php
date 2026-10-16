@@ -348,7 +348,7 @@ class Database
         return [
             \App\Config\AppConfig::TABLE_JOB_GIT_MAP,
             \App\Config\AppConfig::TABLE_PIPELINE_ARTIFACTS,
-            \App\Config\AppConfig::TABLE_PIPELINE_BUILD_LOG,
+            \App\Config\AppConfig::TABLE_BUILD_TAG_CACHE,
             \App\Config\AppConfig::TABLE_CUSTOM_BUILDS,
             \App\Config\AppConfig::TABLE_SECURITY_CHECKS,
             \App\Config\AppConfig::TABLE_ADMIN_USERS,
@@ -652,7 +652,7 @@ class Database
                 'writeback_status'  => "{$VARCHAR} DEFAULT ''", // commit status 回写结果（success/failed/skipped，空=历史）
                 'writeback_message' => 'TEXT',
             ],
-            \App\Config\AppConfig::TABLE_PIPELINE_BUILD_LOG => [
+            \App\Config\AppConfig::TABLE_BUILD_TAG_CACHE => [
                 'provider'   => "{$VARCHAR} DEFAULT ''", // canonical identity (provider)，回填用
                 'project_id' => "{$VARCHAR} DEFAULT ''", // canonical identity (project_id)，回填用
                 'repository' => "{$VARCHAR} DEFAULT ''", // harbor 仓库，回填用
@@ -1273,11 +1273,11 @@ class Database
         } catch (\Exception $e) {
         }
 
-        // ci_pipeline_build_log：镜像 Tag 日志的懒解析缓存（sha 到 tag）。
+        // ci_build_tag_cache：镜像 Tag 日志的懒解析缓存（sha 到 tag）。
         // sha 内容寻址、全局唯一，故为唯一键；project_key/pipeline_id 仅作溯源参考。
         // provider/project_id/repository 记录 canonical identity 与 harbor 仓库，供回填 cron
         // 直接写入 ci_pipeline_artifacts（无需重跑 provider 解析）。
-        $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_PIPELINE_BUILD_LOG . " (
+        $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_BUILD_TAG_CACHE . " (
             id {$PK},
             project_key {$VARCHAR} DEFAULT '',
             provider {$VARCHAR} DEFAULT '',
@@ -1530,7 +1530,7 @@ class Database
     }
 
     /**
-     * v2.9.0 表名收口迁移：把存量旧表名 RENAME 到 ci_ 前缀新名（幂等）。
+     * 表名收口迁移：把存量旧表名 RENAME 到新名（幂等；v2.9.0 加 ci_ 前缀、后续正名改名共用）。
      *
      * 触发条件：旧表存在且新表不存在。MySQL / SQLite 同用 ALTER TABLE … RENAME TO 语法；
      * 两驱动的数据、索引随表移动，引用方的外键定义自动跟随改写（integrated_services 的

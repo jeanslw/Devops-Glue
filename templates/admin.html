@@ -616,6 +616,7 @@
                 <div class="toolbar">
                     <h3 data-i18n="admin.sidebar_users">👤 用户管理</h3>
                     <button class="btn btn-pri" onclick="showUserForm()" data-i18n="user.add_user">＋ 新增用户</button>
+                    <button id="clear-login-locks-btn" class="btn btn-del" onclick="clearLoginLocks()" style="display:none;" data-i18n="user.clear_login_locks">🔓 解除所有锁定</button>
                 </div>
                 <div id="user-form" class="card" style="display:none;max-width:500px;">
                     <form onsubmit="submitUserForm(event)">

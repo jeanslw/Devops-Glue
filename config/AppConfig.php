@@ -19,7 +19,7 @@ final class AppConfig
     // ── 表名常量 ──
     public const TABLE_JOB_GIT_MAP       = 'ci_job_git_map';
     public const TABLE_PIPELINE_ARTIFACTS = 'ci_pipeline_artifacts';
-    public const TABLE_PIPELINE_BUILD_LOG = 'ci_pipeline_build_log'; // 拉取式记录「镜像 Tag」日志兜底的懒解析缓存（sha→tag）
+    public const TABLE_BUILD_TAG_CACHE = 'ci_build_tag_cache'; // sha→tag 解析缓存（镜像 Tag 日志兜底懒解析，非日志正文）
     public const TABLE_CUSTOM_BUILDS     = 'ci_custom_builds';
     public const TABLE_SECURITY_CHECKS   = 'ci_security_checks';
     public const TABLE_ADMIN_USERS       = 'ci_admin_users';
@@ -37,10 +37,9 @@ final class AppConfig
     public const TABLE_INTEGRATED_SERVICES = 'ci_integrated_services'; // 集成服务启用契约表（CI 唯一写入；CD 经契约端点读取，不直读本表）
 
     /**
-     * v2.9.0 表名收口：共享库内 CI 自有表统一加 ci_ 前缀，旧表名 → 新表名。
-     * 存量库由 Database::renameLegacyTables() 幂等 RENAME（数据/索引/外键引用自动跟随）；
-     * bin/restore.php 恢复旧版本备份时按此清单把旧表名翻译成新表名后重放。
-     * 新增表不再进入此清单——它是 v2.9.0 一次性迁移的事实记录。
+     * 表名收口清单（旧表名 → 新表名）：存量库由 Database::renameLegacyTables() 幂等 RENAME
+     * （数据/索引/外键引用自动跟随）；bin/restore.php 恢复旧版本备份时按此清单把旧表名翻译成新表名后重放。
+     * v2.9.0 起用于 CI 自有表统一加 ci_ 前缀；之后的正名改名（如 ci_pipeline_build_log → ci_build_tag_cache）也在此登记。
      */
     public const LEGACY_TABLE_NAMES = [
         'admin_users'        => 'ci_admin_users',
@@ -52,6 +51,7 @@ final class AppConfig
         'api_tokens'         => 'ci_api_tokens',
         'user_identities'    => 'ci_user_identities',
         'integrated_services' => 'ci_integrated_services',
+        'ci_pipeline_build_log' => 'ci_build_tag_cache',
     ];
 
     // ── 集成服务（integrated_services.service_name 的取值）──

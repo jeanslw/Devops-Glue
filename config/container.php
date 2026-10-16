@@ -591,6 +591,7 @@ return [
     OAuthController::class => function (\Psr\Container\ContainerInterface $c) {
         return new OAuthController(
             $c->get(I18nService::class),
+            $c->get(\PDO::class),
             $c->get(OAuthService::class),
             $c->get(AdminAuthService::class),
             $c->get(AdminUserRepository::class),

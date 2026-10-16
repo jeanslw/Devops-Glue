@@ -525,6 +525,11 @@ return [
     'user.modify_password_confirm' => 'Confirm',
     'user.modify_password_mismatch' => 'Passwords do not match',
     'user.modify_password_forbidden' => 'Only super admin can change others\' passwords',
+    'user.clear_login_locks' => 'Clear All Login Locks',
+    'user.clear_login_locks_hint' => 'This clears failed-login counters for all accounts, so locked accounts can sign in again. Continue?',
+    'user.login_locks_cleared' => 'Cleared {n} login lock(s)',
+    'user.login_locks_none' => 'No login locks to clear',
+    'user.unlock_forbidden' => 'Only super admin can clear login locks',
     'user.password_updated' => 'Password updated',
 
     // ── Role Management ──
@@ -756,6 +761,7 @@ return [
     'oplog.act_create_user'    => 'Create user',
     'oplog.act_update_user'    => 'Update user',
     'oplog.act_reset_user_password' => 'Reset user password',
+    'oplog.act_clear_login_locks' => 'Clear login locks',
     'oplog.act_set_user_status' => 'Enable/disable user',
     'oplog.act_delete_user'    => 'Delete user',
     'oplog.act_create_role'    => 'Create role',

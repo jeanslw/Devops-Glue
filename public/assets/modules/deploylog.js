@@ -18,7 +18,7 @@ export async function loadDeployLogs(page) {
     const deployType = document.getElementById('deploylog-deploy-type').value;
     const fromInput = document.getElementById('deploylog-date-from');
     const toInput = document.getElementById('deploylog-date-to');
-    // 未手填时预填近 30 天，与 CD 契约默认窗口一致（空框却只返回 30 天会让用户误以为看到全量）
+    // 未手填时预填近 3 个月（空框却只返回默认窗口会让用户误以为看到全量）
     if (!fromInput.value) fromInput.value = deploylogDefaultFrom();
     if (!toInput.value) toInput.value = deploylogDefaultTo();
     const dateFrom = fromInput.value;
@@ -104,7 +104,7 @@ function deploylogTypeLabel(type) {
 
 function deploylogDefaultFrom() {
     const d = new Date();
-    d.setDate(d.getDate() - 30);
+    d.setMonth(d.getMonth() - 3);
     return deploylogToDateInput(d);
 }
 

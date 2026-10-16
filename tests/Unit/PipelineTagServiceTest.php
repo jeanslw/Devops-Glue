@@ -53,7 +53,7 @@ class PipelineTagServiceTest extends TestCase
             tag TEXT
         )');
         // 日志兜底缓存表（回填数据来源），含 canonical identity + repository 列
-        $this->pdo->exec('CREATE TABLE ' . AppConfig::TABLE_PIPELINE_BUILD_LOG . ' (
+        $this->pdo->exec('CREATE TABLE ' . AppConfig::TABLE_BUILD_TAG_CACHE . ' (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             project_key TEXT DEFAULT "",
             provider TEXT DEFAULT "",
@@ -78,7 +78,7 @@ class PipelineTagServiceTest extends TestCase
     private function insertBuildLog(string $provider, string $projectId, int $pipelineIid, string $tag, string $repo, string $sha): void
     {
         $this->pdo->prepare(
-            'INSERT INTO ' . AppConfig::TABLE_PIPELINE_BUILD_LOG . ' (project_key, provider, project_id, sha, pipeline_id, tag, repository, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+            'INSERT INTO ' . AppConfig::TABLE_BUILD_TAG_CACHE . ' (project_key, provider, project_id, sha, pipeline_id, tag, repository, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
         )->execute([$projectId, $provider, $projectId, $sha, (string) $pipelineIid, $tag, $repo, 'log']);
     }
 

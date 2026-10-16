@@ -6,7 +6,7 @@
  *   php cli/backfill-pipeline-tags.php
  *
  * 说明：
- *   - 数据来源：ci_pipeline_build_log（拉取式记录镜像 Tag 日志时生成的解析缓存，source='log'）。
+ *   - 数据来源：ci_build_tag_cache（拉取式记录镜像 Tag 日志时生成的解析缓存，source='log'）。
  *   - 信任边界：仅当 Harbor 明确返回该 tag 存在时，才把日志推导的 tag 提升写入
  *     ci_pipeline_artifacts；且只补 (provider,project_id,pipeline_iid) 尚无 tag 的记录，
  *     不覆盖 scanSync 的结果。故回填数据与 scanSync 同信任级。
