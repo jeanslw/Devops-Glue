@@ -107,7 +107,7 @@ class GitService
                 throw new \RuntimeException(
                     "Job '{$jobPath}' 在 job_git_map 中指定了 git_platform='{$platform}'，" .
                     "但该平台尚未配置（已配置的平台: {$registered}）。" .
-                    "请在 .env 中设置 " . strtoupper($platform) . "_BASE_URL 和 " . strtoupper($platform) . "_TOKEN。"
+                    "请在后台「平台接入状态」里配置该平台的连接（URL 与 Token）。"
                 );
             }
             // 自动检测失败：无法从 URL 识别平台且 default_platform 也未注册

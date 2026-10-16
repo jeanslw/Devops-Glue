@@ -7,8 +7,12 @@ namespace App\Test\Unit;
 use App\Config\AppConfig;
 use App\Controller\RbacController;
 use App\Service\AdminUserRepository;
+use App\Service\AppSettingRepository;
 use App\Service\Database;
 use App\Service\I18nService;
+use App\Service\OAuthClientRepository;
+use App\Service\OAuthService;
+use App\Service\OidcService;
 use App\Service\Settings;
 use App\Service\TokenService;
 use App\Support\ApiScopeResolver;
@@ -20,9 +24,9 @@ use Slim\Psr7\Factory\ServerRequestFactory;
 /**
  * CD 经 Glue OIDC 登录的四项 P0 接线。
  *
- *   1. P0-1：`oauth_clients` 注册 `cd` 客户端，secret / redirect_uri 都从 env 注入且默认空串，
- *      空值会被 `OAuthService::__construct` 的检查剔除（否则空 secret 与空输入在 `hash_equals`
- *      下相等，等于公开默认密钥）；回调地址没有合理默认值，默认 localhost 反而有隐患。
+ *   1. P0-1：cd 客户端由 DB（ci_oauth_clients）提供（彻底移除 env 兜底），
+ *      secret / redirect_uri 空值会被 `OAuthService::__construct` 的检查剔除（fail-closed，
+ *      否则空 secret 与空输入在 `hash_equals` 下相等，等于公开默认密钥）。
  *   2. P0-0：授权时按 client 声明的归属系统校验账号：写死 CI 会让所有 CD 账号（systems='cd'）
  *      在登录页被拒（auth.no_ci_access）；同时必须保留 `?: SYSTEM_CI` 回退，否则既有
  *      Jenkins / Harbor 等未声明 system 的客户端会全部登录失败。
@@ -44,12 +48,13 @@ class CdOidcLoginWiringTest extends TestCase
         $_ENV['ADMIN_PASSWORD'] = 'secret';
         // 避免 ensureTables() 里 ALTER 失败触发的日志写到 /data/logs 污染环境
         $_ENV['LOG_PATH'] = sys_get_temp_dir() . DIRECTORY_SEPARATOR;
+        $_ENV['DATA_ENC_KEY'] = base64_encode(random_bytes(32));
         Database::reset();
     }
 
     protected function tearDown(): void
     {
-        unset($_ENV['ADMIN_USER'], $_ENV['ADMIN_PASSWORD'], $_ENV['LOG_PATH']);
+        unset($_ENV['ADMIN_USER'], $_ENV['ADMIN_PASSWORD'], $_ENV['LOG_PATH'], $_ENV['OIDC_ISSUER'], $_ENV['OIDC_ID_TOKEN_TTL'], $_ENV['DATA_ENC_KEY']);
         Database::reset();
         parent::tearDown();
     }
@@ -64,26 +69,36 @@ class CdOidcLoginWiringTest extends TestCase
         $pdo = new \PDO('sqlite::memory:');
         $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
         $pdo->setAttribute(\PDO::ATTR_DEFAULT_FETCH_MODE, \PDO::FETCH_ASSOC);
+        // Settings 闭包会经 PlatformConnectionRepository::resolveConnections() 查连接表，
+        // 裸内存库必须建表（与 ensureTables 的 SQLite 分支同构），否则容器解析 Settings 直接 500。
+        $pdo->exec('CREATE TABLE IF NOT EXISTS ' . AppConfig::TABLE_PLATFORM_CONNECTIONS . ' (
+            platform    TEXT PRIMARY KEY,
+            url         TEXT,
+            token       TEXT,
+            username    TEXT,
+            password    TEXT,
+            description TEXT DEFAULT \'\',
+            created_at  TEXT DEFAULT (datetime(\'now\',\'localtime\')),
+            updated_at  TEXT DEFAULT (datetime(\'now\',\'localtime\'))
+        )');
         return $pdo;
     }
 
-    /** P0-1：cd 客户端注册，且 secret / redirect_uri 均为 env 注入、默认空串（fail-closed）。 */
-    public function testCdClientRegisteredWithFailClosedEnvInputs(): void
+    /** P0-1：cd 客户端不再从 env 读（迁入 DB），fail-closed 仍由 OAuthService 构造兜底。 */
+    public function testCdClientNoLongerReadsEnvAndStaysFailClosed(): void
     {
-        $src = $this->read('config/settings.php');
+        $settings = $this->read('config/settings.php');
 
-        $this->assertMatchesRegularExpression(
-            "/'cd'\s*=>\s*\[/",
-            $src,
-            'oauth_clients 必须注册 cd 客户端，否则 CD 的授权请求直接被 validateClient 拒掉'
-        );
-        $this->assertStringContainsString("env('CD_OIDC_SECRET', '')", $src);
-        $this->assertStringContainsString("env('CD_OIDC_REDIRECT_URI', '')", $src);
-        $this->assertMatchesRegularExpression(
-            "/['\"]system['\"]\s*=>\s*env\('CD_OIDC_SYSTEM',\s*'cd'\)/",
-            $src,
-            'cd 客户端必须声明 system（默认 cd），否则 P0-0 会回退成 CI，CD 账号依旧登不进'
-        );
+        // 彻底移除 env：settings.php 不再读 CD_OIDC_* / JENKINS_OIDC_*（否则旧 env 仍会兜底）
+        $this->assertStringNotContainsString("env('CD_OIDC_SECRET'", $settings);
+        $this->assertStringNotContainsString("env('CD_OIDC_REDIRECT_URI'", $settings);
+        $this->assertStringNotContainsString("env('CD_OIDC_SYSTEM'", $settings);
+        $this->assertStringNotContainsString("env('JENKINS_OIDC_SECRET'", $settings);
+
+        // fail-closed 兜底仍在 OAuthService 构造函数：secret/redirect_uri 空则剔除
+        $oauth = $this->read('src/Service/OAuthService.php');
+        $this->assertStringContainsString("trim((string)(\$c['secret'] ?? '')) !== ''", $oauth);
+        $this->assertStringContainsString("trim((string)(\$c['redirect_uri'] ?? '')) !== ''", $oauth);
     }
 
     /** P0-0：授权路径按 client 决定 systemType，并保留 CI 回退（既有客户端零回归）。 */
@@ -229,5 +244,40 @@ class CdOidcLoginWiringTest extends TestCase
             ['name' => 'ghost-role']
         );
         $this->assertSame(404, $resp->getStatusCode());
+    }
+
+    /**
+     * DB 唯一权威（无 env 兜底）：ci_oauth_clients 提供 cd 客户端，token 端点按 DB secret 校验；
+     * OidcService 闭包从 ci_app_settings 读 issuer。env 已彻底移除，不参与合并。
+     *
+     * 单独测试的原因：容器/仓储层若不覆盖，只会在生产上表现为「后台改了 DB 配置却不生效」，
+     * 业务单测全部照过。
+     */
+    public function testDbOidcConfigIsSoleAuthority(): void
+    {
+        Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
+        $pdo = $this->memoryPdo();
+        Database::bootstrap($pdo);
+
+        // 客户端：唯一权威是 DB（resolveClients 传空基线，无 env 兜底）
+        $repo = new OAuthClientRepository($pdo);
+        $repo->save('cd', [
+            'secret' => 'db-secret', 'redirect_uri' => 'https://db/cb', 'system' => 'cd', 'enabled' => true, 'description' => '',
+        ]);
+        $oauth = new OAuthService($pdo, $repo->resolveClients([]));
+        $this->assertTrue($oauth->validateClientSecret('cd', 'db-secret'), 'DB secret 必须生效（唯一权威）');
+
+        // issuer：唯一权威是 DB（即使残留 env 也不应生效）
+        $appSettings = new AppSettingRepository($pdo);
+        $appSettings->setOidcIssuer('https://db-issuer');
+        $_ENV['OIDC_ISSUER'] = 'https://env-issuer';
+
+        $builder = new ContainerBuilder();
+        $builder->addDefinitions(self::ROOT . '/config/container.php');
+        $builder->addDefinitions([\PDO::class => fn() => $pdo]);
+        $container = $builder->build();
+
+        $oidc = $container->get(OidcService::class);
+        $this->assertSame('https://db-issuer', $oidc->issuer(), 'issuer 必须从 DB 读，不读 env');
     }
 }

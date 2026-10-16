@@ -139,6 +139,24 @@ class Settings
     }
 
     /**
+     * OAuth/OIDC 客户端白名单（env 兜底，只读）。DB 权威合并见 {@see OAuthClientRepository::resolveClients()}。
+     * @return array<string,array{secret:string,redirect_uri:string,system?:string}>
+     */
+    public function getOauthClients(): array
+    {
+        return $this->config['oauth_clients'] ?? [];
+    }
+
+    /**
+     * OIDC provider 配置（env 兜底，只读）。DB 覆盖逻辑见 config/container.php 的 OidcService 闭包。
+     * @return array<string,mixed>
+     */
+    public function getOidcConfig(): array
+    {
+        return $this->config['oidc'] ?? [];
+    }
+
+    /**
      * 获取用户自定义 Git Provider 列表
      * @return list<array{class?: string, config?: array<string,mixed>}> 每个元素包含 class (完整类名) 和 config (构造参数数组)
      */

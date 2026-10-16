@@ -49,6 +49,8 @@ import { loadOperationLogs, resetOperationLogs } from './modules/oplog.js';
 import { loadDeployLogs, resetDeployLogs } from './modules/deploylog.js';
 import { loadApiAccessLogs, resetApiAccessLogs } from './modules/apiaccesslog.js';
 import { loadSystemInfo, doMigrate, doBackup, loadPlatformConfig, toggleSysTables, toggleSysBackups, loadIntegratedServices, enableIntegratedService, disableIntegratedService, onIntegratedServiceToggle, copyIntegratedToken, hideIntegratedTokenBox } from './modules/system.js';
+import { loadOidcConfig, saveOidcConfig, onOidcAddClient, onOidcClientDelete } from './modules/oidc.js';
+import { loadPlatformConnections, savePlatformConnections, onPlatformDelete } from './modules/platforms.js';
 
 const LOGIN_API = '/api/admin/login';
 
@@ -268,6 +270,8 @@ Object.assign(window, {
     loadApiAccessLogs, resetApiAccessLogs,
     loadSystemInfo, doMigrate, doBackup, loadPlatformConfig, toggleSysTables, toggleSysBackups,
     loadIntegratedServices, enableIntegratedService, disableIntegratedService, onIntegratedServiceToggle, copyIntegratedToken, hideIntegratedTokenBox,
+    loadOidcConfig, saveOidcConfig, onOidcAddClient, onOidcClientDelete,
+    loadPlatformConnections, savePlatformConnections, onPlatformDelete,
     // 分页 / 视图
     getMapView, getMapPage, setMapPage, getMapTotalPages, setMapTotalPages,
     getTopoPage, setTopoPage, getTopoTotalPages,

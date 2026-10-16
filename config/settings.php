@@ -21,15 +21,20 @@ return [
      * （值形如 jenkins,gitlab_ci,gitea_ci），由后台配置模式页维护；.env 的 BUILD_MODE 仅作首次运行种子。
      *
      * Provider 注册条件（与构建模式解耦，始终按配置注册）：
-     *   - Jenkins：JENKINS_BASE_URL 非空即注册
-     *   - GitLab CI：GITLAB_BASE_URL + GITLAB_TOKEN 齐备才注册
-     *   - Gitea Actions：GITEA_BASE_URL + GITEA_TOKEN 齐备才注册
+     *   - Jenkins：连接 URL 非空即注册
+     *   - GitLab CI：连接 URL + Token 齐备才注册
+     *   - Gitea Actions：连接 URL + Token 齐备才注册
+     *
+     * 下面 jenkins / git.* / harbor 的「连接值」只是结构占位（代码级默认），实际值由
+     * config/container.php 从 ci_platform_connections（DB）注入 —— 彻底移除 env，不再读
+     * GITLAB_BASE_URL / HARBOR_BASE_URL 等连接 env 键。旧版 env 里的连接值不自动搬库，
+     * 升级时手动跑 cli/migrate-platform-connections.php 一次（幂等 + 非破坏）。
      */
     // ==================== Jenkins ====================
     'jenkins' => [
-        'url'   => env('JENKINS_BASE_URL', ''),
-        'user'  => env('JENKINS_USER', 'admin'),
-        'token' => env('JENKINS_TOKEN'),
+        'url'   => '',
+        'user'  => 'admin',
+        'token' => '',
     ],
 
     // ==================== Git 多平台配置 ====================
@@ -39,23 +44,23 @@ return [
 
         // ----- GitLab -----
         'gitlab' => [
-            'base_url' => env('GITLAB_BASE_URL', env('GIT_BASE_URL', '')),
-            'token'    => env('GITLAB_TOKEN', env('GIT_TOKEN', '')),
+            'base_url' => '',
+            'token'    => '',
         ],
         // ----- GitHub -----
         'github' => [
-            'base_url' => env('GITHUB_BASE_URL', 'https://api.github.com'),
-            'token'    => env('GITHUB_TOKEN', ''),
+            'base_url' => 'https://api.github.com',
+            'token'    => '',
         ],
         // ----- Gitee -----
         'gitee' => [
-            'base_url' => env('GITEE_BASE_URL', 'https://gitee.com/api/v5'),
-            'token'    => env('GITEE_TOKEN', ''),
+            'base_url' => 'https://gitee.com/api/v5',
+            'token'    => '',
         ],
         // ----- Gitea -----
         'gitea' => [
-            'base_url' => env('GITEA_BASE_URL', ''),
-            'token'    => env('GITEA_TOKEN', ''),
+            'base_url' => '',
+            'token'    => '',
         ],
         // ----- 自定义平台 -----
         'custom_providers' => [
@@ -76,9 +81,9 @@ return [
 
     // ==================== Harbor ====================
     'harbor' => [
-        'url'      => env('HARBOR_BASE_URL', ''),
-        'username' => env('HARBOR_USER', 'admin'),
-        'password' => env('HARBOR_PASSWORD'),
+        'url'      => '',
+        'username' => 'admin',
+        'password' => '',
     ],
 
     // ==================== CD（CI→CD 部署日志只读端点） ====================
@@ -208,34 +213,22 @@ return [
      * └──────────────┴──────┴──────────────────────────────────────────────────┘
      */
     'oauth_clients' => [
-        // redirect_uri 与各家系统回调地址逐字符精确匹配（hash_equals）。
-        // 通过 env 注入，禁止把具体环境的内网 IP 写进 git。
-        // 本地默认走 localhost（Jenkins 不写端口，按实际监听在 env 里补全）。
-        // 生产必须改成实际回调。secret 或 redirect_uri 留空/纯空白时客户端会被剔除（fail-closed）。
-        'jenkins' => [
-            'secret'       => env('JENKINS_OIDC_SECRET', ''),
-            'redirect_uri' => env('JENKINS_OIDC_REDIRECT_URI', 'http://localhost/securityRealm/finishLogin'),
-        ],
-        // Devops-Glue CD（BFF 机密客户端：client_secret 只存在 CD 后端，浏览器只持有 CD 自己的 HttpOnly Cookie）。
-        // 回调地址没有合理默认值，留空即整个客户端被剔除（fail-closed），与 secret 同理，
-        // 否则空 redirect_uri 会与传 `redirect_uri=` 的攻击请求 hash_equals 相等。
-        'cd' => [
-            'secret'       => env('CD_OIDC_SECRET', ''),
-            'redirect_uri' => env('CD_OIDC_REDIRECT_URI', ''),
-            // 归属系统：授权时按此值校验账号的 systems（见 OAuthController::authorizeSubmit）。
-            // 不声明则回退 CI（AppConfig::SYSTEM_CI），既有客户端行为不变。
-            'system'       => env('CD_OIDC_SYSTEM', 'cd'),
-        ],
+        // OIDC/OAuth 客户端白名单已迁入 DB（ci_oauth_clients，后台「平台接入状态 → OIDC/SSO」页可编辑），
+        // 彻底移除 env：此数组恒为空，唯一权威由 OAuthClientRepository::resolveClients() 从 DB 读取。
+        // 客户端 secret/redirect_uri 留空即 fail-closed（OAuthService 构造函数剔除），
+        // 启用客户端前须在后台同时填齐 secret 与 redirect_uri。
     ],
 
     // ==================== OIDC Provider（Jenkins / Harbor / GitLab 单点登录）====================
-    // issuer 为空时运行时从请求 scheme+host 推导；私钥优先读 OIDC_RSA_PRIVATE_KEY，
-    // 否则从 key_file 读，都没有则自动生成 RSA-2048 并持久化到 key_file（chmod 0600）。
+    // issuer / id_token_ttl 已迁入 DB（ci_app_settings，后台 OIDC 配置页可编辑），
+    // 此处不再读 env，仅作结构占位（config/container.php 的 OidcService 闭包从 DB 注入覆盖）。
+    // 签名私钥（非「登录项」，是密钥材料）保留 env 覆盖：多副本部署必须注入固定
+    // OIDC_RSA_PRIVATE_KEY，否则各副本自动生成的 kid 不一致、客户端验签失败。
     'oidc' => [
-        'issuer'       => env('OIDC_ISSUER', ''),
+        'issuer'       => '',
+        'id_token_ttl' => 3600,
         'private_key'  => env('OIDC_RSA_PRIVATE_KEY', ''),
         'key_file'     => env('OIDC_KEY_FILE', __DIR__ . '/data/oidc_rsa.pem'),
-        'id_token_ttl' => (int) env('OIDC_ID_TOKEN_TTL', '3600'),
     ],
 
     'job_git_map' => [], // ⚠️ 已由 SQLite 接管，此处永远为空，修改无效！请使用 /admin 管理界面

@@ -1,4 +1,4 @@
-# Devops-Glue API FAQ v2.9.0
+# Devops-Glue API FAQ v2.10.0
 
 ## Table of Contents
 
@@ -127,8 +127,11 @@ Effective priority: `app.env.local` > real environment variables (Docker `env_fi
 - Some config (e.g., `build_mode`, mapping data) is persisted to the database on first boot, and the DB takes precedence thereafter
 - Runtime configuration can be modified in the admin panel instead of editing `app.env`
 - If you must reload from `app.env`, delete the corresponding row in `ci_app_settings` and restart
+- **Since v2.10.0**, the Git / Harbor / Jenkins connections and OIDC/SSO config are moved into the DB (`ci_platform_connections` / `ci_oauth_clients` / `ci_app_settings`): the application **no longer reads** the `*_BASE_URL` / `*_TOKEN` / `HARBOR_*` / `JENKINS_*` / `*_OIDC_*` connection env keys, so changing them naturally does nothing. To change a connection, go to the admin "Platform Connections" / "OIDC / SSO Config" page, or run `cli/migrate-*` to migrate old values (see "Configuration migration" below).
 
 ### Q: Docker deployment: why don't changes to HARBOR_* in `config/app.env` take effect?
+
+> **Since v2.10.0**: the Harbor connection (`HARBOR_BASE_URL` / `HARBOR_USER` / `HARBOR_PASSWORD`) has moved into the DB (`ci_platform_connections`) and the app no longer reads env, so the "root `.env` override" described here no longer applies to the Harbor connection keys — edit Harbor on the "Platform Connections" page. The explanation below only applies to keys still read from env (`DB_*`, `SECRET_KEY`, `CI_API_TOKEN`, `DATA_ENC_KEY`, etc.).
 
 Root `app.env` is the Docker Compose shared variable file; `env_file` injects it into the container as **real environment variables**, and the app gives OS env vars priority (layer 1 of `src/Support/EnvFileLoader.php` uses `Dotenv::createImmutable`), which **overrides same-name keys in `config/app.env`**. Therefore:
 
@@ -136,6 +139,24 @@ Root `app.env` is the Docker Compose shared variable file; `env_file` injects it
 - Exception: if `config/app.env.local` exists inside the project, the keys it defines win over everything — **including the real environment variables injected by `env_file`** (that file is gitignored and normally absent from the image);
 - Placeholder values left unchanged in root `app.env` (e.g. `HARBOR_BASE_URL=http://YOUR_HARBOR_URL`) take effect too — if Harbor calls hit `YOUR_HARBOR_URL`, check whether root `app.env` was updated;
 - Bare-metal deployments have no `env_file` injection, so editing `config/app.env` is enough.
+
+### Q: After upgrading to v2.10.0, the Git / Harbor / Jenkins / OIDC config moved from env to DB — how do I migrate?
+
+Since v2.10.0 the **DB is the single source of truth** for these connection settings; the app no longer reads env:
+
+- Git / Harbor / Jenkins (six platforms) → `ci_platform_connections` (admin "Platform Connections" page)
+- OIDC client whitelist → `ci_oauth_clients`; issuer / id_token_ttl → `ci_app_settings` (admin "OIDC / SSO Config" page)
+
+After upgrading to v2.10.0, run each offline migration script once to move the old env values into the DB:
+
+```bash
+php cli/migrate-platform-connections.php   # env → ci_platform_connections
+php cli/migrate-oidc.php                   # env → ci_app_settings + ci_oauth_clients
+```
+
+Both scripts are **idempotent and non-destructive**: existing DB values / rows are not overwritten, only "env has a value, DB has none" items are filled in; at the end they also encrypt any remaining plaintext sensitive columns. Exit code 0 = done (including "nothing to migrate"), 1 = fatal (DB unreachable, table missing, missing `DATA_ENC_KEY`, etc.). Once the values are visible in the admin panel, you may delete these connection keys from `config/app.env` (the app will never read them again).
+
+> Note: the signing private key `OIDC_RSA_PRIVATE_KEY` / `OIDC_KEY_FILE` is **not** migrated — it is always env / file; multi-replica deployments must still inject the same private key.
 
 ### Q: Error: "DB_DRIVER must be sqlite or mysql"?
 
@@ -569,6 +590,20 @@ Typical causes: the table was changed by hand to disagree with the code (a dropp
 
 > Why fail-fast instead of "log and continue": a half-seeded RBAC shows up as "a button/endpoint that should be there is missing", which gets investigated as a feature bug for a long time — far harder to pinpoint than a failed startup.
 
+### Q: How do I generate and back up the sensitive-field encryption key `DATA_ENC_KEY`? What if I lose it or need to rotate it?
+
+`DATA_ENC_KEY` is the AES-256-GCM symmetric key (base64-encoded 32 bytes) for `ci_platform_connections` (token/username/password) and `ci_oauth_clients` (secret):
+
+- **Generate**: `php -r "echo base64_encode(random_bytes(32));"` (write it into `config/app.env`, or inject it via orchestration).
+- **Missing = fail-closed**: when it is unset, any encrypted write / read errors out; the migration scripts also exit before writing, leaving no "half-encrypted" state behind. Docker's `env-check` **refuses to start** when the key is missing (`docker compose up -d` fails with a prompt to configure it); even if that precheck is bypassed (k8s / bare metal, or the key is removed after startup), `bootstrap()` throws instead of running silently when it finds `enc:v1:` ciphertext in the DB without a key.
+- **Must back up**: if the key is lost, the token/secret ciphertext in the DB is **permanently undecryptable** (no back door, no recovery).
+- **Same value across replicas**: all web replicas and the worker must use the same key to decrypt the same plaintext.
+- **Docker replicas**: with `docker compose up -d --scale web=N`, every web replica and the worker bind-mount the same host `./config/app.env` (read-only), so a single `DATA_ENC_KEY` written there is naturally identical everywhere — do not generate it per container.
+- **Kubernetes deployment**: put `DATA_ENC_KEY` into the `devops-glue-app-env` Secret (`config/k8s/devops-glue.yaml` already carries the `CHANGE_ME_DATA_ENC_KEY` placeholder); that Secret is mounted by both the web and worker Deployments, so every Pod naturally reads the same value — do not generate it per Pod, otherwise decrypting the ciphertext fails across replicas.
+- **Leaked = everything decryptable**: anyone with the key can decrypt all ciphertext, so keep it separate from the database and never commit it to git.
+
+**Rotating the key**: this release provides no automatic rotation tool. Encryption means "the old key cannot decrypt new ciphertext and the new key cannot decrypt old ciphertext", and the admin panel only returns `*_set` booleans (no plaintext), so before rotating, back up the plaintext first (old env values or an ops ledger). After rotating, the old ciphertext is void — re-enter the values on the "Platform Connections" / "OIDC / SSO Config" page (or re-run the migration scripts) so the new key re-encrypts them.
+
 ### Q: I need to roll back (downgrade) to an older version after an upgrade — how?
 
 First decide whether the old code can run against the current database. Migrations here are **additive only and there are no down scripts** (`ensureTables()` only does `CREATE TABLE IF NOT EXISTS` and `ALTER ADD COLUMN`):
@@ -595,7 +630,9 @@ First decide whether the old code can run against the current database. Migratio
 
 **7. CD coordination and front-end cache**: `cd_*` tables and permissions registered by CD via the API are not deleted by a CI downgrade; if CD is newer than CI, confirm the columns CD expects still exist (or downgrade CD too). Hard-refresh the browser if it cached newer front-end JS.
 
-> In one line: **additive migrations usually make an in-place rollback feasible, and a downgrade never revokes permissions the new version granted (merge seeding); still watch out for the old code misreading data written by the new version, and a rollback after a manual structural change requires reverse SQL first.**
+**8. Downgrade impact of the config migration and encryption (v2.10.0)**: `ci_platform_connections` / `ci_oauth_clients` are purely additive tables — the old code simply ignores them, and not rolling them back causes no harm; but the config migration and encryption are both **one-way**. If you deleted the connection keys from `config/app.env` after migrating, downgrading to an old version (which reads only env and not the new tables) cannot read the connections, so platform authentication fails. Therefore **do not rush to delete the env keys after migrating — delete them only once you are sure you won't downgrade**; if they were already deleted, restore them from the original env values before downgrading (non-secret fields like the URL can be read back from the DB; token/secret must be re-entered from your ops ledger).
+
+> In one line: **additive migrations usually make an in-place rollback feasible, and a downgrade never revokes permissions the new version granted (merge seeding); still watch out for the old code misreading data written by the new version, a rollback after a manual structural change requires reverse SQL first, and since v2.10.0 remember the connection config is migrated to the DB with one-way encryption — don't rush to delete the env keys after migrating.**
 
 ### Q: What data is cached and for how long?
 
@@ -771,4 +808,4 @@ No. API responses always return raw data. i18n only affects the frontend UI and 
 
 ---
 
-*Document version: v2.9.0 | Last updated: 2026-10-15*
+*Document version: v2.10.0 | Last updated: 2026-10-17*

@@ -232,6 +232,31 @@ CREATE TABLE IF NOT EXISTS `ci_integrated_services` (
         REFERENCES `ci_api_tokens`(`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- ── 16. oauth_clients（OIDC/OAuth 客户端白名单；DB 唯一权威，彻底移除 env）──
+-- secret/redirect_uri 留空/纯空白即 fail-closed（该客户端被剔除）；MySQL<8.0.13 TEXT 不能设 DEFAULT，故不设默认值。
+CREATE TABLE IF NOT EXISTS `ci_oauth_clients` (
+    `client_id`    VARCHAR(64) PRIMARY KEY,
+    `secret`       TEXT,
+    `redirect_uri` TEXT,
+    `system`       VARCHAR(16) NOT NULL DEFAULT 'ci',
+    `enabled`      TINYINT NOT NULL DEFAULT 1,
+    `description`  VARCHAR(255) DEFAULT '',
+    `created_at`   DATETIME DEFAULT (NOW()),
+    `updated_at`   DATETIME DEFAULT (NOW())
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ── ci_platform_connections（Git/Harbor/Jenkins 连接配置，DB 唯一权威，彻底移除 env）──
+CREATE TABLE IF NOT EXISTS `ci_platform_connections` (
+    `platform`    VARCHAR(32) PRIMARY KEY,
+    `url`         TEXT,
+    `token`       TEXT,
+    `username`    TEXT,
+    `password`    TEXT,
+    `description` VARCHAR(255) DEFAULT '',
+    `created_at`  DATETIME DEFAULT (NOW()),
+    `updated_at`  DATETIME DEFAULT (NOW())
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- ── 索引 ──
 -- 新库一次性建全（无存量数据，不保留迁移逻辑），直接建索引
 CREATE INDEX `idx_pipeline_artifacts_project_key` ON `ci_pipeline_artifacts` (`project_key`);

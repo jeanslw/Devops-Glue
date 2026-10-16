@@ -28,6 +28,7 @@ DevOps-Glue API is a Slim 4–based integration platform designed to enhance Dev
 - 📝 **Unified Log Center**: Operation logs, API access logs, and deploy logs
 - 🔧 **Support LDAP/SSO Login**: Easily integrate into the company's internal management system, say goodbye to information silos, and achieve account connectivity
 - 📝 **Custom_Push**: Orthogonal push-based CI — pull and push coexist simultaneously. [\[**Use case**\]](docs/ADMIN_MANUAL.md#12-configure-build-mode)
+- 🚀 **Supports Horizontal Scaling**: nginx/web/mysql are in separate containers, with an architecture designed to support horizontal scaling by default
 - 🔐 **Fine-grained RBAC**: More flexible access control than native plugins, tailored for team-scale organizations
 - 🚀 **Non-invasive Integration**: API-only connection with zero changes to existing CI configs — onboard in about 10 minutes
 

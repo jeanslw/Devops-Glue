@@ -1203,6 +1203,12 @@
                     <div id="pc-body" style="display:none;">
                         <h4 data-i18n="sys.platforms" style="margin:0 0 12px;">平台接入状态</h4>
                         <div id="pc-platforms"></div>
+                        <div class="mode-card" id="oidc-card" style="margin-top:16px;">
+                            <div class="mode-card-hd">
+                                <span class="mode-card-title" data-i18n="oidc.title">🔐 OIDC / SSO 配置</span>
+                            </div>
+                            <div id="oidc-body"></div>
+                        </div>
                         <div class="mode-cards pc-tag-cards" style="margin-top:16px;">
                             <div class="mode-card">
                                 <div class="mode-card-hd switch-row" style="flex-wrap:wrap;">
@@ -1326,6 +1332,7 @@
                         <span id="sys-migrate-status" class="mode-save-status"></span>
                         <span id="sys-backup-status" class="mode-save-status"></span>
                     </div>
+                    <div id="sys-migrate-log" style="margin:6px 0 0;"></div>
                     <div class="sys-panels">
                         <div class="sys-panel">
                             <div style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:10px 12px;font-weight:600;font-size:13px;background:#f9fafb;user-select:none;" onclick="toggleSysTables()">

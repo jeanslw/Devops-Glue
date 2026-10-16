@@ -1590,7 +1590,7 @@ class BuildController extends BaseController
             return '资源不存在（HTTP 404）';
         }
         if ($httpCode === 401 || $httpCode === 403) {
-            return 'Harbor 认证失败（HTTP ' . $httpCode . '），请检查 .env 中 Harbor 账号的权限';
+            return 'Harbor 认证失败（HTTP ' . $httpCode . '），请检查后台「平台接入状态」里 Harbor 账号的权限';
         }
         if ($httpCode >= 500) {
             return 'Harbor 服务端异常（HTTP ' . $httpCode . '）';

@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Devops-Glue API",
-    "version": "2.9.1",
+    "version": "2.10.0",
     "description": "DevOps toolchain integration API — unified interface for Jenkins / GitLab CI, GitLab / Gitee / GitHub / Gitea, and Harbor.",
     "contact": {
       "email": "jeanslw@qq.com"
@@ -239,19 +239,19 @@
           },
           "app_version": {
             "type": "string",
-            "example": "2.9.1"
+            "example": "2.10.0"
           },
           "schema_version": {
             "type": "string",
             "nullable": true,
             "description": "Applied schema version (marked in auto-migrate mode; null until first deployment marks it)",
-            "example": "2.9.1"
+            "example": "2.10.0"
           },
           "seed_version": {
             "type": "string",
             "nullable": true,
             "description": "Applied seed version (recorded only with DB_AUTO_MIGRATE=false; null in auto-migrate mode, where schema_version is authoritative)",
-            "example": "2.9.1"
+            "example": "2.10.0"
           },
           "schema_current": {
             "type": "boolean",

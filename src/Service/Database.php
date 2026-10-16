@@ -15,6 +15,13 @@ class Database
     /** 列结构对账每进程只执行一次（版本相等短路时也要跑，不能每请求重复 MODIFY）。 */
     private static bool $columnReconcileDone = false;
 
+    /**
+     * 最近一次 ensureTables() 的逐表建表结果（成功/失败），供迁移 CLI/后台渲染过程列表。
+     *
+     * @var list<array{table:string, ok:bool, error:string|null}>
+     */
+    private static array $tableBuildLog = [];
+
     /** 返回已引导的 PDO；未引导时抛异常，避免在 null 上调用方法。 */
     private static function pdo(): \PDO
     {
@@ -159,7 +166,76 @@ class Database
             self::markSeedCurrent();
             self::noteVersionTransition(self::SEED_VERSION_KEY, $recorded, $seedMode, 'seed');
         }
+        self::assertDataEncKeyPresent(self::pdo());
+        self::warnDeprecatedEnvKeys();
         self::$bootstrapped = true;
+    }
+
+    /**
+     * 敏感字段加密的启动守卫（fail-closed）：
+     * 库里已存在密文（enc:v1:）但 DATA_ENC_KEY 未配置时直接抛异常拒绝服务——
+     * 有密文无 key 意味着读不出任何平台凭据，与其「服务起来了、业务却坏」不如明确报错。
+     */
+    private static function assertDataEncKeyPresent(\PDO $pdo): void
+    {
+        if (\App\Support\EnvFileLoader::envVal(\App\Service\Encryptor::ENV_KEY, '') !== '') {
+            return;
+        }
+        $checks = [
+            \App\Config\AppConfig::TABLE_PLATFORM_CONNECTIONS => ['token', 'username', 'password'],
+            \App\Config\AppConfig::TABLE_OAUTH_CLIENTS         => ['secret'],
+        ];
+        foreach ($checks as $table => $cols) {
+            $like = implode(' OR ', array_map(static fn($c) => "{$c} LIKE 'enc:v1:%'", $cols));
+            try {
+                $count = $pdo->query("SELECT COUNT(*) FROM {$table} WHERE {$like}")->fetchColumn();
+            } catch (\Throwable $e) {
+                continue; // 表尚未建好等场景跳过，不误伤
+            }
+            if ((int) $count > 0) {
+                throw new \RuntimeException(
+                    '检测到已加密字段但未配置 DATA_ENC_KEY，无法解密平台凭据（fail-closed）。'
+                    . '请在 config/app.env（或根 .env / k8s Secret）配置 32 字节 base64 密钥后重启'
+                    . '（生成：php -r "echo base64_encode(random_bytes(32));"）'
+                );
+            }
+        }
+    }
+
+    /**
+     * 连接与 OIDC 配置已迁入 DB（v2.10.0 起），下列 env 键应用不再读取。
+     * 若仍有非空残留值，说明旧配置尚未迁移（或迁移后未清理），打 warning 提示运维，
+     * 避免「升级后连接/OIDC 静默失效、查无凭据」。
+     */
+    private static function warnDeprecatedEnvKeys(): void
+    {
+        $deprecated = [
+            // Git/Harbor/Jenkins 连接（cli/migrate-platform-connections.php）
+            'GITLAB_BASE_URL', 'GIT_BASE_URL', 'GITLAB_TOKEN', 'GIT_TOKEN',
+            'GITHUB_BASE_URL', 'GITHUB_TOKEN',
+            'GITEE_BASE_URL', 'GITEE_TOKEN',
+            'GITEA_BASE_URL', 'GITEA_TOKEN',
+            'HARBOR_BASE_URL', 'HARBOR_USER', 'HARBOR_PASSWORD',
+            'JENKINS_BASE_URL', 'JENKINS_USER', 'JENKINS_TOKEN',
+            // OIDC（cli/migrate-oidc.php）
+            'OIDC_ISSUER', 'OIDC_ID_TOKEN_TTL',
+            'JENKINS_OIDC_SECRET', 'JENKINS_OIDC_REDIRECT_URI',
+            'CD_OIDC_SECRET', 'CD_OIDC_REDIRECT_URI', 'CD_OIDC_SYSTEM',
+        ];
+        $leftover = [];
+        foreach ($deprecated as $key) {
+            if (trim(\App\Support\EnvFileLoader::envVal($key, '')) !== '') {
+                $leftover[] = $key;
+            }
+        }
+        if ($leftover !== []) {
+            \App\Helper\Log::warning(
+                '检测到已废弃的连接/OIDC env 键（v2.10.0 起应用不再读取）：' . implode(', ', $leftover)
+                . '。若从旧版升级，请运行 cli/migrate-platform-connections.php 与 cli/migrate-oidc.php 迁移；'
+                . '迁移确认无误后可删除这些键。',
+                ['deprecated_env_keys' => $leftover]
+            );
+        }
     }
 
     /**
@@ -391,6 +467,10 @@ class Database
             \App\Config\AppConfig::TABLE_API_ACCESS_LOGS,
             // 集成服务启用契约表（CI 属主；ensureTables() 真实创建，CD 只读 enabled/provision）
             \App\Config\AppConfig::TABLE_INTEGRATED_SERVICES,
+            // OIDC/OAuth 客户端白名单（CI 属主；ensureTables() 真实创建）
+            \App\Config\AppConfig::TABLE_OAUTH_CLIENTS,
+            // Git/Harbor/Jenkins 连接配置（CI 属主；ensureTables() 真实创建）
+            \App\Config\AppConfig::TABLE_PLATFORM_CONNECTIONS,
         ];
     }
 
@@ -892,7 +972,10 @@ class Database
         self::markSchemaCurrent();  // 自检通过后才标记当前版本
         self::markSeedCurrent();    // 同步种子版本：手动模式随后的首次引导即短路，不再重复播种
         self::noteExplicitDowngrade([self::SCHEMA_VERSION_KEY => $prevSchema, self::SEED_VERSION_KEY => $prevSeed]);
-        return self::schemaStatus();
+        $status = self::schemaStatus();
+        // 逐表建表结果（成功/失败），供 CLI/后台渲染「表1 成功…表2 失败」过程列表。
+        $status['table_build_log'] = self::lastTableBuildLog();
+        return $status;
     }
 
     /**
@@ -1078,6 +1161,7 @@ class Database
         self::$bootstrapped = false;
         self::$schemaListDriftLogged = false;
         self::$columnReconcileDone = false;
+        self::$tableBuildLog = [];
     }
 
     public static function driver(): string
@@ -1236,6 +1320,34 @@ class Database
         return self::$driver === 'mysql' ? 'NOW()' : "datetime('now','localtime')";
     }
 
+    /**
+     * 执行单张表的建表 DDL 并记录结果到 tableBuildLog（供迁移过程逐表展示）。
+     *
+     * 失败时先记录「该表失败」再原样抛出，保持 ensureTables 的 fail-fast 语义；
+     * 调用方（migrateNow / CLI / 后台）经 lastTableBuildLog() 拿到完整过程列表，
+     * 据此渲染「表1 成功 / 表2 失败」而不是一句笼统的 500。
+     */
+    private static function buildTable(\PDO $pdo, string $table, string $ddl): void
+    {
+        try {
+            $pdo->exec($ddl);
+            self::$tableBuildLog[] = ['table' => $table, 'ok' => true, 'error' => null];
+        } catch (\Throwable $e) {
+            self::$tableBuildLog[] = ['table' => $table, 'ok' => false, 'error' => $e->getMessage()];
+            throw $e;
+        }
+    }
+
+    /**
+     * 最近一次 ensureTables() 的逐表建表结果（成功/失败 + 错误信息）。
+     *
+     * @return list<array{table:string, ok:bool, error:string|null}>
+     */
+    public static function lastTableBuildLog(): array
+    {
+        return self::$tableBuildLog;
+    }
+
     /** INSERT OR IGNORE / INSERT IGNORE */
     public static function sqlInsertIgnore(string $table, string $columns, string $values): string
     {
@@ -1264,8 +1376,8 @@ class Database
         return false;
     }
 
-    /** 表是否已存在（MySQL / SQLite）。 */
-    private static function tableExists(\PDO $pdo, string $table): bool
+    /** 表是否已存在（MySQL / SQLite）。供仓储在自动迁移关闭、表尚未创建时安全降级。 */
+    public static function tableExists(\PDO $pdo, string $table): bool
     {
         try {
             $pdo->query('SELECT 1 FROM ' . $table . ' LIMIT 1');
@@ -1291,6 +1403,7 @@ class Database
     {
         $pdo = self::pdo();
         $isMySQL = self::$driver === 'mysql';
+        self::$tableBuildLog = [];
 
         // v2.9.0 表名收口：先把存量旧表名 RENAME 到 ci_ 前缀，再走 CREATE IF NOT EXISTS——
         // 存量库改名后建表全部跳过，新装库无旧表直接建新名，两条路径汇合同一结构。
@@ -1307,7 +1420,7 @@ class Database
         $TS_TYPE  = $isMySQL ? 'DATETIME' : 'TEXT';
 
         // ci_job_git_map
-        $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_JOB_GIT_MAP . " (
+        self::buildTable($pdo, \App\Config\AppConfig::TABLE_JOB_GIT_MAP, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_JOB_GIT_MAP . " (
             job_name {$TEXT_PK},
             git_platform TEXT,
             build_provider {$VARCHAR} DEFAULT '" . \App\Config\AppConfig::PROVIDER_JENKINS . "',
@@ -1320,14 +1433,14 @@ class Database
             status {$VARCHAR} DEFAULT '" . \App\Config\AppConfig::STATUS_ACTIVE . "'
         ){$ENGINE}");
         // ci_platform_versions
-        $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_PLATFORM_VERSIONS . " (
+        self::buildTable($pdo, \App\Config\AppConfig::TABLE_PLATFORM_VERSIONS, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_PLATFORM_VERSIONS . " (
             platform {$TEXT_PK},
             version TEXT NOT NULL
         ){$ENGINE}");
 
         // ci_pipeline_artifacts：Pipeline 到 Primary Artifact（1:1）。
         // canonical identity = (provider, project_id, pipeline_iid)。
-        $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_PIPELINE_ARTIFACTS . " (
+        self::buildTable($pdo, \App\Config\AppConfig::TABLE_PIPELINE_ARTIFACTS, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_PIPELINE_ARTIFACTS . " (
             id {$PK},
             provider {$VARCHAR} NOT NULL,
             project_id {$VARCHAR} NOT NULL,
@@ -1342,7 +1455,7 @@ class Database
             UNIQUE (provider, project_id, pipeline_iid)
         ){$ENGINE}");
         // ci_custom_builds（自定义推送式 CI 的构建记录，只存元数据，不存日志内容）
-        $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_CUSTOM_BUILDS . " (
+        self::buildTable($pdo, \App\Config\AppConfig::TABLE_CUSTOM_BUILDS, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_CUSTOM_BUILDS . " (
             id {$PK},
             job_name {$VCHAR255},
             pipeline_iid INTEGER NOT NULL,
@@ -1360,13 +1473,13 @@ class Database
         ){$ENGINE}");
         // cache
         if ($isMySQL) {
-            $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_CACHE . " (
+            self::buildTable($pdo, \App\Config\AppConfig::TABLE_CACHE, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_CACHE . " (
                 cache_key VARCHAR(255) PRIMARY KEY,
                 `value` MEDIUMTEXT NOT NULL,
                 expires_at INTEGER
             ){$ENGINE}");
         } else {
-            $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_CACHE . " (
+            self::buildTable($pdo, \App\Config\AppConfig::TABLE_CACHE, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_CACHE . " (
                 cache_key TEXT PRIMARY KEY,
                 value TEXT NOT NULL,
                 expires_at INTEGER
@@ -1374,7 +1487,7 @@ class Database
         }
 
         // admin_users（v2.6.3 起：id 为主键，username 降为唯一约束；新增 avatar_url/status/created_at）
-        $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_ADMIN_USERS . " (
+        self::buildTable($pdo, \App\Config\AppConfig::TABLE_ADMIN_USERS, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_ADMIN_USERS . " (
             id " . ($isMySQL ? 'BIGINT AUTO_INCREMENT PRIMARY KEY' : 'INTEGER PRIMARY KEY AUTOINCREMENT') . ",
             username " . ($isMySQL ? 'VARCHAR(255)' : 'TEXT') . " NOT NULL UNIQUE,
             password_hash TEXT NOT NULL,
@@ -1391,13 +1504,13 @@ class Database
 
         // ci_app_settings（应用运行时配置，与缓存分离）
         if ($isMySQL) {
-            $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_APP_SETTINGS . " (
+            self::buildTable($pdo, \App\Config\AppConfig::TABLE_APP_SETTINGS, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_APP_SETTINGS . " (
                 setting_key VARCHAR(255) PRIMARY KEY,
                 `value` MEDIUMTEXT NOT NULL,
                 updated_at {$TS_TYPE} DEFAULT ({$NOW})
             ){$ENGINE}");
         } else {
-            $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_APP_SETTINGS . " (
+            self::buildTable($pdo, \App\Config\AppConfig::TABLE_APP_SETTINGS, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_APP_SETTINGS . " (
                 setting_key TEXT PRIMARY KEY,
                 value TEXT NOT NULL,
                 updated_at {$TS_TYPE} DEFAULT ({$NOW})
@@ -1422,7 +1535,7 @@ class Database
         // sha 内容寻址、全局唯一，故为唯一键；project_key/pipeline_id 仅作溯源参考。
         // provider/project_id/repository 记录 canonical identity 与 harbor 仓库，供回填 cron
         // 直接写入 ci_pipeline_artifacts（无需重跑 provider 解析）。
-        $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_BUILD_TAG_CACHE . " (
+        self::buildTable($pdo, \App\Config\AppConfig::TABLE_BUILD_TAG_CACHE, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_BUILD_TAG_CACHE . " (
             id {$PK},
             project_key {$VARCHAR} DEFAULT '',
             provider {$VARCHAR} DEFAULT '',
@@ -1437,7 +1550,7 @@ class Database
         ){$ENGINE}");
 
         // ci_security_checks（安全扫描审计记录）
-        $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_SECURITY_CHECKS . " (
+        self::buildTable($pdo, \App\Config\AppConfig::TABLE_SECURITY_CHECKS, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_SECURITY_CHECKS . " (
             id {$PK},
             project {$VARCHAR} NOT NULL,
             sha {$VARCHAR} NOT NULL,
@@ -1452,7 +1565,7 @@ class Database
         ){$ENGINE}");
 
         // ci_operation_logs（后台操作审计日志，append-only，只增不删）
-        $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_OPERATION_LOGS . " (
+        self::buildTable($pdo, \App\Config\AppConfig::TABLE_OPERATION_LOGS, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_OPERATION_LOGS . " (
             id {$PK},
             username {$VARCHAR} NOT NULL,
             action {$VARCHAR} NOT NULL,
@@ -1471,7 +1584,7 @@ class Database
         $M  = $isMySQL ? 'VARCHAR(10)'  : 'TEXT';
         $R  = $isMySQL ? 'VARCHAR(20)'  : 'TEXT';
         $IP = $isMySQL ? 'VARCHAR(45)'  : 'TEXT';
-        $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_API_ACCESS_LOGS . " (
+        self::buildTable($pdo, \App\Config\AppConfig::TABLE_API_ACCESS_LOGS, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_API_ACCESS_LOGS . " (
             id {$PK},
             username {$S} DEFAULT '',
             token_name {$S} DEFAULT '',
@@ -1487,7 +1600,7 @@ class Database
         ){$ENGINE}");
         // ── RBAC 权限系统 ──
         // roles
-        $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_ROLES . " (
+        self::buildTable($pdo, \App\Config\AppConfig::TABLE_ROLES, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_ROLES . " (
             id {$PK},
             name {$VARCHAR} NOT NULL UNIQUE,
             description TEXT,
@@ -1496,14 +1609,14 @@ class Database
         ){$ENGINE}");
         // permissions
         if ($isMySQL) {
-            $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_PERMISSIONS . " (
+            self::buildTable($pdo, \App\Config\AppConfig::TABLE_PERMISSIONS, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_PERMISSIONS . " (
                 perm_key VARCHAR(128) PRIMARY KEY,
                 description TEXT,
                 parent_key VARCHAR(128),
                 created_at {$TS_TYPE} DEFAULT NULL
             ){$ENGINE}");
         } else {
-            $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_PERMISSIONS . " (
+            self::buildTable($pdo, \App\Config\AppConfig::TABLE_PERMISSIONS, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_PERMISSIONS . " (
                 perm_key TEXT PRIMARY KEY,
                 description TEXT,
                 parent_key TEXT,
@@ -1512,13 +1625,13 @@ class Database
         }
         // role_permissions
         if ($isMySQL) {
-            $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_ROLE_PERMISSIONS . " (
+            self::buildTable($pdo, \App\Config\AppConfig::TABLE_ROLE_PERMISSIONS, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_ROLE_PERMISSIONS . " (
                 role_id INTEGER NOT NULL,
                 perm_key VARCHAR(128) NOT NULL,
                 PRIMARY KEY (role_id, perm_key)
             ){$ENGINE}");
         } else {
-            $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_ROLE_PERMISSIONS . " (
+            self::buildTable($pdo, \App\Config\AppConfig::TABLE_ROLE_PERMISSIONS, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_ROLE_PERMISSIONS . " (
                 role_id INTEGER NOT NULL,
                 perm_key TEXT NOT NULL,
                 PRIMARY KEY (role_id, perm_key)
@@ -1527,13 +1640,13 @@ class Database
 
         // implied_rules 表：权限隐含关系（source_key 到 target_key），运行时可由 CD 通过 API 注册
         if ($isMySQL) {
-            $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_IMPLIED_RULES . " (
+            self::buildTable($pdo, \App\Config\AppConfig::TABLE_IMPLIED_RULES, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_IMPLIED_RULES . " (
                 source_key VARCHAR(128) NOT NULL,
                 target_key VARCHAR(128) NOT NULL,
                 PRIMARY KEY (source_key, target_key)
             ){$ENGINE}");
         } else {
-            $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_IMPLIED_RULES . " (
+            self::buildTable($pdo, \App\Config\AppConfig::TABLE_IMPLIED_RULES, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_IMPLIED_RULES . " (
                 source_key TEXT NOT NULL,
                 target_key TEXT NOT NULL,
                 PRIMARY KEY (source_key, target_key)
@@ -1544,7 +1657,7 @@ class Database
         // 与 admin_users 解耦：admin_users 只保留"用户存在 + 角色 + 系统范围"，
         // 而"通过哪种身份源登录、对应的标识符/凭据"在此，便于未来接入 oauth/saml 等。
         if ($isMySQL) {
-            $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_USER_IDENTITIES . " (
+            self::buildTable($pdo, \App\Config\AppConfig::TABLE_USER_IDENTITIES, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_USER_IDENTITIES . " (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 username VARCHAR(255) NOT NULL,
                 provider_type VARCHAR(32) NOT NULL,
@@ -1558,7 +1671,7 @@ class Database
                 KEY idx_username (username)
             ){$ENGINE}");
         } else {
-            $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_USER_IDENTITIES . " (
+            self::buildTable($pdo, \App\Config\AppConfig::TABLE_USER_IDENTITIES, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_USER_IDENTITIES . " (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT NOT NULL,
                 provider_type TEXT NOT NULL,
@@ -1573,7 +1686,7 @@ class Database
         }
 
         // api_tokens（服务账号 / 第三方调用的 API token，独立于 RBAC 权限体系）
-        $pdo->exec("CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_API_TOKENS . " (
+        self::buildTable($pdo, \App\Config\AppConfig::TABLE_API_TOKENS, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_API_TOKENS . " (
             id {$PK},
             name {$VARCHAR} NOT NULL,
             token_hash " . ($isMySQL ? 'VARCHAR(64) NOT NULL UNIQUE' : 'TEXT NOT NULL UNIQUE') . ",
@@ -1591,7 +1704,7 @@ class Database
         // enabled=0 仅冻结集成服务，不删除任何数据。
         $isvcTable = \App\Config\AppConfig::TABLE_INTEGRATED_SERVICES;
         if ($isMySQL) {
-            $pdo->exec("CREATE TABLE IF NOT EXISTS {$isvcTable} (
+            self::buildTable($pdo, $isvcTable, "CREATE TABLE IF NOT EXISTS {$isvcTable} (
                 id {$PK},
                 service_name VARCHAR(32) NOT NULL UNIQUE,
                 enabled TINYINT NOT NULL DEFAULT 0,
@@ -1604,7 +1717,7 @@ class Database
                     REFERENCES " . \App\Config\AppConfig::TABLE_API_TOKENS . "(id) ON DELETE SET NULL
             ){$ENGINE}");
         } else {
-            $pdo->exec("CREATE TABLE IF NOT EXISTS {$isvcTable} (
+            self::buildTable($pdo, $isvcTable, "CREATE TABLE IF NOT EXISTS {$isvcTable} (
                 id {$PK},
                 service_name TEXT NOT NULL UNIQUE,
                 enabled INTEGER NOT NULL DEFAULT 0,
@@ -1615,6 +1728,60 @@ class Database
                 updated_at {$TS_TYPE} DEFAULT ({$NOW}),
                 FOREIGN KEY (api_token_id)
                     REFERENCES " . \App\Config\AppConfig::TABLE_API_TOKENS . "(id) ON DELETE SET NULL
+            )");
+        }
+
+        // oauth_clients：OIDC/OAuth 客户端白名单（DB 唯一权威，彻底移除 env；secret/redirect_uri 可空，留空即 fail-closed）。
+        // MySQL < 8.0.13 不允许 TEXT/BLOB 设 DEFAULT，故 secret/redirect_uri 不设默认值。
+        $oauthClientsTable = \App\Config\AppConfig::TABLE_OAUTH_CLIENTS;
+        if ($isMySQL) {
+            self::buildTable($pdo, $oauthClientsTable, "CREATE TABLE IF NOT EXISTS {$oauthClientsTable} (
+                client_id VARCHAR(64) PRIMARY KEY,
+                secret TEXT,
+                redirect_uri TEXT,
+                `system` VARCHAR(16) NOT NULL DEFAULT '" . \App\Config\AppConfig::SYSTEM_CI . "',
+                enabled TINYINT NOT NULL DEFAULT 1,
+                description VARCHAR(255) DEFAULT '',
+                created_at {$TS_TYPE} DEFAULT ({$NOW}),
+                updated_at {$TS_TYPE} DEFAULT ({$NOW})
+            ){$ENGINE}");
+        } else {
+            self::buildTable($pdo, $oauthClientsTable, "CREATE TABLE IF NOT EXISTS {$oauthClientsTable} (
+                client_id TEXT PRIMARY KEY,
+                secret TEXT,
+                redirect_uri TEXT,
+                system TEXT NOT NULL DEFAULT '" . \App\Config\AppConfig::SYSTEM_CI . "',
+                enabled INTEGER NOT NULL DEFAULT 1,
+                description TEXT DEFAULT '',
+                created_at {$TS_TYPE} DEFAULT ({$NOW}),
+                updated_at {$TS_TYPE} DEFAULT ({$NOW})
+            )");
+        }
+
+        // platform_connections：Git/Harbor/Jenkins 连接配置（DB 唯一权威，彻底移除 env）。
+        // url/token/username/password 可空、无默认（MySQL < 8.0.13 不允许 TEXT 设 DEFAULT）。
+        $platformConnectionsTable = \App\Config\AppConfig::TABLE_PLATFORM_CONNECTIONS;
+        if ($isMySQL) {
+            self::buildTable($pdo, $platformConnectionsTable, "CREATE TABLE IF NOT EXISTS {$platformConnectionsTable} (
+                platform VARCHAR(32) PRIMARY KEY,
+                url TEXT,
+                token TEXT,
+                username TEXT,
+                password TEXT,
+                description VARCHAR(255) DEFAULT '',
+                created_at {$TS_TYPE} DEFAULT ({$NOW}),
+                updated_at {$TS_TYPE} DEFAULT ({$NOW})
+            ){$ENGINE}");
+        } else {
+            self::buildTable($pdo, $platformConnectionsTable, "CREATE TABLE IF NOT EXISTS {$platformConnectionsTable} (
+                platform TEXT PRIMARY KEY,
+                url TEXT,
+                token TEXT,
+                username TEXT,
+                password TEXT,
+                description TEXT DEFAULT '',
+                created_at {$TS_TYPE} DEFAULT ({$NOW}),
+                updated_at {$TS_TYPE} DEFAULT ({$NOW})
             )");
         }
 

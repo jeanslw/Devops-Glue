@@ -9,7 +9,9 @@
 # 扩副本：`docker compose up -d --scale web=3` 后 `docker compose restart nginx`
 #   （nginx upstream 启动时解析一次 web 的 Docker DNS，重启后才会感知新副本）。
 # 运行时数据（/data/db、/data/cache、/data/backups）与日志挂同一宿主机路径 → 单机多副本天然共享；
-# 跨主机（swarm/k8s）需改用共享存储，或把 OIDC 私钥放到 .env 的 OIDC_RSA_PRIVATE_KEY（见 app.env.example）。
+# 配置同理：web 各副本与 worker 都只读挂载同一份 ./config/app.env，DATA_ENC_KEY 等键写一次即全部副本同值。
+# 跨主机（swarm/k8s）需改用共享存储或一致注入；OIDC 私钥放 .env 的 OIDC_RSA_PRIVATE_KEY，
+# k8s 的 DATA_ENC_KEY / 私钥统一走 devops-glue-app-env Secret（见 app.env.example 与 config/k8s/devops-glue.yaml）。
 # ──────────────────────────────────────────────────────────────────────────
 x-web-common: &web-common
   image: devops-glue:latest
@@ -146,14 +148,21 @@ services:
       # bind mount 把 config/app.env 变成空目录导致启动 fatal）
       - ./config:/check:ro
     environment:
+      DB_USER: ${DB_USER:-}
       DB_PASS: ${DB_PASS:-}
       DB_ROOT_PASS: ${DB_ROOT_PASS:-}
+      DATA_ENC_KEY: ${DATA_ENC_KEY:-}
     command:
       - |
         fail=0
         if [ ! -f /check/app.env ]; then
           echo "[启动中止] 缺少 config/app.env：请先执行 cp config/app.env.example config/app.env 并填写配置（至少填一个 Git 平台的 URL 和 Token）"
           echo "[ABORT] Missing config/app.env: run 'cp config/app.env.example config/app.env' and fill it in first (at least one Git platform URL + token)"
+          fail=1
+        fi
+        if [ -z "$$DB_USER" ]; then
+          echo "[启动中止] 缺少数据库业务账号名：请在根目录 .env 设置 DB_USER（mysql 服务据此创建同名账号，应用同名连库，建议 devops）"
+          echo "[ABORT] Missing database application username: set DB_USER in the root .env (the mysql service creates an account with this name; the app connects with it; suggest 'devops')"
           fail=1
         fi
         if [ -z "$$DB_PASS" ]; then
@@ -164,6 +173,17 @@ services:
         if [ -z "$$DB_ROOT_PASS" ]; then
           echo "[启动中止] 缺少 MySQL 管理员口令：请在根目录 .env 设置 DB_ROOT_PASS（MySQL root 超级管理员口令，仅数据卷首次初始化时使用）"
           echo "[ABORT] Missing MySQL administrator password: set DB_ROOT_PASS in the root .env (MySQL root superuser password; used only on first-time volume initialization)"
+          fail=1
+        fi
+        key_ok=0
+        if [ -n "$$DATA_ENC_KEY" ]; then key_ok=1; fi
+        for f in /check/app.env /check/app.env.*; do
+          [ -f "$$f" ] || continue
+          grep -qE '^DATA_ENC_KEY=[[:space:]]*[^[:space:]]' "$$f" && key_ok=1
+        done
+        if [ "$$key_ok" != "1" ]; then
+          echo '[启动中止] 缺少敏感字段加密密钥 DATA_ENC_KEY：请在 config/app.env 或根 .env 设置（生成：php -r "echo base64_encode(random_bytes(32));"）'
+          echo '[ABORT] Missing sensitive-field encryption key DATA_ENC_KEY: set it in config/app.env or the root .env (generate: php -r "echo base64_encode(random_bytes(32));")'
           fail=1
         fi
         if [ "$$fail" = "1" ]; then

@@ -16,7 +16,9 @@ use App\Service\I18nService;
 use App\Service\JenkinsService;
 use App\Service\DeployLogRepository;
 use App\Service\MappingManager;
+use App\Service\OAuthClientRepository;
 use App\Service\OperationLogRepository;
+use App\Service\PlatformConnectionRepository;
 use App\Service\PasswordHasher;
 use App\Service\PlatformVersionRepository;
 use App\Service\Settings;
@@ -29,6 +31,8 @@ class AdminController extends BaseController
     private MappingManager $mapping;
     private AppSettingRepository $appSettings;
     private PlatformVersionRepository $platformVersions;
+    private OAuthClientRepository $oauthClients;
+    private PlatformConnectionRepository $platformConnections;
     private \PDO $pdo;
     private ?AutoDiscover $autoDiscover;
     private ?TokenService $tokenService = null;
@@ -47,6 +51,8 @@ class AdminController extends BaseController
         MappingManager $mapping,
         AppSettingRepository $appSettings,
         PlatformVersionRepository $platformVersions,
+        OAuthClientRepository $oauthClients,
+        PlatformConnectionRepository $platformConnections,
         \PDO $pdo,
         AdminAuthService $adminAuthService,
         AdminUserRepository $adminUserRepository,
@@ -61,6 +67,8 @@ class AdminController extends BaseController
         $this->mapping            = $mapping;
         $this->appSettings        = $appSettings;
         $this->platformVersions   = $platformVersions;
+        $this->oauthClients       = $oauthClients;
+        $this->platformConnections = $platformConnections;
         $this->pdo                = $pdo;
         $this->autoDiscover       = $autoDiscover;
         $this->tokenService       = $tokenService;
@@ -1955,6 +1963,309 @@ class AdminController extends BaseController
     }
 
     /**
+     * 平台连接配置的归一化负载（GET 与 PUT 返回复用同一份）。
+     * 明文 token/password 永不下发，只给 *_set 布尔；url/username 可下发（非机密）。
+     *
+     * @return array<string,mixed>
+     */
+    private function platformConnectionsPayload(): array
+    {
+        $resolved = $this->platformConnections->resolveConnections();
+        $rows = [];
+        foreach ($this->platformConnections->list() as $row) {
+            $p = trim((string)($row['platform'] ?? ''));
+            if ($p !== '') {
+                $rows[$p] = $row;
+            }
+        }
+
+        $platforms = [];
+        foreach (['jenkins', 'gitlab', 'github', 'gitee', 'gitea', 'harbor'] as $p) {
+            $cfg = $resolved[$p] ?? [];
+            $row = $rows[$p] ?? null;
+
+            if ($p === 'harbor') {
+                $url         = (string)($cfg['url'] ?? '');
+                $tokenSet    = false;
+                $username    = (string)($cfg['username'] ?? '');
+                $passwordSet = trim((string)($row['password'] ?? '')) !== '';
+                $configured  = $url !== '' && $passwordSet;
+            } elseif ($p === 'jenkins') {
+                $url         = (string)($cfg['url'] ?? '');
+                $tokenSet    = trim((string)($row['token'] ?? '')) !== '';
+                $username    = (string)($cfg['user'] ?? '');
+                $passwordSet = false;
+                $configured  = $url !== '';
+            } else {
+                $url         = (string)($cfg['base_url'] ?? '');
+                $tokenSet    = trim((string)($row['token'] ?? '')) !== '';
+                $username    = '';
+                $passwordSet = false;
+                $configured  = $url !== '' && $tokenSet;
+            }
+
+            $platforms[] = [
+                'platform'     => $p,
+                'url'          => $url,
+                'token_set'    => $tokenSet,
+                'username'     => $username,
+                'password_set' => $passwordSet,
+                'description'  => (string)($row['description'] ?? ''),
+                'configured'   => $configured,
+            ];
+        }
+
+        return ['platforms' => $platforms];
+    }
+
+    /**
+     * GET /api/admin/platform_connections — 各平台连接配置（url/username 明文，token/password 只回 *_set）
+     * 权限：ci.platform-config。
+     */
+    public function platformConnections(Request $request, Response $response): Response
+    {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_PLATFORM_CONFIG)) {
+            return $resp;
+        }
+        try {
+            return $this->output($response, $this->platformConnectionsPayload(), $request);
+        } catch (\Exception $e) {
+            return $this->jsonError($response, $this->__('build.query_failed') . ': ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * PUT /api/admin/platform_connections — 更新各平台连接配置（DB 唯一权威，无 env 兜底）
+     * 权限：ci.platform-config。只处理请求体显式携带的键；token/password 留空即保持原值。
+     * delete:true 删除行（回到未配置）；url 与凭证均空也删除行；有凭证但无 URL 拒绝（400）。
+     */
+    public function updatePlatformConnections(Request $request, Response $response): Response
+    {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_PLATFORM_CONFIG)) {
+            return $resp;
+        }
+        $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
+
+        $valid = ['jenkins', 'gitlab', 'github', 'gitee', 'gitea', 'harbor'];
+        $this->pdo->beginTransaction();
+        try {
+            if (isset($body['platforms']) && is_array($body['platforms'])) {
+                foreach ($body['platforms'] as $p) {
+                    if (!is_array($p)) {
+                        continue;
+                    }
+                    $platform = trim((string)($p['platform'] ?? ''));
+                    if (!in_array($platform, $valid, true)) {
+                        continue;
+                    }
+                    if (!empty($p['delete'])) {
+                        $this->platformConnections->delete($platform);
+                        continue;
+                    }
+                    $existing = $this->platformConnections->find($platform);
+                    $url      = trim((string)($p['url'] ?? ''));
+                    $username = trim((string)($p['username'] ?? ''));
+                    $token    = (string)($existing['token'] ?? '');
+                    $password = (string)($existing['password'] ?? '');
+                    if (array_key_exists('token', $p)) {
+                        $t = trim((string)($p['token'] ?? ''));
+                        if ($t !== '') {
+                            $token = $t;
+                        }
+                    }
+                    if (array_key_exists('password', $p)) {
+                        $pw = (string)($p['password'] ?? '');
+                        if (trim($pw) !== '') {
+                            $password = $pw;
+                        }
+                    }
+                    // URL 与凭证均空 → 删除行（未配置）；有凭证但无 URL → 拒绝，避免凭证悬空。
+                    if ($url === '' && $token === '' && $password === '') {
+                        $this->platformConnections->delete($platform);
+                        continue;
+                    }
+                    if ($url === '') {
+                        throw new \InvalidArgumentException('平台连接 [' . $platform . '] 填写了凭证但 URL 为空');
+                    }
+                    $description = (string)($existing['description'] ?? '');
+                    if (array_key_exists('description', $p)) {
+                        $description = trim((string)($p['description'] ?? ''));
+                    }
+                    $this->platformConnections->save($platform, [
+                        'url'         => $url,
+                        'token'       => $token,
+                        'username'    => $username,
+                        'password'    => $password,
+                        'description' => $description,
+                    ]);
+                }
+            }
+            $this->opLog()->record($this->currentUser, 'platform_connections_update', '', [], $this->clientIp($request), 'success');
+            $this->pdo->commit();
+        } catch (\InvalidArgumentException $e) {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+            return $this->jsonError($response, $e->getMessage(), 400);
+        } catch (\Exception $e) {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+            return $this->jsonError($response, $this->__('build.query_failed') . ': ' . $e->getMessage(), 500);
+        }
+
+        return $this->output($response, $this->platformConnectionsPayload(), $request);
+    }
+
+    /**
+     * OIDC 配置的归一化负载（GET 与 PUT 返回复用同一份）。
+     * 明文 secret 永不下发，只给 secret_set 布尔；source 标注 database|env。
+     *
+     * @return array<string,mixed>
+     */
+    private function oidcConfigPayload(): array
+    {
+        $dbIssuer = $this->appSettings->getOidcIssuer();
+        $issuer   = $dbIssuer ?? '';
+        $issuerSource = $dbIssuer !== null ? 'database' : '';
+
+        $dbTtl = $this->appSettings->getOidcIdTokenTtl();
+        $ttl   = $dbTtl ?? AppConfig::DEFAULT_OIDC_ID_TOKEN_TTL;
+        $ttlSource = $dbTtl !== null ? 'database' : '';
+
+        // 客户端：DB 是唯一权威（已彻底移除 env 兜底），disabled 行显式置为不可用。
+        $clients = [];
+        foreach ($this->oauthClients->list() as $row) {
+            $id = trim((string)($row['client_id'] ?? ''));
+            if ($id === '') {
+                continue;
+            }
+            $clients[] = [
+                'client_id'    => $id,
+                'system'       => (string)($row['system'] ?? ''),
+                'enabled'      => (int)($row['enabled'] ?? 1) === 1,
+                'description'  => (string)($row['description'] ?? ''),
+                'redirect_uri' => (string)($row['redirect_uri'] ?? ''),
+                'secret_set'   => trim((string)($row['secret'] ?? '')) !== '',
+                'source'       => 'database',
+            ];
+        }
+
+        return [
+            'issuer'              => $issuer,
+            'issuer_source'       => $issuerSource,
+            'id_token_ttl'        => $ttl,
+            'id_token_ttl_source' => $ttlSource,
+            'clients'             => $clients,
+        ];
+    }
+
+    /**
+     * GET /api/admin/oidc_config — OIDC/OAuth 配置（issuer + id_token_ttl + 客户端白名单）
+     * 权限：ci.platform-config。明文 secret 永不下发，只回 secret_set。
+     */
+    public function oidcConfig(Request $request, Response $response): Response
+    {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_PLATFORM_CONFIG)) {
+            return $resp;
+        }
+        try {
+            return $this->output($response, $this->oidcConfigPayload(), $request);
+        } catch (\Exception $e) {
+            return $this->jsonError($response, $this->__('build.query_failed') . ': ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * PUT /api/admin/oidc_config — 更新 OIDC/OAuth 配置
+     * 权限：ci.platform-config。只处理请求体显式携带的键；secret/redirect_uri 留空即保持原值。
+     * clients 数组即「要 DB 管理的客户端集合」：delete:true 删除行（该客户端不再可用）；其余 upsert。
+     * enabled 客户端最终必须同时有非空 secret 与 redirect_uri，否则 400（避免 fail-closed 静默丢弃）。
+     */
+    public function updateOidcConfig(Request $request, Response $response): Response
+    {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_PLATFORM_CONFIG)) {
+            return $resp;
+        }
+        $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
+
+        $this->pdo->beginTransaction();
+        try {
+            if (array_key_exists('issuer', $body)) {
+                $this->appSettings->setOidcIssuer((string)($body['issuer'] ?? ''));
+            }
+            if (array_key_exists('id_token_ttl', $body)) {
+                $this->appSettings->setOidcIdTokenTtl((int)($body['id_token_ttl'] ?? 0));
+            }
+            if (isset($body['clients']) && is_array($body['clients'])) {
+                foreach ($body['clients'] as $c) {
+                    if (!is_array($c)) {
+                        continue;
+                    }
+                    $id = trim((string)($c['client_id'] ?? ''));
+                    if ($id === '') {
+                        continue;
+                    }
+                    if (!empty($c['delete'])) {
+                        $this->oauthClients->delete($id);
+                        continue;
+                    }
+                    $existing = $this->oauthClients->find($id);
+                    $secret   = (string)($existing['secret'] ?? '');
+                    $redirect = (string)($existing['redirect_uri'] ?? '');
+                    if (array_key_exists('secret', $c)) {
+                        $s = trim((string)($c['secret'] ?? ''));
+                        if ($s !== '') {
+                            $secret = $s;
+                        }
+                    }
+                    if (array_key_exists('redirect_uri', $c)) {
+                        $r = trim((string)($c['redirect_uri'] ?? ''));
+                        if ($r !== '') {
+                            $redirect = $r;
+                        }
+                    }
+                    $enabled = !empty($c['enabled']);
+                    if ($enabled && (trim($secret) === '' || trim($redirect) === '')) {
+                        throw new \InvalidArgumentException(
+                            'OIDC 客户端 [' . $id . '] 启用时必须同时填写 secret 与 redirect_uri'
+                        );
+                    }
+                    $description = (string)($existing['description'] ?? '');
+                    if (array_key_exists('description', $c)) {
+                        $description = trim((string)($c['description'] ?? ''));
+                    }
+                    $this->oauthClients->save($id, [
+                        'secret'       => $secret,
+                        'redirect_uri' => $redirect,
+                        'system'       => (string)($c['system'] ?? ''),
+                        'enabled'      => $enabled,
+                        'description'  => $description,
+                    ]);
+                }
+            }
+            $this->opLog()->record($this->currentUser, 'oidc_config_update', '', [], $this->clientIp($request), 'success');
+            $this->pdo->commit();
+        } catch (\InvalidArgumentException $e) {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+            return $this->jsonError($response, $e->getMessage(), 400);
+        } catch (\Exception $e) {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+            return $this->jsonError($response, $this->__('build.query_failed') . ': ' . $e->getMessage(), 500);
+        }
+
+        return $this->output($response, $this->oidcConfigPayload(), $request);
+    }
+
+    /**
      * 手动触发 tag 定时任务的前置校验（开关 + Harbor），与两个 CLI 脚本的安全不变量保持一致。
      * 返回 null 表示可执行；否则返回应直接下发的错误响应。
      * 权限由调用方先行校验（ci.platform-config）。
@@ -2068,15 +2379,17 @@ class AdminController extends BaseController
             );
             $this->recordSchemaSyncFailure($request, $e->getMessage(), $kind);
 
+            $tables = \App\Service\Database::lastTableBuildLog();
             if ($kind === 'ddl_denied') {
                 return $this->jsonError(
                     $response,
                     $this->__('sys.migrate_denied') . ' ' . $this->__('sys.migrate_denied_hint')
                         . ' [' . mb_substr($e->getMessage(), 0, 300) . ']',
-                    409
+                    409,
+                    ['tables' => $tables]
                 );
             }
-            return $this->jsonError($response, $this->__('sys.migrate_failed') . ': ' . $e->getMessage(), 500);
+            return $this->jsonError($response, $this->__('sys.migrate_failed') . ': ' . $e->getMessage(), 500, ['tables' => $tables]);
         }
     }
 

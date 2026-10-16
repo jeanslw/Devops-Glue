@@ -1,4 +1,4 @@
-# Devops-Glue API Technical Guide v2.9.0
+# Devops-Glue API Technical Guide v2.10.0
 
 > This document is intended for developers, operations engineers, and troubleshooting. It covers all business logic, data flows, database table structures, and common issues.
 
@@ -159,6 +159,9 @@ Override rules:
 | `platform_versions` | `ci_platform_versions` table | DB > JSON > defaults |
 | Admin Token | `ci_cache` table (24h TTL) | DB only source |
 | Harbor API version | `ci_cache` table (1h TTL) | Auto-detected and cached |
+| Platform connections (six Jenkins/Git/Harbor platforms) | `ci_platform_connections` table | DB only source (since v2.10.0, no env fallback) |
+| OIDC client whitelist | `ci_oauth_clients` table | DB only source (since v2.10.0) |
+| OIDC issuer / id_token TTL | `ci_app_settings` table | DB > `app.env` (read-only fallback, never auto-seeded) |
 
 ### 3.3 Configuration Read Chain
 
@@ -169,6 +172,23 @@ Controller → AppConfig::getXxxConfig()
 ```
 
 `AppConfig` is the sole facade — all controllers/services read config through it, never accessing `$_ENV` directly.
+
+### 3.4 Configuration DB-ization (v2.10.0) and its Pitfalls
+
+Starting with v2.10.0, connection and OIDC configuration move from env into the database:
+
+- **Why**: connection credentials (Jenkins/Git/Harbor tokens, OIDC client secrets) used to live in `config/app.env` — changing them meant editing a file and restarting, and multi-replica deployments had to sync the file on every host. After the move they are maintained on the admin "System Settings → Platform Management" page: immediate effect, centralized management, and covered by audit and RBAC.
+- **What moved**: the six platform connections (jenkins/gitlab/github/gitee/gitea/harbor) → `ci_platform_connections`; the OIDC client whitelist → `ci_oauth_clients`; the OIDC issuer / id_token TTL → `ci_app_settings`. The application **no longer reads** the corresponding env keys (`*_BASE_URL` / `*_TOKEN` / `JENKINS_*` / `HARBOR_*` / `OIDC_ISSUER`, etc.); the signing private key `OIDC_RSA_PRIVATE_KEY` / `OIDC_KEY_FILE` stays in env / files.
+- **Encryption**: `token` / `username` / `password` / `secret` are stored encrypted with AES-256-GCM using `DATA_ENC_KEY` (base64-encoded 32 bytes) and decrypted only on read (`Encryptor`, prefix `enc:v1:`).
+
+**Pitfalls and how to handle them:**
+
+1. **The key is the crown jewel**: `DATA_ENC_KEY` is fail-closed (a missing key throws on any encrypt/decrypt); losing it makes existing ciphertext **permanently undecryptable**. Configure it explicitly and back it up; inject the same value on every replica/rebuild; rotating the key requires decrypt → new key → re-encrypt (no automatic rotation in this release).
+2. **Symmetric encryption does not protect against "getting the app key"**: it only prevents "read-only database access leaks credentials"; anyone with the key can decrypt everything — an inherent boundary of symmetric encryption.
+3. **One-way migration**: `cli/migrate-*` only moves env → DB, never DB → env. When downgrading to an old version, the old code only reads env, so it cannot see the DB values — keep the env keys (or back-fill them by hand) before downgrading, otherwise connections look "unconfigured".
+4. **Read-only env fallback**: keys such as the issuer still fall back to env when unset in DB, but are **never auto-seeded** — to avoid the illusion that editing env overrides DB.
+5. **DB becomes a credentials single point**: a DB backup/leak is now a credential exposure surface; tighten the backup pipeline and DB account privileges accordingly.
+6. **Permission tightening**: the `ci.platform-config` permission (edit platform connections / OIDC config) is effectively "edit credentials" and should be granted to administrators only.
 
 ---
 
@@ -242,7 +262,33 @@ Controller → AppConfig::getXxxConfig()
 | `value` | TEXT/MEDIUMTEXT | Config value |
 | `updated_at` | DATETIME/TEXT | Update time |
 
-**Existing settings:** `build_mode` (comma-separated set, e.g. jenkins,gitlab_ci,gitea_ci), `custom_push_enabled` (0/1)
+**Existing settings:** `build_mode` (comma-separated set, e.g. jenkins,gitlab_ci,gitea_ci), `custom_push_enabled` (0/1), `oidc_issuer` (OIDC issuer), `oidc_id_token_ttl` (id_token TTL in seconds; DB > env read-only fallback)
+
+#### ci_platform_connections (Platform Connection Configuration)
+
+| Field | Type | Description |
+|---|---|---|
+| `platform` | TEXT/VARCHAR PK | Platform name (jenkins/gitlab/github/gitee/gitea/harbor) |
+| `url` | TEXT | Platform base URL |
+| `token` | TEXT | Access token (stored encrypted) |
+| `username` | TEXT | Username (stored encrypted) |
+| `password` | TEXT | Password (stored encrypted) |
+| `description` | TEXT | Notes |
+
+**Note:** DB is the single source of truth; since v2.10.0 the application no longer reads connections from env. `token` / `username` / `password` are stored encrypted via `Encryptor` (AES-256-GCM + `DATA_ENC_KEY`) and transparently decrypted by `list()` / `find()`.
+
+#### ci_oauth_clients (OIDC Client Whitelist)
+
+| Field | Type | Description |
+|---|---|---|
+| `client_id` | TEXT/VARCHAR PK | Client ID |
+| `client_secret` | TEXT | Client secret (stored encrypted) |
+| `redirect_uri` | TEXT | Authorization callback URL |
+| `system` | TEXT | System label / description |
+| `enabled` | TEXT/INTEGER | Whether enabled |
+| `description` | TEXT | Notes |
+
+**Note:** the production path `resolveClients([])` reads only the DB; `client_secret` is stored encrypted and transparently decrypted on read.
 
 #### admin_users (Admin Accounts)
 
@@ -1050,29 +1096,44 @@ Next API call:
 
 ```ini
 # ============ CI System ============
-JENKINS_BASE_URL=http://your-jenkins:8080
-JENKINS_USER=admin
-JENKINS_TOKEN=your_token
+# Since v2.10.0 JENKINS_BASE_URL / JENKINS_USER / JENKINS_TOKEN are moved to DB (ci_platform_connections),
+# kept only for one-time migration by cli/migrate-platform-connections.php; edit on the "Platform Connections" page.
+JENKINS_BASE_URL=
+JENKINS_USER=
+JENKINS_TOKEN=
 BUILD_MODE=jenkins,gitlab_ci,gitea_ci   # enabled CI sources, comma-separated (initial seed value)
 BUILD_TIMEOUT=300                  # Build timeout (seconds)
 
 # ============ Git Platforms ============
-GITLAB_BASE_URL=http://your-gitlab
-GITLAB_TOKEN=your_token
-GITHUB_BASE_URL=https://api.github.com
+# Since v2.10.0 GIT*_BASE_URL / GIT*_TOKEN are moved to DB, kept only for one-time migration by cli/migrate-platform-connections.php.
+GITLAB_BASE_URL=
+GITLAB_TOKEN=
+GITHUB_BASE_URL=
 GITHUB_TOKEN=
-GITEE_BASE_URL=https://gitee.com/api/v5
+GITEE_BASE_URL=
 GITEE_TOKEN=
-GITEA_BASE_URL=https://your-gitea
+GITEA_BASE_URL=
 GITEA_TOKEN=
-DEFAULT_GIT_PLATFORM=gitlab        # Fallback platform when URL cannot be recognized
+DEFAULT_GIT_PLATFORM=gitlab        # Fallback platform when URL cannot be recognized (still in env, not migrated)
 
 # ============ Harbor ============
-# A robot account (robot$xxx) can call the REST API only on Harbor v2.2.0+ (secret-based);
-# on v1.x / v2.0.x / v2.1.x the robot token is a JWT (Docker/Helm CLI only) — use a normal account.
-HARBOR_BASE_URL=http://your-harbor
-HARBOR_USER=admin
-HARBOR_PASSWORD=your_password
+# Since v2.10.0 HARBOR_BASE_URL / HARBOR_USER / HARBOR_PASSWORD are moved to DB (ci_platform_connections),
+# kept only for one-time migration by cli/migrate-platform-connections.php.
+HARBOR_BASE_URL=
+HARBOR_USER=
+HARBOR_PASSWORD=
+
+# ============ OIDC / SSO ============
+# Since v2.10.0 the issuer / id_token_ttl / client whitelist are moved to DB (ci_app_settings / ci_oauth_clients),
+# kept only for one-time migration by cli/migrate-oidc.php; the signing private key stays in env / files.
+OIDC_RSA_PRIVATE_KEY=
+# OIDC_KEY_FILE=/data/cache/oidc_rsa.pem
+
+# ============ Sensitive Field Encryption ============
+# Symmetric encryption key for ci_platform_connections (token/username/password) and ci_oauth_clients (secret).
+# base64-encoded 32 bytes; generate: php -r "echo base64_encode(random_bytes(32));"
+# Missing key is fail-closed; a leaked key decrypts every credential. Same value on all replicas; losing it makes ciphertext permanently undecryptable.
+DATA_ENC_KEY=
 
 # ============ Admin Panel ============
 ADMIN_USER=admin
@@ -1225,4 +1286,4 @@ When adding/modifying table structures, update the following files and **bump `A
 
 ---
 
-*Document version: v2.9.0 | Last updated: 2026-10-15*
+*Document version: v2.10.0 | Last updated: 2026-10-17*

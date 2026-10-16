@@ -4,7 +4,7 @@ let _toastTimer = null;
 /**
  * @param {string} msg  文案
  * @param {boolean|'warn'} ok  true=绿色（成功），false=红色（错误），'warn'=橙色（可操作警示，非故障）
- * @param {boolean} center 居中显示
+ * @param {boolean} center 默认居中；显式传 false 才回右上角
  * @param {number} [duration=2500] 自动消失毫秒数；0 = 常驻（由下一个 toast 替换）
  */
 export function toast(msg, ok, center, duration = 2500) {
@@ -13,7 +13,7 @@ export function toast(msg, ok, center, duration = 2500) {
     if (_toastTimer) { clearTimeout(_toastTimer); _toastTimer = null; }
     el.textContent = msg;
     const cls = ok === 'warn' ? 'toast-warn' : (ok ? 'toast-ok' : 'toast-err');
-    el.className = 'toast ' + cls + ' show' + (center ? ' toast-center' : '');
+    el.className = 'toast ' + cls + ' show' + (center === false ? '' : ' toast-center');
     if (duration > 0) _toastTimer = setTimeout(() => el.classList.remove('show'), duration);
 }
 

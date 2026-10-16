@@ -158,7 +158,7 @@ class HarborService
         $this->logger?->warning(
             'Harbor 版本探测失败：/api/v2.0/systeminfo 与 /api/systeminfo 候选均不可用。'
             . "若原因含 \"Failed to connect / Couldn't connect\"，请确认 Harbor 服务已启动、"
-            . '且 HARBOR_BASE_URL(' . $base . ') 的主机与端口可达（80 端口可省略）。',
+            . '且 Harbor 连接 URL(' . $base . ') 的主机与端口可达（80 端口可省略）。',
             ['base_url' => $base, 'attempts' => $failures]
         );
         return null;

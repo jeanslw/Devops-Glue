@@ -136,8 +136,9 @@ class BaseController
     /**
      * JSON 错误响应（不受 format 参数影响）
      * @param string $message 错误消息（如为翻译键如 "auth.wrong_credentials"，会先尝试翻译）
+     * @param array<string,mixed> $extra 附加字段（合并进错误响应体）
      */
-    protected function jsonError(Response $response, string $message, int $code = 400): Response
+    protected function jsonError(Response $response, string $message, int $code = 400, array $extra = []): Response
     {
         // 消息看起来像翻译键（含点号且无空格）时尝试翻译
         if (str_contains($message, '.') && !str_contains($message, ' ')) {
@@ -147,7 +148,7 @@ class BaseController
                 $message = $translated;
             }
         }
-        $response->getBody()->write((string) json_encode(['code' => $code, 'message' => $message]));
+        $response->getBody()->write((string) json_encode(array_merge(['code' => $code, 'message' => $message], $extra)));
         return $response->withStatus($code)->withHeader('Content-Type', 'application/json');
     }
 
