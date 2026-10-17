@@ -240,6 +240,9 @@ services:
 #      dockerfile: Dockerfile
 #    container_name: devops-cd
 #    image: devops-cd:latest
+#    # 持久化 known_hosts（SSH 主机信任文件）；挂整个 home 而非 .cd_service 子目录（命名卷初始属主为 root，appuser 无写权限）
+#    volumes:
+#      - cd-service-data:/home/appuser
 #    env_file:
 #      - .env
 #    environment:
@@ -248,7 +251,7 @@ services:
 #      SECRET_KEY: "${SECRET_KEY:?请先在根 .env 设置 SECRET_KEY（openssl rand -base64 32）再启用 devops-cd}"
 #    ports:
 #      - "8081:8081"
-#    # 联合部署 + Docker + WSL 极端环境：
+#    # Docker + WSL 特殊环境：
 #    extra_hosts:
 #      - "localhost:host-gateway"
 #    restart: unless-stopped
@@ -263,3 +266,4 @@ services:
 
 volumes:
   mysql-data:
+  cd-service-data:  # 持久化 devops-cd 的 known_hosts（SSH 主机信任文件）

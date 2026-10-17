@@ -53,7 +53,7 @@ Bare metal defaults to `config/data/oidc_rsa.pem`; **the Docker image ENV is `/d
 
 In production, strongly prefer **pinning the key explicitly** so that `kid` and JWKS stay stable across restarts / multiple instances.
 
-> **Since v2.10.0**: the issuer and the id_token lifetime (`OIDC_ID_TOKEN_TTL`) have moved into the DB (maintained on the "System Settings → Platform Management → OIDC / SSO Config" page; env is only a fallback for when the DB is unset, or a source for migration); **the signing private key stays in env / files**. Of the block below, only `OIDC_RSA_PRIVATE_KEY` / `OIDC_KEY_FILE` are still effective:
+> **Since v2.10.0**: the issuer and the id_token lifetime (`OIDC_ID_TOKEN_TTL`) have moved into the DB (maintained on the "System Settings → Platform Management → OIDC / SSO Config" page; the app no longer reads env — migrate old values once with `php cli/migrate-oidc.php`); **the signing private key stays in env / files**. Of the block below, only `OIDC_RSA_PRIVATE_KEY` / `OIDC_KEY_FILE` are still effective:
 
 ```ini
 # id_token signing private key (RS256, RSA >= 2048-bit PEM). Empty = auto-generate and persist to OIDC_KEY_FILE.
@@ -63,8 +63,8 @@ In production, strongly prefer **pinning the key explicitly** so that `kid` and 
 # Persistence path when auto-generating (bare metal: config/data/oidc_rsa.pem; Docker: /data/cache/oidc_rsa.pem)
 # OIDC_KEY_FILE=/data/cache/oidc_rsa.pem
 
-# The two keys below have moved to the DB (v2.10.0) and are kept only for one-time
-# migration via cli/migrate-oidc.php, or as a fallback when the DB value is unset:
+# The two keys below have moved to the DB (v2.10.0); the app no longer reads them —
+# they are consumed only by the one-time cli/migrate-oidc.php migration:
 # OIDC_ISSUER=https://glue.example.com   # issuer: maintained on the OIDC / SSO Config page
 # OIDC_ID_TOKEN_TTL=3600                 # id_token lifetime in seconds
 ```

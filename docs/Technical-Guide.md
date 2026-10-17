@@ -161,7 +161,7 @@ Override rules:
 | Harbor API version | `ci_cache` table (1h TTL) | Auto-detected and cached |
 | Platform connections (six Jenkins/Git/Harbor platforms) | `ci_platform_connections` table | DB only source (since v2.10.0, no env fallback) |
 | OIDC client whitelist | `ci_oauth_clients` table | DB only source (since v2.10.0) |
-| OIDC issuer / id_token TTL | `ci_app_settings` table | DB > `app.env` (read-only fallback, never auto-seeded) |
+| OIDC issuer / id_token TTL | `ci_app_settings` table | DB only source (since v2.10.0; issuer falls back to request-URL derivation when unset) |
 
 ### 3.3 Configuration Read Chain
 
@@ -186,7 +186,7 @@ Starting with v2.10.0, connection and OIDC configuration move from env into the 
 1. **The key is the crown jewel**: `DATA_ENC_KEY` is fail-closed (a missing key throws on any encrypt/decrypt); losing it makes existing ciphertext **permanently undecryptable**. Configure it explicitly and back it up; inject the same value on every replica/rebuild; rotating the key requires decrypt → new key → re-encrypt (no automatic rotation in this release).
 2. **Symmetric encryption does not protect against "getting the app key"**: it only prevents "read-only database access leaks credentials"; anyone with the key can decrypt everything — an inherent boundary of symmetric encryption.
 3. **One-way migration**: `cli/migrate-*` only moves env → DB, never DB → env. When downgrading to an old version, the old code only reads env, so it cannot see the DB values — keep the env keys (or back-fill them by hand) before downgrading, otherwise connections look "unconfigured".
-4. **Read-only env fallback**: keys such as the issuer still fall back to env when unset in DB, but are **never auto-seeded** — to avoid the illusion that editing env overrides DB.
+4. **Leftover env keys are no longer read**: keys moved to the DB (issuer, platform connections, etc.) are never read from env again — editing env does nothing; leftover non-empty keys trigger a startup-log warning prompting migration. When unset in the DB, the issuer is derived from the request URL (behind a reverse proxy it must be set explicitly on the admin page).
 5. **DB becomes a credentials single point**: a DB backup/leak is now a credential exposure surface; tighten the backup pipeline and DB account privileges accordingly.
 6. **Permission tightening**: the `ci.platform-config` permission (edit platform connections / OIDC config) is effectively "edit credentials" and should be granted to administrators only.
 
@@ -262,7 +262,7 @@ Starting with v2.10.0, connection and OIDC configuration move from env into the 
 | `value` | TEXT/MEDIUMTEXT | Config value |
 | `updated_at` | DATETIME/TEXT | Update time |
 
-**Existing settings:** `build_mode` (comma-separated set, e.g. jenkins,gitlab_ci,gitea_ci), `custom_push_enabled` (0/1), `oidc_issuer` (OIDC issuer), `oidc_id_token_ttl` (id_token TTL in seconds; DB > env read-only fallback)
+**Existing settings:** `build_mode` (comma-separated set, e.g. jenkins,gitlab_ci,gitea_ci), `custom_push_enabled` (0/1), `oidc_issuer` (OIDC issuer), `oidc_id_token_ttl` (id_token TTL in seconds; DB is the sole authority, default 3600)
 
 #### ci_platform_connections (Platform Connection Configuration)
 
@@ -723,9 +723,9 @@ If only `ref` is present without other parameters, auto-convert to `{branches: r
 
 **Write Validation (frontend & backend consistent):**
 - `modes` must be a subset of {jenkins, gitlab_ci, gitea_ci}
-- Enabling `jenkins` → requires JENKINS_BASE_URL configured (otherwise 400)
-- Enabling `gitlab_ci` → requires GITLAB_BASE_URL + GITLAB_TOKEN configured (otherwise 400)
-- Enabling `gitea_ci` → requires GITEA_BASE_URL + GITEA_TOKEN configured (otherwise 400)
+- Enabling `jenkins` → requires the Jenkins connection configured (`ci_platform_connections`, otherwise 400)
+- Enabling `gitlab_ci` → requires the gitlab platform connection configured — URL + token (`ci_platform_connections`, otherwise 400)
+- Enabling `gitea_ci` → requires the gitea platform connection configured — URL + token (`ci_platform_connections`, otherwise 400)
 
 **DI Container Behavior (container.php):**
 - No longer decides Provider registration based on `BUILD_MODE`
@@ -1049,8 +1049,8 @@ Next API call:
 
 | Symptom | Possible Cause | Diagnosis |
 |---|---|---|
-| Jenkins health check returns false | JENKINS_BASE_URL not reachable | `curl $JENKINS_BASE_URL/api/json` |
-| Git platform reachable=false | Wrong base_url or network issue | `curl -I $GITLAB_BASE_URL` |
+| Jenkins health check returns false | Jenkins connection URL not reachable ("Platform Connections" page) | `curl <jenkins-url>/api/json` |
+| Git platform reachable=false | Wrong platform URL or network issue | `curl -I <git-platform-url>` |
 | Harbor check failed | Harbor service not running or wrong URL | Test `/api/v2.0/projects` etc. individually |
 | Harbor scan HTTP 503 | Harbor scanner not configured | Check scanner in Harbor admin panel |
 | Git Provider `setCommitStatus` returns 404 | Wrong `project_id` or no permission | Check if project exists on Git platform |
@@ -1095,38 +1095,18 @@ Next API call:
 ### 8.1 All Environment Variables
 
 ```ini
-# ============ CI System ============
-# Since v2.10.0 JENKINS_BASE_URL / JENKINS_USER / JENKINS_TOKEN are moved to DB (ci_platform_connections),
-# kept only for one-time migration by cli/migrate-platform-connections.php; edit on the "Platform Connections" page.
-JENKINS_BASE_URL=
-JENKINS_USER=
-JENKINS_TOKEN=
+# The Jenkins / Git / Harbor connections (JENKINS_* / GIT*_BASE_URL / GIT*_TOKEN / HARBOR_*) and the OIDC
+# issuer / id_token_ttl / client whitelist (OIDC_ISSUER / OIDC_ID_TOKEN_TTL / *_OIDC_* / CD_OIDC_*) are moved
+# into the DB (ci_platform_connections / ci_app_settings / ci_oauth_clients) and are no longer read from env;
+# migrate old env values once with cli/migrate-platform-connections.php / cli/migrate-oidc.php, and edit them
+# on the admin "Platform Connections" / "OIDC / SSO Config" pages.
+
 BUILD_MODE=jenkins,gitlab_ci,gitea_ci   # enabled CI sources, comma-separated (initial seed value)
 BUILD_TIMEOUT=300                  # Build timeout (seconds)
+DEFAULT_GIT_PLATFORM=gitlab        # Fallback platform when a URL cannot be recognized
 
-# ============ Git Platforms ============
-# Since v2.10.0 GIT*_BASE_URL / GIT*_TOKEN are moved to DB, kept only for one-time migration by cli/migrate-platform-connections.php.
-GITLAB_BASE_URL=
-GITLAB_TOKEN=
-GITHUB_BASE_URL=
-GITHUB_TOKEN=
-GITEE_BASE_URL=
-GITEE_TOKEN=
-GITEA_BASE_URL=
-GITEA_TOKEN=
-DEFAULT_GIT_PLATFORM=gitlab        # Fallback platform when URL cannot be recognized (still in env, not migrated)
-
-# ============ Harbor ============
-# Since v2.10.0 HARBOR_BASE_URL / HARBOR_USER / HARBOR_PASSWORD are moved to DB (ci_platform_connections),
-# kept only for one-time migration by cli/migrate-platform-connections.php.
-HARBOR_BASE_URL=
-HARBOR_USER=
-HARBOR_PASSWORD=
-
-# ============ OIDC / SSO ============
-# Since v2.10.0 the issuer / id_token_ttl / client whitelist are moved to DB (ci_app_settings / ci_oauth_clients),
-# kept only for one-time migration by cli/migrate-oidc.php; the signing private key stays in env / files.
-OIDC_RSA_PRIVATE_KEY=
+# ============ OIDC / SSO (signing key, not migrated) ============
+OIDC_RSA_PRIVATE_KEY=              # id_token signing key (RS256 PEM); empty = auto-generated, persisted to OIDC_KEY_FILE
 # OIDC_KEY_FILE=/data/cache/oidc_rsa.pem
 
 # ============ Sensitive Field Encryption ============
