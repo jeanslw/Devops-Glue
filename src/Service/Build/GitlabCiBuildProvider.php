@@ -52,7 +52,7 @@ class GitlabCiBuildProvider implements BuildProviderInterface
             ], $data));
         } catch (\Exception $e) {
             $this->logger?->error('GitLab CI pipeline 查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
-            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
+            BuildProviderError::throwFor($e, 'GitLab CI');
         }
     }
 
@@ -87,7 +87,7 @@ class GitlabCiBuildProvider implements BuildProviderInterface
             ], $data));
         } catch (\Exception $e) {
             $this->logger?->error('GitLab CI job 查询失败', ['project' => $projectId, 'pipeline' => $pipelineId, 'error' => $e->getMessage()]);
-            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
+            BuildProviderError::throwFor($e, 'GitLab CI');
         }
     }
 
@@ -104,7 +104,7 @@ class GitlabCiBuildProvider implements BuildProviderInterface
             return $raw;
         } catch (\Exception $e) {
             $this->logger?->error('GitLab CI job trace 查询失败', ['project' => $projectId, 'job' => $jobId, 'error' => $e->getMessage()]);
-            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
+            BuildProviderError::throwFor($e, 'GitLab CI');
         }
     }
 
@@ -132,7 +132,7 @@ class GitlabCiBuildProvider implements BuildProviderInterface
             ];
         } catch (\Exception $e) {
             $this->logger?->error('GitLab CI trigger 失败', ['project' => $projectId, 'ref' => $ref, 'error' => $e->getMessage()]);
-            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
+            BuildProviderError::throwFor($e, 'GitLab CI');
         }
     }
 
@@ -150,7 +150,7 @@ class GitlabCiBuildProvider implements BuildProviderInterface
             ];
         } catch (\Exception $e) {
             $this->logger?->error('GitLab CI retry 失败', ['project' => $projectId, 'pipeline' => $pipelineId, 'error' => $e->getMessage()]);
-            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
+            BuildProviderError::throwFor($e, 'GitLab CI');
         }
     }
 
@@ -168,7 +168,7 @@ class GitlabCiBuildProvider implements BuildProviderInterface
             ];
         } catch (\Exception $e) {
             $this->logger?->error('GitLab CI cancel 失败', ['project' => $projectId, 'pipeline' => $pipelineId, 'error' => $e->getMessage()]);
-            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
+            BuildProviderError::throwFor($e, 'GitLab CI');
         }
     }
 
@@ -192,7 +192,7 @@ class GitlabCiBuildProvider implements BuildProviderInterface
             ], $data));
         } catch (\Exception $e) {
             $this->logger?->error('GitLab CI variables 查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
-            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
+            BuildProviderError::throwFor($e, 'GitLab CI');
         }
     }
 
@@ -210,7 +210,7 @@ class GitlabCiBuildProvider implements BuildProviderInterface
             return array_map(fn($b) => $b['name'] ?? '', $data);
         } catch (\Exception $e) {
             $this->logger?->warning('GitLab 分支查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
-            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
+            BuildProviderError::throwFor($e, 'GitLab CI');
         }
     }
 
@@ -243,7 +243,7 @@ class GitlabCiBuildProvider implements BuildProviderInterface
             ];
         } catch (\Exception $e) {
             $this->logger?->error('GitLab commit status 回写失败', ['project' => $projectId, 'sha' => $sha, 'error' => $e->getMessage()]);
-            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
+            BuildProviderError::throwFor($e, 'GitLab CI');
         }
     }
 }

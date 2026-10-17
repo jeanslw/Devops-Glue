@@ -90,7 +90,7 @@ class CustomPushBuildProvider implements BuildProviderInterface
             }, $stmt->fetchAll()));
         } catch (\Exception $e) {
             $this->logger?->error('custom_push pipelines 查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
-            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
+            BuildProviderError::throwFor($e, '自定义推送');
         }
     }
 
@@ -118,7 +118,7 @@ class CustomPushBuildProvider implements BuildProviderInterface
             ]];
         } catch (\Exception $e) {
             $this->logger?->error('custom_push jobs 查询失败', ['project' => $projectId, 'pipeline' => $pipelineId, 'error' => $e->getMessage()]);
-            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
+            BuildProviderError::throwFor($e, '自定义推送');
         }
     }
 
@@ -162,7 +162,7 @@ class CustomPushBuildProvider implements BuildProviderInterface
             return '日志拉取失败 (HTTP ' . $status . ')，请直接访问：' . $logUrl;
         } catch (\Exception $e) {
             $this->logger?->error('custom_push 日志拉取失败', ['project' => $projectId, 'job' => $jobId, 'error' => $e->getMessage()]);
-            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
+            BuildProviderError::throwFor($e, '自定义推送');
         }
     }
 
@@ -398,7 +398,7 @@ class CustomPushBuildProvider implements BuildProviderInterface
             ];
         } catch (\Exception $e) {
             $this->logger?->error('custom_push report 失败', ['project' => $jobName, 'error' => $e->getMessage()]);
-            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
+            BuildProviderError::throwFor($e, '自定义推送');
         }
     }
 
@@ -476,7 +476,7 @@ class CustomPushBuildProvider implements BuildProviderInterface
             return $this->git->getBranchesForJob($projectId);
         } catch (\Exception $e) {
             $this->logger?->warning('custom_push 分支查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
-            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
+            BuildProviderError::throwFor($e, '自定义推送');
         }
     }
 

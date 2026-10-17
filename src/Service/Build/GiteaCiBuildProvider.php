@@ -92,7 +92,7 @@ class GiteaCiBuildProvider implements BuildProviderInterface
             ], $runs));
         } catch (\Exception $e) {
             $this->logger?->error('Gitea Actions runs 查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
-            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
+            BuildProviderError::throwFor($e, 'Gitea CI');
         }
     }
 
@@ -152,7 +152,7 @@ class GiteaCiBuildProvider implements BuildProviderInterface
             ], $jobs));
         } catch (\Exception $e) {
             $this->logger?->error('Gitea Actions jobs 查询失败', ['project' => $projectId, 'pipeline' => $pipelineId, 'error' => $e->getMessage()]);
-            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
+            BuildProviderError::throwFor($e, 'Gitea CI');
         }
     }
 
@@ -173,7 +173,7 @@ class GiteaCiBuildProvider implements BuildProviderInterface
             return (string) preg_replace("/\e\[[0-9;]*[mK]/", '', $raw);
         } catch (\Exception $e) {
             $this->logger?->error('Gitea Actions 日志查询失败', ['project' => $projectId, 'job' => $jobId, 'error' => $e->getMessage()]);
-            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
+            BuildProviderError::throwFor($e, 'Gitea CI');
         }
     }
 
@@ -224,7 +224,7 @@ class GiteaCiBuildProvider implements BuildProviderInterface
             ];
         } catch (\Exception $e) {
             $this->logger?->error('Gitea Actions 触发失败', ['project' => $projectId, 'ref' => $ref, 'error' => $e->getMessage()]);
-            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
+            BuildProviderError::throwFor($e, 'Gitea CI');
         }
     }
 
@@ -246,7 +246,7 @@ class GiteaCiBuildProvider implements BuildProviderInterface
             ];
         } catch (\Exception $e) {
             $this->logger?->error('Gitea Actions rerun 失败', ['project' => $projectId, 'run' => $pipelineId, 'error' => $e->getMessage()]);
-            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
+            BuildProviderError::throwFor($e, 'Gitea CI');
         }
     }
 
@@ -274,7 +274,7 @@ class GiteaCiBuildProvider implements BuildProviderInterface
             ];
         } catch (\Exception $e) {
             $this->logger?->error('Gitea Actions cancel 失败', ['project' => $projectId, 'run' => $pipelineId, 'error' => $e->getMessage()]);
-            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
+            BuildProviderError::throwFor($e, 'Gitea CI');
         }
     }
 
@@ -311,7 +311,7 @@ class GiteaCiBuildProvider implements BuildProviderInterface
             return $vars;
         } catch (\Exception $e) {
             $this->logger?->error('Gitea Actions variables 查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
-            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
+            BuildProviderError::throwFor($e, 'Gitea CI');
         }
     }
 
@@ -344,7 +344,7 @@ class GiteaCiBuildProvider implements BuildProviderInterface
             ], $data['workflows'] ?? []));
         } catch (\Exception $e) {
             $this->logger?->error('Gitea Actions workflows 查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
-            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
+            BuildProviderError::throwFor($e, 'Gitea CI');
         }
     }
 
@@ -384,7 +384,7 @@ class GiteaCiBuildProvider implements BuildProviderInterface
             ], $data['runners'] ?? []));
         } catch (\Exception $e) {
             $this->logger?->error('Gitea Actions runners 查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
-            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
+            BuildProviderError::throwFor($e, 'Gitea CI');
         }
     }
 
@@ -409,7 +409,7 @@ class GiteaCiBuildProvider implements BuildProviderInterface
             return array_values(array_filter(array_map(fn($b) => $b['name'] ?? '', $data), fn($n) => $n !== ''));
         } catch (\Exception $e) {
             $this->logger?->warning('Gitea 分支查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
-            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
+            BuildProviderError::throwFor($e, 'Gitea CI');
         }
     }
 
@@ -439,7 +439,7 @@ class GiteaCiBuildProvider implements BuildProviderInterface
             ];
         } catch (\Exception $e) {
             $this->logger?->error('Gitea commit status 回写失败', ['project' => $projectId, 'sha' => $sha, 'error' => $e->getMessage()]);
-            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
+            BuildProviderError::throwFor($e, 'Gitea CI');
         }
     }
 }

@@ -8,8 +8,6 @@ use App\Service\Logger;
 use App\Config\AppConfig;
 use App\Exceptions\ApiException;
 use GuzzleHttp\Exception\ClientException;
-use GuzzleHttp\Exception\ConnectException;
-use GuzzleHttp\Exception\ServerException;
 
 class JenkinsBuildProvider implements BuildProviderInterface
 {
@@ -63,7 +61,7 @@ class JenkinsBuildProvider implements BuildProviderInterface
             $status = $this->jenkins->getBuildStatus($projectId, $pipelineId);
         } catch (\Exception $e) {
             $this->logger?->error('Jenkins build 状态查询失败', ['project' => $projectId, 'build' => $pipelineId, 'error' => $e->getMessage()]);
-            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
+            BuildProviderError::throwFor($e, 'Jenkins');
         }
         return [[
             'id'         => $pipelineId,
@@ -82,7 +80,7 @@ class JenkinsBuildProvider implements BuildProviderInterface
             return $this->jenkins->getConsoleOutput($projectId, $jobId);
         } catch (\Exception $e) {
             $this->logger?->error('Jenkins console 查询失败', ['project' => $projectId, 'job' => $jobId, 'error' => $e->getMessage()]);
-            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
+            BuildProviderError::throwFor($e, 'Jenkins');
         }
     }
 
@@ -160,7 +158,7 @@ class JenkinsBuildProvider implements BuildProviderInterface
             ];
         } catch (\Exception $e) {
             $this->logger?->error('Jenkins trigger 失败', ['project' => $projectId, 'error' => $e->getMessage()]);
-            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
+            BuildProviderError::throwFor($e, 'Jenkins');
         }
     }
 
@@ -243,7 +241,7 @@ class JenkinsBuildProvider implements BuildProviderInterface
             return $this->git->getBranchesForJob($projectId);
         } catch (\Exception $e) {
             $this->logger?->warning('Git 分支查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
-            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
+            BuildProviderError::throwFor($e, 'Jenkins');
         }
     }
 
@@ -268,9 +266,7 @@ class JenkinsBuildProvider implements BuildProviderInterface
         if ($e instanceof ClientException && $e->getResponse()->getStatusCode() === 404) {
             throw new ApiException("Job 不存在: {$projectId}", 404);
         }
-        if ($e instanceof ConnectException || $e instanceof ServerException) {
-            throw new ApiException('Jenkins 服务不可达: ' . $e->getMessage(), 502);
-        }
-        throw new ApiException('CI 服务不可用: ' . $e->getMessage(), 500);
+        // 其余（连接失败/5xx → 502，其它 → 500）统一交给共享映射，避免两套语义漂移
+        BuildProviderError::throwFor($e, 'Jenkins');
     }
 }

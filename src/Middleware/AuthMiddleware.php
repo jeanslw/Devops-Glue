@@ -8,6 +8,7 @@ use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface as Handler;
 use Psr\Http\Message\ResponseFactoryInterface;
 use App\Config\AppConfig;
+use App\Exceptions\ApiException;
 use App\Helper\ClientIp;
 use App\Service\ApiAccessLogRepository;
 use App\Service\AppSettingRepository;
@@ -106,19 +107,30 @@ class AuthMiddleware implements MiddlewareInterface
         try {
             $response = $handler->handle($authenticatedRequest);
         } catch (\Throwable $e) {
-            // CI Provider 抛出的 RuntimeException 返回 502（Bad Gateway），其他异常返回 500
-            $isCiDown = $e instanceof \RuntimeException;
-            $statusCode = $isCiDown ? 502 : 500;
+            // 状态码优先级（ApiException 继承自 RuntimeException，必须先判，
+            // 否则 provider 经 BuildProviderError 映射出的 404/500 会被一律压成 502）：
+            //   1. ApiException → 用自带状态码（404 资源不存在 / 502 服务不可达 / 500 其它）
+            //   2. 其它 RuntimeException → 502（旧约定：CI 服务不可达）
+            //   3. 其余异常 → 500，冒泡给 Slim ErrorHandler
+            if ($e instanceof ApiException) {
+                $statusCode = $e->getStatusCode();
+            } elseif ($e instanceof \RuntimeException) {
+                $statusCode = 502;
+            } else {
+                $statusCode = 500;
+            }
+            // 带 HTTP 语义的异常（ApiException / RuntimeException）直接返回，
+            // 不再冒泡给 Slim ErrorHandler（避免响应格式不一致）
+            $handled = $e instanceof \RuntimeException;
             $errorResponse = $this->responseFactory
                 ->createResponse($statusCode)
                 ->withHeader('Content-Type', 'application/json');
             $errorResponse->getBody()->write((string) json_encode([
                 'code'    => $statusCode,
-                'message' => $isCiDown ? $e->getMessage() : 'Internal Server Error',
+                'message' => $handled ? $e->getMessage() : 'Internal Server Error',
             ], JSON_UNESCAPED_UNICODE));
             $this->recordAccess($request, $errorResponse, $startedAt, $api, 'exception:' . $e->getMessage());
-            // CI 不可用：直接返回 502，不再冒泡给 Slim ErrorHandler（避免响应格式不一致）
-            if ($isCiDown) {
+            if ($handled) {
                 return $errorResponse;
             }
             throw $e;

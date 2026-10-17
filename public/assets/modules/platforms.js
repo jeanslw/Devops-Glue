@@ -74,16 +74,16 @@ function renderPlatforms() {
                 + '</span>'
             : '';
         return '<div class="pc-row" data-key="' + esc(def.key) + '">'
-            + '<div class="pc-row-hd">'
+            + '<div class="pc-row-hd" onclick="togglePlatformRow(this)">'
+                + '<span class="pc-caret">▸</span>'
                 + '<span style="width:10px;height:10px;border-radius:50%;background:' + dot + ';flex-shrink:0;display:inline-block;"></span>'
                 + '<span class="pc-name">' + esc(def.label) + hostingBadge + '</span>'
                 + '<span style="margin-left:auto;color:' + (ok ? '#16a34a' : '#dc2626') + ';font-weight:600;font-size:12px;">'
                     + (ok ? '✓ ' : '✗ ') + (ok ? __.t('sys.configured') : __.t('sys.not_configured'))
                 + '</span>'
-                + '<button class="btn btn-sm btn-del" onclick="onPlatformDelete(\'' + esc(def.key) + '\')">🗑 ' + esc(__.t('platform_conn.delete')) + '</button>'
+                + '<button class="btn btn-sm btn-del" onclick="event.stopPropagation();onPlatformDelete(\'' + esc(def.key) + '\')">🗑 ' + esc(__.t('platform_conn.delete')) + '</button>'
             + '</div>'
-            + ciToggle
-            + '<div class="pc-grid">' + fields + '</div>'
+            + '<div class="pc-body">' + ciToggle + '<div class="pc-grid">' + fields + '</div>' + '</div>'
         + '</div>';
     }).join('');
 
@@ -198,4 +198,13 @@ export async function onPlatformDelete(key) {
     } catch (e) {
         toast(__.t('js.network_error') + ': ' + e.message, false);
     }
+}
+
+// 平台连接卡片默认折叠，点表头展开/收起（删除按钮已 stopPropagation 不触发折叠）
+export function togglePlatformRow(hd) {
+    const row = hd.closest('.pc-row');
+    if (!row) return;
+    row.classList.toggle('open');
+    const caret = hd.querySelector('.pc-caret');
+    if (caret) caret.textContent = row.classList.contains('open') ? '▾' : '▸';
 }

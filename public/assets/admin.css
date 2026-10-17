@@ -629,6 +629,11 @@
             width:100%; box-sizing:border-box; padding:6px 8px;
             border:1px solid #d1d5db; border-radius:6px; font-size:13px; background:#fff; color:#111827;
         }
+        /* 平台连接卡片默认折叠，点表头展开 */
+        .pc-body { display:none; flex-direction:column; gap:8px; }
+        .pc-row.open .pc-body { display:flex; }
+        .pc-row-hd { cursor:pointer; user-select:none; }
+        .pc-caret { width:14px; text-align:center; color:#6b7280; flex-shrink:0; font-size:12px; }
 
         /* ── 配置模式：CI 流程图（拉取式 / 推送式，含响应式）── */
         #mode-display .mf-badges { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:20px; }
