@@ -44,6 +44,11 @@ class MappingManager
         return in_array(AppConfig::PROVIDER_GITEA_CI, $this->activeBuildProviders(), true);
     }
 
+    public function hasGithubActions(): bool
+    {
+        return in_array(AppConfig::PROVIDER_GITHUB_ACTIONS, $this->activeBuildProviders(), true);
+    }
+
     public function hasCustomPush(): bool
     {
         return $this->appSettings->getCustomPushEnabled();
@@ -204,7 +209,7 @@ class MappingManager
     /**
      * 将命中的映射行解析为 [provider, projectId]。
      * projectId 按 provider 归一化：gitlab_ci 取数字 project_id；jenkins 取 job_name（Job 路径）；
-     * 其余（custom_push / gitea_ci）取 job_name（缺失时用 current_path），使 job_name 与 current_path 指向同一条映射。
+     * 其余（custom_push / gitea_ci / github_actions）取 job_name（缺失时用 current_path），使 job_name 与 current_path 指向同一条映射。
      *
      * @param array<string,mixed> $m
      * @return array{provider: string, projectId: string}
@@ -225,7 +230,7 @@ class MappingManager
             // Jenkins：projectId 必须是 Jenkins Job 路径（job_name），而非 current_path（git 路径）。
             $projectId = (string) ($job !== '' ? $job : $projectPath);
         } else {
-            // custom_push / gitea_ci：以 job_name 为规范键，current_path 兜底。
+            // custom_push / gitea_ci / github_actions：以 job_name 为规范键，current_path 兜底。
             $projectId = (string) ($job !== '' ? $job : ($cp !== '' ? $cp : $projectPath));
         }
 

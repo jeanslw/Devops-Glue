@@ -99,9 +99,10 @@ export function renderTopology() {
         const buildLabel = build === 'jenkins' ? __.t('build.mode_jenkins')
             : build === 'gitlab_ci' ? __.t('build.mode_gitlab_ci')
             : build === 'gitea_ci' ? __.t('build.mode_gitea_ci')
+            : build === 'github_actions' ? __.t('build.mode_github_actions')
             : build === 'custom_push' ? 'Custom_Push'
             : build;
-        const buildIcon = build === 'gitlab_ci' ? '🐺' : build === 'gitea_ci' ? '🦎' : build === 'custom_push' ? '📤' : '⚡';
+        const buildIcon = build === 'gitlab_ci' ? '🐺' : build === 'gitea_ci' ? '🦎' : build === 'github_actions' ? '🐙' : build === 'custom_push' ? '📤' : '⚡';
         const buildUrl = topoPlatformUrls.jenkins_url || '';
         const projectPath = (p.project || p.current_path || '').replace(/\/+$/, '');
         const jenkinsPath = projectPath
@@ -112,7 +113,7 @@ export function renderTopology() {
             ? `<a href="${esc(safeBuildUrl)}" target="_blank" title="${esc(__.t('js.topo_open_jenkins'))}">${esc(p.project || p.current_path || __.t('js.topo_unnamed'))}</a>`
             : `<span class="node-main">${esc(p.project || p.current_path || __.t('js.topo_unnamed'))}</span>`;
         const platformCls = platform !== '—' && platforms.includes(platform) ? 'badge-' + platform : 'badge-default';
-        const buildBadgeCls = build === 'gitlab_ci' ? 'badge-gitlab' : build === 'gitea_ci' ? 'badge-gitea' : build === 'custom_push' ? 'badge-cus' : 'badge-default';
+        const buildBadgeCls = build === 'gitlab_ci' ? 'badge-gitlab' : build === 'gitea_ci' ? 'badge-gitea' : build === 'github_actions' ? 'badge-github' : build === 'custom_push' ? 'badge-cus' : 'badge-default';
 
         return `<div class="topo-card">
             <div class="topo-header">

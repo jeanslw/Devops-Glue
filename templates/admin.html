@@ -256,12 +256,14 @@
                 <div class="section-banner"><span class="sys-pulse-dot"></span><span data-i18n="monitor.service_check">系统监测</span></div>
 
                 <div class="monitor-grid" id="monitor-grid">
-                    <div class="monitor-card" id="card-jenkins">
-                        <h4><span class="dot dot-load" id="dot-jenkins"></span> <span data-i18n="monitor.jenkins">Jenkins</span></h4>
-                        <div class="svc-row parent">
-                            <span class="svc-icon" id="icon-jenkins">⏳</span>
-                            <span class="svc-name" id="name-jenkins" data-base="Jenkins">Jenkins</span>
-                            <span class="svc-stat" id="stat-jenkins" data-i18n="common.detecting">检测中…</span>
+                    <div class="monitor-card" id="card-build">
+                        <h4><span class="dot dot-load" id="dot-build"></span> <span data-i18n="monitor.build_platform">构建平台</span></h4>
+                        <div id="build-rows">
+                            <div class="svc-row parent">
+                                <span class="svc-icon">⏳</span>
+                                <span class="svc-name" data-i18n="monitor.build_platform">构建平台</span>
+                                <span class="svc-stat" data-i18n="common.detecting">检测中…</span>
+                            </div>
                         </div>
                     </div>
 
@@ -277,20 +279,11 @@
                     </div>
 
                     <div class="monitor-card" id="card-harbor">
-                        <h4><span class="dot dot-load" id="dot-harbor"></span> <span data-i18n="monitor.harbor">Harbor</span></h4>
+                        <h4><span class="dot dot-load" id="dot-harbor"></span> <span data-i18n="monitor.container_registry">Container Registry</span></h4>
                         <div class="svc-row parent">
                             <span class="svc-icon" id="icon-harbor">⏳</span>
                             <span class="svc-name" id="name-harbor" data-base="Harbor">Harbor</span>
                             <span class="svc-stat" id="stat-harbor" data-i18n="common.detecting">检测中…</span>
-                        </div>
-                    </div>
-
-                    <div class="monitor-card" id="card-custom-push">
-                        <h4><span class="dot dot-load" id="dot-custom-push"></span> Custom_Push</h4>
-                        <div class="svc-row parent">
-                            <span class="svc-icon" id="icon-custom-push">⏳</span>
-                            <span class="svc-name" id="name-custom-push" data-base="Custom_Push">Custom_Push</span>
-                            <span class="svc-stat" id="stat-custom-push" data-i18n="common.detecting">检测中…</span>
                         </div>
                     </div>
                 </div>
@@ -349,6 +342,7 @@
                             <option value="jenkins" data-i18n="build.mode_jenkins">⚡ Jenkins</option>
                             <option value="gitlab_ci" data-i18n="build.mode_gitlab_ci">🐺 GitLab CI</option>
                             <option value="gitea_ci" data-i18n="build.mode_gitea_ci">🦎 Gitea Actions</option>
+                            <option value="github_actions" data-i18n="build.mode_github_actions">🐙 GitHub Actions</option>
                             <option value="custom_push" data-i18n="build.mode_custom_push">📤 Custom_Push</option>
                         </select>
                         <select id="map-platform-filter" onchange="onFilterChange()" style="padding:7px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;min-width:110px;">
@@ -394,6 +388,7 @@
                                         <option value="jenkins" data-i18n="js.mode_jenkins_name">jenkins</option>
                                         <option value="gitlab_ci" data-i18n="js.mode_gitlab_ci_name">gitlab_ci</option>
                                         <option value="gitea_ci" data-i18n="js.mode_gitea_ci_name">Gitea Actions</option>
+                                        <option value="github_actions" data-i18n="js.mode_github_actions_name">GitHub Actions</option>
                                         <option value="custom_push" data-i18n="js.mode_custom_push_name">Custom_Push</option>
                                     </select>
                                     <small id="cp-disabled-hint" data-i18n="js.cp_disabled_hint" style="display:none;color:#d97706;">Custom_Push 未启用，选择后将保存为「待定」</small>
@@ -525,11 +520,10 @@
                                 <div class="mode-card-hd">
                                     <span class="mode-card-title" data-i18n="build.mode_label">构建模式</span>
                                     <div id="build-mode-checkboxes" class="build-mode-checkboxes"></div>
-                                    <span id="build-mode-status" class="mode-save-status" data-i18n="build.mode_saved">✅ 已保存</span>
                                 </div>
                                 <ul class="mode-card-notes">
-                                    <li data-i18n="build.mode_note_1">切换立即生效，将影响后续构建任务。</li>
-                                    <li data-i18n="build.mode_note_2">更改构建模式会将不再匹配的映射记录停用（降为「待启动」），不可用的选项会在下拉中禁用。</li>
+                                    <li data-i18n="build.mode_note_1">构建模式为只读汇总，CI 开关统一到「平台连接配置」管理。</li>
+                                    <li data-i18n="build.mode_note_2">已启用的 CI 在此展示；未配置的平台不显示，关闭 CI 会停用其映射记录。</li>
                                 </ul>
                             </div>
                             <div class="mode-card">

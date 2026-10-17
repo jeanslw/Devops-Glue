@@ -28,6 +28,7 @@ use App\Service\Build\BuildProviderRegistry;
 use App\Service\Build\JenkinsBuildProvider;
 use App\Service\Build\GitlabCiBuildProvider;
 use App\Service\Build\GiteaCiBuildProvider;
+use App\Service\Build\GithubActionsBuildProvider;
 use App\Controller\MainController;
 use App\Controller\GitController;
 use App\Controller\HarborController;
@@ -125,7 +126,8 @@ return [
             $c->get(MappingManager::class),
             $c->get(Logger::class),
             $c->get('gitlabHttpClient'),
-            $c->get('giteaHttpClient')
+            $c->get('giteaHttpClient'),
+            $c->get('githubHttpClient')
         );
     },
 
@@ -361,6 +363,16 @@ return [
             }
         }
 
+        // GitHub Actions（SaaS，base_url 固定 api.github.com，token 齐备才注册）
+        if ($config->isPlatformConfigured('github')) {
+            $githubCfg = $config->getGithubConfig();
+            if (!empty($githubCfg['base_url']) && !empty($githubCfg['token'])) {
+                $registry->register(AppConfig::PROVIDER_GITHUB_ACTIONS, function () use ($githubCfg, $logger) {
+                    return new GithubActionsBuildProvider($githubCfg['base_url'], $githubCfg['token'], $logger);
+                });
+            }
+        }
+
         // ---- 自定义 Build Provider（custom_push 等）----
         // 与 Git 自定义平台解耦：独立配置项 build.custom_providers。
         // 构造签名统一为 (array $config, \PDO $pdo, ?GitService $git, ?Logger $logger)。
@@ -558,6 +570,27 @@ return [
         }
         return new Client([
             'headers'         => ['Authorization' => 'token ' . $token],
+            'timeout'         => 10,
+            'connect_timeout' => 5,
+            'http_errors'     => false,
+        ]);
+    },
+
+    // GitHub HTTP 客户端（共享，供 AutoDiscover 扫描 GitHub 项目复用）
+    'githubHttpClient' => function (\Psr\Container\ContainerInterface $c) {
+        $config = $c->get(Settings::class);
+        $githubCfg = $config->getGithubConfig();
+        $base   = rtrim($githubCfg['base_url'] ?? 'https://api.github.com', '/');
+        $token  = $githubCfg['token'] ?? '';
+        if (empty($base) || empty($token)) {
+            return null; // GitHub 未配置时返回 null，消费者自行降级
+        }
+        return new Client([
+            'headers'         => [
+                'Authorization'        => 'token ' . $token,
+                'Accept'               => 'application/vnd.github+json',
+                'X-GitHub-Api-Version' => '2022-11-28',
+            ],
             'timeout'         => 10,
             'connect_timeout' => 5,
             'http_errors'     => false,

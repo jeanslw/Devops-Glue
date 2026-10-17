@@ -4,7 +4,7 @@ import { toast, confirmDialog } from '../core/toast.js';
 import {
     PULL_PROVIDERS,
     currentBuildModes, setBuildModes,
-    currentBuildAvailability, setBuildAvailability,
+    setBuildAvailability,
     currentCpEnabled, setCpEnabled,
     currentStaleCleanupEnabled, setStaleCleanup,
     currentBackfillEnabled, setBackfill,
@@ -13,32 +13,29 @@ import {
 
 let currentApiLogCleanupEnabled = true;
 
-export function renderBuildModeCheckboxes(availability, selected) {
+export function renderBuildModeSummary(availability, selected) {
     const box = document.getElementById('build-mode-checkboxes');
     if (!box) return;
-    const availablePull = PULL_PROVIDERS.filter(bp => availability[bp]);
-    if (availablePull.length === 0) {
+    // 构建模式只读展示：所有 CI 开关（含 Jenkins）统一在「平台连接配置」里管理
+    const html = PULL_PROVIDERS
+        .filter(bp => availability[bp] && selected.includes(bp))
+        .map(bp => {
+            const meta = pullProviderMeta(bp);
+            return '<span class="bm-check" style="cursor:default;" title="' + esc(__.t('build.ci_toggle_hint')) + '">'
+                + '<span style="color:#16a34a;">✓</span> ' + meta.icon + ' ' + esc(meta.label)
+                + '</span>';
+        }).join('');
+    if (html === '') {
         box.innerHTML = '<span style="color:#9ca3af;font-size:13px;">' + __.t('js.no_pull_ci') + '</span>';
         return;
     }
-    let html = '';
-    availablePull.forEach(bp => {
-        const meta = pullProviderMeta(bp);
-        const checked = selected.includes(bp) ? ' checked' : '';
-        html += '<label class="bm-check"><input type="checkbox" class="bm-item" value="' + bp + '"' + checked + ' onchange="onBuildModesChange()"><span>' + meta.icon + ' ' + esc(meta.label) + '</span></label>';
-    });
     box.innerHTML = html;
-}
-
-function getCheckedBuildModes() {
-    return Array.from(document.querySelectorAll('#build-mode-checkboxes .bm-item:checked')).map(cb => cb.value);
 }
 
 export async function loadSettings() {
     const display = document.getElementById('mode-display');
     const configPanel = document.getElementById('mode-config');
     const cpToggle = document.getElementById('custom-push-toggle');
-    const statusEl = document.getElementById('build-mode-status');
     try {
         const res = await fetch('/api/admin/build_mode', { headers: authHeaders() });
         if (res.status === 401) { display.innerHTML = '<span style="color:#9ca3af;">' + __.t('auth.please_login_first') + '</span>'; return; }
@@ -48,6 +45,7 @@ export async function loadSettings() {
             jenkins:   !!data.has_jenkins,
             gitlab_ci: !!data.has_gitlab_ci,
             gitea_ci:  !!data.has_gitea_ci,
+            github_actions: !!data.has_github_actions,
         };
         const hasCustom = (data.custom_providers || []).length > 0;
         const cpEnabled = data.custom_push_enabled || false;
@@ -62,12 +60,11 @@ export async function loadSettings() {
             ? '<span class="badge" style="background:#f0fdf4;color:#16a34a;font-size:11px;margin-left:6px;" title="' + __.t('js.mode_persisted') + '">✓ ' + __.t('js.mode_persisted') + '</span>'
             : '<span class="badge" style="background:#fefce8;color:#ca8a04;font-size:11px;margin-left:6px;" title="' + __.t('js.mode_temp') + '">⚠️ ' + __.t('js.mode_temp') + '</span>';
 
-        renderBuildModeCheckboxes(availability, modes);
+        renderBuildModeSummary(availability, modes);
         if (cpToggle) cpToggle.checked = cpEnabled;
 
         if (window.applyBuildRecordsMenuVisibility) window.applyBuildRecordsMenuVisibility(cpEnabled);
         configPanel.style.display = 'block';
-        statusEl.style.display = 'none';
 
         let modeBadge = '', flow = '';
         const node = (cls, icon, label, fontSize) =>
@@ -136,55 +133,6 @@ export async function loadSettings() {
         if (window.updateDiscoverButton) window.updateDiscoverButton();
     } catch(e) {
         display.innerHTML = '<span style="color:#9ca3af;">' + __.t('js.mode_cannot_detect') + '</span>';
-    }
-}
-
-function arraysEqual(a, b) {
-    if (a.length !== b.length) return false;
-    const sa = a.slice().sort(), sb = b.slice().sort();
-    return sa.every((v, i) => v === sb[i]);
-}
-
-export async function onBuildModesChange() {
-    const newModes = getCheckedBuildModes();
-    const oldModes = currentBuildModes.slice();
-    if (arraysEqual(newModes, oldModes)) return;
-
-    const modeLabel = newModes.length > 0
-        ? newModes.map(bp => pullProviderMeta(bp).label).join(' + ')
-        : __.t('js.mode_none');
-
-    if (!await confirmDialog({
-        title: __.t('build.mode_label'),
-        message: __.t('js.mode_switch_confirm', {mode: modeLabel}),
-        note: __.t('js.mode_switch_note')
-    })) {
-        renderBuildModeCheckboxes(currentBuildAvailability, oldModes);
-        return;
-    }
-
-    const statusEl = document.getElementById('build-mode-status');
-    statusEl.style.display = 'none';
-    try {
-        const res = await fetch('/api/admin/build_mode', {
-            method: 'PUT',
-            headers: Object.assign({'Content-Type':'application/json'}, authHeaders()),
-            body: JSON.stringify({modes: newModes, custom_push_enabled: currentCpEnabled})
-        });
-        if (handle401(res)) { renderBuildModeCheckboxes(currentBuildAvailability, oldModes); return; }
-        if (res.ok) {
-            setBuildModes(newModes.slice());
-            statusEl.style.display = 'inline';
-            setTimeout(() => statusEl.style.display = 'none', 2000);
-            loadSettings();
-        } else {
-            const data = await res.json();
-            toast(data.message || __.t('js.save_failed'), false);
-            renderBuildModeCheckboxes(currentBuildAvailability, oldModes);
-        }
-    } catch(e) {
-        toast(__.t('js.network_error') + ': ' + e.message, false);
-        renderBuildModeCheckboxes(currentBuildAvailability, oldModes);
     }
 }
 

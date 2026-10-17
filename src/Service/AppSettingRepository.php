@@ -9,7 +9,8 @@ use App\Helper\Log;
  * ci_app_settings 键值仓储：应用运行时开关与配置（以 DB 为准）。
  *
  * 承载从 AppConfig 迁出的 DB 读写职责：
- *   - build_mode（启用的拉取式 provider 集合，含旧格式转换）
+ *   - build_mode（启用的独立拉取式 provider 集合，即 jenkins；含旧格式转换）
+ *   - git_ci_enabled（git 平台 CI 能力启用态，与 build_mode 二元拆分）
  *   - custom_push_enabled / stale_tag_cleanup_enabled / backfill_tag_enabled
  *   - tag_log_keyword（推送成功关键字）
  *
@@ -76,11 +77,8 @@ class AppSettingRepository
         try {
             $stored = $this->getString('build_mode');
             if ($stored !== null) {
-                $modes = self::parseBuildModes($stored);
-                if ($stored !== implode(',', $modes)) {
-                    $this->setBuildModes($modes);
-                }
-                return $modes;
+                $this->migrateLegacyGitCi();
+                return $this->mergeBuildModes();
             }
             // DB 无记录：首次运行，以 app.env 为种子写入 DB
             $modes = self::parseBuildModes($_ENV['BUILD_MODE'] ?? AppConfig::BUILD_MODE_BOTH);
@@ -119,13 +117,112 @@ class AppSettingRepository
     }
 
     /**
-     * @param list<string> $modes
+     * @param list<string> $modes 启用的拉取式 provider 集合（jenkins / gitlab_ci / gitea_ci）
      */
     public function setBuildModes(array $modes): void
     {
         // array_intersect 以 BUILTIN_PULL_PROVIDERS 的顺序返回，天然去重，保持规范顺序
         $modes = array_values(array_intersect(AppConfig::BUILTIN_PULL_PROVIDERS, array_map('trim', $modes)));
-        $this->setString('build_mode', implode(',', $modes));
+        // 二元拆分：独立 CI（jenkins）留在 build_mode；git 平台 CI 记到 git_ci_enabled（平台名列表）
+        $standalone = array_values(array_intersect([AppConfig::PROVIDER_JENKINS], $modes));
+        $gitCiProviders = array_values(array_intersect(AppConfig::GIT_PLATFORM_CI_CAPABILITIES, $modes));
+        $platforms = [];
+        foreach ($gitCiProviders as $ci) {
+            $platform = self::gitCiPlatformByProvider($ci);
+            if ($platform !== null) {
+                $platforms[] = $platform;
+            }
+        }
+        $this->setString('build_mode', implode(',', $standalone));
+        $this->setGitCiEnabledPlatforms($platforms);
+    }
+
+    /**
+     * 已启用 CI 能力的 git 平台名列表（见 GIT_PLATFORM_CI_CAPABILITIES 的键）。
+     *
+     * @return list<string>
+     */
+    public function getGitCiEnabledPlatforms(): array
+    {
+        $raw = $this->getString(AppConfig::SETTING_GIT_CI_ENABLED);
+        if ($raw === null || $raw === '') {
+            return [];
+        }
+        $parts = array_values(array_filter(array_map('trim', explode(',', $raw)), fn($s) => $s !== ''));
+        return array_values(array_intersect(array_keys(AppConfig::GIT_PLATFORM_CI_CAPABILITIES), $parts));
+    }
+
+    /**
+     * @param list<string> $platforms git 平台名（gitlab / gitea …）
+     */
+    public function setGitCiEnabledPlatforms(array $platforms): void
+    {
+        $platforms = array_values(array_intersect(
+            array_keys(AppConfig::GIT_PLATFORM_CI_CAPABILITIES),
+            array_map('trim', $platforms)
+        ));
+        $this->setString(AppConfig::SETTING_GIT_CI_ENABLED, implode(',', $platforms));
+    }
+
+    /**
+     * 独立 CI（Jenkins）是否启用（build_mode 只存 jenkins）。
+     */
+    public function getJenkinsEnabled(): bool
+    {
+        return in_array(AppConfig::PROVIDER_JENKINS, $this->getBuildModes(), true);
+    }
+
+    public function setJenkinsEnabled(bool $enabled): void
+    {
+        $this->setString('build_mode', $enabled ? AppConfig::PROVIDER_JENKINS : '');
+    }
+
+    /**
+     * CI provider → git 平台名（GIT_PLATFORM_CI_CAPABILITIES 是 平台→CI，这里反向查）。
+     */
+    private static function gitCiPlatformByProvider(string $provider): ?string
+    {
+        $flip = array_flip(AppConfig::GIT_PLATFORM_CI_CAPABILITIES);
+        return $flip[$provider] ?? null;
+    }
+
+    /**
+     * 一次性迁移：旧格式把 git 平台 CI 混在 build_mode 里（如 jenkins,gitlab_ci），
+     * 且 git_ci_enabled 键尚未建立时，把 git CI 拆分到 git_ci_enabled，build_mode 只留独立 CI。
+     */
+    private function migrateLegacyGitCi(): void
+    {
+        if ($this->getString(AppConfig::SETTING_GIT_CI_ENABLED) !== null) {
+            return;
+        }
+        $standalone = self::parseBuildModes($this->getString('build_mode') ?? '');
+        $gitCi = array_values(array_intersect(AppConfig::GIT_PLATFORM_CI_CAPABILITIES, $standalone));
+        $platforms = [];
+        foreach ($gitCi as $ci) {
+            $platform = self::gitCiPlatformByProvider($ci);
+            if ($platform !== null) {
+                $platforms[] = $platform;
+            }
+        }
+        $this->setGitCiEnabledPlatforms($platforms);
+        $this->setString('build_mode', implode(',', array_values(array_diff($standalone, $gitCi))));
+    }
+
+    /**
+     * 合并独立 CI（build_mode）与 git 平台 CI（git_ci_enabled）为统一 provider 集合（规范顺序）。
+     *
+     * @return list<string>
+     */
+    private function mergeBuildModes(): array
+    {
+        $standalone = self::parseBuildModes($this->getString('build_mode') ?? '');
+        $gitCi = [];
+        foreach ($this->getGitCiEnabledPlatforms() as $platform) {
+            if (isset(AppConfig::GIT_PLATFORM_CI_CAPABILITIES[$platform])) {
+                $gitCi[] = AppConfig::GIT_PLATFORM_CI_CAPABILITIES[$platform];
+            }
+        }
+        return array_values(array_intersect(AppConfig::BUILTIN_PULL_PROVIDERS, array_merge($standalone, $gitCi)));
     }
 
     /**

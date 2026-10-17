@@ -14,6 +14,8 @@ namespace App\Service\Build;
  *  - GitLab manual 保留为独立的 manual（等待人工触发，不等于 pending）；scheduled/created/
  *    waiting_for_resource/preparing 归入 pending（等待执行）。
  *  - Jenkins ABORTED / GitLab canceled / Gitea cancelled / custom_push aborted 同义，统一为 canceled。
+ *  - GitHub Actions 的 run/job 分离了 status 与 conclusion：status 侧 requested/pending/queued 归 pending，
+ *    conclusion 侧 neutral/stale 归 skipped（未失败但非成功）、timed_out/startup_failure/action_required 归 failed。
  */
 final class BuildStatus
 {
@@ -51,11 +53,18 @@ final class BuildStatus
         'preparing'            => self::PENDING,
         'scheduled'            => self::PENDING,
         'queued'               => self::PENDING, // Gitea Actions job 排队中
+        'requested'            => self::PENDING, // GitHub Actions run/job 排队中
         // 等待人工触发（GitLab manual）
         'manual' => self::MANUAL,
         // 跳过/未构建
         'skipped'   => self::SKIPPED,
         'not_built' => self::SKIPPED,
+        'neutral'   => self::SKIPPED, // GitHub Actions conclusion：未失败但非成功（条件未命中/中立）
+        'stale'     => self::SKIPPED, // GitHub Actions conclusion：被更新的 run 取代
+        // GitHub Actions conclusion 的失败族
+        'timed_out'        => self::FAILED,
+        'startup_failure'  => self::FAILED,
+        'action_required'  => self::FAILED,
         // 兜底
         'unknown' => self::UNKNOWN,
     ];

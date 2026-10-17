@@ -264,6 +264,7 @@ class BuildController extends BaseController
         $hasJenkins = $this->registry->isRegistered(AppConfig::PROVIDER_JENKINS);
         $hasGitlab  = $this->registry->isRegistered(AppConfig::PROVIDER_GITLAB_CI);
         $hasGitea   = $this->registry->isRegistered(AppConfig::PROVIDER_GITEA_CI);
+        $hasGithub  = $this->registry->isRegistered(AppConfig::PROVIDER_GITHUB_ACTIONS);
         $modes  = $this->appSettings->getBuildModes();
         $source = $this->appSettings->getBuildModeSource();
 
@@ -285,6 +286,7 @@ class BuildController extends BaseController
             'has_jenkins'           => $hasJenkins,
             'has_gitlab_ci'         => $hasGitlab,
             'has_gitea_ci'          => $hasGitea,
+            'has_github_actions'    => $hasGithub,
             'has_custom_push'       => !empty($customProviders),
             'custom_push_enabled'   => $this->appSettings->getCustomPushEnabled(),
             'custom_providers'      => $customProviders,

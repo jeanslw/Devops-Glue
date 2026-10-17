@@ -3,7 +3,7 @@
  * API 冒烟测试 v2 — 带结构化断言
  *
  * 用法：php tests/smoke_test.php [baseUrl]
- * 示例：php tests/smoke_test.php http://localhost:80
+ * 示例：php tests/smoke_test.php http://localhost:8080
  *
  * 登录凭据必须通过环境变量提供，不内置任何默认口令：
  *   PowerShell: $env:TEST_LOGIN_USER='root'; $env:TEST_LOGIN_PASS='你的口令'
@@ -23,7 +23,7 @@ declare(strict_types=1);
 // ═══════════════════════════════════════════════════════════
 // 配置
 // ═══════════════════════════════════════════════════════════
-$baseUrl = $argv[1] ?? getenv('TEST_BASE_URL') ?: 'http://localhost:80';
+$baseUrl = $argv[1] ?? getenv('TEST_BASE_URL') ?: 'http://localhost:8080';
 $baseUrl = rtrim($baseUrl, '/');
 
 $testJobs       = ['static', 'php/devops-glue', 'java/registry'];
@@ -707,7 +707,7 @@ foreach ($testJobs as $job) {
 }
 
 // GitLab CI 专属测试
-$tc = apiT('GitLab CI Pipeline(完整)', "{$baseUrl}/api/build/tools/runner-ci/pipelines", 'GET', null, $authHeader);
+$tc = apiT('GitLab CI Pipeline(完整)', "{$baseUrl}/api/build/tools/Devops_CD/pipelines", 'GET', null, $authHeader);
 $tc->assertHttpRange("GL CI 完整", 200, 404);
 echo "  [Build] GitLab CI pipelines ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
 
@@ -715,7 +715,7 @@ $tc = apiT('Jenkins Pipeline(完整)', "{$baseUrl}/api/build/static/pipelines", 
 $tc->assertHttpRange("Jenkins 完整", 200, 404);
 echo "  [Build] Jenkins pipelines ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
 
-$tc = apiT('GitLab CI Variables', "{$baseUrl}/api/build/tools/runner-ci/variables", 'GET', null, $authHeader);
+$tc = apiT('GitLab CI Variables', "{$baseUrl}/api/build/tools/Devops_CD/variables", 'GET', null, $authHeader);
 $tc->assertHttpRange("GL CI vars", 200, 404);
 echo "  [Build] GitLab CI variables ... " . ($tc->status === 'pass' ? "\033[32mPASS\033[0m" : "\033[31mFAIL\033[0m") . "\n";
 
@@ -847,10 +847,13 @@ $failed   = count(array_filter($allTests, fn($t) => $t->status === 'fail'));
 $skipped  = count(array_filter($allTests, fn($t) => $t->status === 'skip'));
 $assertions = array_reduce($allTests, fn($sum, $t) => $sum + count($t->assertions), 0);
 $assertOk   = array_reduce($allTests, fn($sum, $t) => $sum + count(array_filter($t->assertions, fn($a) => $a->passed)), 0);
+// skip() 会用 passed=false 的记录标注「跳过」原因，这里单独剔除，避免把跳过误算成断言失败
+$assertSkip = array_reduce($allTests, fn($sum, $t) => $sum + count(array_filter($t->assertions, fn($a) => str_contains($a->label, '跳过'))), 0);
+$assertFail = $assertions - $assertOk - $assertSkip;
 
 echo "\n──────────────────────────────────────────\n";
 echo "  测试用例: {$total}  通过: {$passed}  失败: {$failed}  跳过: {$skipped}\n";
-echo "  断言总数: {$assertions}  通过: {$assertOk}  失败: " . ($assertions - $assertOk) . "\n";
+echo "  断言总数: {$assertions}  通过: {$assertOk}  失败: {$assertFail}  跳过: {$assertSkip}\n";
 echo "──────────────────────────────────────────\n\n";
 
 // ═══════════════════════════════════════════════════════════
@@ -916,7 +919,7 @@ foreach ($allTests as $tc) {
         $mod = 'Harbor';
     } elseif (str_contains($tc->name, 'CustomPush')) {
         $mod = 'CustomPush';
-    } elseif (str_contains($tc->url, '/api/build/') || str_contains($tc->url, '/api/git/') || str_contains($tc->url, 'Build') || str_contains($tc->url, 'GitLab') || str_contains($tc->url, 'Jenkins') || str_contains($tc->url, 'runner-ci')) {
+    } elseif (str_contains($tc->url, '/api/build/') || str_contains($tc->url, '/api/git/') || str_contains($tc->url, 'Build') || str_contains($tc->url, 'GitLab') || str_contains($tc->url, 'Jenkins')) {
         $mod = 'Build';
     } elseif (str_contains($tc->url, 'trigger')) {
         $mod = 'Trigger';
