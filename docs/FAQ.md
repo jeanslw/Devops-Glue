@@ -137,9 +137,9 @@ Effective priority: `app.env.local` > real environment variables (Docker `env_fi
 
 Root `app.env` is the Docker Compose shared variable file; `env_file` injects it into the container as **real environment variables**, and the app gives OS env vars priority (layer 1 of `src/Support/EnvFileLoader.php` uses `Dotenv::createImmutable`), which **overrides same-name keys in `config/app.env`**. Therefore:
 
-- Under Docker, `HARBOR_BASE_URL` / `HARBOR_USER` / `HARBOR_PASSWORD` / `SECRET_KEY` / `CI_API_TOKEN` / `DB_*` always follow the **root `app.env`**; same-name entries in `config/app.env` are silently overridden;
+- Under Docker, the keys still read from env (`SECRET_KEY` / `CI_API_TOKEN` / `DB_*`, etc.) always follow the **root `app.env`**; same-name entries in `config/app.env` are silently overridden;
 - Exception: if `config/app.env.local` exists inside the project, the keys it defines win over everything — **including the real environment variables injected by `env_file`** (that file is gitignored and normally absent from the image);
-- Placeholder values left unchanged in root `app.env` (e.g. `HARBOR_BASE_URL=http://YOUR_HARBOR_URL`) take effect too — if Harbor calls hit `YOUR_HARBOR_URL`, check whether root `app.env` was updated;
+- Placeholder values left unchanged in root `app.env` (e.g. `CD_BASE_URL=http://YOUR_CD_URL`) take effect too — if CD calls hit `YOUR_CD_URL`, check whether root `app.env` was updated;
 - Bare-metal deployments have no `env_file` injection, so editing `config/app.env` is enough.
 
 ### Q: After upgrading to v2.10.0, the Git / Harbor / Jenkins / OIDC config moved from env to DB — how do I migrate?

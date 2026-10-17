@@ -45,7 +45,7 @@
 
 ### 1.3 Compatibility strategy
 
-- **Auth**: Basic Auth (`JENKINS_USER` + `JENKINS_TOKEN`); works with both legacy and new token systems (both are `user:token` Basic Auth).
+- **Auth**: Basic Auth (Jenkins username + API token, maintained on the "Platform Connections" admin page); works with both legacy and new token systems (both are `user:token` Basic Auth).
 - **CSRF crumb**: already handled — on a 403 during build trigger (POST), the code fetches a crumb from `/crumbIssuer/api/json` with cookies and retries, so it works with/without CSRF and across pre-/post-2.96 versions.
 - **Minimum**: `v2.60` (Java 8 baseline). Older instances should be upgraded to at least 2.60.
 
