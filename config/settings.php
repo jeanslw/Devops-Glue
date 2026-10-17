@@ -64,15 +64,30 @@ return [
         ],
         // ----- 自定义平台 -----
         'custom_providers' => [
-            // 示例：自定义 Git 平台适配器（凭证通过 env() 从 .env 读取，不写死在这里）
+            // 示例：自定义 Git 平台适配器（凭证通过 env() 从 .env 读取，不写死在这里）。
+            // class 实现 GitProviderInterface，构造签名为 (array $config, ?Logger $logger)，详见 src/Service/Git/。
+            // Bitbucket Cloud（API v2.0；App Password 填 username，仅 OAuth/仓库访问令牌可留空走 Bearer）：
             // [
             //     'class'  => 'App\\Service\\Git\\BitbucketService',
             //     'config' => [
             //         'name'     => 'bitbucket',
             //         'base_url' => 'https://api.bitbucket.org/2.0',
+            //         'username' => env('BITBUCKET_USERNAME', ''),
             //         'token'    => env('BITBUCKET_TOKEN', ''),
             //         'matcher'  => function (string $url): bool {
-            //             return str_contains($url, 'bitbucket');
+            //             return str_contains($url, 'bitbucket.org') || str_contains($url, 'bitbucket');
+            //         },
+            //     ],
+            // ],
+            // GitCode（Gitee 风格 API v5，认证用 PRIVATE-TOKEN）：
+            // [
+            //     'class'  => 'App\\Service\\Git\\GitCodeService',
+            //     'config' => [
+            //         'name'     => 'gitcode',
+            //         'base_url' => 'https://api.gitcode.com/api/v5',
+            //         'token'    => env('GITCODE_TOKEN', ''),
+            //         'matcher'  => function (string $url): bool {
+            //             return str_contains($url, 'gitcode.com') || str_contains($url, 'gitcode');
             //         },
             //     ],
             // ],

@@ -799,41 +799,17 @@ After completing the above steps in order, verify the system is usable:
 
 ## Appendix A: Environment Variables Reference
 
-Copy `config/app.env.example` to `config/app.env` and fill in your real credentials. The template is organized into 9 numbered sections (this appendix mirrors them): 1 CI Systems / 2 Git Platforms / 3 Harbor / 4 Admin Panel / 5 LDAP / 6 OIDC Provider / 7 CD pairing / 8 Database & Runtime Data / 9 Application. Loading priority: `app.env.local` > real environment variables (Docker `env_file` / shell export) > `app.env.{APP_ENV}` > `app.env`; variables load at process start, so restart the service after editing (loading logic in `src/Support/EnvFileLoader.php`).
+Copy `config/app.env.example` to `config/app.env` and fill in your real values. Loading priority: `app.env.local` > real environment variables (Docker `env_file` / shell export) > `app.env.{APP_ENV}` > `app.env`; variables load at process start, so restart the service after editing (loading logic in `src/Support/EnvFileLoader.php`).
 
-> **Since v2.10.0**: keys marked "moved to DB" below (Jenkins / Git / Harbor connections, OIDC issuer / ttl / clients) are no longer read by the application — they are kept only for the one-time `cli/migrate-*` migration or for reference when downgrading; edit them on the "System Settings → Platform Management" page. `DATA_ENC_KEY` is a new required key.
+> **Since v2.10.0**: the Jenkins / Git / Harbor connections and the OIDC issuer / id_token_ttl / client whitelist have moved into the DB (`ci_platform_connections` / `ci_app_settings` / `ci_oauth_clients`), the app no longer reads those env keys, so they are not listed below. Maintain them on the "System Settings → Platform Management" page; migrate old env values once with `cli/migrate-platform-connections.php` / `cli/migrate-oidc.php`. `DATA_ENC_KEY` is a required key.
 
 ```ini
 # ============ CI Systems ============
-# Moved to DB: JENKINS_BASE_URL / JENKINS_USER / JENKINS_TOKEN go into ci_platform_connections; kept only for one-time migration by cli/migrate-platform-connections.php
-JENKINS_BASE_URL=http://your-jenkins:8080
-JENKINS_USER=admin
-JENKINS_TOKEN=your_token
-
 BUILD_MODE=jenkins,gitlab_ci,gitea_ci   # enabled CI sources, comma-separated (seed value on first boot)
 BUILD_TIMEOUT=300         # Build timeout in seconds
 
 # ============ Git Platforms ============
-# Moved to DB: GIT*_BASE_URL / GIT*_TOKEN go into ci_platform_connections; kept only for one-time migration by cli/migrate-platform-connections.php
-GITLAB_BASE_URL=http://your-gitlab
-GITLAB_TOKEN=your_token
-
-GITHUB_BASE_URL=https://api.github.com
-GITHUB_TOKEN=your_token
-
-GITEE_BASE_URL=https://gitee.com/api/v5
-GITEE_TOKEN=your_token
-
-GITEA_BASE_URL=http://your-gitea
-GITEA_TOKEN=your_token
-
-DEFAULT_GIT_PLATFORM=gitlab   # Fallback when URL cannot be auto-detected (still read by the app, not migrated)
-
-# ============ Harbor ============
-# Moved to DB: HARBOR_BASE_URL / HARBOR_USER / HARBOR_PASSWORD go into ci_platform_connections; kept only for one-time migration by cli/migrate-platform-connections.php
-HARBOR_BASE_URL=http://your-harbor
-HARBOR_USER=admin
-HARBOR_PASSWORD=your_password
+DEFAULT_GIT_PLATFORM=gitlab   # Fallback when a repository URL cannot be auto-detected
 
 # ============ Admin Panel ============
 ADMIN_USER=admin
@@ -869,27 +845,16 @@ LDAPTLS_CACERT=/path/to/ca.pem
 LDAPTLS_REQCERT=never          # internal testing only, skip cert verification; forbidden in production
 
 # ============ OIDC Provider (SSO issuer & signing) ============
-# Moved to DB: issuer / id_token_ttl go into ci_app_settings, the client whitelist into ci_oauth_clients
-# (maintained on the "System Settings → Platform Management" page); the env keys below are kept only for
-# the one-time cli/migrate-oidc.php migration and as the issuer fallback when unset in DB.
+# The issuer / id_token_ttl have moved into ci_app_settings and the client whitelist into ci_oauth_clients
+# (maintained on the "System Settings → Platform Management" page); the app no longer reads those env keys.
 # OIDC_RSA_PRIVATE_KEY / OIDC_KEY_FILE stay in env / files and are not migrated.
-OIDC_ISSUER=                  # Glue's public issuer; behind a reverse proxy set it explicitly,
-                              # or it derives an internal address (clients see a signature failure; see docs/Single-Sign-On.md)
 # OIDC_RSA_PRIVATE_KEY=       # id_token signing key (RS256 PEM, \n-escaped); empty = auto-generated to OIDC_KEY_FILE
 # OIDC_KEY_FILE=              # persistence path of the auto-generated key (absolute path required)
-# OIDC_ID_TOKEN_TTL=3600      # id_token TTL in seconds
-# JENKINS_OIDC_SECRET=        # Jenkins OIDC client secret (must match the Jenkins side; moved to DB, migration only)
-# JENKINS_OIDC_REDIRECT_URI=http://localhost/securityRealm/finishLogin
-# Harbor / GitLab OIDC clients are NOT registered by default: add them on the "System Settings → Platform Management → OIDC / SSO Config" page.
 
 # ============ Devops-Glue CD pairing ============
 # [CD-paired] = must match the Devops-Glue CD side character-for-character (see the "CD pairing keys" table at the end of this appendix)
-# The three CD_OIDC_* keys below have moved to the DB (cd client → ci_oauth_clients, maintained on the
-# "OIDC / SSO Config" page) and are kept only for the one-time cli/migrate-oidc.php migration;
-# CD_BASE_URL / CD_API_TOKEN remain env keys.
-# CD_OIDC_SECRET=             # [CD-paired] CD OIDC client secret (client_id is fixed: cd)
-# CD_OIDC_REDIRECT_URI=https://cd.example.com/oauth/callback   # [CD-paired] CD callback URL
-# CD_OIDC_SYSTEM=cd           # account-system ownership of this client (default cd)
+# The CD_OIDC_* keys have moved to the DB (cd client → ci_oauth_clients, maintained on the
+# "OIDC / SSO Config" page) and are no longer read by the app.
 # CD_BASE_URL=https://cd.example.com   # read-only endpoint for CI to fetch CD deploy logs; empty = audit page degrades
 # CD_API_TOKEN=               # [CD-paired] CD-side inbound static token (must match the CD side)
 
@@ -947,18 +912,20 @@ A joint deployment involves two services plus one shared MySQL:
 - **CD** = the standalone Python service in the Devops_CD repo: when co-deployed it reads the **repo-root `.env`** via `env_file`; when deployed standalone it uses Devops_CD's own `.env`
 - **Shared database**: inside the same `DB_NAME` database, CI writes the `ci_*` tables and CD writes the `cd_*` tables
 
+> **Same database type is recommended, not required**: by default CI and CD connect to the **same** database (inside the same `DB_NAME`, CI writes `ci_*` and CD writes `cd_*`; the two table families never conflict), so both sides naturally use `DB_DRIVER=mysql`. This is not a hard constraint, though — the CI↔CD integration goes over HTTP APIs (RBAC, deploy logs, etc.) rather than direct reads of the other side's tables, so one side on mysql and the other on sqlite, or even fully separate databases, is supported in principle. The recommendation to use the same type (mysql for production, sqlite for lightweight setups) is only for operational and backup simplicity, not an integration requirement.
+
 **① Shared keys (one value — a single entry in the root `.env` covers both services when co-deployed)**
 
 | Key | Notes |
 |---|---|
 | `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASS` | Both services connect to the **same** shared database (`DB_HOST=mysql` when co-deployed; point both sides at the same MySQL when split) |
-| `HARBOR_BASE_URL` / `HARBOR_USER` / `HARBOR_PASSWORD` | CD pushes images / looks up tags against the same Harbor CI uses |
+| Harbor connection | CI side lives in the DB ("Platform Connections" page); the CD side still reads env `HARBOR_BASE_URL` / `HARBOR_USER` / `HARBOR_PASSWORD`. Both must point to the same Harbor |
 | `TZ` | Timezone |
 | `DB_ROOT_PASS` | Used only by the MySQL container on **first-time volume initialization**; not an application credential (neither CI nor CD reads it at runtime) |
 
 **② CI-only keys (CD never reads them)**
 
-Everything else in Appendix A — CI systems, Git platforms, admin panel, LDAP, the OIDC provider (its issuer/ttl and client whitelist have moved to the DB and are read only by CI), `CD_BASE_URL` / `CD_API_TOKEN`, backup/log/cache, and the application keys (`APP_ENV` / `API_BASE_URL` / `CORS_ORIGIN` / `SYSTEM_TYPE` / `TRUSTED_PROXY_HOPS` etc.) — is read only by CI. Note that although `CD_BASE_URL` and `CD_API_TOKEN` start with "CD", they are configured on this service (the CI side).
+Everything else in Appendix A — CI systems (`BUILD_MODE` / `BUILD_TIMEOUT`), Git platforms (`DEFAULT_GIT_PLATFORM`), admin panel, LDAP, the OIDC signing key (`OIDC_RSA_PRIVATE_KEY` / `OIDC_KEY_FILE`), `CD_BASE_URL` / `CD_API_TOKEN`, backup/log/cache, and the application keys (`APP_ENV` / `API_BASE_URL` / `CORS_ORIGIN` / `SYSTEM_TYPE` / `TRUSTED_PROXY_HOPS` etc.) — is read only by CI. Note that although `CD_BASE_URL` and `CD_API_TOKEN` start with "CD", they are configured on this service (the CI side).
 
 **③ CD's own keys (CI never reads them; they live in CD's config)**
 
@@ -978,7 +945,7 @@ The three Docker deployment modes (single co-deployed compose / two composes on 
 On bare metal (nginx + php-fpm, no Docker) there is no root-`.env` injection — **all configuration goes into `config/app.env`** (start with `cp config/app.env.example config/app.env`). Minimal checklist:
 
 1. **Database**: simplest is `DB_DRIVER=sqlite` (zero external dependencies); or `DB_DRIVER=mysql` + `DB_HOST=127.0.0.1` + an application account — import `database/mysql_init.sql` manually and grant privileges yourself (the Docker default account already has database-level ALL; bare-metal users must run `GRANT ALL PRIVILEGES ON devops_glue.* TO '<account>';`).
-2. **At least one Git platform**: the URL + token of any platform from section 2.
+2. **At least one Git platform**: log in to the admin panel and fill in the URL + token of any platform on the "System Settings → Platform Management → Platform Connections" page (stored in the `ci_platform_connections` DB table).
 3. **Admin**: `ADMIN_USER` / `ADMIN_PASSWORD` (seeds the root admin on first boot only; the database takes precedence afterwards).
 4. **When exposing SSO externally**: set the issuer explicitly on the "System Settings → Platform Management → OIDC / SSO Config" page to the fully reachable external URL (mandatory behind a reverse proxy — runtime derivation ignores X-Forwarded-* and yields an internal address, surfacing as signature-verification failures).
 5. **Sensitive-field encryption key**: `DATA_ENC_KEY` (base64-encoded 32 bytes; generate `php -r "echo base64_encode(random_bytes(32));"`). Missing = fail-closed error; must be backed up — loss makes stored tokens/secrets permanently unreadable.

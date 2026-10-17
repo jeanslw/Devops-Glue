@@ -55,13 +55,13 @@
 			                 │
 		              ┌──────┴──────┐
 		              ↓             ↓
-				┌────────┐      ┌────────┐
-				│ PHP CI │      │PythonCD│
-				│:8080   │      │:8081   │
-				└────────┘      └────────┘
+			   ┌─────────────┐ ┌─────────┐
+			   │ Devops-Glue │ │Devops-CD│
+			   │    :8080    │ │  :8081  │
+			   └─────────────┘ └─────────┘
 ```
 
-> **Database Selection**: PHP CI and CD Service must use the same database instance.
+> **Database Selection**: Devops-Glue and CD Service must use the same database instance.
 > - **SQLite**: Zero-configuration, suitable for single-host development/testing. For container deployments, mount the `config/data/` directory as a shared volume so both processes can access the same `.db` file.
 > - **MySQL 8.0+ / MariaDB 10.4+**: Recommended for production. Supports concurrent reads and writes, no shared volume required.
 
@@ -185,7 +185,7 @@ Devops-Glue supports two orthogonal CI modes that can be enabled simultaneously:
 
 ## Design Patterns
 
-- **Strategy Pattern**: `BuildProviderInterface` (PHP CI) / `Deployer` (Python CD) abstract base class + Registry
+- **Strategy Pattern**: `BuildProviderInterface` (Devops-Glue) / `Deployer` (Python CD) abstract base class + Registry
 - **Factory Pattern**: `GitProviderFactory` auto-matches Git platform adapter by URL
 - **Dual-driver Database**: SQLite / MySQL / MariaDB unified interface, one codebase for three modes, sharing the same database instance with CD Service
 - **Orthogonal CI Design**: `build_mode` (pull-based) and `custom_push_enabled` (push-based) are independent switches that can be combined freely and enabled simultaneously

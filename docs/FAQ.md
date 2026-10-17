@@ -26,7 +26,9 @@
 
 ```bash
 cp config/app.env.example config/app.env
-# Edit app.env — at minimum, configure one Git platform URL and Token
+# Edit app.env — at minimum the DB connection and the seed admin credentials.
+# Git / Harbor / Jenkins connections live in the DB: configure them on the
+# admin "Platform Connections" page after first login.
 composer install --no-dev
 php -S 0.0.0.0:8080 -t public/
 ```
@@ -198,10 +200,10 @@ Check if the `build_provider` field of each mapping item matches the actual buil
 
 ### Q: Error: "Build system 'xxx' not configured"?
 
-The selected `build_mode` requires environment variables that aren't configured:
-- `jenkins` → requires `JENKINS_BASE_URL`
-- `gitlab_ci` → requires `GITLAB_BASE_URL` + `GITLAB_TOKEN`
-- `gitea_ci` → requires `GITEA_BASE_URL` + `GITEA_TOKEN`
+The selected `build_mode` enables a system whose platform connection is not configured yet (maintained on the admin "System Settings → Platform Management → Platform Connections" page, stored in the `ci_platform_connections` DB table):
+- `jenkins` → requires the Jenkins URL
+- `gitlab_ci` → requires the GitLab URL + token
+- `gitea_ci` → requires the Gitea URL + token
 
 ### Q: Build trigger timeout (504)?
 
@@ -689,14 +691,7 @@ GitLab, GitHub, Gitee, Gitea, with support for custom extensions.
 
 ### Q: How to integrate a self-hosted GitLab/Gitea?
 
-Configure the platform's `BASE_URL` and `TOKEN` in `app.env`:
-
-```ini
-GITLAB_BASE_URL=https://gitlab.yourcompany.com
-GITLAB_TOKEN=glpat-xxxx
-GITEA_BASE_URL=https://git.yourcompany.com
-GITEA_TOKEN=xxxx
-```
+On the admin "System Settings → Platform Management → Platform Connections" page, fill in the platform's URL and token (stored in the `ci_platform_connections` DB table; sensitive fields are AES-256-GCM encrypted).
 
 Set `git_platform` to `gitlab` or `gitea` in the mapping.
 
