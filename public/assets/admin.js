@@ -18,8 +18,8 @@ import { loadTopology, renderTopology, getTopoPage, setTopoPage, getTopoTotalPag
 import { loadSecurityChecks, secOnFilterChange, getSecPage, getSecTotalPages, secSetPage } from './modules/security.js';
 import { loadVersions, saveVersions } from './modules/versions.js';
 import {
-    loadSettings, onBuildModesChange, onCustomPushToggle, onStaleTagCleanupToggle,
-    onBackfillTagToggle, onTagLogKeywordChange, renderBuildModeCheckboxes,
+    loadSettings, onCustomPushToggle, onStaleTagCleanupToggle,
+    onBackfillTagToggle, onTagLogKeywordChange, renderBuildModeSummary,
     runStaleTagCleanup, runTagBackfill, saveApiLogSettings, onApiLogRetainChange, onApiLogCleanupToggle
 } from './modules/mode.js';
 import {
@@ -257,7 +257,7 @@ Object.assign(window, {
     loadTopology, renderTopology,
     loadSecurityChecks, secOnFilterChange, secSetPage, getSecPage, getSecTotalPages,
     loadVersions, saveVersions,
-    loadSettings, onBuildModesChange, onCustomPushToggle, onStaleTagCleanupToggle, onBackfillTagToggle, onTagLogKeywordChange,
+    loadSettings, onCustomPushToggle, onStaleTagCleanupToggle, onBackfillTagToggle, onTagLogKeywordChange,
     runStaleTagCleanup, runTagBackfill, saveApiLogSettings, onApiLogRetainChange, onApiLogCleanupToggle,
     loadPullProjects, loadPullRecords, openPullLog, pullShowLog, closePullLog, loadPushRecords,
     applyBuildRecordsMenuVisibility, resolvePullTag, reparsePullTag,
@@ -276,7 +276,7 @@ Object.assign(window, {
     getMapView, getMapPage, setMapPage, getMapTotalPages, setMapTotalPages,
     getTopoPage, setTopoPage, getTopoTotalPages,
     getPullPage, setPullPage, getPushPage, getPushTotalPages, setPushPage,
-    renderBuildModeCheckboxes,
+    renderBuildModeSummary,
 });
 
 // ═══════════ 启动 ═══════════

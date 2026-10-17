@@ -2,42 +2,18 @@
 
 namespace App\Service\Git;
 
-use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Exception\ServerException;
 use App\Service\Logger;
 
-class GiteeService implements GitProviderInterface
+class GiteeService extends AbstractGitProvider
 {
-    private Client $client;
-    private string $baseUrl;
-    private string $token;
-    private ?Logger $logger;
-
-    private const PAGE_SIZE = 100;
-    private const MAX_PAGES = 20; // 最多 2000 条
-
     public function __construct(string $baseUrl, string $token, ?Logger $logger = null)
     {
-        $this->baseUrl = rtrim($baseUrl, '/');
-        $this->token   = trim($token);
-        $this->logger  = $logger;
-        $this->client = new Client(['timeout' => 15, 'connect_timeout' => 10]);
-    }
-
-    /**
-     * @param array<string,mixed> $options
-     * @return \Psr\Http\Message\ResponseInterface
-     */
-    private function request(string $method, string $url, array $options = []): \Psr\Http\Message\ResponseInterface
-    {
-        // 凭证放 Authorization 头，避免 token 进入 URL/代理访问日志
-        if ($this->token !== '') {
-            $options['headers'] = array_merge($options['headers'] ?? [], ['Authorization' => 'token ' . $this->token]);
-        }
-
-        return $this->client->request($method, $url, $options);
+        $token   = trim($token);
+        $headers = $token !== '' ? ['Authorization' => 'token ' . $token] : [];
+        $this->initClient($baseUrl, $headers, $logger);
     }
 
     public function getName(): string
@@ -57,12 +33,12 @@ class GiteeService implements GitProviderInterface
 
     public function getBranches(string $repository): array
     {
-        return $this->paginatedList("/repos/{$repository}/branches", 'name');
+        return $this->paginatedList("/repos/{$repository}/branches", 'per_page');
     }
 
     public function getTags(string $repository): array
     {
-        return $this->paginatedList("/repos/{$repository}/tags", 'name');
+        return $this->paginatedList("/repos/{$repository}/tags", 'per_page');
     }
 
     /**
@@ -81,7 +57,7 @@ class GiteeService implements GitProviderInterface
 
         try {
             $url = "{$this->baseUrl}/repos/{$repository}/commits/{$sha}/statuses";
-            $response = $this->request('POST', $url, ['json' => $body]);
+            $response = $this->client->post($url, ['json' => $body]);
             return [
                 'success' => $response->getStatusCode() < 400,
                 'message' => $response->getStatusCode() < 400 ? 'status 已回写' : '回写失败',
@@ -102,46 +78,5 @@ class GiteeService implements GitProviderInterface
             $hint = 'Gitee 公开版不支持 commit status API（企业版未知）';
             return ['success' => false, 'message' => $hint];
         }
-    }
-
-    /**
-     * 通用分页列表获取
-     * @return list<string>
-     */
-    private function paginatedList(string $path, string $key): array
-    {
-        $all = [];
-        $page = 1;
-        do {
-            $url = "{$this->baseUrl}{$path}";
-            try {
-                $response = $this->request('GET', $url, ['query' => ['per_page' => self::PAGE_SIZE, 'page' => $page]]);
-                $data = json_decode($response->getBody(), true);
-                if (!is_array($data) || empty($data)) {
-                    break;
-                }
-                $all = array_merge($all, array_column($data, $key));
-                $page++;
-            } catch (ConnectException | ServerException $e) {
-                // 连接级失败（拒绝/DNS/超时）与 5xx：上抛给 GitService 统一包装为
-                // 平台不可达（502），不得吞成空数组（否则与仓库无分支无法区分）
-                $this->logger?->warning('Gitee 平台不可达', [
-                    'path' => $path, 'page' => $page, 'error' => $e->getMessage(),
-                ]);
-                throw $e;
-            } catch (GuzzleException $e) {
-                $this->logger?->warning('Gitee API 请求失败', [
-                    'path' => $path, 'page' => $page, 'error' => $e->getMessage(),
-                ]);
-                return $page === 1 ? [] : $all;
-            }
-        } while (count($data) === self::PAGE_SIZE && $page <= self::MAX_PAGES);
-
-        if ($page > self::MAX_PAGES) {
-            $this->logger?->warning('Gitee 列表达到最大分页上限', [
-                'path' => $path, 'max_pages' => self::MAX_PAGES, 'total' => count($all),
-            ]);
-        }
-        return $all;
     }
 }

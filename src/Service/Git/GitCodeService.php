@@ -2,7 +2,6 @@
 
 namespace App\Service\Git;
 
-use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Exception\ServerException;
@@ -15,27 +14,18 @@ use App\Service\Logger;
  * 认证为 GitLab 风格 PRIVATE-TOKEN。
  * 官方文档: https://docs.gitcode.com/docs/apis/
  */
-class GitCodeService implements GitProviderInterface
+class GitCodeService extends AbstractGitProvider
 {
-    private Client $client;
-    private string $baseUrl;
-    private ?Logger $logger;
-
-    private const PAGE_SIZE = 100;
-    private const MAX_PAGES = 20; // 最多 2000 条
-
     /**
      * @param array<string,mixed> $config
      */
     public function __construct(array $config, ?Logger $logger = null)
     {
-        $this->baseUrl = rtrim($config['base_url'] ?? '', '/');
-        $this->logger  = $logger;
-        $this->client = new Client([
-            'headers'         => ['PRIVATE-TOKEN' => trim($config['token'] ?? '')],
-            'timeout'         => 15,
-            'connect_timeout' => 10,
-        ]);
+        $this->initClient(
+            $config['base_url'] ?? '',
+            ['PRIVATE-TOKEN' => trim($config['token'] ?? '')],
+            $logger
+        );
     }
 
     public function getName(): string
@@ -55,12 +45,12 @@ class GitCodeService implements GitProviderInterface
 
     public function getBranches(string $repository): array
     {
-        return $this->paginatedList("/repos/{$repository}/branches", 'name');
+        return $this->paginatedList("/repos/{$repository}/branches", 'per_page');
     }
 
     public function getTags(string $repository): array
     {
-        return $this->paginatedList("/repos/{$repository}/tags", 'name');
+        return $this->paginatedList("/repos/{$repository}/tags", 'per_page');
     }
 
     /**
@@ -98,46 +88,5 @@ class GitCodeService implements GitProviderInterface
             ]);
             return ['success' => false, 'message' => '回写失败: ' . $e->getMessage()];
         }
-    }
-
-    /**
-     * 通用分页列表获取（与 Gitee 相同：per_page/page，响应即数组）。
-     * @return list<string>
-     */
-    private function paginatedList(string $path, string $key): array
-    {
-        $all = [];
-        $page = 1;
-        do {
-            $url = "{$this->baseUrl}{$path}?per_page=" . self::PAGE_SIZE . "&page={$page}";
-            try {
-                $response = $this->client->get($url);
-                $data = json_decode($response->getBody(), true);
-                if (!is_array($data) || empty($data)) {
-                    break;
-                }
-                $all = array_merge($all, array_column($data, $key));
-                $page++;
-            } catch (ConnectException | ServerException $e) {
-                // 连接级失败（拒绝/DNS/超时）与 5xx：上抛给 GitService 统一包装为平台不可达（502），
-                // 不得吞成空数组（否则与仓库无分支无法区分）
-                $this->logger?->warning('GitCode 平台不可达', [
-                    'path' => $path, 'page' => $page, 'error' => $e->getMessage(),
-                ]);
-                throw $e;
-            } catch (GuzzleException $e) {
-                $this->logger?->warning('GitCode API 请求失败', [
-                    'path' => $path, 'page' => $page, 'error' => $e->getMessage(),
-                ]);
-                return $page === 1 ? [] : $all;
-            }
-        } while (count($data) === self::PAGE_SIZE && $page <= self::MAX_PAGES);
-
-        if ($page > self::MAX_PAGES) {
-            $this->logger?->warning('GitCode 列表达到最大分页上限', [
-                'path' => $path, 'max_pages' => self::MAX_PAGES, 'total' => count($all),
-            ]);
-        }
-        return $all;
     }
 }

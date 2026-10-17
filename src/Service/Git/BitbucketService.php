@@ -2,10 +2,6 @@
 
 namespace App\Service\Git;
 
-use GuzzleHttp\Client;
-use GuzzleHttp\Exception\ConnectException;
-use GuzzleHttp\Exception\GuzzleException;
-use GuzzleHttp\Exception\ServerException;
 use App\Service\Logger;
 
 /**
@@ -16,23 +12,13 @@ use App\Service\Logger;
  *       仅配 token 时退化为 Bearer（OAuth / 仓库访问令牌）。
  * 仓库标识为 {workspace}/{repo_slug} 两段，与上游下传的 owner/repo 一致。
  */
-class BitbucketService implements GitProviderInterface
+class BitbucketService extends AbstractGitProvider
 {
-    private Client $client;
-    private string $baseUrl;
-    private ?Logger $logger;
-
-    private const PAGE_SIZE = 100;
-    private const MAX_PAGES = 20; // 最多 2000 条
-
     /**
      * @param array<string,mixed> $config
      */
     public function __construct(array $config, ?Logger $logger = null)
     {
-        $this->baseUrl = rtrim($config['base_url'] ?? '', '/');
-        $this->logger  = $logger;
-
         $token    = trim($config['token'] ?? '');
         $username = trim($config['username'] ?? '');
         $headers  = [];
@@ -42,12 +28,7 @@ class BitbucketService implements GitProviderInterface
         } elseif ($token !== '') {
             $headers['Authorization'] = 'Bearer ' . $token;
         }
-
-        $this->client = new Client([
-            'headers'         => $headers,
-            'timeout'         => 15,
-            'connect_timeout' => 10,
-        ]);
+        $this->initClient($config['base_url'] ?? '', $headers, $logger);
     }
 
     public function getName(): string
@@ -81,12 +62,19 @@ class BitbucketService implements GitProviderInterface
      */
     private function refs(string $repository, string $kind): array
     {
-        [$workspace, $slug] = $this->splitRepo($repository);
+        [$workspace, $slug] = $this->splitOwnerRepo($repository);
         if ($workspace === '' || $slug === '') {
             $this->logger?->warning('Bitbucket 仓库路径解析失败', ['repository' => $repository]);
             return [];
         }
-        return $this->paginatedList("/repositories/{$workspace}/{$slug}/refs/{$kind}");
+        return $this->paginatedList(
+            "/repositories/{$workspace}/{$slug}/refs/{$kind}",
+            'pagelen',
+            static function (array $data) {
+                $values = $data['values'] ?? [];
+                return is_array($values) ? array_column($values, 'name') : [];
+            }
+        );
     }
 
     /**
@@ -94,7 +82,7 @@ class BitbucketService implements GitProviderInterface
      */
     public function setCommitStatus(string $repository, string $sha, string $state, string $context, string $description, string $targetUrl = ''): array
     {
-        [$workspace, $slug] = $this->splitRepo($repository);
+        [$workspace, $slug] = $this->splitOwnerRepo($repository);
         if ($workspace === '' || $slug === '') {
             return ['success' => false, 'message' => '仓库路径格式错误'];
         }
@@ -123,69 +111,9 @@ class BitbucketService implements GitProviderInterface
             $body['url'] = $targetUrl;
         }
 
-        try {
-            $url = "{$this->baseUrl}/repositories/{$workspace}/{$slug}/commit/{$sha}/statuses/build";
-            $response = $this->client->post($url, ['json' => $body]);
-            return [
-                'success' => $response->getStatusCode() < 400,
-                'message' => $response->getStatusCode() < 400 ? 'status 已回写' : '回写失败',
-            ];
-        } catch (GuzzleException $e) {
-            $this->logger?->warning('Bitbucket commit status 回写失败', [
-                'repository' => $repository, 'sha' => $sha, 'error' => $e->getMessage(),
-            ]);
-            return ['success' => false, 'message' => '回写失败: ' . $e->getMessage()];
-        }
-    }
-
-    /**
-     * @return array{0: string, 1: string}
-     */
-    private function splitRepo(string $repository): array
-    {
-        $parts = explode('/', $repository, 2);
-        return [$parts[0], $parts[1] ?? ''];
-    }
-
-    /**
-     * 通用分页列表获取（Bitbucket 用 pagelen/page，响应为 {values: [...]}）。
-     * @return list<string>
-     */
-    private function paginatedList(string $path): array
-    {
-        $all = [];
-        $page = 1;
-        do {
-            $url = "{$this->baseUrl}{$path}?pagelen=" . self::PAGE_SIZE . "&page={$page}";
-            try {
-                $response = $this->client->get($url);
-                $data   = json_decode($response->getBody(), true);
-                $values = is_array($data) ? ($data['values'] ?? []) : [];
-                if (!is_array($values) || empty($values)) {
-                    break;
-                }
-                $all = array_merge($all, array_column($values, 'name'));
-                $page++;
-            } catch (ConnectException | ServerException $e) {
-                // 连接级失败（拒绝/DNS/超时）与 5xx：上抛给 GitService 统一包装为平台不可达（502），
-                // 不得吞成空数组（否则与仓库无分支无法区分）
-                $this->logger?->warning('Bitbucket 平台不可达', [
-                    'path' => $path, 'page' => $page, 'error' => $e->getMessage(),
-                ]);
-                throw $e;
-            } catch (GuzzleException $e) {
-                $this->logger?->warning('Bitbucket API 请求失败', [
-                    'path' => $path, 'page' => $page, 'error' => $e->getMessage(),
-                ]);
-                return $page === 1 ? [] : $all;
-            }
-        } while (count($values) === self::PAGE_SIZE && $page <= self::MAX_PAGES);
-
-        if ($page > self::MAX_PAGES) {
-            $this->logger?->warning('Bitbucket 列表达到最大分页上限', [
-                'path' => $path, 'max_pages' => self::MAX_PAGES, 'total' => count($all),
-            ]);
-        }
-        return $all;
+        return $this->postStatus(
+            "{$this->baseUrl}/repositories/{$workspace}/{$slug}/commit/{$sha}/statuses/build",
+            $body
+        );
     }
 }

@@ -23,13 +23,75 @@ export async function loadMonitor() {
         if (name && ver) name.innerHTML = esc(name.dataset.base || name.textContent) + ' <span class="svc-ver">' + esc(ver) + '</span>';
     }
 
+    // 构建平台卡片：列出所有已启用的 CI 平台。数据来自后端 ci_sources（git 平台派生的 CI 能力 + 独立 CI），
+    // 每项带 enabled（是否启用）与 configured（底层平台是否已配置）；jenkins 额外用 /api/health 的探测结果。
+    function renderBuildPlatforms(staticData, chk) {
+        if (!staticData) return; // 静态数据缺失时保留“检测中”占位，避免误报“无已启用 CI”
+        const rows = document.getElementById('build-rows');
+        const dot  = document.getElementById('dot-build');
+        if (!rows) return;
+
+        const sources = Array.isArray(staticData.ci_sources) ? staticData.ci_sources : [];
+        const items = [];
+
+        for (const s of sources) {
+            if (!s.enabled) continue; // 只展示已启用的 CI 平台
+            const name = __.t('build.mode_' + s.ci);
+
+            if (s.ci === 'jenkins') {
+                if (!s.configured) {
+                    items.push({ icon: '⚪', name: name, ver: '', stat: __.t('common.not_configured'), key: 'common.not_configured', cls: 'off', state: 'off' });
+                } else {
+                    const raw = chk.jenkins;
+                    const ok = raw === true;
+                    const na = raw === null;
+                    items.push({
+                        icon: ok ? '✅' : (na ? '⚪' : '❌'),
+                        name: name,
+                        ver: ok && chk.jenkins_version ? 'v' + chk.jenkins_version : '',
+                        stat: __.t(ok ? 'common.ok' : (na ? 'common.na' : 'common.unreachable')),
+                        key: ok ? 'common.ok' : (na ? 'common.na' : 'common.unreachable'),
+                        cls: ok ? 'ok' : (na ? 'off' : 'err'),
+                        state: ok ? 'ok' : (na ? 'off' : 'err'),
+                    });
+                }
+            } else if (s.kind === 'git') {
+                // git 平台派生的 CI：未配置时显式提示（「开了 CI 但平台没配好」）
+                items.push(s.configured
+                    ? { icon: '✅', name: name, ver: '', stat: __.t('common.enabled'), key: 'common.enabled', cls: 'ok', state: 'ok' }
+                    : { icon: '⚪', name: name, ver: '', stat: __.t('common.not_configured'), key: 'common.not_configured', cls: 'off', state: 'off' });
+            } else {
+                // 独立 CI（custom_push 等）
+                items.push({ icon: '✅', name: name, ver: '', stat: __.t('common.enabled'), key: 'common.enabled', cls: 'ok', state: 'ok' });
+            }
+        }
+
+        if (items.length === 0) {
+            if (dot) dot.className = 'dot dot-off';
+            rows.innerHTML = '<div class="svc-row parent"><span class="svc-icon">⚪</span><span class="svc-name">' + __.t('monitor.build_platform') + '</span><span class="svc-stat off" data-i18n="monitor.build_no_ci">' + __.t('monitor.build_no_ci') + '</span></div>';
+            return;
+        }
+
+        if (dot) dot.className = items.every(i => i.state === 'ok') ? 'dot dot-ok' : 'dot dot-err';
+        rows.innerHTML = items.map(i =>
+            '<div class="svc-row child">' +
+                '<span class="svc-icon">' + i.icon + '</span>' +
+                '<span class="svc-name">' + esc(i.name) + (i.ver ? '<span class="svc-ver">' + esc(i.ver) + '</span>' : '') + '</span>' +
+                '<span class="svc-stat ' + i.cls + '" data-i18n="' + i.key + '">' + i.stat + '</span>' +
+            '</div>'
+        ).join('');
+    }
+
     const staticReq = fetch(HEALTH_STATIC_API, { headers: authHeaders() });
     const probeReq  = fetch(HEALTH_API, { headers: authHeaders() });
+
+    let staticData = null;
 
     try {
         const res = await staticReq;
         if (handle401(res)) return;
         const data = await res.json();
+        staticData = data;
         await __.ready();
         const st = data.stats || {};
 
@@ -45,6 +107,7 @@ export async function loadMonitor() {
                     case 'jenkins':   return __.t('build.mode_jenkins');
                     case 'gitlab_ci': return __.t('build.mode_gitlab_ci');
                     case 'gitea_ci':  return __.t('build.mode_gitea_ci');
+                    case 'github_actions': return __.t('build.mode_github_actions');
                     default:          return m;
                 }
             }).join(' + ')
@@ -60,13 +123,7 @@ export async function loadMonitor() {
         if (sysEnvType)   sysEnvType.textContent   = data.app_env || '—';
         if (sysTime)      sysTime.textContent      = (data.time ? String(data.time).substring(0, 16) : '—');
 
-        const cpProviders = data.custom_push_providers || [];
-        const cpEnabled = data.custom_push_enabled || false;
-        const cpOk = cpEnabled && cpProviders.length > 0;
-        const cpLabel = cpEnabled ? __.t('common.enabled') : __.t('common.disabled');
-        const cpKey = cpEnabled ? 'common.enabled' : 'common.disabled';
-        setSvc('icon-custom-push', 'name-custom-push', 'stat-custom-push', 'dot-custom-push', cpOk || null, '', cpLabel, '', cpKey);
-        applyBuildRecordsMenuVisibility(cpEnabled);
+        applyBuildRecordsMenuVisibility(data.custom_push_enabled || false);
     } catch (e) {}
 
     try {
@@ -75,12 +132,7 @@ export async function loadMonitor() {
         const data = await res.json();
         const chk = data.checks || {};
 
-        const jRaw = chk.jenkins;
-        const jOk  = jRaw === true;
-        const jVer = chk.jenkins_version || '';
-        const jLabel = jOk ? __.t('common.ok') : jRaw===null ? __.t('common.na') : __.t('common.unreachable');
-        const jKey = jOk ? 'common.ok' : (jRaw === null ? 'common.na' : 'common.unreachable');
-        setSvc('icon-jenkins', 'name-jenkins', 'stat-jenkins', 'dot-jenkins', jRaw, jVer ? 'v'+jVer : '', jLabel, '', jKey);
+        renderBuildPlatforms(staticData, chk);
 
         const gitRows = document.getElementById('git-rows');
         const gitData = chk.git;
@@ -114,7 +166,10 @@ export async function loadMonitor() {
     } catch (e) {
         const ek = e.name === 'AbortError' ? 'js.timeout' : 'js.cannot_connect';
         const msg = __.t(ek);
-        setSvc('icon-jenkins', 'name-jenkins', 'stat-jenkins', 'dot-jenkins', false, '', msg, '', ek);
+        const buildRows = document.getElementById('build-rows');
+        const dotBuild = document.getElementById('dot-build');
+        if (dotBuild) dotBuild.className = 'dot dot-err';
+        if (buildRows) buildRows.innerHTML = '<div class="svc-row parent"><span class="svc-icon">❌</span><span class="svc-name">' + __.t('monitor.build_platform') + '</span><span class="svc-stat err" data-i18n="' + ek + '">' + msg + '</span></div>';
         document.getElementById('dot-git').className = 'dot dot-err';
         document.getElementById('git-rows').innerHTML = '<div class="svc-row parent"><span class="svc-icon">❌</span><span class="svc-name">' + __.t('monitor.git_platforms') + '</span><span class="svc-stat err" data-i18n="' + ek + '">' + msg + '</span></div>';
         setSvc('icon-harbor', 'name-harbor', 'stat-harbor', 'dot-harbor', false, '', msg, '', ek);

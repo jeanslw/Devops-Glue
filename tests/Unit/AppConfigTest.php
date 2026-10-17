@@ -43,12 +43,12 @@ class AppConfigTest extends TestCase
         $this->assertEquals(AppConfig::BUILD_MODE_GITEA_CI, AppConfig::PROVIDER_GITEA_CI);
     }
 
-    public function testBuiltinPullProvidersContainThreeSources(): void
+    public function testBuiltinPullProvidersContainFourSources(): void
     {
         $this->assertSame(
-            [AppConfig::PROVIDER_JENKINS, AppConfig::PROVIDER_GITLAB_CI, AppConfig::PROVIDER_GITEA_CI],
+            [AppConfig::PROVIDER_JENKINS, AppConfig::PROVIDER_GITLAB_CI, AppConfig::PROVIDER_GITEA_CI, AppConfig::PROVIDER_GITHUB_ACTIONS],
             AppConfig::BUILTIN_PULL_PROVIDERS,
-            '内置拉取式 provider 集合必须是 jenkins/gitlab_ci/gitea_ci 且顺序稳定'
+            '内置拉取式 provider 集合必须是 jenkins/gitlab_ci/gitea_ci/github_actions 且顺序稳定'
         );
     }
 

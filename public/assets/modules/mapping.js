@@ -106,9 +106,10 @@ export async function loadMaps() {
                 const bpLabel = bp === 'jenkins' ? __.t('build.mode_jenkins')
                     : bp === 'gitlab_ci' ? __.t('build.mode_gitlab_ci')
                     : bp === 'gitea_ci' ? __.t('build.mode_gitea_ci')
+                    : bp === 'github_actions' ? __.t('build.mode_github_actions')
                     : bp === 'custom_push' ? 'Custom_Push'
                     : bp;
-                const bpBadge = bp === 'gitlab_ci' ? 'badge-gitlab' : bp === 'gitea_ci' ? 'badge-gitea' : bp === 'custom_push' ? 'badge-cus' : 'badge-default';
+                const bpBadge = bp === 'gitlab_ci' ? 'badge-gitlab' : bp === 'gitea_ci' ? 'badge-gitea' : bp === 'github_actions' ? 'badge-github' : bp === 'custom_push' ? 'badge-cus' : 'badge-default';
                 const badgeCls = plat !== '—' && platforms.includes(plat) ? 'badge-' + plat : 'badge-default';
                 return `<tr>
                     <td><strong>${esc(m.job_name)}</strong></td>

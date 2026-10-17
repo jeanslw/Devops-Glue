@@ -459,6 +459,7 @@ class MainController extends BaseController
             'build_mode'            => $this->appSettings->getBuildMode(),
             'build_modes'           => $this->appSettings->getBuildModes(),
             'build_mode_source'     => $this->appSettings->getBuildModeSource(),
+            'ci_sources'            => $this->buildCiSources(),
             'custom_push_enabled'  => $this->appSettings->getCustomPushEnabled(),
             'custom_push_providers' => array_column($this->config->getCustomBuildProviders(), 'name'),
             'db_driver'             => \App\Service\Database::driver(),
@@ -466,6 +467,49 @@ class MainController extends BaseController
             'app_env'               => $this->config->getAppEnv(),
             'time'                  => date('Y-m-d H:i:s'),
         ];
+    }
+
+    /**
+     * 构建平台卡片数据：git 平台派生的 CI 能力（二元拆分）+ 独立 CI（Jenkins / custom_push）。
+     * 每项给出 enabled（build_mode 里是否启用）与 configured（底层平台是否已配置、能否建 provider），
+     * 前端据此渲染 启用 / 未配置 两态，显式暴露「开了 CI 但平台没配好」这类错配。
+     *
+     * @return list<array{ci:string, platform:?string, kind:string, enabled:bool, configured:bool}>
+     */
+    private function buildCiSources(): array
+    {
+        $enabled = $this->appSettings->getBuildModes();
+        $sources = [];
+
+        foreach (AppConfig::GIT_PLATFORM_CI_CAPABILITIES as $platform => $ci) {
+            $cfg = $this->config->getGitPlatformConfig($platform);
+            $sources[] = [
+                'ci'         => $ci,
+                'platform'   => $platform,
+                'kind'       => 'git',
+                'enabled'    => in_array($ci, $enabled, true),
+                'configured' => !empty($cfg['base_url'] ?? '') && !empty($cfg['token'] ?? ''),
+            ];
+        }
+
+        $jenkins = $this->config->getJenkinsConfig();
+        $sources[] = [
+            'ci'         => AppConfig::PROVIDER_JENKINS,
+            'platform'   => null,
+            'kind'       => 'standalone',
+            'enabled'    => in_array(AppConfig::PROVIDER_JENKINS, $enabled, true),
+            'configured' => !empty($jenkins['url'] ?? ''),
+        ];
+
+        $sources[] = [
+            'ci'         => AppConfig::PROVIDER_CUSTOM_PUSH,
+            'platform'   => null,
+            'kind'       => 'standalone',
+            'enabled'    => $this->appSettings->getCustomPushEnabled(),
+            'configured' => $this->config->getCustomBuildProviders() !== [],
+        ];
+
+        return $sources;
     }
 
     /**

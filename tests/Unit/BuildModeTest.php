@@ -46,6 +46,12 @@ class BuildModeTest extends TestCase
         return $row ? (string) $row['value'] : '';
     }
 
+    private function storedGitCiEnabled(): string
+    {
+        $row = $this->pdo->query("SELECT value FROM " . AppConfig::TABLE_APP_SETTINGS . " WHERE setting_key = 'git_ci_enabled'")->fetch();
+        return $row ? (string) $row['value'] : '';
+    }
+
     private function repo(): AppSettingRepository
     {
         return new AppSettingRepository($this->pdo);
@@ -55,7 +61,9 @@ class BuildModeTest extends TestCase
     {
         $this->seedBuildMode('both');
         $this->assertSame(['jenkins', 'gitlab_ci'], $this->repo()->getBuildModes());
-        $this->assertSame('jenkins,gitlab_ci', $this->storedBuildMode(), '旧值 both 读取时自愈回写为新格式');
+        // 二元拆分：git 平台 CI 迁入 git_ci_enabled，build_mode 只留独立 CI
+        $this->assertSame('jenkins', $this->storedBuildMode(), '旧值 both 读取时自愈并拆分 git CI');
+        $this->assertSame('gitlab', $this->storedGitCiEnabled());
     }
 
     public function testLegacySingleValue(): void
@@ -75,7 +83,24 @@ class BuildModeTest extends TestCase
     {
         $this->repo()->setBuildModes(['gitea_ci', 'jenkins']);
         $this->assertSame(['jenkins', 'gitea_ci'], $this->repo()->getBuildModes());
-        $this->assertSame('jenkins,gitea_ci', $this->storedBuildMode());
+        $this->assertSame('jenkins', $this->storedBuildMode(), 'build_mode 只存独立 CI');
+        $this->assertSame('gitea', $this->storedGitCiEnabled());
+    }
+
+    public function testGitCiSplitRoundTrip(): void
+    {
+        $this->repo()->setBuildModes(['jenkins', 'gitlab_ci', 'gitea_ci']);
+        $this->assertSame(['jenkins', 'gitlab_ci', 'gitea_ci'], $this->repo()->getBuildModes());
+        $this->assertSame('jenkins', $this->storedBuildMode());
+        $this->assertSame('gitlab,gitea', $this->storedGitCiEnabled());
+        $this->assertSame(['gitlab', 'gitea'], $this->repo()->getGitCiEnabledPlatforms());
+    }
+
+    public function testSetGitCiEnabledPlatformsFiltersUnknown(): void
+    {
+        $this->repo()->setGitCiEnabledPlatforms(['gitlab', 'unknown', 'gitea']);
+        $this->assertSame(['gitlab', 'gitea'], $this->repo()->getGitCiEnabledPlatforms());
+        $this->assertSame('gitlab,gitea', $this->storedGitCiEnabled());
     }
 
     public function testEmptyValueMeansNoPullCi(): void

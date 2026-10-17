@@ -18,10 +18,11 @@ class AutoDiscover
     private ?Logger $logger;
     private ?Client $gitlabClient = null;
     private ?Client $giteaClient = null;
+    private ?Client $githubClient = null;
     /** @var list<string> 本次实际发起扫描的源（已启用且已配置），供前端区分扫描全部失败与部分失败。 */
     private array $scanSources = [];
 
-    public function __construct(JenkinsService $jenkins, ProviderRegistry $gitRegistry, Settings $config, MappingManager $mapping, ?Logger $logger = null, ?Client $gitlabClient = null, ?Client $giteaClient = null)
+    public function __construct(JenkinsService $jenkins, ProviderRegistry $gitRegistry, Settings $config, MappingManager $mapping, ?Logger $logger = null, ?Client $gitlabClient = null, ?Client $giteaClient = null, ?Client $githubClient = null)
     {
         $this->jenkins      = $jenkins;
         $this->gitRegistry  = $gitRegistry;
@@ -30,6 +31,7 @@ class AutoDiscover
         $this->logger       = $logger;
         $this->gitlabClient = $gitlabClient;
         $this->giteaClient  = $giteaClient;
+        $this->githubClient = $githubClient;
     }
 
     /** @return array{found: list<DiscoveredItem>, errors: list<string>, sources: list<string>} */
@@ -94,6 +96,16 @@ class AutoDiscover
                 $found = array_merge($found, $batch);
             } catch (\Exception $e) {
                 $errors[] = 'Gitea Actions: ' . $e->getMessage();
+            }
+        }
+
+        if (in_array(AppConfig::PROVIDER_GITHUB_ACTIONS, $enabled, true)) {
+            try {
+                $batch = $this->scanGithubActions($activeRemotes, $existingNames);
+                $this->collectPlatformHints($platformHints, $batch);
+                $found = array_merge($found, $batch);
+            } catch (\Exception $e) {
+                $errors[] = 'GitHub Actions: ' . $e->getMessage();
             }
         }
 
@@ -376,6 +388,80 @@ class AutoDiscover
         } catch (\Exception $e) {
             $this->logger?->warning('AutoDiscover Gitea Actions 扫描失败', ['error' => $e->getMessage()]);
             // 抛给 discover() 汇总到 __errors__：否则 Gitea 不可达或 Token 失效会被显示为空列表
+            throw $e;
+        }
+        return $found;
+    }
+
+    // ── GitHub Actions ──
+
+    /**
+     * @param list<string> $activeRemotes
+     * @param list<string> $existingNames
+     * @return list<DiscoveredItem>
+     */
+    private function scanGithubActions(array $activeRemotes, array $existingNames): array
+    {
+        $found = [];
+        $githubCfg = $this->config->getGithubConfig();
+        $base = rtrim($githubCfg['base_url'] ?? 'https://api.github.com', '/');
+        if (empty($base) || !$this->githubClient) {
+            return $found;
+        }
+        // 已配置才计为扫描源
+        $this->scanSources[] = 'GitHub Actions';
+
+        try {
+            $page = 1;
+            $seen = [];  // 归一化 key，仅本 provider 内去重
+            while ($page <= 10) {
+                $resp = $this->githubClient->get("{$base}/user/repos?per_page=100&page={$page}");
+                if ($resp->getStatusCode() === 401) {
+                    throw new \RuntimeException('GitHub Token 无效，请检查后台平台连接里的 GitHub Token');
+                }
+                if ($resp->getStatusCode() >= 400) {
+                    break;
+                }
+                $data = json_decode($resp->getBody(), true);
+                if (!is_array($data) || empty($data)) {
+                    break;
+                }
+
+                foreach ($data as $p) {
+                    $fullName = $p['full_name'] ?? '';
+                    $remote   = $p['clone_url'] ?? '';
+                    $rKey     = $remote ? $this->normalizeRemote($remote) : '';
+                    // 该仓库已被启用集合内的已有 active 记录映射（归一化 key 比对，跨源生效）
+                    if ($rKey && in_array($rKey, $activeRemotes)) {
+                        continue;
+                    }
+                    // 本 provider 内同一仓库不重复显示
+                    if ($rKey && in_array($rKey, $seen)) {
+                        continue;
+                    }
+                    if (in_array($fullName, $existingNames)) {
+                        continue;
+                    }
+                    if ($rKey) {
+                        $seen[] = $rKey;
+                    }
+
+                    $found[] = ['entry' => [
+                        'job_name'       => $fullName,
+                        'build_provider' => AppConfig::PROVIDER_GITHUB_ACTIONS,
+                        'git_platform'   => 'github',
+                        'git_remote'     => $remote,
+                        'current_path'   => $fullName,
+                        'project_id'     => null,
+                        'web_url'        => $p['html_url'] ?? '',
+                        'harbor_repository' => '',
+                    ], 'source' => 'github_actions'];
+                }
+                $page++;
+            }
+        } catch (\Exception $e) {
+            $this->logger?->warning('AutoDiscover GitHub Actions 扫描失败', ['error' => $e->getMessage()]);
+            // 抛给 discover() 汇总到 __errors__：否则 GitHub 不可达或 Token 失效会被显示为空列表
             throw $e;
         }
         return $found;

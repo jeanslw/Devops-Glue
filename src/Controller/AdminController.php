@@ -5,6 +5,7 @@ namespace App\Controller;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Config\AppConfig;
+use App\Service\Git\HostingType;
 use App\Service\AdminAuthService;
 use App\Service\AdminUserRepository;
 use App\Service\ApiAccessLogRepository;
@@ -686,6 +687,9 @@ class AdminController extends BaseController
         $hasGitea = $this->config->isPlatformConfigured('gitea');
         $giteaCfg = $hasGitea ? $this->config->getGiteaConfig() : [];
         $hasGiteaCi = $hasGitea && !empty($giteaCfg['base_url']) && !empty($giteaCfg['token']);
+        $hasGithub = $this->config->isPlatformConfigured('github');
+        $githubCfg = $hasGithub ? $this->config->getGithubConfig() : [];
+        $hasGithubActions = $hasGithub && !empty($githubCfg['base_url']) && !empty($githubCfg['token']);
 
         return $this->output($response, [
             'mode'          => $this->appSettings->getBuildMode(), // 兼容：join 串
@@ -694,6 +698,7 @@ class AdminController extends BaseController
             'has_jenkins'   => $hasJenkins,
             'has_gitlab_ci' => $hasGitlabCi,
             'has_gitea_ci'  => $hasGiteaCi,
+            'has_github_actions' => $hasGithubActions,
             'custom_push_enabled' => $this->appSettings->getCustomPushEnabled(),
             'custom_providers' => array_column($this->config->getCustomBuildProviders(), 'name'),
         ], $request);
@@ -732,6 +737,9 @@ class AdminController extends BaseController
         $hasGitea = $this->config->isPlatformConfigured('gitea');
         $giteaCfg = $hasGitea ? $this->config->getGiteaConfig() : [];
         $hasGiteaCi = $hasGitea && !empty($giteaCfg['base_url']) && !empty($giteaCfg['token']);
+        $hasGithub = $this->config->isPlatformConfigured('github');
+        $githubCfg = $hasGithub ? $this->config->getGithubConfig() : [];
+        $hasGithubActions = $hasGithub && !empty($githubCfg['base_url']) && !empty($githubCfg['token']);
 
         if (in_array(AppConfig::PROVIDER_JENKINS, $modes, true) && !$hasJenkins) {
             return $this->jsonError($response, 'build.jenkins_unavail', 400);
@@ -741,6 +749,9 @@ class AdminController extends BaseController
         }
         if (in_array(AppConfig::PROVIDER_GITEA_CI, $modes, true) && !$hasGiteaCi) {
             return $this->jsonError($response, 'build.gitea_ci_unavail', 400);
+        }
+        if (in_array(AppConfig::PROVIDER_GITHUB_ACTIONS, $modes, true) && !$hasGithubActions) {
+            return $this->jsonError($response, 'build.github_actions_unavail', 400);
         }
 
         // custom_push 开启时要求至少配了一个 custom_providers
@@ -1979,6 +1990,9 @@ class AdminController extends BaseController
             }
         }
 
+        $gitCiPlatforms = $this->appSettings->getGitCiEnabledPlatforms();
+        $jenkinsEnabled = $this->appSettings->getJenkinsEnabled();
+
         $platforms = [];
         foreach (['jenkins', 'gitlab', 'github', 'gitee', 'gitea', 'harbor'] as $p) {
             $cfg = $resolved[$p] ?? [];
@@ -2012,6 +2026,9 @@ class AdminController extends BaseController
                 'password_set' => $passwordSet,
                 'description'  => (string)($row['description'] ?? ''),
                 'configured'   => $configured,
+                'hosting'      => in_array($p, AppConfig::GIT_PLATFORMS, true) ? HostingType::classify($url) : null,
+                'ci_capable'   => $p === 'jenkins' || isset(AppConfig::GIT_PLATFORM_CI_CAPABILITIES[$p]),
+                'ci_enabled'   => $p === 'jenkins' ? $jenkinsEnabled : in_array($p, $gitCiPlatforms, true),
             ];
         }
 
@@ -2049,6 +2066,11 @@ class AdminController extends BaseController
         $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
 
         $valid = ['jenkins', 'gitlab', 'github', 'gitee', 'gitea', 'harbor'];
+        $gitCiPlatforms = $this->appSettings->getGitCiEnabledPlatforms();
+        $gitCiTouched = false;
+        $jenkinsEnabled = $this->appSettings->getJenkinsEnabled();
+        $jenkinsTouched = false;
+        $removedProviders = [];
         $this->pdo->beginTransaction();
         try {
             if (isset($body['platforms']) && is_array($body['platforms'])) {
@@ -2059,6 +2081,46 @@ class AdminController extends BaseController
                     $platform = trim((string)($p['platform'] ?? ''));
                     if (!in_array($platform, $valid, true)) {
                         continue;
+                    }
+                    // 独立 CI（Jenkins）开关：删除平台一并关闭；否则按显式 ci_enabled 设置
+                    if ($platform === AppConfig::PROVIDER_JENKINS) {
+                        if (!empty($p['delete'])) {
+                            if ($jenkinsEnabled) {
+                                $jenkinsEnabled = false;
+                                $jenkinsTouched = true;
+                                $removedProviders[] = AppConfig::PROVIDER_JENKINS;
+                            }
+                        } elseif (array_key_exists('ci_enabled', $p)) {
+                            $ciOn = !empty($p['ci_enabled']);
+                            if ($ciOn !== $jenkinsEnabled) {
+                                $jenkinsEnabled = $ciOn;
+                                $jenkinsTouched = true;
+                                if (!$ciOn) {
+                                    $removedProviders[] = AppConfig::PROVIDER_JENKINS;
+                                }
+                            }
+                        }
+                    }
+                    // git 平台 CI 能力开关：删除平台一并关闭其 CI；否则按显式 ci_enabled 增删
+                    if (isset(AppConfig::GIT_PLATFORM_CI_CAPABILITIES[$platform])) {
+                        $ciProvider = AppConfig::GIT_PLATFORM_CI_CAPABILITIES[$platform];
+                        if (!empty($p['delete'])) {
+                            if (in_array($platform, $gitCiPlatforms, true)) {
+                                $gitCiPlatforms = array_values(array_diff($gitCiPlatforms, [$platform]));
+                                $gitCiTouched = true;
+                                $removedProviders[] = $ciProvider;
+                            }
+                        } elseif (array_key_exists('ci_enabled', $p)) {
+                            $ciOn = !empty($p['ci_enabled']);
+                            if ($ciOn && !in_array($platform, $gitCiPlatforms, true)) {
+                                $gitCiPlatforms[] = $platform;
+                                $gitCiTouched = true;
+                            } elseif (!$ciOn && in_array($platform, $gitCiPlatforms, true)) {
+                                $gitCiPlatforms = array_values(array_diff($gitCiPlatforms, [$platform]));
+                                $gitCiTouched = true;
+                                $removedProviders[] = $ciProvider;
+                            }
+                        }
                     }
                     if (!empty($p['delete'])) {
                         $this->platformConnections->delete($platform);
@@ -2100,6 +2162,30 @@ class AdminController extends BaseController
                         'password'    => $password,
                         'description' => $description,
                     ]);
+                }
+            }
+            if ($gitCiTouched) {
+                $this->appSettings->setGitCiEnabledPlatforms($gitCiPlatforms);
+            }
+            if ($jenkinsTouched) {
+                $this->appSettings->setJenkinsEnabled($jenkinsEnabled);
+            }
+            // 关闭 CI / Jenkins 时，把对应 provider 的 active 映射降为 pending（与构建模式更新一致），
+            // 避免「重开 CI 后映射又自动恢复为 active」的隐式复活。
+            if ($removedProviders !== []) {
+                $removedProviders = array_values(array_unique($removedProviders));
+                $maps = $this->mapping->allMaps();
+                $changed = false;
+                foreach ($maps as &$m) {
+                    $bp = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
+                    if (in_array($bp, $removedProviders, true) && ($m['status'] ?? AppConfig::STATUS_ACTIVE) !== AppConfig::STATUS_PENDING) {
+                        $m['status'] = AppConfig::STATUS_PENDING;
+                        $changed = true;
+                    }
+                }
+                if ($changed) {
+                    $this->mapping->saveMaps($maps);
+                    $this->invalidateTopologyCache();
                 }
             }
             $this->opLog()->record($this->currentUser, 'platform_connections_update', '', [], $this->clientIp($request), 'success');

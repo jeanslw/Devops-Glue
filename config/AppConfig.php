@@ -288,12 +288,37 @@ final class AppConfig
     // 注：custom_push 不再作为 build_mode 值，改为独立开关 custom_push_enabled
 
     // ── 构建提供者常量 ──
-    public const PROVIDER_JENKINS     = 'jenkins';
-    public const PROVIDER_GITLAB_CI   = 'gitlab_ci';
-    public const PROVIDER_GITEA_CI    = 'gitea_ci';
+    public const PROVIDER_JENKINS         = 'jenkins';
+    public const PROVIDER_GITLAB_CI       = 'gitlab_ci';
+    public const PROVIDER_GITEA_CI        = 'gitea_ci';
+    public const PROVIDER_GITHUB_ACTIONS  = 'github_actions';
 
     /** 内置拉取式构建 provider 集合（build_mode 只能取这些值；custom_push 是独立开关，不在此列）。 */
-    public const BUILTIN_PULL_PROVIDERS = [self::PROVIDER_JENKINS, self::PROVIDER_GITLAB_CI, self::PROVIDER_GITEA_CI];
+    public const BUILTIN_PULL_PROVIDERS = [self::PROVIDER_JENKINS, self::PROVIDER_GITLAB_CI, self::PROVIDER_GITEA_CI, self::PROVIDER_GITHUB_ACTIONS];
+
+    /**
+     * Git 平台 → 其内置 CI 能力（拉取式 provider）的 1:1 映射（二元拆分：git 平台 / CI 能力）。
+     * CI 能力是 git 平台的一个可选能力面：仅当该平台已配置（base_url + token 齐备）时才真正可用；
+     * 这与 build_mode 里的「启用」是两回事——前者是「能不能建 provider」，后者是「要不要用它」。
+     */
+    public const GIT_PLATFORM_CI_CAPABILITIES = [
+        'gitlab' => self::PROVIDER_GITLAB_CI,
+        'gitea'  => self::PROVIDER_GITEA_CI,
+        'github' => self::PROVIDER_GITHUB_ACTIONS,
+    ];
+
+    /**
+     * git 平台 CI 能力启用态（app_settings 键）：逗号分隔的 git 平台名
+     * （见 GIT_PLATFORM_CI_CAPABILITIES 的键）。独立 CI（jenkins）仍在 build_mode。
+     */
+    public const SETTING_GIT_CI_ENABLED = 'git_ci_enabled';
+
+    /**
+     * 内置 Git 平台集合（平台连接页的 Git 托管平台槽位）。
+     * 托管类型（saas/自建）不再硬编码在平台名上，而是由实际填写的 base_url 域名判定（见 HostingType::classify()）。
+     */
+    public const GIT_PLATFORMS = ['gitlab', 'github', 'gitee', 'gitea'];
+
     /**
      * 自定义推送式 CI（user push 模式）默认注册名。
      * custom_push 模式由用户在 settings.php 的 build.custom_providers 中通过 name 字段自定义，

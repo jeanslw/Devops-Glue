@@ -6,6 +6,10 @@ use App\Service\JenkinsService;
 use App\Service\GitService;
 use App\Service\Logger;
 use App\Config\AppConfig;
+use App\Exceptions\ApiException;
+use GuzzleHttp\Exception\ClientException;
+use GuzzleHttp\Exception\ConnectException;
+use GuzzleHttp\Exception\ServerException;
 
 class JenkinsBuildProvider implements BuildProviderInterface
 {
@@ -48,7 +52,7 @@ class JenkinsBuildProvider implements BuildProviderInterface
             return $result;
         } catch (\Exception $e) {
             $this->logger?->error('Jenkins build 查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
-            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
+            $this->throwJenkinsError($projectId, $e);
         }
     }
 
@@ -225,7 +229,7 @@ class JenkinsBuildProvider implements BuildProviderInterface
             return $result;
         } catch (\Exception $e) {
             $this->logger?->error('Jenkins parameters 查询失败', ['project' => $projectId, 'error' => $e->getMessage()]);
-            throw new \RuntimeException('CI 服务不可用: ' . $e->getMessage(), 0, $e);
+            $this->throwJenkinsError($projectId, $e);
         }
     }
 
@@ -253,5 +257,20 @@ class JenkinsBuildProvider implements BuildProviderInterface
     public function setCommitStatus(string $projectId, string $sha, string $state, string $name, string $description, string $targetUrl = ''): array
     {
         return ['success' => false, 'message' => 'Jenkins 不支持 commit status 回写'];
+    }
+
+    /**
+     * 把 Jenkins 底层异常映射为 HTTP 语义，与 Git provider 的约定对齐：
+     * 404 = Job 不存在，502 = Jenkins 服务不可达，其余保持 500。始终抛出 ApiException。
+     */
+    private function throwJenkinsError(string $projectId, \Exception $e): never
+    {
+        if ($e instanceof ClientException && $e->getResponse()->getStatusCode() === 404) {
+            throw new ApiException("Job 不存在: {$projectId}", 404);
+        }
+        if ($e instanceof ConnectException || $e instanceof ServerException) {
+            throw new ApiException('Jenkins 服务不可达: ' . $e->getMessage(), 502);
+        }
+        throw new ApiException('CI 服务不可用: ' . $e->getMessage(), 500);
     }
 }

@@ -738,6 +738,12 @@
           },
           "has_gitlab_ci": {
             "type": "boolean"
+          },
+          "has_gitea_ci": {
+            "type": "boolean"
+          },
+          "has_github_actions": {
+            "type": "boolean"
           }
         }
       },
@@ -803,6 +809,14 @@
           "has_gitlab_ci": {
             "type": "boolean",
             "description": "Whether GitLab CI has usable base_url + token"
+          },
+          "has_gitea_ci": {
+            "type": "boolean",
+            "description": "Whether Gitea Actions has usable base_url + token"
+          },
+          "has_github_actions": {
+            "type": "boolean",
+            "description": "Whether GitHub Actions has usable base_url + token"
           }
         }
       },
