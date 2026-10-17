@@ -61,7 +61,7 @@
 			   └─────────────┘ └─────────┘
 ```
 
-> **Database Selection**: Devops-Glue and CD Service must use the same database instance.
+> **Database Selection**: Devops-Glue and CD Service are recommended to share one database instance, but it is not required — the two sides integrate over HTTP APIs and their `ci_*` / `cd_*` tables never conflict, so separate databases (or different drivers) also work.
 > - **SQLite**: Zero-configuration, suitable for single-host development/testing. For container deployments, mount the `config/data/` directory as a shared volume so both processes can access the same `.db` file.
 > - **MySQL 8.0+ / MariaDB 10.4+**: Recommended for production. Supports concurrent reads and writes, no shared volume required.
 
@@ -187,7 +187,7 @@ Devops-Glue supports two orthogonal CI modes that can be enabled simultaneously:
 
 - **Strategy Pattern**: `BuildProviderInterface` (Devops-Glue) / `Deployer` (Python CD) abstract base class + Registry
 - **Factory Pattern**: `GitProviderFactory` auto-matches Git platform adapter by URL
-- **Dual-driver Database**: SQLite / MySQL / MariaDB unified interface, one codebase for three modes, sharing the same database instance with CD Service
+- **Dual-driver Database**: SQLite / MySQL / MariaDB unified interface, one codebase for three modes, optionally sharing a database instance with CD Service
 - **Orthogonal CI Design**: `build_mode` (pull-based) and `custom_push_enabled` (push-based) are independent switches that can be combined freely and enabled simultaneously
 
 ## Problem Statement
