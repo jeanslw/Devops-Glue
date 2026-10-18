@@ -31,6 +31,7 @@
   - Mappings with no provider are no longer filtered out of job lists, no longer match a Jenkins filter, and no longer demoted to pending when a CI is switched off.
   - Auto-discovery no longer skips a project because a provider-less mapping with the same name exists, so its build source can still be filled in.
   - A path that matches no mapping is only sent to Jenkins when Jenkins is enabled; otherwise it is rejected instead of being assumed to be a Jenkins job.
+  - Running a tag job no longer distorts the platform-connection cards: the long one-line result wraps instead of stretching its grid column and squeezing the neighbouring cards.
 - **Improved**
   - nginx, php-fpm and the scheduled worker run as separate containers, so the web tier scales independently.
   - A distributed lease lock keeps each scheduled job to a single instance across replicas, and schema creation on cold start is mutually exclusive.
