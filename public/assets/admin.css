@@ -553,10 +553,17 @@
             margin-top:auto; padding-top:12px; border-top:1px dashed #e5e7eb;
         }
         .pc-tag-cards .mode-card-actions .btn { padding:7px 12px; font-size:12.5px; }
-        .pc-tag-cards .mode-card-actions .mode-save-status { margin-left:0; line-height:1.5; }
+        .pc-tag-cards .mode-card-actions .mode-save-status {
+            margin-left:0; line-height:1.5;
+            /* 执行结果是一整句长文本：必须允许换行并可收缩，
+               否则 nowrap + flex-shrink:0 会把卡片内容最小宽度撑爆，
+               grid 的 1fr 列（min-width:auto）跟着被撑宽，挤瘪右侧卡片 */
+            white-space:normal; flex-shrink:1; min-width:0;
+        }
         .pc-tag-cards .mode-card-actions .btn:disabled { opacity:.5; cursor:not-allowed; }
         /* 四个 cron 任务卡片缩小：紧凑内边距 + 去掉最小高度 + 收紧间距 */
-        .pc-tag-cards .mode-card { padding:12px; min-height:0; gap:8px; }
+        /* min-width:0：网格项不把内容最小宽度传给 grid 轨道（长文本/输入框都不再撑破四列布局） */
+        .pc-tag-cards .mode-card { padding:12px; min-height:0; gap:8px; min-width:0; }
         .pc-tag-cards .mode-card-hd { font-size:13px; }
         .mode-card {
             display:flex; flex-direction:column; gap:12px;
