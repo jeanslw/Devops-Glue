@@ -3,7 +3,7 @@
   "info": {
     "title": "Devops-Glue API",
     "version": "2.10.0",
-    "description": "DevOps toolchain integration API — unified interface for Jenkins / GitLab CI, GitLab / Gitee / GitHub / Gitea, and Harbor.",
+    "description": "DevOps toolchain integration API: CI, Git platforms, Harbor, auth and admin.",
     "contact": {
       "email": "jeanslw@qq.com"
     }
@@ -45,7 +45,7 @@
     },
     {
       "name": "RBAC",
-      "description": "Role & Permission Management (data-driven; includes permission registration, implied rules, role CRUD)"
+      "description": "Role & Permission Management"
     },
     {
       "name": "SSO",
@@ -90,6 +90,16 @@
       },
       "401": {
         "description": "Unauthorized or invalid token",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "403": {
+        "description": "Forbidden",
         "content": {
           "application/json": {
             "schema": {
@@ -150,7 +160,7 @@
               "jenkins": {
                 "type": "boolean",
                 "nullable": true,
-                "description": "true=reachable, false=unreachable, null=gitlab_ci mode"
+                "description": "true=reachable, false=unreachable, null=Jenkins not enabled in build mode (not probed)"
               },
               "jenkins_version": {
                 "type": "string",
@@ -250,18 +260,18 @@
           "seed_version": {
             "type": "string",
             "nullable": true,
-            "description": "Applied seed version (recorded only with DB_AUTO_MIGRATE=false; null in auto-migrate mode, where schema_version is authoritative)",
+            "description": "Applied seed version (manual-provisioning mode only; null in auto-migrate mode)",
             "example": "2.10.0"
           },
           "schema_current": {
             "type": "boolean",
             "nullable": true,
-            "description": "Whether the schema is aligned with the current code version; null when there is no schema_version (the structural migration never ran, e.g. manual-provisioning mode without php cli/migrate.php, even if a seed_version exists) — unknown: never treated as degraded and never falsely reported as aligned",
+            "description": "Whether the schema matches the current code version; null when no schema_version is recorded (unknown)",
             "example": true
           },
           "schema_ahead": {
             "type": "boolean",
-            "description": "Direction flag: true when schema_version is higher than the current APP_VERSION, i.e. the database is newer than the code — typically after a code downgrade/rollback. Combined with schema_current=false it distinguishes \"the structural migration never ran\" (ahead=false) from \"the code was rolled back\" (ahead=true); false when no version is recorded",
+            "description": "True when schema_version is higher than APP_VERSION (database newer than the code, e.g. rollback)",
             "example": false
           },
           "auto_migrate": {
@@ -284,7 +294,7 @@
             "items": {
               "type": "string"
             },
-            "description": "In-code bookkeeping self-check (Database::schemaListDrift(), pure reflection, no database involved): present when the AppConfig TABLE_* constants and the Database::schemaTables() probe list disagree, listing the tables that \"the admin table list / this probe's tables_missing will fail to report\", and counted into status=degraded (still HTTP 200, never pulled from the LB). It never appears for correct code; when it does, this instance's code has an unsynced list (an upgrade or hand-patched build bypassed CI). The same finding is written to the error log and called out in red on the admin \"Table Consistency\" row",
+            "description": "Bookkeeping self-check: lists drifted table names when the table constants and the probe list disagree; counted as status=degraded",
             "example": [
               "ci_api_access_logs"
             ]
@@ -314,10 +324,7 @@
           },
           "build_provider": {
             "type": "string",
-            "enum": [
-              "jenkins",
-              "gitlab_ci"
-            ],
+            "description": "jenkins / gitlab_ci / gitea_ci / github_actions / custom_push, or a custom provider name",
             "default": "jenkins"
           },
           "git_remote": {
@@ -372,10 +379,7 @@
             },
             "build_provider": {
               "type": "string",
-              "enum": [
-                "jenkins",
-                "gitlab_ci"
-              ]
+              "description": "jenkins / gitlab_ci / gitea_ci / github_actions / custom_push, or a custom provider name"
             },
             "git_remote": {
               "type": "string"
@@ -680,7 +684,15 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Per-source failure reasons (empty when all sources succeeded)"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Sources actually scanned this run: Jenkins / GitLab CI / Gitea Actions / GitHub Actions / Git"
           },
           "items": {
             "type": "array",
@@ -717,12 +729,15 @@
         "properties": {
           "mode": {
             "type": "string",
-            "enum": [
-              "jenkins",
-              "gitlab_ci",
-              "both"
-            ],
-            "example": "both"
+            "description": "Comma-joined enabled providers, e.g. jenkins,gitea_ci",
+            "example": "jenkins,gitea_ci"
+          },
+          "modes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Enabled provider set (jenkins / gitlab_ci / gitea_ci / github_actions)"
           },
           "source": {
             "type": "string",
@@ -784,13 +799,15 @@
         "properties": {
           "mode": {
             "type": "string",
-            "enum": [
-              "jenkins",
-              "gitlab_ci",
-              "both"
-            ],
-            "description": "Currently active build mode",
-            "example": "both"
+            "description": "Comma-joined enabled providers, e.g. jenkins,gitea_ci",
+            "example": "jenkins,gitea_ci"
+          },
+          "modes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Enabled provider set (jenkins / gitlab_ci / gitea_ci / github_actions)"
           },
           "source": {
             "type": "string",
@@ -1007,7 +1024,7 @@
           },
           "builtin_implied": {
             "type": "object",
-            "description": "Built-in implication map (seed data, non-deletable): source_key → [target_key,...]; used by the frontend to distinguish built-in vs user-added rules",
+            "description": "Built-in implication map (seed data, non-deletable): source_key → [target_key,...]",
             "additionalProperties": {
               "type": "array",
               "items": {
@@ -1150,7 +1167,7 @@
             "items": {
               "type": "string"
             },
-            "description": "New scope list (all entries must come from the scope catalog, at least one; an unknown key or an empty set returns 400)",
+            "description": "New scope list (all from the scope catalog, at least one; otherwise 400)",
             "example": [
               "main",
               "build.read"
@@ -1264,7 +1281,7 @@
       },
       "Jwks": {
         "type": "object",
-        "description": "OIDC JWKS public key set (n/e/kid only, never the private key)",
+        "description": "OIDC JWKS public key set (n/e/kid only, Does not contain private key)",
         "properties": {
           "keys": {
             "type": "array",
@@ -1381,7 +1398,7 @@
           "Health"
         ],
         "summary": "Health Check",
-        "description": "Check Jenkins, Git platform, and Harbor connectivity. Returns 200 if all healthy, 503 if partially degraded.",
+        "description": "Check Jenkins, Git platform and Harbor connectivity; 200 when all healthy, 503 when partially degraded",
         "operationId": "health",
         "responses": {
           "200": {
@@ -1413,7 +1430,7 @@
           "Health"
         ],
         "summary": "Liveness / readiness probe",
-        "description": "Unauthenticated external probe: checks database reachability, the applied versions and schema alignment only; it does not probe Jenkins/Git/Harbor. DB reachable and aligned → 200 + status=ok; DB reachable but stale (schema_current=false, e.g. code upgraded before the migration ran) → 200 + status=degraded (a stale version never pulls traffic, so a rolling upgrade cannot make the LB/K8s drop every replica) with the missing core tables listed in tables_missing; in manual-provisioning mode where the structural migration never ran, schema_current=null (unknown) → 200 + status=ok (neither degraded nor falsely reported aligned); a failed DB connection, or a successful connection whose version table is missing (empty/uninitialized database, in which case db=true) → 503 + status=degraded. The db field expresses connectivity only, to distinguish a real outage from a reachable-but-uninitialized database. schema_ahead=true means the database schema version is higher than the current code (a likely downgrade/rollback), and combined with schema_current=false it separates \"the structural migration never ran\" from \"the code was rolled back\". When the in-code bookkeeping self-check finds a probe-list drift (tables_list_drift) the probe likewise only degrades instead of pulling traffic (200 + status=degraded): what is broken is the bookkeeping, not the data.",
+        "description": "Unauthenticated external probe: database reachability and schema alignment only. Reachable and aligned → 200 status=ok; reachable but stale → 200 status=degraded with missing tables in tables_missing; connection failed or version table missing → 503",
         "operationId": "healthz",
         "responses": {
           "200": {
@@ -1427,7 +1444,7 @@
             }
           },
           "503": {
-            "description": "Database connection failed, or connected but the version table is missing (empty/uninitialized database); see status and db",
+            "description": "Database unreachable, or reachable but the version table is missing (uninitialized database)",
             "content": {
               "application/json": {
                 "schema": {
@@ -1445,8 +1462,41 @@
           "Main"
         ],
         "summary": "List all Jobs",
-        "description": "Fetches from Jenkins in real-time when in jenkins mode, or from DB in gitlab_ci mode. Falls back to DB cache if Jenkins is unreachable.",
+        "description": "Job names for the enabled build modes: with Jenkins enabled, fetched live from Jenkins and merged with the other enabled sources; otherwise the active mappings from the database",
         "operationId": "mainJobsList",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of job names",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Main"
+        ],
+        "summary": "List all Jobs",
+        "description": "Same as GET; parameters go in the query string.",
+        "operationId": "mainJobsListPost",
         "security": [
           {
             "bearerAuth": []
@@ -1480,8 +1530,38 @@
           "Main"
         ],
         "summary": "Job / Git / Harbor mapping",
-        "description": "Returns mapping relationships grouped by project. 30s cache in jenkins mode.",
+        "description": "Returns mappings grouped by project; cached 30s per enabled-provider set",
         "operationId": "mainMapList",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Grouped mapping object",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MapGroupedResult"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Main"
+        ],
+        "summary": "Job / Git / Harbor mapping",
+        "description": "Same as GET; parameters go in the query string.",
+        "operationId": "mainMapListPost",
         "security": [
           {
             "bearerAuth": []
@@ -1543,6 +1623,43 @@
             }
           }
         }
+      },
+      "post": {
+        "tags": [
+          "Main"
+        ],
+        "summary": "Configured Git platforms",
+        "description": "Same as GET; parameters go in the query string.",
+        "operationId": "mainGitPlatformsPost",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Platform configuration",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "git_platforms": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "harbor": {
+                      "type": "object",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/main/git/discovery": {
@@ -1551,8 +1668,63 @@
           "Main"
         ],
         "summary": "Platform connectivity detection",
-        "description": "Compares Git platforms used in mappings against configured platforms, returning configured and unconfigured lists.",
+        "description": "Compares Git platforms used in mappings against configured ones",
         "operationId": "mainGitDiscovery",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "configured + unconfigured lists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "configured": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "api_base_url": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "unconfigured": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "example_remote": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Main"
+        ],
+        "summary": "Platform connectivity detection",
+        "description": "Same as GET; parameters go in the query string.",
+        "operationId": "mainGitDiscoveryPost",
         "security": [
           {
             "bearerAuth": []
@@ -1608,7 +1780,7 @@
           "Build"
         ],
         "summary": "Build-oriented Job list (CI admin page)",
-        "description": "Returns active mappings under the current build_mode, with ci_provider, project_id, current_path, harbor_repository, git_platform. ?format=raw returns a plain job name array. For the CD deployment-side project list, use /api/build/projects.",
+        "description": "Active mappings under the current build_mode; ?format=raw returns a plain job name array",
         "operationId": "buildJobsList",
         "security": [
           {
@@ -1635,10 +1807,61 @@
                       },
                       "ci_provider": {
                         "type": "string",
-                        "enum": [
-                          "jenkins",
-                          "gitlab_ci"
-                        ]
+                        "description": "jenkins / gitlab_ci / gitea_ci / github_actions / custom_push"
+                      },
+                      "project_id": {
+                        "type": "string"
+                      },
+                      "current_path": {
+                        "type": "string"
+                      },
+                      "harbor_repository": {
+                        "type": "string"
+                      },
+                      "git_platform": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Build"
+        ],
+        "summary": "Build-oriented Job list (CI admin page)",
+        "description": "Same as GET; parameters go in the query string.",
+        "operationId": "buildJobsListPost",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "raw format returns job name array; json format returns objects with provider info",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "job_name": {
+                        "type": "string"
+                      },
+                      "ci_provider": {
+                        "type": "string",
+                        "description": "jenkins / gitlab_ci / gitea_ci / github_actions / custom_push"
                       },
                       "project_id": {
                         "type": "string"
@@ -1667,7 +1890,7 @@
           "Build"
         ],
         "summary": "Active mappings + latest tag per project (CD deployment side)",
-        "description": "Returns all active mappings (no build_mode filtering) with each project's latest image tag (latest_tag / latest_pipeline / tag_time). For CD list/deploy resolution. For the CI admin page job list, use /api/build/jobs/list.",
+        "description": "All active mappings (no build_mode filtering), each with its latest image tag",
         "operationId": "buildProjectsList",
         "security": [
           {
@@ -1676,7 +1899,64 @@
         ],
         "responses": {
           "200": {
-            "description": "Active mapping array; each item has job_name/build_provider/current_path/harbor_repository/git_platform/status plus latest_tag/latest_pipeline/tag_time",
+            "description": "Active mapping list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "job_name": {
+                        "type": "string"
+                      },
+                      "build_provider": {
+                        "type": "string"
+                      },
+                      "current_path": {
+                        "type": "string"
+                      },
+                      "harbor_repository": {
+                        "type": "string"
+                      },
+                      "git_platform": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "latest_tag": {
+                        "type": "string"
+                      },
+                      "latest_pipeline": {
+                        "type": "string"
+                      },
+                      "tag_time": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Build"
+        ],
+        "summary": "Active mappings + latest tag per project (CD deployment side)",
+        "description": "Same as GET; parameters go in the query string.",
+        "operationId": "buildProjectsListPost",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Active mapping list",
             "content": {
               "application/json": {
                 "schema": {
@@ -1726,7 +2006,7 @@
           "Build"
         ],
         "summary": "Get build mode config",
-        "description": "Returns the currently effective build mode and its source. Database is the single source of truth; first run seeds from .env.",
+        "description": "Currently effective build mode and its source (database is the source of truth)",
         "operationId": "buildConfigMode",
         "security": [
           {
@@ -1753,8 +2033,78 @@
           "Build"
         ],
         "summary": "Pipeline list",
-        "description": "Unified query for Jenkins / GitLab CI pipelines. ?list=id returns ID array, ?list=success returns successful pipeline IDs.",
+        "description": "Unified pipeline query. ?list=id returns the ID array, ?list=success returns successful pipeline IDs",
         "operationId": "buildPipelines",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "tools/runner-ci"
+          },
+          {
+            "$ref": "#/components/parameters/format"
+          },
+          {
+            "name": "list",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "id",
+                "build",
+                "time",
+                "success"
+              ]
+            },
+            "description": "id=ID array, build=with # prefix, time=with timestamp, success=successful only"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pipeline list (includes build_provider, project_id, pipelines)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "build_provider": {
+                      "type": "string"
+                    },
+                    "project_id": {
+                      "type": "string"
+                    },
+                    "pipelines": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/PipelineItem"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Build"
+        ],
+        "summary": "Pipeline list",
+        "description": "Same as GET; parameters go in the query string.",
+        "operationId": "buildPipelinesPost",
         "security": [
           {
             "bearerAuth": []
@@ -1825,8 +2175,47 @@
           "Build"
         ],
         "summary": "Pipeline detail + Jobs (Gitea CI only)",
-        "description": "Gitea CI only: input a run id (the id from /api/build/{path}/pipelines) to get the run detail. ?format=raw returns plain status array (e.g. [\"success\", \"failed\"]). Otherwise returns jobs, each with id (job id) and log_url (link to that job's log: /api/build/{path}/logs/{jobId})",
+        "description": "Gitea CI only: run detail by run id. ?format=raw returns a plain status array; default returns jobs with id and log_url",
         "operationId": "buildPipelineDetail",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Jobs list, each with id (job id) and log_url (log link)"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Build"
+        ],
+        "summary": "Pipeline detail + Jobs (Gitea CI only)",
+        "description": "Same as GET; parameters go in the query string.",
+        "operationId": "buildPipelineDetailPost",
         "security": [
           {
             "bearerAuth": []
@@ -1860,14 +2249,141 @@
         }
       }
     },
+    "/api/build/{path}/pipelines/{id}/resolve-tag": {
+      "post": {
+        "tags": [
+          "Build"
+        ],
+        "summary": "Resolve image tag from build logs",
+        "description": "Resolve the image tag from build logs: with a non-empty sha and force=false the cache is checked first; on a miss every job trace is pulled and matched by push keyword plus Harbor repository path, then cached.",
+        "operationId": "buildResolveTag",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "php/myapp"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "pipeline id"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sha": {
+                    "type": "string",
+                    "description": "commit sha (used for cache lookup and write; empty means no cache read or write)"
+                  },
+                  "force": {
+                    "type": "boolean",
+                    "description": "Skip the cache and re-resolve"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resolve result; with no repository mapping tag is empty and resolved=false",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "tag": {
+                      "type": "string"
+                    },
+                    "resolved": {
+                      "type": "boolean"
+                    },
+                    "cached": {
+                      "type": "boolean",
+                      "description": "Whether the cache was hit (absent when there is no repository mapping)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid pipeline id, or provider not configured"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          }
+        }
+      }
+    },
     "/api/build/{path}/pipelines/{id}/logs": {
       "get": {
         "tags": [
           "Build"
         ],
         "summary": "Pipeline logs (Gitea CI only, input run id, returns all job logs)",
-        "description": "Gitea CI only: input a run id (the id from /api/build/{path}/pipelines) to get the combined log text of all jobs in that run. Multiple jobs are separated by =====. No need to look up job ids first.",
+        "description": "Gitea CI only: combined log text of all jobs in a run (jobs separated by =====)",
         "operationId": "buildPipelineLogs",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "run id (pipeline id, not job id)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "text/plain raw logs (multiple jobs separated by ====)"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Build"
+        ],
+        "summary": "Pipeline logs (Gitea CI only, input run id, returns all job logs)",
+        "description": "Same as GET; parameters go in the query string.",
+        "operationId": "buildPipelineLogsPost",
         "security": [
           {
             "bearerAuth": []
@@ -2023,6 +2539,48 @@
             "$ref": "#/components/responses/400"
           }
         }
+      },
+      "post": {
+        "tags": [
+          "Build"
+        ],
+        "summary": "Build logs (Jenkins / GitLab CI / Gitea Actions, id=job id)",
+        "description": "Same as GET; parameters go in the query string.",
+        "operationId": "buildLogsPost",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "tools/runner-ci"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "example": 32,
+            "description": "job id (from jobs[].id returned by /api/build/{path}/pipelines/{runId}, not the run id)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "text/plain raw log"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          }
+        }
       }
     },
     "/api/build/{path}/trigger": {
@@ -2031,7 +2589,7 @@
           "Build"
         ],
         "summary": "Trigger build (POST, recommended)",
-        "description": "Pass parameters in POST body JSON via variables=object (recommended). Root-level keys are also accepted (legacy compat). Parameter names must match Jenkins Job definitions; call GET /api/build/{path}/variables first to discover them.",
+        "description": "Pass parameters via variables=object (root-level keys accepted for legacy); names must match the Jenkins Job definition",
         "operationId": "buildTrigger",
         "security": [
           {
@@ -2117,8 +2675,39 @@
           "Build"
         ],
         "summary": "Build parameters / CI variables",
-        "description": "Returns Jenkins Job parameter definitions or GitLab CI variables. ?format=json returns full object with build_provider; default returns simplified {key: options}.",
+        "description": "Jenkins Job parameter definitions or GitLab CI variables; ?format=json returns the full object",
         "operationId": "buildVariables",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Variable key→options mapping"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Build"
+        ],
+        "summary": "Build parameters / CI variables",
+        "description": "Same as GET; parameters go in the query string.",
+        "operationId": "buildVariablesPost",
         "security": [
           {
             "bearerAuth": []
@@ -2175,6 +2764,37 @@
             "$ref": "#/components/responses/400"
           }
         }
+      },
+      "post": {
+        "tags": [
+          "Build"
+        ],
+        "summary": "Git branch list",
+        "description": "Same as GET; parameters go in the query string.",
+        "operationId": "buildBranchesPost",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Branch name array, e.g. [\"main\", \"master\", \"dev\"]"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          }
+        }
       }
     },
     "/api/build/{path}/scan-sync": {
@@ -2183,7 +2803,7 @@
           "Build"
         ],
         "summary": "Harbor image scan → Commit Status write-back",
-        "description": "Call after CI pipeline build completion. Automatically fetches Harbor vulnerability report and writes result back to Git platform commit status (harbor-scan context). If tag is omitted, uses the latest from Harbor.",
+        "description": "Post-build callback: fetches the Harbor vulnerability report and writes it back to the Git platform commit status (harbor-scan context); tag omitted = latest from Harbor",
         "operationId": "buildScanSync",
         "security": [
           {
@@ -2240,7 +2860,7 @@
           "Build"
         ],
         "summary": "Custom Push CI build result single report",
-        "description": "For custom_push build provider only: after user CI completes, report the terminal result (success/failed/aborted) in one call — no pending/running intermediate states. Devops-Glue only stores metadata and log URL pointers; it does not participate in builds nor store log content.\n\nWhen status=success, tag is required and ci_pipeline_artifacts is also written (provider, project_id, pipeline_iid, project_key, repository, tag, status); the CD layer reads it via the existing GET /api/build/{path}/tag endpoint.\n\nBesides control fields (pipeline_iid / status / finished_at / started_at / ref / sha / exit_code / log_url / web_url / tag / harbor_repository), all other request body fields are stored as custom build variables in variables_json.",
+        "description": "custom_push only: report the terminal build result (success/failed/aborted). status=success requires tag and writes ci_pipeline_artifacts; other non-control fields are stored in variables_json",
         "operationId": "buildReport",
         "security": [
           {
@@ -2327,12 +2947,12 @@
                   "tag": {
                     "type": "string",
                     "example": "v1.0.0",
-                    "description": "Image tag (required when status=success; written to ci_pipeline_artifacts; verified to actually exist in Harbor on report, 400 if missing; not needed for failed/aborted)"
+                    "description": "Image tag (required when status=success; must exist in Harbor, otherwise 400)"
                   },
                   "harbor_repository": {
                     "type": "string",
                     "example": "team/myapp",
-                    "description": "Harbor repository path (resolved from job_git_map, body value ignored; two-segment project/repo, no registry URL; both the repository and tag are verified to exist in Harbor on report, 400 if either is missing)"
+                    "description": "Harbor repository path (two-segment project/repo, resolved from job_git_map; body value ignored)"
                   },
                   "env": {
                     "type": "string",
@@ -2433,7 +3053,7 @@
           "Build"
         ],
         "summary": "Generic security scan Commit Status write-back",
-        "description": "Similar to GitHub Actions Security Check. Results from any security scanner (SAST, secret scan, dependency vuln, IaC audit, etc.) can be written back to the Git platform commit/MR page. Audit records are automatically written to ci_security_checks table.",
+        "description": "Write security scan results (SAST, secret scan, dependency vuln, IaC, etc.) back to the Git platform commit/MR",
         "operationId": "buildCommitStatus",
         "security": [
           {
@@ -2484,8 +3104,52 @@
           "Build"
         ],
         "summary": "Query Pipeline → Tag mapping",
-        "description": "?pipeline=52 queries tag for a specific pipeline; omit to return all mappings for this project. ?format=raw returns 'repo:tag' format.",
+        "description": "?pipeline=52 queries one pipeline; omitted returns all mappings for the project. ?format=raw returns 'repo:tag'",
         "operationId": "buildTagQuery",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "php/myapp"
+          },
+          {
+            "name": "pipeline",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Pipeline number (omit for all)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "pipeline→tag mapping",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagQueryResult"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Build"
+        ],
+        "summary": "Query Pipeline → Tag mapping",
+        "description": "Same as GET; parameters go in the query string.",
+        "operationId": "buildTagQueryPost",
         "security": [
           {
             "bearerAuth": []
@@ -2530,8 +3194,93 @@
           "Build"
         ],
         "summary": "Project tag list (paginated)",
-        "description": "Returns the paginated image tag list for a project. Key resolution exactly matches job_name / current_path. ?page=1&page_size=50.",
+        "description": "Paginated image tag list for a project; key matches job_name / current_path exactly",
         "operationId": "buildTagsList",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "php/myapp"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            },
+            "description": "Page number"
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 50
+            },
+            "description": "Page size (1-200)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated tag list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "tag": {
+                            "type": "string"
+                          },
+                          "pipeline_iid": {
+                            "type": "string"
+                          },
+                          "created_at": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "page": {
+                      "type": "integer"
+                    },
+                    "page_size": {
+                      "type": "integer"
+                    },
+                    "total_pages": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Build"
+        ],
+        "summary": "Project tag list (paginated)",
+        "description": "Same as GET; parameters go in the query string.",
+        "operationId": "buildTagsListPost",
         "security": [
           {
             "bearerAuth": []
@@ -2656,6 +3405,51 @@
             "$ref": "#/components/responses/404"
           }
         }
+      },
+      "post": {
+        "tags": [
+          "Git"
+        ],
+        "summary": "List Git branches for a Job",
+        "operationId": "gitBranchesPost",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "php/myapp",
+            "allowReserved": true
+          },
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Same as GET; parameters go in the query string.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
+        }
       }
     },
     "/api/git/{path}/tags": {
@@ -2664,8 +3458,54 @@
           "Git"
         ],
         "summary": "List Git tags for a job",
-        "description": "CD's build page can use a tag as the build ref (release builds). Returns an empty array when the job has no repository mapping or the platform cannot be detected; returns 404 when the platform is unreachable (a platform outage is never disguised as \"this repository has no tags\").",
+        "description": "Tag list for the CD build-page ref dropdown; empty array when there is no mapping or the platform is unknown, 404 when the platform is unreachable",
         "operationId": "gitTags",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "php/myapp",
+            "allowReserved": true
+          },
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of tag names",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Git"
+        ],
+        "summary": "List Git tags for a job",
+        "description": "Same as GET; parameters go in the query string.",
+        "operationId": "gitTagsPost",
         "security": [
           {
             "bearerAuth": []
@@ -2712,8 +3552,65 @@
           "Git"
         ],
         "summary": "List branches and tags in one call (build-ref candidates)",
-        "description": "Equivalent to calling branches and tags together, but resolves the job-to-repository mapping once and builds the platform client once, and both lists are guaranteed to come from the same repository snapshot. Recommended for CD's build-page ref dropdown. A failure on either side fails the whole call with 404.",
+        "description": "branches + tags in one call (same repository snapshot); a failure on either side returns 404",
         "operationId": "gitRefs",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "php/myapp",
+            "allowReserved": true
+          },
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of branch names plus array of tag names",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "branches": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Git"
+        ],
+        "summary": "List branches and tags in one call (build-ref candidates)",
+        "description": "Same as GET; parameters go in the query string.",
+        "operationId": "gitRefsPost",
         "security": [
           {
             "bearerAuth": []
@@ -2800,6 +3697,41 @@
             "$ref": "#/components/responses/500"
           }
         }
+      },
+      "post": {
+        "tags": [
+          "Harbor"
+        ],
+        "summary": "List projects (auto-paginated, max 1000)",
+        "operationId": "harborProjectsPost",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Same as GET; parameters go in the query string.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        }
       }
     },
     "/api/harbor/{project}/repositories": {
@@ -2843,6 +3775,47 @@
             }
           }
         }
+      },
+      "post": {
+        "tags": [
+          "Harbor"
+        ],
+        "summary": "List repositories (auto-paginated, max 1000)",
+        "operationId": "harborRepositoriesPost",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "mycode"
+          },
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Same as GET; parameters go in the query string.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/harbor/{project}/repositories/{repository}/tags": {
@@ -2853,6 +3826,58 @@
         "summary": "List tags (auto-paginated, max 2000)",
         "description": "Repository names containing / require double-encoding (%2F).",
         "operationId": "harborTags",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "mycode"
+          },
+          {
+            "name": "repository",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "diagnosis-runtime",
+            "allowReserved": true
+          },
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tag name array",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Harbor"
+        ],
+        "summary": "List tags (auto-paginated, max 2000)",
+        "description": "Same as GET; parameters go in the query string.",
+        "operationId": "harborTagsPost",
         "security": [
           {
             "bearerAuth": []
@@ -2968,7 +3993,7 @@
           "Harbor"
         ],
         "summary": "Get image vulnerability scan report",
-        "description": "Returns vulnerability list. Harbor v2 returns structured data, v1 returns raw report. Empty array when no vulnerabilities.",
+        "description": "Returns the vulnerability list; Harbor v2 structured, v1 raw report; empty when none",
         "operationId": "harborScanReport",
         "security": [
           {
@@ -3021,7 +4046,7 @@
           "Admin"
         ],
         "summary": "Admin login",
-        "description": "Returns Bearer token (24h expiry). Checks database bcrypt password first, falls back to .env when DB is unavailable.",
+        "description": "Returns Bearer token (24h expiry); falls back to .env only on first deployment",
         "operationId": "adminLogin",
         "requestBody": {
           "required": true,
@@ -3056,7 +4081,7 @@
           "Admin"
         ],
         "summary": "Change admin password",
-        "description": "Requires old password verification. Clears all old tokens upon change, forcing re-login. New password must be at least 8 characters.",
+        "description": "Requires the old password; clears all existing tokens (forces re-login); new password at least 8 characters",
         "operationId": "adminChangePassword",
         "security": [
           {
@@ -3126,8 +4151,8 @@
         "tags": [
           "Admin"
         ],
-        "summary": "Auto-discover unmapped Jenkins Jobs",
-        "description": "Scans all Jenkins Jobs, matches Git platform via git remote, returns newly discovered entries and writes them to mapping table. Returns 503 if Jenkins is unavailable.",
+        "summary": "Auto-discover unmapped projects",
+        "description": "Scans every enabled and configured source and writes newly discovered entries as pending; sources = sources scanned, errors = per-source failures",
         "operationId": "adminDiscover",
         "security": [
           {
@@ -3148,8 +4173,14 @@
           "401": {
             "$ref": "#/components/responses/401"
           },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          },
           "503": {
-            "description": "Auto-discovery not available (Jenkins unreachable)"
+            "description": "Auto-discovery disabled, or no usable scan source"
           }
         }
       }
@@ -3441,7 +4472,7 @@
           "Admin"
         ],
         "summary": "Get platform API versions and config status",
-        "description": "Returns version numbers, sources (config/json/default), and whether each platform is configured.",
+        "description": "Returns platform versions, their source and configured state",
         "operationId": "adminVersionsList",
         "security": [
           {
@@ -3525,7 +4556,7 @@
           "Admin"
         ],
         "summary": "Get current user's permissions",
-        "description": "Query current user's role and permissions using Bearer token. Only requires a valid token, does not need admin privileges. super_admin role returns \"*\" wildcard.",
+        "description": "Current user's role and permissions via Bearer token; super_admin returns \"*\"",
         "operationId": "adminMePermissions",
         "security": [
           {
@@ -3556,7 +4587,7 @@
           "RBAC"
         ],
         "summary": "List all permissions and implication rules",
-        "description": "Returns all registered permission definitions (with parent_key hierarchy) and the permission implication map. Permissions are data-driven and can be registered by CD projects via the POST endpoint.",
+        "description": "All registered permission definitions (with parent_key hierarchy) and the implication map",
         "operationId": "adminPermissionList",
         "security": [
           {
@@ -3588,7 +4619,7 @@
           "RBAC"
         ],
         "summary": "Register a new permission",
-        "description": "Register a new permission key for menu visibility and hasPermission checks. super_admin only; typically auto-registered by CD projects rather than manually. description is required (used as i18n fallback).",
+        "description": "Register a new permission key; description is required (i18n fallback)",
         "operationId": "adminPermissionRegister",
         "security": [
           {
@@ -3669,7 +4700,7 @@
           "RBAC"
         ],
         "summary": "Delete a permission",
-        "description": "Delete the specified permission key, cascading cleanup of role_permissions and implied_rules associations. super_admin only. Built-in permissions (keys in AppConfig::DEFAULT_PERMISSIONS) are protected and cannot be deleted.",
+        "description": "Delete a permission key, cascading cleanup of role_permissions and implied_rules; built-in keys cannot be deleted",
         "operationId": "adminPermissionDelete",
         "security": [
           {
@@ -3723,7 +4754,7 @@
           "RBAC"
         ],
         "summary": "Register an implication rule",
-        "description": "Register a permission implication: having source_key automatically grants target_key. super_admin only. Both source_key and target_key must already exist in the permissions table.",
+        "description": "Register an implication: source_key grants target_key; both keys must already exist",
         "operationId": "adminImpliedRuleCreate",
         "security": [
           {
@@ -3852,7 +4883,7 @@
           "Auth"
         ],
         "summary": "Logout (invalidate current Bearer token)",
-        "description": "Delete the current Bearer token from the cache table so it is rejected on subsequent requests. Returns success even if no valid token is provided.",
+        "description": "Log out the current Bearer token; returns success even without a valid token",
         "operationId": "adminLogout",
         "security": [
           {
@@ -3885,7 +4916,7 @@
           "Admin"
         ],
         "summary": "Get build mode and Provider availability",
-        "description": "Returns the currently active build mode (jenkins/gitlab_ci/both), where the mode came from, and whether the Jenkins / GitLab CI providers are actually configured and usable.",
+        "description": "Currently active build mode (enabled provider set), its source, and whether each provider is configured",
         "operationId": "adminGetBuildMode",
         "security": [
           {
@@ -3913,7 +4944,7 @@
           "Admin"
         ],
         "summary": "Update build mode",
-        "description": "Switch the global build mode. When switching to a single provider, active job mappings of the other provider are automatically downgraded to pending to prevent unexpected participation. The target provider must be configured and available; otherwise the switch is rejected.",
+        "description": "Set the build mode (several providers at once); providers left out have their active mappings downgraded to pending",
         "operationId": "adminUpdateBuildMode",
         "security": [
           {
@@ -3932,12 +4963,8 @@
                 "properties": {
                   "mode": {
                     "type": "string",
-                    "enum": [
-                      "jenkins",
-                      "gitlab_ci",
-                      "both"
-                    ],
-                    "example": "both"
+                    "description": "Comma-joined enabled providers, e.g. jenkins,gitea_ci",
+                    "example": "jenkins,gitea_ci"
                   }
                 }
               }
@@ -3958,11 +4985,7 @@
                     },
                     "mode": {
                       "type": "string",
-                      "enum": [
-                        "jenkins",
-                        "gitlab_ci",
-                        "both"
-                      ]
+                      "description": "Comma-joined enabled providers, e.g. jenkins,gitea_ci"
                     }
                   }
                 }
@@ -3988,7 +5011,7 @@
           "Users"
         ],
         "summary": "List all admin users",
-        "description": "admin and above see all users; regular roles cannot see admin/super_admin users. Response does not include password hashes.",
+        "description": "admin and above see all users; other roles cannot see admin/super_admin users; no password hashes",
         "operationId": "adminUserList",
         "security": [
           {
@@ -4023,7 +5046,7 @@
           "Users"
         ],
         "summary": "Create a new admin user",
-        "description": "Create a new admin user. ci.users.manage_admin permission is required to create admin/super_admin roles. Users created by non-admins may not have systems containing ci. Password must be at least 8 characters.",
+        "description": "Create an admin user; creating admin/super_admin requires ci.users.manage_admin; password at least 8 characters",
         "operationId": "adminUserCreate",
         "security": [
           {
@@ -4111,7 +5134,7 @@
           "Users"
         ],
         "summary": "Update user (change password / change role)",
-        "description": "Only provided fields are updated: password is changed if non-empty; role is changed if provided. Modifying or promoting to admin/super_admin requires ci.users.manage_admin. password min length is 8.",
+        "description": "Only provided fields are updated; promoting to admin/super_admin requires ci.users.manage_admin",
         "operationId": "adminUserUpdate",
         "security": [
           {
@@ -4189,7 +5212,7 @@
           "Users"
         ],
         "summary": "Delete a user",
-        "description": "Delete the specified admin user. Restrictions: 1) Root account (.env ADMIN_USER) cannot be deleted by anyone; 2) Cannot delete yourself; 3) Deleting admin/super_admin role users requires ci.users.manage_admin permission.",
+        "description": "Delete an admin user; root, yourself and admin/super_admin (without ci.users.manage_admin) cannot be deleted",
         "operationId": "adminUserDelete",
         "security": [
           {
@@ -4247,7 +5270,7 @@
           "RBAC"
         ],
         "summary": "List all roles and their permissions",
-        "description": "Returns the role list; each role includes the expanded permission key array. is_system=true means a built-in role that cannot be deleted or have its permissions changed.",
+        "description": "Role list with each role's expanded permission keys; is_system=true roles cannot be deleted or changed",
         "operationId": "adminRoleList",
         "security": [
           {
@@ -4282,7 +5305,7 @@
           "RBAC"
         ],
         "summary": "Create a new role",
-        "description": "Create a custom role. Only users with ci.users.manage_admin permission can create. When permissions are provided, the backend auto-expands implied rules and keeps only keys already defined in the permissions table. is_system is always 0 (not built-in).",
+        "description": "Create a custom role; permissions are auto-expanded and filtered to defined keys",
         "operationId": "adminRoleCreate",
         "security": [
           {
@@ -4370,7 +5393,7 @@
           "RBAC"
         ],
         "summary": "Update role (name / description / permissions, full replace)",
-        "description": "ci.users.manage_admin permission only. Only custom roles (is_system=0) can be modified. When name changes, admin_users.role rows referencing the old name are cascaded. If the permissions key is present (even empty array), the role's permissions are fully replaced with the new set after auto-expanding implied rules.",
+        "description": "Modify a custom role (is_system=0); passing permissions fully replaces the set (auto-expanded)",
         "operationId": "adminRoleUpdate",
         "security": [
           {
@@ -4410,7 +5433,7 @@
                     "items": {
                       "type": "string"
                     },
-                    "description": "Permission keys (presence of this key triggers full replace; empty array clears all permissions)"
+                    "description": "Permission keys; present = full replace (empty array clears all)"
                   }
                 }
               }
@@ -4457,7 +5480,7 @@
           "RBAC"
         ],
         "summary": "Delete a role",
-        "description": "ci.users.manage_admin permission only. Only custom roles (is_system=0) can be deleted. If any user still references the role, the request is rejected with 400 role.in_use. Deletion cascades and cleans up role_permissions links.",
+        "description": "Delete a custom role; rejected with 400 role.in_use while users reference it",
         "operationId": "adminRoleDelete",
         "security": [
           {
@@ -4649,7 +5672,7 @@
           "Admin"
         ],
         "summary": "Edit API token scopes",
-        "description": "Rewrites the token's scope list. Only metadata changes (plaintext and digest stay the same), so callers do not need a new token — the next request is checked against the new scopes. super_admin only; every scope must come from the catalog and at least one is required (otherwise 400), an unknown token returns 404.",
+        "description": "Rewrite the token's scope list (plaintext and digest unchanged, no token rotation needed); scopes must come from the catalog, at least one",
         "operationId": "adminApiTokenUpdateScopes",
         "security": [
           {
@@ -4713,7 +5736,7 @@
           "Admin"
         ],
         "summary": "Revoke an API token (disable, keep record)",
-        "description": "Disables the token (enabled=0): immediately invalid, but both the record and its digest are kept — which makes it **restorable**: an integrated-service credential disabled this way is restored (the original plaintext keeps working, no CD change) once that service is enabled again. Use DELETE to burn/rotate it for good (hard delete, unrecoverable). Super admin only.",
+        "description": "Disable a token (enabled=0, immediately invalid but restorable); use DELETE to burn it permanently",
         "operationId": "adminApiTokenRevoke",
         "security": [
           {
@@ -4821,7 +5844,7 @@
           "Admin"
         ],
         "summary": "Get integrated service enablement status",
-        "description": "Reads the integrated_services contract row (CI is the only writer; integrated services are read-only). When no row exists, a default enabled=false state is returned (no seeding). Requires the ci.system permission.",
+        "description": "Read the integrated_services contract row; a missing row returns a default enabled=false state",
         "operationId": "adminIntegratedServiceStatus",
         "security": [
           {
@@ -4865,7 +5888,7 @@
                         "auto",
                         "manual"
                       ],
-                      "description": "Provision mode: auto = the integrated service may create tables automatically; manual = only pre-created tables are accepted"
+                      "description": "DDL authorization: auto = may create tables/add columns; manual = operator-provisioned tables only"
                     },
                     "default_provision": {
                       "type": "string",
@@ -4946,7 +5969,7 @@
           "Admin"
         ],
         "summary": "Enable integrated service (issue a new credential, or restore the frozen one)",
-        "description": "In one transaction: writes provision according to the current CI DB_AUTO_MIGRATE mode (optionally overridden via body.provision = auto/manual), issues a service token restricted to build.read/build.write/rbac.user.write, and upserts the integrated_services row. The plaintext token is returned in the response exactly once. Returns 409 only when the contract row is enabled **and its credential is still valid** (a genuine duplicate enable; untick then tick Enable to rotate). When it is enabled but the credential is dead (revoked/deleted in the token list, or expired) the call takes the re-issue path instead: the dead credential is retired, a new one is issued and re-bound to the contract row in the same transaction, and the response carries reissued=true. super_admin only.",
+        "description": "Enable an integrated service and issue its service token: first enable issues a new token (plaintext returned once); a frozen credential is restored (reused=true); a dead credential is retired and replaced (reissued=true)",
         "operationId": "adminIntegratedServiceEnable",
         "security": [
           {
@@ -5015,18 +6038,18 @@
                     },
                     "reused": {
                       "type": "boolean",
-                      "description": "true = this run restored the previously frozen credential (no plaintext is returned again; CD needs no CI_API_TOKEN change)"
+                      "description": "This run restored the frozen credential (no plaintext returned; CD needs no token change)"
                     },
                     "reissued": {
                       "type": "boolean",
-                      "description": "true = the contract row was already enabled and only a new credential was re-issued (the old one is retired; CD must switch to the new token)"
+                      "description": "The credential was re-issued (old one retired; CD must switch to the new token)"
                     },
                     "token": {
                       "type": [
                         "string",
                         "null"
                       ],
-                      "description": "One-time plaintext token (dg_ prefix): returned only when a new credential is issued (first enable / re-issue after a burn); null on the restore path (the caller already holds that plaintext)"
+                      "description": "One-time plaintext token (dg_ prefix): returned when a new credential is issued, null on the restore path"
                     }
                   }
                 }
@@ -5046,7 +6069,7 @@
             "description": "Unknown integrated service"
           },
           "409": {
-            "description": "Service already enabled with a valid credential (genuine duplicate; a dead credential does not 409 but re-issues)"
+            "description": "Service already enabled with a valid credential"
           },
           "500": {
             "$ref": "#/components/responses/500"
@@ -5060,7 +6083,7 @@
           "Admin"
         ],
         "summary": "Disable integrated service (freeze service and disable its token)",
-        "description": "In one transaction sets enabled=0 (the integrated service immediately rejects all requests) and disables the bound service token (api_tokens.enabled=0). **Disabling is a freeze, not a burn**: both the credential row and the contract row api_token_id are kept, so enabling the service again restores the very same credential — the original plaintext keeps working and CD needs no CI_API_TOKEN change (to burn/rotate it, revoke or delete that token in the token list first). No integrated-service tables or data are deleted. Returns 409 if it was never enabled. super_admin only.",
+        "description": "Disable an integrated service (freeze, not burn): credential and binding are kept, re-enabling restores the same credential",
         "operationId": "adminIntegratedServiceDisable",
         "security": [
           {
@@ -5126,7 +6149,7 @@
           "Admin"
         ],
         "summary": "CD deployment audit log list",
-        "description": "Read-only paginated query of CD deployment audit logs (fetched from CD's read-only /api/integration/deploy-logs endpoint; CD tables are never read directly). Defaults to the last 30 days when date_from/date_to are omitted; returns an empty list with available=false when CD is not enabled or the endpoint is unavailable. Requires ci.deploy-logs permission.",
+        "description": "Paginated CD deployment audit logs (read via CD's read-only endpoint), last 30 days by default",
         "operationId": "adminDeployLogList",
         "security": [
           {
@@ -5273,13 +6296,213 @@
         }
       }
     },
+    "/api/admin/custom_builds": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Custom_Push build records",
+        "description": "Paginated list of build records reported via custom_push, newest first.",
+        "operationId": "adminCustomBuildList",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Build records",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "records": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "page": {
+                      "type": "integer"
+                    },
+                    "per_page": {
+                      "type": "integer"
+                    },
+                    "total_pages": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "Missing ci.build-records.push permission"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        }
+      }
+    },
+    "/api/admin/operation_logs": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Operation audit log",
+        "description": "Paginated admin operation audit log; username is a fuzzy match, other filters are exact.",
+        "operationId": "adminOperationLogList",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "username",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Operator (fuzzy match)"
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Action type (exact match)"
+          },
+          {
+            "name": "result",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Result (exact match)"
+          },
+          {
+            "name": "operator_type",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Operator type (exact match)"
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Start date, inclusive (YYYY-MM-DD)"
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "End date, inclusive (YYYY-MM-DD)"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Audit log entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "total": {
+                      "type": "integer"
+                    },
+                    "page": {
+                      "type": "integer"
+                    },
+                    "per_page": {
+                      "type": "integer"
+                    },
+                    "total_pages": {
+                      "type": "integer"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "Missing ci.operation-logs permission"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        }
+      }
+    },
     "/api/admin/api_access_logs": {
       "get": {
         "tags": [
           "Admin"
         ],
         "summary": "API Token call audit log list",
-        "description": "Read-only paginated query of API Token call audit logs. Returns audit fields only (token display name etc.); never the token plaintext/hash/body/query. Defaults to the last 30 days when date_from/date_to are omitted. Values outside the result/method whitelists are ignored. Requires ci.api-logs permission.",
+        "description": "Paginated query of API token call audit logs, defaulting to the last 30 days",
         "operationId": "adminApiAccessLogList",
         "security": [
           {
@@ -5454,7 +6677,7 @@
           "SSO"
         ],
         "summary": "OIDC Discovery document",
-        "description": "Returns the OIDC discovery document (RFC 8414) so Jenkins/Harbor/GitLab clients can auto-discover endpoints.",
+        "description": "Returns the OIDC discovery document (RFC 8414)",
         "operationId": "oidcDiscovery",
         "responses": {
           "200": {
@@ -5476,7 +6699,7 @@
           "SSO"
         ],
         "summary": "OIDC JWKS public keys",
-        "description": "Returns the RS256 public key (n/e/kid) used to verify id_tokens. Never contains the private key.",
+        "description": "Returns the RS256 public key (n/e/kid) used to verify id_tokens. Does not contain private key.",
         "operationId": "oidcJwks",
         "responses": {
           "200": {
@@ -5498,7 +6721,7 @@
           "SSO"
         ],
         "summary": "OAuth authorization login page",
-        "description": "Browser redirect entry point. Validates client_id/redirect_uri and renders the login form (HTML).",
+        "description": "Browser redirect entry: validates client_id/redirect_uri, renders the login form",
         "operationId": "oauthAuthorizeForm",
         "parameters": [
           {
@@ -5573,7 +6796,7 @@
           "SSO"
         ],
         "summary": "Submit login and issue authorization code",
-        "description": "Form submission (application/x-www-form-urlencoded). On success, 302 redirects to redirect_uri?code=xxx&state=xxx; on failure, 401 with the login form.",
+        "description": "Form login; success 302 to redirect_uri?code&state, failure 401",
         "operationId": "oauthAuthorizeSubmit",
         "requestBody": {
           "required": true,
@@ -5634,7 +6857,7 @@
           "SSO"
         ],
         "summary": "Exchange authorization code for tokens",
-        "description": "Exchanges code for access_token (plus id_token when scope includes openid). Client credentials via form or HTTP Basic Auth (RFC 6749 §2.3.1).",
+        "description": "Exchange code for access_token (plus id_token when scope includes openid); client credentials via form or Basic Auth",
         "operationId": "oauthToken",
         "requestBody": {
           "required": true,
@@ -5712,6 +6935,34 @@
             "description": "invalid_token"
           }
         }
+      },
+      "post": {
+        "tags": [
+          "SSO"
+        ],
+        "summary": "User info",
+        "description": "Same as GET; the token goes in the Authorization header.",
+        "operationId": "oauthUserInfoPost",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User info",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OidcUserInfo"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "invalid_token"
+          }
+        }
       }
     },
     "/oauth/userinfo/emails": {
@@ -5763,8 +7014,8 @@
         "tags": [
           "Integration"
         ],
-        "summary": "Integration-service contract self-check (for CD; avoids reading the shared database)",
-        "description": "Lets integration services such as CD check at runtime whether Glue has authorized them and with which provisioning mode, instead of reading the shared `integrated_services` table (table name, columns and even the driver are coupling surfaces: a CI schema change can break CD, and a split deployment would break it outright). Verdict semantics: 200 + enabled=false means **not enabled** (no contract row, or enabled=0 — indistinguishable by design) so the service must refuse to serve and perform zero DDL (provision is normalized to auto there purely for log wording and must not be used to create tables); 200 + enabled=true + provision=auto authorizes automatic table creation / column backfill; 200 + enabled=true + provision=manual forbids DDL and accepts only operator-provisioned tables. **404 is strictly different from \"not enabled\"** (the service name is not in the whitelist — a configuration mistake and must not be treated as not-enabled). token_active is advisory only (liveness of the credential bound to the contract row) and must not be used as a gate. The scope reuses build.read; field names mirror the same subset of /api/admin/integrated_services/{service}.",
+        "summary": "Integration-service contract self-check (For CD use only)",
+        "description": "Provides integrated services like CD with runtime self-check. 200   enabled=true   provision=auto means authorized to automatically create tables/add columns; 200   enabled=true   provision=manual means table creation is prohibited.",
         "operationId": "integrationServiceShow",
         "security": [
           {
@@ -5804,7 +7055,7 @@
                         "auto",
                         "manual"
                       ],
-                      "description": "DDL authorization: auto = automatic table creation / column backfill; manual = no DDL, operator-provisioned tables only. Normalized to auto when not enabled (log wording only)"
+                      "description": "DDL authorization: auto = may create tables/add columns; manual = no DDL"
                     },
                     "token_active": {
                       "type": "boolean",
@@ -5829,7 +7080,7 @@
             "description": "Missing build.read scope (or not an API token)"
           },
           "404": {
-            "description": "Service name not in the whitelist (integrated.unknown_service); strictly different from \"not enabled\" (200 + enabled=false)"
+            "description": "Service name not in the whitelist"
           },
           "500": {
             "$ref": "#/components/responses/500"
@@ -5843,7 +7094,7 @@
           "RBAC"
         ],
         "summary": "List all users (CD service account read)",
-        "description": "Returns all users (sorted by username ascending, unpaginated, no password hash). API token only (rbac.user.write scope); interactive login sessions always get 403.",
+        "description": "All users (sorted by username, no password hash); API token with rbac.user.write scope",
         "operationId": "rbacUserList",
         "security": [
           {
@@ -5885,7 +7136,7 @@
           "RBAC"
         ],
         "summary": "Create user (CD service account write)",
-        "description": "Creates a CD user: systems is always cd (not accepted from input), username is lowercased server-side, password must be at least 8 chars, and creating super_admin is forbidden; role must be a role that already exists in the roles table (otherwise 400 role_not_found). API token only (rbac.user.write scope).",
+        "description": "Create a CD user: systems is always cd, username lowercased, password at least 8 chars, super_admin forbidden",
         "operationId": "rbacUserCreate",
         "security": [
           {
@@ -5970,7 +7221,7 @@
           "RBAC"
         ],
         "summary": "Get a single user (CD service account read)",
-        "description": "Returns the specified user (without password hash); 404 if not found. API token only (rbac.user.write scope).",
+        "description": "Returns the specified user (no password hash); 404 if missing",
         "operationId": "rbacUserGet",
         "security": [
           {
@@ -6022,7 +7273,7 @@
           "RBAC"
         ],
         "summary": "Update role / password (CD service account write)",
-        "description": "Partial update: password changes the password when non-empty (min 8 chars); role changes the role when provided (must not be super_admin, must be a role that already exists in the roles table, otherwise 400). The built-in root account and existing super_admin users cannot be modified. API token only (rbac.user.write scope).",
+        "description": "Change password and/or role (super_admin not allowed); root and existing super_admin cannot be changed",
         "operationId": "rbacUserUpdate",
         "security": [
           {
@@ -6057,7 +7308,7 @@
                   },
                   "role": {
                     "type": "string",
-                    "description": "New role name (optional; omitted means unchanged; must be a role that already exists in the roles table)",
+                    "description": "New role name (optional; must already exist in roles)",
                     "example": "viewer"
                   }
                 }
@@ -6104,7 +7355,7 @@
           "RBAC"
         ],
         "summary": "Delete user (CD service account write)",
-        "description": "Deletes the specified user. The built-in root account and super_admin users cannot be deleted. API token only (rbac.user.write scope).",
+        "description": "Delete a user; root and super_admin cannot be deleted",
         "operationId": "rbacUserDelete",
         "security": [
           {
@@ -6164,7 +7415,7 @@
           "RBAC"
         ],
         "summary": "List roles (CD service account read)",
-        "description": "Returns all roles (name + description, sorted by name ascending) for approval-rule role selection. API token only (rbac.user.write scope).",
+        "description": "All roles (name + description, sorted by name)",
         "operationId": "rbacRoleList",
         "security": [
           {
@@ -6208,7 +7459,7 @@
           "RBAC"
         ],
         "summary": "Role permissions (CD service account read)",
-        "description": "Returns the permission keys granted to a role, so CD can converge session permissions and map them (previously only the name/description role catalog existed, leaving CD to hardcode a copy of Glue's permission list). Boundaries: an unknown role returns 404 (kept strictly apart from \"role exists with zero permissions\", so a typo can never be mistaken for \"this role has no permissions\" and silently wipe permissions); super_admin returns [\"*\"] (wildcard, same semantics as permissions:\"*\" on /api/admin/login; that role is granted by code and is not stored in role_permissions, so reading the table would report the super admin as having zero permissions). API token only (rbac.user.write scope, applied to the whole /api/rbac/* prefix).",
+        "description": "Permission keys granted to a role; unknown role 404, super_admin returns [\"*\"]",
         "operationId": "rbacRolePermissions",
         "security": [
           {
@@ -6259,7 +7510,7 @@
             "description": "Not an API token, or missing rbac.user.write scope"
           },
           "404": {
-            "description": "Role does not exist (user.role_not_found); kept apart from \"role exists but was granted nothing\" (200 + empty array)"
+            "description": "Role does not exist"
           },
           "500": {
             "$ref": "#/components/responses/500"

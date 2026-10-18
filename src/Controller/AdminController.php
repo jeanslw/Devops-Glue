@@ -480,17 +480,14 @@ class AdminController extends BaseController
             return $this->jsonError($response, 'map.job_name_required', 400);
         }
 
-        $maps = $this->mapping->allMaps();
-
-        foreach ($maps as $item) {
+        foreach ($this->mapping->allMaps() as $item) {
             if (($item['job_name'] ?? '') === $jobName) {
                 return $this->jsonError($response, $this->__('map.already_exists', ['{name}' => $jobName]), 409);
             }
         }
 
         $entry = $this->buildEntry($body);
-        $maps[] = $entry;
-        $this->mapping->saveMaps($maps);
+        $this->mapping->saveMap($entry);
         $this->invalidateTopologyCache();
 
         $this->opLog()->record($this->currentUser, 'create_mapping', $jobName, [], $this->clientIp($request), 'success');
@@ -514,13 +511,9 @@ class AdminController extends BaseController
             return $this->jsonError($response, 'map.original_name_required', 400);
         }
 
-        $maps = $this->mapping->allMaps();
         $found = false;
-        $updatedEntry = null;
-        foreach ($maps as $i => $item) {
+        foreach ($this->mapping->allMaps() as $item) {
             if (($item['job_name'] ?? '') === $oldName) {
-                $maps[$i] = $this->buildEntry($body);
-                $updatedEntry = $maps[$i];
                 $found = true;
                 break;
             }
@@ -530,7 +523,16 @@ class AdminController extends BaseController
             return $this->jsonError($response, $this->__('map.not_found', ['{name}' => $oldName]), 404);
         }
 
-        $this->mapping->saveMaps($maps);
+        $updatedEntry = $this->buildEntry($body);
+        $newName      = trim((string) ($updatedEntry['job_name'] ?? ''));
+        if ($newName === '') {
+            return $this->jsonError($response, 'map.job_name_required', 400);
+        }
+        // 改名：先写新行再删旧行，任一步失败都不会丢数据
+        $this->mapping->saveMap($updatedEntry);
+        if ($newName !== $oldName) {
+            $this->mapping->deleteMap($oldName);
+        }
         $this->invalidateTopologyCache();
         $this->opLog()->record($this->currentUser, 'update_mapping', $oldName, ['job_name' => $updatedEntry['job_name'] ?? $oldName], $this->clientIp($request), 'success');
         return $this->output($response, ['success' => true, 'entry' => $updatedEntry], $request);
@@ -1556,8 +1558,15 @@ class AdminController extends BaseController
             }
             $sql = \App\Service\Database::sqlUpsert(AppConfig::TABLE_IMPLIED_RULES, 'source_key, target_key', '?, ?');
             $pdo->prepare($sql)->execute([$src, $tgt]);
-            $this->opLog()->record($this->currentUser, 'create_implied_rule', $src . ' → ' . $tgt, [], $this->clientIp($request), 'success');
-            return $this->output($response, ['source_key' => $src, 'target_key' => $tgt], $request);
+            // 隐含权限只在角色创建/更新时展开，写入规则后对自定义角色重算一次
+            $resynced = 0;
+            try {
+                $resynced = $this->resyncImpliedPermissions();
+            } catch (\Exception $e) {
+                \App\Helper\Log::exception($e);
+            }
+            $this->opLog()->record($this->currentUser, 'create_implied_rule', $src . ' → ' . $tgt, ['roles_resynced' => $resynced], $this->clientIp($request), 'success');
+            return $this->output($response, ['source_key' => $src, 'target_key' => $tgt, 'roles_resynced' => $resynced], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.save_failed') . ': ' . $e->getMessage(), 500);
         }
@@ -2632,6 +2641,48 @@ class AdminController extends BaseController
             }
         }
         return $result;
+    }
+
+    /**
+     * 隐含规则变更后，对自定义角色（is_system=0）重算权限，补进新规则带来的隐含权限。
+     *
+     * 只补不删，重复执行幂等；删除规则不回撤（无法区分显式与隐含带来的权限）。
+     *
+     * @return int 实际补了权限的角色数
+     */
+    private function resyncImpliedPermissions(): int
+    {
+        $pdo       = $this->pdo;
+        $validKeys = $this->allPermissionKeys();
+        $roles     = $pdo->query(
+            "SELECT id FROM " . AppConfig::TABLE_ROLES . " WHERE is_system = 0"
+        )->fetchAll(\PDO::FETCH_COLUMN);
+
+        $permSelect = $pdo->prepare("SELECT perm_key FROM " . AppConfig::TABLE_ROLE_PERMISSIONS . " WHERE role_id = ?");
+        $permInsert = $pdo->prepare("INSERT INTO " . AppConfig::TABLE_ROLE_PERMISSIONS . " (role_id, perm_key) VALUES (?, ?)");
+
+        $affected = 0;
+        foreach ($roles as $roleId) {
+            $roleId = (int)$roleId;
+            $permSelect->execute([$roleId]);
+            $current  = $permSelect->fetchAll(\PDO::FETCH_COLUMN);
+            $expanded = $this->expandPermissions($current);
+            $added    = 0;
+            foreach ($expanded as $pk) {
+                if (!in_array($pk, $current, true) && in_array($pk, $validKeys, true)) {
+                    try {
+                        $permInsert->execute([$roleId, $pk]);
+                        $added++;
+                    } catch (\Exception $e) {
+                        \App\Helper\Log::exception($e);
+                    }
+                }
+            }
+            if ($added > 0) {
+                $affected++;
+            }
+        }
+        return $affected;
     }
 
     /**

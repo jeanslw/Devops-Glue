@@ -48,16 +48,17 @@ class TokenServiceTest extends TestCase
     {
         $this->pdo->exec('CREATE TABLE ' . AppConfig::TABLE_ADMIN_USERS . ' (
             username TEXT PRIMARY KEY,
-            status INTEGER NOT NULL DEFAULT 1
+            status INTEGER NOT NULL DEFAULT 1,
+            role TEXT NOT NULL DEFAULT "admin"
         )');
     }
 
-    private function seedUser(string $username, int $status): void
+    private function seedUser(string $username, int $status, string $role = 'admin'): void
     {
         $stmt = $this->pdo->prepare(
-            'INSERT INTO ' . AppConfig::TABLE_ADMIN_USERS . ' (username, status) VALUES (?, ?)'
+            'INSERT INTO ' . AppConfig::TABLE_ADMIN_USERS . ' (username, status, role) VALUES (?, ?, ?)'
         );
-        $stmt->execute([$username, $status]);
+        $stmt->execute([$username, $status, $role]);
     }
 
     public function testNormalUsernameParsesRoleCorrectly(): void
@@ -133,6 +134,35 @@ class TokenServiceTest extends TestCase
         $this->createAdminUsersTable();
         $this->seedToken('tok_deleted', 'ghost|admin');
         $this->assertNull($this->service->validate('tok_deleted'));
+    }
+
+    public function testRoleDowngradeTakesEffectImmediately(): void
+    {
+        // 降权即时生效：token 里冻结的是 super_admin，DB 里已降为 viewer，以 DB 为准。
+        // 否则 super_admin 在 hasPermission() 里无条件放行，降权最长延迟一个 token 周期（24h）。
+        $this->createAdminUsersTable();
+        $this->seedUser('alice', 1, 'viewer');
+        $this->seedToken('tok_demoted', 'alice|super_admin');
+        $result = $this->service->validate('tok_demoted');
+        $this->assertNotNull($result);
+        $this->assertSame('alice', $result['user']);
+        $this->assertSame('viewer', $result['role']);
+    }
+
+    public function testMissingRoleColumnFallsBackToCachedRole(): void
+    {
+        // 旧库无 role 列：回查抛异常 → 沿用登录时冻结的角色，不阻断已登录会话（fail-open 保可用）
+        $this->pdo->exec('CREATE TABLE ' . AppConfig::TABLE_ADMIN_USERS . ' (
+            username TEXT PRIMARY KEY,
+            status INTEGER NOT NULL DEFAULT 1
+        )');
+        $this->pdo->prepare(
+            'INSERT INTO ' . AppConfig::TABLE_ADMIN_USERS . ' (username, status) VALUES (?, ?)'
+        )->execute(['alice', 1]);
+        $this->seedToken('tok_norole', 'alice|admin');
+        $result = $this->service->validate('tok_norole');
+        $this->assertNotNull($result);
+        $this->assertSame('admin', $result['role']);
     }
 
     public function testMissingStatusColumnDoesNotLockOut(): void

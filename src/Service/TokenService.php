@@ -52,14 +52,19 @@ class TokenService
                 }
                 $role = array_pop($parts);
                 $user = implode('|', $parts);
-                // 停用/删除账号即时踢下线：token 命中缓存后仍要回查账号状态，
-                // 否则管理员停用某账号后，其尚未过期的旧 token 依然能继续调接口。
-                if (!$this->isAccountActive($user)) {
+                // 回查账号当前状态与角色：停用 / 删除 / 降权对未过期的旧 token 同样生效
+                $state = $this->accountState($user);
+                if (!$state['active']) {
                     return null;
+                }
+                // 回查不到角色（DB 异常 / 旧库无 role 列）时沿用登录时冻结的角色
+                $currentRole = $state['role'] ?? '';
+                if ($currentRole === '') {
+                    $currentRole = $role;
                 }
                 return [
                     'user' => $user,
-                    'role' => $role !== '' ? $role : AppConfig::ROLE_ADMIN,
+                    'role' => $currentRole !== '' ? $currentRole : AppConfig::ROLE_ADMIN,
                 ];
             }
         } catch (\Exception $e) {
@@ -69,27 +74,31 @@ class TokenService
     }
 
     /**
-     * 回查账号是否仍有效（未停用、未删除）。
+     * 回查账号当前状态与角色。
      *
-     * - status 明确为 0（停用）：返回 false，token 立即失效（踢下线）。
-     * - 查无此行（账号已被删除）：返回 false，同样失效。
-     * - 查询抛异常（DB 不可达 / 旧库无 status 列）：返回 true 放行，
-     *   状态回查失败不阻断已登录 token 的校验（保证可用性）。
+     * status 为 0 或查无此行 → active = false；查询异常 → active = true 且 role = null（不阻断已登录会话）。
+     *
+     * @return array{active: bool, role: ?string}
      */
-    private function isAccountActive(string $username): bool
+    private function accountState(string $username): array
     {
         try {
             $stmt = $this->pdo->prepare(
-                "SELECT status FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE username = ?"
+                "SELECT status, role FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE username = ?"
             );
             $stmt->execute([$username]);
-            $status = $stmt->fetchColumn();
-            if ($status === false) {
-                return false; // 无此行 = 账号已删除
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if ($row === false) {
+                return ['active' => false, 'role' => null]; // 无此行 = 账号已删除
             }
-            return $status === null ? true : (int)$status !== 0;
+            $status = $row['status'] ?? null;
+            $active = $status === null ? true : (int)$status !== 0;
+            return [
+                'active' => $active,
+                'role'   => isset($row['role']) ? (string)$row['role'] : null,
+            ];
         } catch (\Exception $e) {
-            return true;
+            return ['active' => true, 'role' => null];
         }
     }
 

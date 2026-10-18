@@ -69,45 +69,94 @@ class MappingManager
     }
 
     /**
-     * 全量覆盖保存：upsert 传入行，并删除 DB 中存在但本次未提交的行。
+     * 单行写入：只动这一条映射，不触碰其他行。
+     *
+     * 管理页的新增/编辑走这里，避免「读全表 → 改一条 → 全量回写」在并发下互相覆盖。
+     *
+     * @param array<string,mixed> $row
+     */
+    public function saveMap(array $row): void
+    {
+        if (empty($row['job_name'])) {
+            return;
+        }
+        $this->pdo
+            ->prepare($this->upsertSql())
+            ->execute($this->rowValues($row));
+    }
+
+    /**
+     * 批量覆盖保存：upsert 传入行，并删除 DB 中存在但本次未提交的行。
+     *
+     * 只用于批量变更（自动发现、provider 关闭时批量降 pending）；单行变更请用 {@see saveMap()}。
      *
      * @param array<int,array<string,mixed>> $data
      */
     public function saveMaps(array $data): void
     {
-        $cols = 'job_name,git_platform,build_provider,git_remote,project_id,web_url,current_path,harbor_repository,api_version,status';
-        $upsertSql = Database::sqlUpsert(AppConfig::TABLE_JOB_GIT_MAP, $cols, '?,?,?,?,?,?,?,?,?,?');
-        $upsertStmt = $this->pdo->prepare($upsertSql);
-
-        $incomingNames = [];
-        foreach ($data as $row) {
-            if (empty($row['job_name'])) {
-                continue;
-            }
-            $incomingNames[] = $row['job_name'];
-            $upsertStmt->execute([
-                $row['job_name'],
-                $row['git_platform'] ?? null,
-                $row['build_provider'] ?? AppConfig::PROVIDER_JENKINS,
-                $row['git_remote'] ?? null,
-                $row['project_id'] ?? null,
-                $row['web_url'] ?? null,
-                $row['current_path'] ?? null,
-                $row['harbor_repository'] ?? null,
-                $row['api_version'] ?? null,
-                $row['status'] ?? AppConfig::STATUS_ACTIVE,
-            ]);
+        $rows = array_values(array_filter($data, fn($row) => !empty($row['job_name'])));
+        if ($rows === []) {
+            // 空输入一律拒绝：早期实现会据此清空整表
+            throw new \InvalidArgumentException('saveMaps: 空数据不做全表清理');
         }
 
-        // 删除 DB 中存在但传入数据里已移除的行（不再全表删除）
-        if (!empty($incomingNames)) {
-            $placeholders = implode(',', array_fill(0, count($incomingNames), '?'));
+        // 调用方可能已在事务里（如平台接入更新），只在自己开启时才提交/回滚
+        $own = !$this->pdo->inTransaction();
+        if ($own) {
+            $this->pdo->beginTransaction();
+        }
+        try {
+            $stmt = $this->pdo->prepare($this->upsertSql());
+            foreach ($rows as $row) {
+                $stmt->execute($this->rowValues($row));
+            }
+
+            $names        = array_column($rows, 'job_name');
+            $placeholders = implode(',', array_fill(0, count($names), '?'));
             $this->pdo
                 ->prepare("DELETE FROM " . AppConfig::TABLE_JOB_GIT_MAP . " WHERE job_name NOT IN ({$placeholders})")
-                ->execute($incomingNames);
-        } else {
-            $this->pdo->exec("DELETE FROM " . AppConfig::TABLE_JOB_GIT_MAP);
+                ->execute($names);
+
+            if ($own) {
+                $this->pdo->commit();
+            }
+        } catch (\Throwable $e) {
+            if ($own) {
+                try {
+                    $this->pdo->rollBack();
+                } catch (\Throwable $rollbackError) {
+                    // 事务已被数据库自行回滚，忽略
+                }
+            }
+            throw $e;
         }
+    }
+
+    private function upsertSql(): string
+    {
+        $cols = 'job_name,git_platform,build_provider,git_remote,project_id,web_url,'
+            . 'current_path,harbor_repository,api_version,status';
+        return Database::sqlUpsert(AppConfig::TABLE_JOB_GIT_MAP, $cols, '?,?,?,?,?,?,?,?,?,?');
+    }
+
+    /**
+     * @param array<string,mixed> $row
+     * @return list<mixed>
+     */
+    private function rowValues(array $row): array
+    {
+        return [
+            $row['job_name'],
+            $row['git_platform'] ?? null,
+            $row['build_provider'] ?? AppConfig::PROVIDER_JENKINS,
+            $row['git_remote'] ?? null,
+            $row['project_id'] ?? null,
+            $row['web_url'] ?? null,
+            $row['current_path'] ?? null,
+            $row['harbor_repository'] ?? null,
+            $row['api_version'] ?? null,
+            $row['status'] ?? AppConfig::STATUS_ACTIVE,
+        ];
     }
 
     /** 单条删除映射 */

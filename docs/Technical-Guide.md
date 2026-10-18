@@ -501,7 +501,7 @@ Performs no external probing; returns the stats cards + system info + Custom_Pus
 
 #### 5.3.1 Data Writing
 - **Manual add/edit:** Admin UI → AdminController CRUD
-- **Auto-discovery:** `POST /api/admin/discover` → `AutoDiscover::discover()` scans all Jenkins jobs, parses SCM config to extract Git URLs → `saveDiscovered()` writes to `ci_job_git_map`
+- **Auto-discovery:** `POST /api/admin/discover` → `AutoDiscover::discover()` scans every enabled and configured source (Jenkins / GitLab CI / Gitea Actions / GitHub Actions, plus the connected Git platforms), extracts Git URLs → `saveDiscovered()` writes to `ci_job_git_map` as pending; a mapping takes effect only after being enabled manually
 
 #### 5.3.2 Data Reading & Grouping
 `MainController::mapList()` logic:

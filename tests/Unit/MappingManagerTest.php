@@ -217,4 +217,36 @@ class MappingManagerTest extends TestCase
         $this->assertSame(AppConfig::PROVIDER_GITEA_CI, $r['provider']);
         $this->assertSame('org/repo', $r['projectId']);
     }
+
+    public function testSaveMapOnlyTouchesOneRow(): void
+    {
+        // 单行写入不动其他行：避免「读全表 → 改一条 → 全量回写」把并发的他人改动覆盖掉
+        $this->insertMap(['job_name' => 'job-a', 'current_path' => 'job-a']);
+        $this->insertMap(['job_name' => 'job-b', 'current_path' => 'job-b']);
+
+        $this->makeManager()->saveMap([
+            'job_name'       => 'job-a',
+            'current_path'   => 'job-a',
+            'harbor_repository' => 'lib/job-a',
+        ]);
+
+        $rows = $this->pdo->query('SELECT job_name, harbor_repository FROM ' . AppConfig::TABLE_JOB_GIT_MAP . ' ORDER BY job_name')->fetchAll();
+        $this->assertCount(2, $rows);
+        $this->assertSame('lib/job-a', $rows[0]['harbor_repository']);
+        $this->assertNull($rows[1]['harbor_repository']);
+    }
+
+    public function testSaveMapsRejectsEmptyData(): void
+    {
+        // 空输入必须拒绝，不能落到「删除全部映射」的分支
+        $this->insertMap(['job_name' => 'job-a', 'current_path' => 'job-a']);
+
+        $this->expectException(\InvalidArgumentException::class);
+        try {
+            $this->makeManager()->saveMaps([]);
+        } finally {
+            $count = (int) $this->pdo->query('SELECT count(*) FROM ' . AppConfig::TABLE_JOB_GIT_MAP)->fetchColumn();
+            $this->assertSame(1, $count);
+        }
+    }
 }

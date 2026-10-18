@@ -276,7 +276,7 @@ class MainController extends BaseController
                 $checks['jenkins'] = false;
             }
         } else {
-            $checks['jenkins'] = null; // gitlab_ci 模式不查 Jenkins
+            $checks['jenkins'] = null; // 构建模式未启用 Jenkins，不探测
         }
 
         // Git 平台连通性检查
@@ -618,7 +618,7 @@ class MainController extends BaseController
     }
 
     /**
-     * 文档鉴权：验证 Bearer token 或 ?token= 参数（兼容旧版 base64 token）
+     * 文档鉴权：只认 Authorization: Bearer（兼容旧版 base64 token）
      * 返回 true/false，由调用方决定显示内容或拒绝
      */
     private function checkDocsAuth(Request $request): bool
@@ -628,12 +628,10 @@ class MainController extends BaseController
             return $this->tokenService?->isFirstInit() ?? false;
         }
 
-        $token = $request->getQueryParams()['token'] ?? '';
-        if (empty($token)) {
-            $header = $request->getHeaderLine('Authorization');
-            if (preg_match('/^Bearer\s+(.+)$/i', $header, $m)) {
-                $token = $m[1];
-            }
+        $token = '';
+        $header = $request->getHeaderLine('Authorization');
+        if (preg_match('/^Bearer\s+(.+)$/i', $header, $m)) {
+            $token = $m[1];
         }
         if (empty($token)) {
             return false;

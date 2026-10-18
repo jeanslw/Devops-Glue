@@ -21,10 +21,7 @@ if (!isset($app) || !$app instanceof App) {
     throw new \RuntimeException('routes.php 必须由应用入口在 $app（Slim\App）就绪后加载');
 }
 
-// 管理页面
-// admin.html 里的静态资源都写成 /assets/xxx.js?v={{APP_VERSION}}：资源文件名不带内容哈希，
-//    若 URL 不随版本变化，升级镜像后浏览器会继续用被强缓存的旧 JS/CSS（HTML 已是新版），
-//    表现为新增的前端功能始终不出现。故此处必须与 / 路由一致，把占位符替换为当前版本号。
+// 管理页面：{{APP_VERSION}} 换成当前版本号，使资源 URL 随版本变化，避免浏览器沿用旧 JS/CSS
 $app->get('/admin', function ($request, $response) {
     $htmlFile = __DIR__ . '/../templates/admin.html';
     $html = file_exists($htmlFile) ? (string) file_get_contents($htmlFile) : '<h1>Page Not Found / 页面丢失</h1>';
@@ -32,9 +29,7 @@ $app->get('/admin', function ($request, $response) {
     return $response->withHeader('Content-Type', 'text/html; charset=utf-8');
 });
 
-// 存活/就绪探针（无需鉴权）：供 Uptime Kuma / 云 LB / 容器编排抓取。
-// 只探 DB 可达性 + schema 版本，DB 不可访问时返回 503（而非 500）。
-// 独立 HealthzController（零构造依赖），避免经 MainController 的 \PDO DI 解析在 DB 宕机时先抛 500。
+// 存活探针（无需鉴权）：只探 DB 可达性与 schema 版本，DB 不可访问返回 503
 $app->get('/healthz', [HealthzController::class, '__invoke']);
 
 $app->group('/api', function (RouteCollectorProxy $api) {
@@ -47,8 +42,7 @@ $app->group('/api', function (RouteCollectorProxy $api) {
     // 国际化：获取指定语言的语言包（供前端使用）
     $api->get('/i18n/{locale}', [MainController::class, 'i18n']);
 
-    // API 文档 (Swagger UI) —— 页面轻量放行，数据鉴权在 openapi.json/各 API；
-    // 登录框内嵌页面（swagger.html），无独立登录路由
+    // API 文档页面：登录框内嵌在页面中，数据鉴权在 openapi.json 与各 API
     $api->get('/docs', [MainController::class, 'docs']);
 
     // OpenAPI 规范 —— 需登录
@@ -107,7 +101,7 @@ $app->group('/api', function (RouteCollectorProxy $api) {
             $auth->map(['PUT'], '/oidc_config', [AdminController::class, 'updateOidcConfig']);
             $auth->map(['GET'], '/platform_connections', [AdminController::class, 'platformConnections']);
             $auth->map(['PUT'], '/platform_connections', [AdminController::class, 'updatePlatformConnections']);
-            // 手动触发 tag 定时任务（与开关同权限 ci.platform-config，后端仍校验开关必须先开启）
+            // 手动触发 tag 定时任务：后端仍校验开关已开启
             $auth->map(['POST'], '/tag_cleanup', [AdminController::class, 'runTagCleanup']);
             $auth->map(['POST'], '/tag_backfill', [AdminController::class, 'runTagBackfill']);
             $auth->map(['GET'], '/system_info', [AdminController::class, 'systemInfo']);
@@ -120,15 +114,14 @@ $app->group('/api', function (RouteCollectorProxy $api) {
             $auth->map(['PUT'], '/api_tokens/{id}/scopes', [AdminController::class, 'apiTokenUpdateScopes']);
             $auth->map(['POST'], '/api_tokens/{id}/revoke', [AdminController::class, 'apiTokenRevoke']);
             $auth->map(['DELETE'], '/api_tokens/{id}', [AdminController::class, 'apiTokenDelete']);
-            // 集成服务启停（integrated_services 契约表；读 ci.system，写仅 super_admin，启用自动签发限定 scope token）
+            // 集成服务启停：读 ci.system，写仅 super_admin，启用时自动签发限定 scope 的 token
             $auth->map(['GET'], '/integrated_services/{service}', [IntegratedServiceController::class, 'status']);
             $auth->map(['POST'], '/integrated_services/{service}/enable', [IntegratedServiceController::class, 'enable']);
             $auth->map(['POST'], '/integrated_services/{service}/disable', [IntegratedServiceController::class, 'disable']);
         })->add(AuthMiddleware::class);
     });
 
-    // 集成服务契约（窄只读端点，供 CD 等集成服务 HTTP 自检「是否被授权 / 以哪种方式建表」，
-    // 免于直读共享库的 integrated_services 表；scope 复用 build.read，与管理面 /api/admin/integrated_services/* 分离）
+    // 集成服务契约：供 CD 自检是否被授权，免于直读 integrated_services 表；scope 复用 build.read
     $api->group('/integration', function (RouteCollectorProxy $integration) {
         $integration->map(['GET'], '/services/{service}', [ServiceContractController::class, 'show']);
     })->add(AuthMiddleware::class);
@@ -143,7 +136,7 @@ $app->group('/api', function (RouteCollectorProxy $api) {
         $rbac->map(['GET'], '/users', [RbacController::class, 'userList']);
         $rbac->map(['GET'], '/users/{username}', [RbacController::class, 'userGet']);
         $rbac->map(['GET'], '/roles', [RbacController::class, 'roleList']);
-        // 角色权限清单（CD 权限映射用；scope 仍由 ApiScopeResolver 按整段 /api/rbac/* 统一判 rbac.user.write）
+        // 角色权限清单（CD 权限映射用）
         $rbac->map(['GET'], '/roles/{name}/permissions', [RbacController::class, 'rolePermissions']);
     })->add(AuthMiddleware::class);
 
@@ -169,8 +162,7 @@ $app->group('/api', function (RouteCollectorProxy $api) {
     })->add(AuthMiddleware::class);
 
     $api->group('/git', function (RouteCollectorProxy $git) {
-        // {path:.+} 允许 group/sub/repo 形式的多级 job/仓库标识（内部再做平台侧编码）。
-        // tags / refs 供 CD 构建页做 ref 候选值（refs 一次返回分支 + tag，省一次映射解析）。
+        // {path:.+} 支持 group/sub/repo 多级标识；refs 一次返回分支 + tag
         $git->map(['GET', 'POST'], '/{path:.+}/branches', [GitController::class, 'branches']);
         $git->map(['GET', 'POST'], '/{path:.+}/tags', [GitController::class, 'tags']);
         $git->map(['GET', 'POST'], '/{path:.+}/refs', [GitController::class, 'refs']);
@@ -186,7 +178,7 @@ $app->group('/api', function (RouteCollectorProxy $api) {
 });
 
 // OAuth2 Provider（授权码流程，供外部系统用 Glue 账号登录）
-// 本组路由不挂 AuthMiddleware：authorize 由浏览器直接跳转，token / userinfo 各自校验凭证。
+// 不挂 AuthMiddleware：authorize 由浏览器跳转，token / userinfo 各自校验凭证
 $app->group('/oauth', function (RouteCollectorProxy $oauth) {
     $oauth->get('/authorize',  [OAuthController::class, 'authorizeForm']);
     $oauth->post('/authorize', [OAuthController::class, 'authorizeSubmit']);
@@ -197,8 +189,7 @@ $app->group('/oauth', function (RouteCollectorProxy $oauth) {
     $oauth->get('/userinfo/emails', [OAuthController::class, 'userinfoEmails']);
 });
 
-// OIDC Discovery / JWKS（供 Jenkins oic-auth / Harbor OIDC / GitLab OmniAuth 自动发现）
-// 顶层、不挂 AuthMiddleware：公开元数据，仅含公钥，不泄露私钥。
+// OIDC Discovery / JWKS（供 Jenkins / Harbor / GitLab 自动发现）；公开元数据，仅含公钥
 $app->get('/.well-known/openid-configuration', [OAuthController::class, 'discovery']);
 $app->get('/.well-known/jwks.json',              [OAuthController::class, 'jwks']);
 

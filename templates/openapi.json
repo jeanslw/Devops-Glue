@@ -98,6 +98,16 @@
           }
         }
       },
+      "403": {
+        "description": "无权限",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
       "404": {
         "description": "资源不存在",
         "content": {
@@ -150,7 +160,7 @@
               "jenkins": {
                 "type": "boolean",
                 "nullable": true,
-                "description": "true=可达, false=不可达, null=gitlab_ci 模式"
+                "description": "true=可达, false=不可达, null=构建模式未启用 Jenkins（不探测）"
               },
               "jenkins_version": {
                 "type": "string",
@@ -250,18 +260,18 @@
           "seed_version": {
             "type": "string",
             "nullable": true,
-            "description": "已应用的种子版本（仅 DB_AUTO_MIGRATE=false 手动建库模式记录；自动建库模式为 null，以 schema_version 为准）",
+            "description": "已应用的种子版本（手动建库模式记录；自动建库模式为 null）",
             "example": "2.10.0"
           },
           "schema_current": {
             "type": "boolean",
             "nullable": true,
-            "description": "库结构是否对齐当前代码版本；无 schema_version（结构迁移未执行，如手动建库模式未跑 cli/migrate.php，即使有 seed_version）时为 null（未知：不降级也不谎报对齐）",
+            "description": "库结构是否与当前代码版本对齐；无 schema_version 时为 null（未知）",
             "example": true
           },
           "schema_ahead": {
             "type": "boolean",
-            "description": "方向位：schema_version 高于当前 APP_VERSION 时为 true，即「库比代码新」——典型场景是代码降级/回滚。与 schema_current=false 组合可区分「没跑结构迁移」（ahead=false）与「已回滚」（ahead=true）；无版本记录时为 false",
+            "description": "schema_version 是否高于当前 APP_VERSION（库比代码新，如回滚）",
             "example": false
           },
           "auto_migrate": {
@@ -274,7 +284,7 @@
             "items": {
               "type": "string"
             },
-            "description": "缺失的核心表名（仅在 schema_current=false 且确实缺表时出现）",
+            "description": "缺失的核心表名",
             "example": [
               "ci_job_git_map"
             ]
@@ -284,7 +294,7 @@
             "items": {
               "type": "string"
             },
-            "description": "代码台账自检（Database::schemaListDrift()，纯反射、与库无关）：AppConfig 的 TABLE_* 表常量与 Database::schemaTables() 探测清单不一致时出现，列出「后台数据表清单 / 本探针的 tables_missing 会漏报的表名」，并计入 status=degraded（HTTP 仍 200，不摘流）。正常代码恒不出现；出现即该实例代码未同步清单（升级/手工打补丁绕过了 CI），同时会写一条 error 文件日志并在后台「数据表一致性」行红字点名",
+            "description": "代码台账自检：表常量与探测清单不一致时列出漂移表名，计入 status=degraded",
             "example": [
               "ci_api_access_logs"
             ]
@@ -314,10 +324,7 @@
           },
           "build_provider": {
             "type": "string",
-            "enum": [
-              "jenkins",
-              "gitlab_ci"
-            ],
+            "description": "构建 provider：jenkins / gitlab_ci / gitea_ci / github_actions / custom_push 或自定义名",
             "default": "jenkins"
           },
           "git_remote": {
@@ -372,10 +379,7 @@
             },
             "build_provider": {
               "type": "string",
-              "enum": [
-                "jenkins",
-                "gitlab_ci"
-              ]
+              "description": "构建 provider：jenkins / gitlab_ci / gitea_ci / github_actions / custom_push 或自定义名"
             },
             "git_remote": {
               "type": "string"
@@ -680,7 +684,15 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "各扫描源失败原因（成功则为空数组）"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "本次实际扫描的源"
           },
           "items": {
             "type": "array",
@@ -717,12 +729,15 @@
         "properties": {
           "mode": {
             "type": "string",
-            "enum": [
-              "jenkins",
-              "gitlab_ci",
-              "both"
-            ],
-            "example": "both"
+            "description": "已启用 provider 的逗号连接串，如 jenkins,gitea_ci",
+            "example": "jenkins,gitea_ci"
+          },
+          "modes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "已启用 provider 集合"
           },
           "source": {
             "type": "string",
@@ -784,13 +799,15 @@
         "properties": {
           "mode": {
             "type": "string",
-            "enum": [
-              "jenkins",
-              "gitlab_ci",
-              "both"
-            ],
-            "description": "当前生效的构建模式",
-            "example": "both"
+            "description": "已启用 provider 的逗号连接串，如 jenkins,gitea_ci",
+            "example": "jenkins,gitea_ci"
+          },
+          "modes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "已启用 provider 集合"
           },
           "source": {
             "type": "string",
@@ -1007,7 +1024,7 @@
           },
           "builtin_implied": {
             "type": "object",
-            "description": "内置隐含规则映射（种子数据，不可删除）：source_key → [target_key,...]，用于前端区分内置/用户添加",
+            "description": "内置隐含规则映射（不可删除）",
             "additionalProperties": {
               "type": "array",
               "items": {
@@ -1150,7 +1167,7 @@
             "items": {
               "type": "string"
             },
-            "description": "新的接口权限 scope 列表（必须全部来自 scope 目录且至少一个；含未知 key 或清洗后为空集合返回 400）",
+            "description": "新的 scope 列表（须全部来自 scope 目录且至少一个，否则 400）",
             "example": [
               "main",
               "build.read"
@@ -1264,7 +1281,7 @@
       },
       "Jwks": {
         "type": "object",
-        "description": "OIDC JWKS 公钥集合（仅公钥 n/e/kid，绝不含私钥）",
+        "description": "OIDC JWKS 公钥集合（仅公钥 n/e/kid，不含私钥）",
         "properties": {
           "keys": {
             "type": "array",
@@ -1381,7 +1398,7 @@
           "Health"
         ],
         "summary": "健康检查",
-        "description": "检查 Jenkins、Git 平台、Harbor 连通性。此接口需要 Bearer Token 鉴权。全部正常返回 200，部分降级返回 503。",
+        "description": "检查 Jenkins / Git 平台 / Harbor 连通性；全部正常 200，部分降级 503",
         "operationId": "health",
         "security": [
           {
@@ -1428,7 +1445,7 @@
           "Health"
         ],
         "summary": "存活/就绪探针",
-        "description": "无需鉴权的外部探针：只检测数据库可达性、已应用版本与 schema 对齐状态，不探测 Jenkins/Git/Harbor。数据库可达且版本对齐 → 200 + status=ok；数据库可达但版本未对齐（schema_current=false，如升级了代码还没跑迁移）→ 200 + status=degraded（版本落后不摘流，避免滚动升级期 LB/K8s 摘掉全部副本），并在 tables_missing 中列出缺失的核心表；手动建库模式从未跑过结构迁移时 schema_current=null（未知），返回 200 + status=ok，不降级也不谎报对齐；数据库连接失败、或连接正常但版本表缺失（空库未初始化，此时 db=true）→ 503 + status=degraded。db 字段仅表示连接性，便于区分「真宕机」与「连上但未初始化」。schema_ahead=true 表示库结构版本高于当前代码（疑似代码降级/回滚），与 schema_current=false 组合可区分「没跑结构迁移」与「已回滚降级」。代码台账自检发现探测清单漂移时（tables_list_drift）同样只降级不摘流（返回 200 + status=degraded）：坏的是台账，不是数据。",
+        "description": "外部探针（无需鉴权）：只查数据库可达性与 schema 对齐。可达且对齐 → 200 status=ok；可达但未对齐 → 200 status=degraded 并列出缺失表；连接失败或版本表缺失 → 503",
         "operationId": "healthz",
         "responses": {
           "200": {
@@ -1460,8 +1477,41 @@
           "Main"
         ],
         "summary": "获取所有 Job 列表",
-        "description": "jenkins 模式从 Jenkins 实时拉取，gitlab_ci 模式从数据库读取。Jenkins 不可达时降级返回数据库缓存。",
+        "description": "返回已启用构建模式下的 Job 名称：启用 Jenkins 时实时拉取并合并其余已启用源的活跃映射，否则返回数据库活跃映射",
         "operationId": "mainJobsList",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Job 名称数组",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Main"
+        ],
+        "summary": "获取所有 Job 列表",
+        "description": "与 GET 行为一致，参数走 Query String。",
+        "operationId": "mainJobsListPost",
         "security": [
           {
             "bearerAuth": []
@@ -1495,8 +1545,38 @@
           "Main"
         ],
         "summary": "Job / Git / Harbor 三方映射",
-        "description": "按项目分组返回映射关系。jenkins 模式带 30s 缓存。",
+        "description": "按项目分组返回映射关系，结果按启用集合缓存 30s。",
         "operationId": "mainMapList",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "分组映射对象",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MapGroupedResult"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Main"
+        ],
+        "summary": "Job / Git / Harbor 三方映射",
+        "description": "与 GET 行为一致，参数走 Query String。",
+        "operationId": "mainMapListPost",
         "security": [
           {
             "bearerAuth": []
@@ -1529,6 +1609,43 @@
         "summary": "已接入的 Git 平台列表",
         "description": "返回静态配置的 Git 平台信息与 Harbor API 信息。",
         "operationId": "mainGitPlatforms",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "平台配置",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "git_platforms": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "harbor": {
+                      "type": "object",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Main"
+        ],
+        "summary": "已接入的 Git 平台列表",
+        "description": "与 GET 行为一致，参数走 Query String。",
+        "operationId": "mainGitPlatformsPost",
         "security": [
           {
             "bearerAuth": []
@@ -1615,6 +1732,61 @@
             }
           }
         }
+      },
+      "post": {
+        "tags": [
+          "Main"
+        ],
+        "summary": "平台接入检测",
+        "description": "与 GET 行为一致，参数走 Query String。",
+        "operationId": "mainGitDiscoveryPost",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "configured + unconfigured 列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "configured": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "api_base_url": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "unconfigured": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "example_remote": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/build/jobs/list": {
@@ -1623,7 +1795,7 @@
           "Build"
         ],
         "summary": "Build 视角的 Job 列表（CI 管理页）",
-        "description": "返回当前 build_mode 下的活跃映射，含 ci_provider、project_id、current_path、harbor_repository、git_platform。?format=raw 返回纯 job 名数组。CD 部署侧的项目列表请用 /api/build/projects。",
+        "description": "返回当前 build_mode 下的活跃映射；?format=raw 返回纯 job 名数组",
         "operationId": "buildJobsList",
         "security": [
           {
@@ -1637,7 +1809,7 @@
         ],
         "responses": {
           "200": {
-            "description": "raw 格式返回 job 名数组，json 格式返回含 provider 信息的对象数组",
+            "description": "?format=raw 返回 job 名数组",
             "content": {
               "application/json": {
                 "schema": {
@@ -1650,10 +1822,61 @@
                       },
                       "ci_provider": {
                         "type": "string",
-                        "enum": [
-                          "jenkins",
-                          "gitlab_ci"
-                        ]
+                        "description": "构建 provider：jenkins / gitlab_ci / gitea_ci / github_actions / custom_push"
+                      },
+                      "project_id": {
+                        "type": "string"
+                      },
+                      "current_path": {
+                        "type": "string"
+                      },
+                      "harbor_repository": {
+                        "type": "string"
+                      },
+                      "git_platform": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Build"
+        ],
+        "summary": "Build 视角的 Job 列表（CI 管理页）",
+        "description": "与 GET 行为一致，参数走 Query String。",
+        "operationId": "buildJobsListPost",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "?format=raw 返回 job 名数组",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "job_name": {
+                        "type": "string"
+                      },
+                      "ci_provider": {
+                        "type": "string",
+                        "description": "构建 provider：jenkins / gitlab_ci / gitea_ci / github_actions / custom_push"
                       },
                       "project_id": {
                         "type": "string"
@@ -1682,7 +1905,7 @@
           "Build"
         ],
         "summary": "活跃映射 + 每项目最新 tag（CD 部署侧）",
-        "description": "返回所有活跃映射（不过滤 build_mode），并为每项目附带最新镜像 tag（latest_tag / latest_pipeline / tag_time）。供 CD 列表/部署解析使用；CI 管理页的 Job 列表请用 /api/build/jobs/list。",
+        "description": "返回所有活跃映射（不过滤 build_mode），每项附带最新镜像 tag",
         "operationId": "buildProjectsList",
         "security": [
           {
@@ -1691,7 +1914,64 @@
         ],
         "responses": {
           "200": {
-            "description": "活跃映射数组，每项含 job_name/build_provider/current_path/harbor_repository/git_platform/status 及 latest_tag/latest_pipeline/tag_time",
+            "description": "活跃映射列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "job_name": {
+                        "type": "string"
+                      },
+                      "build_provider": {
+                        "type": "string"
+                      },
+                      "current_path": {
+                        "type": "string"
+                      },
+                      "harbor_repository": {
+                        "type": "string"
+                      },
+                      "git_platform": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "latest_tag": {
+                        "type": "string"
+                      },
+                      "latest_pipeline": {
+                        "type": "string"
+                      },
+                      "tag_time": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Build"
+        ],
+        "summary": "活跃映射 + 每项目最新 tag（CD 部署侧）",
+        "description": "与 GET 行为一致，参数走 Query String。",
+        "operationId": "buildProjectsListPost",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "活跃映射列表",
             "content": {
               "application/json": {
                 "schema": {
@@ -1741,7 +2021,7 @@
           "Build"
         ],
         "summary": "获取构建模式配置",
-        "description": "返回当前有效的构建模式及来源。数据库为唯一来源，首次运行从 .env 种子写入 DB。",
+        "description": "返回当前生效的构建模式及来源",
         "operationId": "buildConfigMode",
         "security": [
           {
@@ -1768,7 +2048,7 @@
           "Build"
         ],
         "summary": "Pipeline 列表",
-        "description": "统一查询 Jenkins/GitLab CI 的 Pipeline。?list=id 返回 ID 数组，?list=success 返回成功的 Pipeline ID。",
+        "description": "统一查询 Pipeline。?list=id 返回 ID 数组，?list=success 返回成功的 Pipeline ID",
         "operationId": "buildPipelines",
         "security": [
           {
@@ -1805,7 +2085,77 @@
         ],
         "responses": {
           "200": {
-            "description": "Pipeline 列表（含 build_provider、project_id、pipelines）",
+            "description": "Pipeline 列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "build_provider": {
+                      "type": "string"
+                    },
+                    "project_id": {
+                      "type": "string"
+                    },
+                    "pipelines": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/PipelineItem"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Build"
+        ],
+        "summary": "Pipeline 列表",
+        "description": "与 GET 行为一致，参数走 Query String。",
+        "operationId": "buildPipelinesPost",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "tools/runner-ci"
+          },
+          {
+            "$ref": "#/components/parameters/format"
+          },
+          {
+            "name": "list",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "id",
+                "build",
+                "time",
+                "success"
+              ]
+            },
+            "description": "id=ID数组, build=带#前缀, time=带时间, success=仅成功"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pipeline 列表",
             "content": {
               "application/json": {
                 "schema": {
@@ -1840,8 +2190,47 @@
           "Build"
         ],
         "summary": "Pipeline 详情 + Jobs（仅 Gitea CI）",
-        "description": "仅 Gitea CI：输入 run id（/api/build/{path}/pipelines 返回的 id）获取该 run 详情。?format=raw 返回纯状态数组（如 [\"success\", \"failed\"]）。默认返回 jobs，每项含 id（job id）与 log_url（该 job 日志链接，指向 /api/build/{path}/logs/{jobId}）",
+        "description": "仅 Gitea CI：按 run id 返回该 run 详情；?format=raw 返回纯状态数组，默认返回 jobs（含 id 与 log_url）",
         "operationId": "buildPipelineDetail",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Jobs 列表，每项含 id（job id）与 log_url（日志链接）"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Build"
+        ],
+        "summary": "Pipeline 详情 + Jobs（仅 Gitea CI）",
+        "description": "与 GET 行为一致，参数走 Query String。",
+        "operationId": "buildPipelineDetailPost",
         "security": [
           {
             "bearerAuth": []
@@ -1875,14 +2264,141 @@
         }
       }
     },
+    "/api/build/{path}/pipelines/{id}/resolve-tag": {
+      "post": {
+        "tags": [
+          "Build"
+        ],
+        "summary": "从构建日志解析镜像 tag",
+        "description": "从构建日志兜底解析镜像 tag：sha 非空且 force=false 时先查缓存，未命中则逐 job 拉日志，按推送关键字 + harbor 仓库路径提取并写入缓存。",
+        "operationId": "buildResolveTag",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "php/myapp"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "pipeline id"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sha": {
+                    "type": "string",
+                    "description": "commit sha（用于缓存命中与写入；为空则不查缓存也不写缓存）"
+                  },
+                  "force": {
+                    "type": "boolean",
+                    "description": "跳过缓存，强制重新解析"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "解析结果；无仓库映射时 tag 为空、resolved=false",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "tag": {
+                      "type": "string"
+                    },
+                    "resolved": {
+                      "type": "boolean"
+                    },
+                    "cached": {
+                      "type": "boolean",
+                      "description": "是否命中缓存（无仓库映射时不返回）"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "pipeline id 非法，或 provider 未配置"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          }
+        }
+      }
+    },
     "/api/build/{path}/pipelines/{id}/logs": {
       "get": {
         "tags": [
           "Build"
         ],
         "summary": "Pipeline 日志（仅 Gitea CI，输入 run id，返回全部 job 日志）",
-        "description": "仅 Gitea CI：输入 run id（即 /api/build/{path}/pipelines 返回的 id），返回该 run 下全部 job 的日志文本（多 job 用 ===== 分隔）。无需先查 job id。",
+        "description": "仅 Gitea CI：按 run id 返回该 run 下全部 job 的日志文本（多 job 用 ===== 分隔）",
         "operationId": "buildPipelineLogs",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "run id（Pipeline id，不是 job id）"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "text/plain 原始日志（多 job 用 ===== 分隔）"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Build"
+        ],
+        "summary": "Pipeline 日志（仅 Gitea CI，输入 run id，返回全部 job 日志）",
+        "description": "与 GET 行为一致，参数走 Query String。",
+        "operationId": "buildPipelineLogsPost",
         "security": [
           {
             "bearerAuth": []
@@ -2027,7 +2543,49 @@
               "type": "integer"
             },
             "example": 32,
-            "description": "job id（取自 /api/build/{path}/pipelines/{runId} 返回的 jobs[].id，不是 run id）"
+            "description": "job id（jobs[].id，不是 run id）"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "text/plain 原始日志"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Build"
+        ],
+        "summary": "构建日志（Jenkins / GitLab CI / Gitea Actions，id=job id）",
+        "description": "与 GET 行为一致，参数走 Query String。",
+        "operationId": "buildLogsPost",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "tools/runner-ci"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "example": 32,
+            "description": "job id（jobs[].id，不是 run id）"
           }
         ],
         "responses": {
@@ -2046,7 +2604,7 @@
           "Build"
         ],
         "summary": "触发构建（POST，推荐）",
-        "description": "POST body JSON 中 variables=参数对象（推荐）。也可在根级直接写参数名（兼容旧版）。参数名需与 Jenkins Job 定义的参数名一致，先用 GET /api/build/{path}/variables 查看可用参数。",
+        "description": "参数放 body 的 variables 对象，也可根级直写（兼容旧版）；参数名见 GET /api/build/{path}/variables",
         "operationId": "buildTrigger",
         "security": [
           {
@@ -2101,7 +2659,7 @@
           "Build"
         ],
         "summary": "触发构建（GET，Query String 传参）",
-        "description": "兼容旧版调用方式，参数通过 Query String 传入。ref 仅 GitLab CI 模式使用。",
+        "description": "兼容旧版：参数走 Query String；ref 仅 GitLab CI 使用",
         "operationId": "buildTriggerGet",
         "security": [
           {
@@ -2132,8 +2690,39 @@
           "Build"
         ],
         "summary": "构建参数 / CI 变量",
-        "description": "返回 Jenkins Job 参数定义或 GitLab CI 变量。?format=json 返回完整含 build_provider，默认返回 {key: options} 简化格式。",
+        "description": "返回 Jenkins Job 参数定义或 GitLab CI 变量；?format=json 返回完整结构",
         "operationId": "buildVariables",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "变量 key→options 映射"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Build"
+        ],
+        "summary": "构建参数 / CI 变量",
+        "description": "与 GET 行为一致，参数走 Query String。",
+        "operationId": "buildVariablesPost",
         "security": [
           {
             "bearerAuth": []
@@ -2165,8 +2754,39 @@
           "Build"
         ],
         "summary": "Git 分支列表",
-        "description": "返回纯字符串数组，可直接用作 Rundeck Option Model Provider 的远程 URL。",
+        "description": "返回纯字符串数组（可作 Rundeck Option Model Provider 远程 URL）",
         "operationId": "buildBranches",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "分支名数组，如 [\"main\", \"master\", \"dev\"]"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Build"
+        ],
+        "summary": "Git 分支列表",
+        "description": "与 GET 行为一致，参数走 Query String。",
+        "operationId": "buildBranchesPost",
         "security": [
           {
             "bearerAuth": []
@@ -2198,7 +2818,7 @@
           "Build"
         ],
         "summary": "Harbor 镜像扫描 → Commit Status 回写",
-        "description": "CI pipeline 构建完成后调用。自动获取 Harbor 漏洞报告，将结果回写到 Git 平台 commit status（harbor-scan 上下文）。tag 不传则取 Harbor 最新。",
+        "description": "构建完成后回调：取 Harbor 漏洞报告回写到 Git 平台 commit status（harbor-scan 上下文）；tag 不传取 Harbor 最新",
         "operationId": "buildScanSync",
         "security": [
           {
@@ -2255,7 +2875,7 @@
           "Build"
         ],
         "summary": "自定义推送式 CI 构建结果单次上报",
-        "description": "custom_push 构建源专用：用户 CI 在构建完成后一次性上报终态结果（success/failed/aborted），无 pending/running 中间态。Devops-Glue 只存元数据与日志 URL 指针，不参与构建也不存日志内容。\n\nstatus=success 时必须带 tag，同步写入 ci_pipeline_artifacts（provider、project_id、pipeline_iid、project_key、repository、tag、status）；CD 层通过现有 GET /api/build/{path}/tag 读取。\n\n请求体除控制字段（pipeline_iid / status / finished_at / started_at / ref / sha / exit_code / log_url / web_url / tag / harbor_repository）外，其余字段作为自定义构建参数一并存入 variables_json。",
+        "description": "custom_push 专用：一次性上报构建终态（success/failed/aborted）。status=success 必须带 tag，同步写入 ci_pipeline_artifacts；其余非控制字段存入 variables_json",
         "operationId": "buildReport",
         "security": [
           {
@@ -2342,12 +2962,12 @@
                   "tag": {
                     "type": "string",
                     "example": "v1.0.0",
-                    "description": "镜像 tag（status=success 时必填，写入 ci_pipeline_artifacts；上报时校验该 tag 真实存在于 Harbor，不存在返回 400；failed/aborted 不需要）"
+                    "description": "镜像 tag（status=success 时必填，须真实存在于 Harbor，否则 400）"
                   },
                   "harbor_repository": {
                     "type": "string",
                     "example": "team/myapp",
-                    "description": "Harbor 仓库路径（由 job_git_map 配置决定，body 传入会被忽略；project/repo 两段式，不接受 registry 地址/URL；上报时校验仓库与 tag 均真实存在于 Harbor，任一不存在返回 400）"
+                    "description": "Harbor 仓库路径（project/repo 两段式，取自 job_git_map，body 传入忽略）"
                   },
                   "env": {
                     "type": "string",
@@ -2448,7 +3068,7 @@
           "Build"
         ],
         "summary": "通用安全扫描 Commit Status 回写",
-        "description": "类似 GitHub Actions Security Check。SAST、密钥扫描、依赖漏洞、IaC 审计等任何安全扫描工具的结果都可以通过此端点回写到 Git 平台 commit/MR 页面。自动审计记录写入 ci_security_checks 表。",
+        "description": "回写安全扫描结果（SAST / 密钥 / 依赖漏洞 / IaC 等）到 Git 平台 commit/MR",
         "operationId": "buildCommitStatus",
         "security": [
           {
@@ -2499,8 +3119,52 @@
           "Build"
         ],
         "summary": "查询 Pipeline → Tag 映射",
-        "description": "?pipeline=52 查指定 pipeline 的 tag，不传返回该项目的全部映射。?format=raw 返回 '仓库:tag' 格式。",
+        "description": "返回镜像 tag：?pipeline=52 查指定 pipeline，不传返回该项目全部映射；?format=raw 返回 '仓库:tag'",
         "operationId": "buildTagQuery",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "php/myapp"
+          },
+          {
+            "name": "pipeline",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Pipeline 编号（不传返回全部）"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "pipeline→tag 映射",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagQueryResult"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Build"
+        ],
+        "summary": "查询 Pipeline → Tag 映射",
+        "description": "与 GET 行为一致，参数走 Query String。",
+        "operationId": "buildTagQueryPost",
         "security": [
           {
             "bearerAuth": []
@@ -2545,8 +3209,93 @@
           "Build"
         ],
         "summary": "项目 tag 列表（分页）",
-        "description": "返回指定项目的镜像 tag 列表（分页），键解析精确匹配 job_name / current_path。?page=1&page_size=50。",
+        "description": "返回指定项目的镜像 tag 列表（分页）",
         "operationId": "buildTagsList",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "php/myapp"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            },
+            "description": "页码"
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 50
+            },
+            "description": "每页条数（1-200）"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "分页 tag 列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "tag": {
+                            "type": "string"
+                          },
+                          "pipeline_iid": {
+                            "type": "string"
+                          },
+                          "created_at": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "page": {
+                      "type": "integer"
+                    },
+                    "page_size": {
+                      "type": "integer"
+                    },
+                    "total_pages": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Build"
+        ],
+        "summary": "项目 tag 列表（分页）",
+        "description": "与 GET 行为一致，参数走 Query String。",
+        "operationId": "buildTagsListPost",
         "security": [
           {
             "bearerAuth": []
@@ -2671,6 +3420,51 @@
             "$ref": "#/components/responses/404"
           }
         }
+      },
+      "post": {
+        "tags": [
+          "Git"
+        ],
+        "summary": "查询 Job 对应的 Git 分支列表",
+        "operationId": "gitBranchesPost",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "php/myapp",
+            "allowReserved": true
+          },
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "与 GET 行为一致，参数走 Query String。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
+        }
       }
     },
     "/api/git/{path}/tags": {
@@ -2679,8 +3473,54 @@
           "Git"
         ],
         "summary": "查询 Job 对应的 Git Tag 列表",
-        "description": "CD 构建页可把 tag 当作构建 ref（发布版本按 tag 构建）。job 无仓库映射或平台无法识别时返回空数组；平台连接失败返回 404（不把平台故障伪装成「仓库没有 tag」）。",
+        "description": "返回仓库 tag 列表，供 CD 构建页当作构建 ref；无映射或平台无法识别返回空数组，平台故障返回 404",
         "operationId": "gitTags",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "php/myapp",
+            "allowReserved": true
+          },
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "tag 名数组",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Git"
+        ],
+        "summary": "查询 Job 对应的 Git Tag 列表",
+        "description": "与 GET 行为一致，参数走 Query String。",
+        "operationId": "gitTagsPost",
         "security": [
           {
             "bearerAuth": []
@@ -2727,8 +3567,65 @@
           "Git"
         ],
         "summary": "一次返回分支 + Tag（构建 ref 候选值）",
-        "description": "等价于同时调用 branches 与 tags，但只解析一次 job→仓库映射、只构造一次平台客户端，且两组值必然来自同一仓库快照。CD 构建页 ref 下拉推荐用本端点。任一类型查询失败即整体 404。",
+        "description": "一次返回 branches + tags（同一仓库快照）；任一类型查询失败即 404",
         "operationId": "gitRefs",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "php/myapp",
+            "allowReserved": true
+          },
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "分支名数组 + tag 名数组",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "branches": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Git"
+        ],
+        "summary": "一次返回分支 + Tag（构建 ref 候选值）",
+        "description": "与 GET 行为一致，参数走 Query String。",
+        "operationId": "gitRefsPost",
         "security": [
           {
             "bearerAuth": []
@@ -2815,6 +3712,41 @@
             "$ref": "#/components/responses/500"
           }
         }
+      },
+      "post": {
+        "tags": [
+          "Harbor"
+        ],
+        "summary": "获取项目列表（自动翻页，上限 1000）",
+        "operationId": "harborProjectsPost",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "与 GET 行为一致，参数走 Query String。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        }
       }
     },
     "/api/harbor/{project}/repositories": {
@@ -2858,6 +3790,47 @@
             }
           }
         }
+      },
+      "post": {
+        "tags": [
+          "Harbor"
+        ],
+        "summary": "获取仓库列表（自动翻页，上限 1000）",
+        "operationId": "harborRepositoriesPost",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "mycode"
+          },
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "与 GET 行为一致，参数走 Query String。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/harbor/{project}/repositories/{repository}/tags": {
@@ -2868,6 +3841,58 @@
         "summary": "获取 Tag 列表（自动翻页，上限 2000）",
         "description": "仓库名含 / 需双重编码（%2F）。",
         "operationId": "harborTags",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "mycode"
+          },
+          {
+            "name": "repository",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "diagnosis-runtime",
+            "allowReserved": true
+          },
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tag 名数组",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Harbor"
+        ],
+        "summary": "获取 Tag 列表（自动翻页，上限 2000）",
+        "description": "与 GET 行为一致，参数走 Query String。",
+        "operationId": "harborTagsPost",
         "security": [
           {
             "bearerAuth": []
@@ -2983,7 +4008,7 @@
           "Harbor"
         ],
         "summary": "获取镜像漏洞扫描报告",
-        "description": "返回漏洞列表。Harbor v2 返回结构化漏洞数据，v1 返回原始报告。无漏洞时返回空数组。",
+        "description": "返回漏洞列表；Harbor v2 结构化、v1 原始报告，无漏洞返回空数组",
         "operationId": "harborScanReport",
         "security": [
           {
@@ -3036,7 +4061,7 @@
           "Admin"
         ],
         "summary": "管理后台登录",
-        "description": "返回 Bearer token（24h 过期）。优先查数据库 bcrypt 密码，仅首次部署（admin_users 表为空）时降级到 .env；数据库不可用时直接报错。",
+        "description": "登录返回 Bearer token（24h 过期）；仅首次部署降级到 .env 账号",
         "operationId": "adminLogin",
         "requestBody": {
           "required": true,
@@ -3141,8 +4166,8 @@
         "tags": [
           "Admin"
         ],
-        "summary": "自动发现未入库的 Jenkins Job",
-        "description": "扫描 Jenkins 中所有 Job，通过 git remote 自动匹配 Git 平台，返回新发现的条目并写入映射表。Jenkins 不可用返回 503。",
+        "summary": "自动发现未映射的项目",
+        "description": "扫描已启用且已配置的源，返回新发现条目并写入映射表（待启用）；sources=实际扫描的源，errors=各源失败原因",
         "operationId": "adminDiscover",
         "security": [
           {
@@ -3163,8 +4188,14 @@
           "401": {
             "$ref": "#/components/responses/401"
           },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          },
           "503": {
-            "description": "自动发现功能未启用（Jenkins 不可用）"
+            "description": "自动发现未启用，或没有可用的扫描源"
           }
         }
       }
@@ -3346,7 +4377,7 @@
           "Admin"
         ],
         "summary": "查看安全扫描审计记录",
-        "description": "分页查询 ci_security_checks 表。支持按 project、check_type、state 筛选。",
+        "description": "分页查询安全扫描记录，可按 project / check_type / state 筛选",
         "operationId": "adminSecurityChecks",
         "security": [
           {
@@ -3492,7 +4523,7 @@
           "Admin"
         ],
         "summary": "更新平台 API 版本",
-        "description": "传入 {versions: {gitlab: 'v5', harbor: 'v2.0'}}。与默认值相同的项不保存。",
+        "description": "传入 {versions: {gitlab: 'v5', harbor: 'v2.0'}}，与默认值相同的项不保存",
         "operationId": "adminVersionsUpdate",
         "security": [
           {
@@ -3540,7 +4571,7 @@
           "Admin"
         ],
         "summary": "获取当前用户的权限列表",
-        "description": "使用 Bearer token 查询当前用户的角色和权限。仅需有效 token，不需要 admin 权限。super_admin 角色返回 \"*\" 通配符。",
+        "description": "返回当前用户的角色与权限；super_admin 返回 \"*\"",
         "operationId": "adminMePermissions",
         "security": [
           {
@@ -3571,7 +4602,7 @@
           "RBAC"
         ],
         "summary": "列出所有权限及隐含规则",
-        "description": "返回系统中所有已注册的权限定义（含 parent_key 层级）以及权限隐含关系映射。权限数据驱动，可由 CD 项目通过 POST 接口注册。",
+        "description": "返回全部已注册权限定义（含 parent_key 层级）与隐含关系映射",
         "operationId": "adminPermissionList",
         "security": [
           {
@@ -3603,7 +4634,7 @@
           "RBAC"
         ],
         "summary": "注册新权限",
-        "description": "注册一个新的权限键，供菜单显隐和 hasPermission 校验使用。仅 super_admin 可调用，通常由 CD 项目自动注册而非人工操作。description 必填（作为 i18n 兜底文案）。",
+        "description": "注册新权限键；description 必填（i18n 兜底文案）",
         "operationId": "adminPermissionRegister",
         "security": [
           {
@@ -3684,7 +4715,7 @@
           "RBAC"
         ],
         "summary": "删除权限",
-        "description": "删除指定权限键，同时级联清理 role_permissions 和 implied_rules 中的关联记录。仅 super_admin 可调用。系统内置权限（AppConfig::DEFAULT_PERMISSIONS 中的 key）受保护不可删。",
+        "description": "删除权限键并级联清理 role_permissions / implied_rules；内置权限不可删",
         "operationId": "adminPermissionDelete",
         "security": [
           {
@@ -3738,7 +4769,7 @@
           "RBAC"
         ],
         "summary": "注册隐含规则",
-        "description": "注册一条权限隐含关系：拥有 source_key 时自动拥有 target_key。仅 super_admin 可调用。source_key 和 target_key 必须已存在于 permissions 表中。",
+        "description": "注册权限隐含关系：拥有 source_key 时自动拥有 target_key，两者须已存在",
         "operationId": "adminImpliedRuleCreate",
         "security": [
           {
@@ -3867,7 +4898,7 @@
           "Auth"
         ],
         "summary": "登出（失效当前 Bearer token）",
-        "description": "从 cache 表删除当前 Bearer token，使之后续请求被拒绝。无 token 的调用也返回成功。",
+        "description": "注销当前 Bearer token，使其后续请求被拒绝；无 token 也返回成功",
         "operationId": "adminLogout",
         "security": [
           {
@@ -3900,7 +4931,7 @@
           "Admin"
         ],
         "summary": "查询构建模式及 Provider 可用性",
-        "description": "返回当前生效的构建模式（jenkins/gitlab_ci/both）、模式来源，以及 Jenkins/GitLabCI 两个 Provider 是否已实际配置可用。",
+        "description": "返回当前生效的构建模式（已启用 provider 集合）、模式来源，以及各 Provider 是否已实际配置可用。",
         "operationId": "adminGetBuildMode",
         "security": [
           {
@@ -3928,7 +4959,7 @@
           "Admin"
         ],
         "summary": "更新构建模式",
-        "description": "切换全局构建模式。切换到单 Provider 时，另一个 Provider 的 active job 映射会自动降级为 pending，避免意外参与构建。需目标 Provider 已配置可用才允许切换。",
+        "description": "设置构建模式（可同时启用多个 provider），未启用的 provider 其 active 映射降为 pending",
         "operationId": "adminUpdateBuildMode",
         "security": [
           {
@@ -3947,12 +4978,8 @@
                 "properties": {
                   "mode": {
                     "type": "string",
-                    "enum": [
-                      "jenkins",
-                      "gitlab_ci",
-                      "both"
-                    ],
-                    "example": "both"
+                    "description": "已启用 provider 的逗号连接串，如 jenkins,gitea_ci",
+                    "example": "jenkins,gitea_ci"
                   }
                 }
               }
@@ -3973,11 +5000,7 @@
                     },
                     "mode": {
                       "type": "string",
-                      "enum": [
-                        "jenkins",
-                        "gitlab_ci",
-                        "both"
-                      ]
+                      "description": "已启用 provider 的逗号连接串，如 jenkins,gitea_ci"
                     }
                   }
                 }
@@ -4003,7 +5026,7 @@
           "Users"
         ],
         "summary": "列出所有管理员用户",
-        "description": "admin 及以上角色看到所有用户；普通角色看不到 admin/super_admin 角色的用户。返回值不含密码哈希。",
+        "description": "返回用户列表（不含密码哈希）；普通角色看不到 admin / super_admin",
         "operationId": "adminUserList",
         "security": [
           {
@@ -4038,7 +5061,7 @@
           "Users"
         ],
         "summary": "新增管理员用户",
-        "description": "创建新的后台用户。需要 ci.users.manage_admin 权限才能创建 admin/super_admin 角色；非管理员创建的账号 systems 不允许包含 ci。密码至少 8 位。",
+        "description": "创建后台用户；创建 admin / super_admin 需 ci.users.manage_admin，密码至少 8 位",
         "operationId": "adminUserCreate",
         "security": [
           {
@@ -4126,7 +5149,7 @@
           "Users"
         ],
         "summary": "更新用户（改密码 / 改角色）",
-        "description": "仅更新传入字段：password 非空时改密码；role 传入时改角色。修改或升为 admin/super_admin 需要 ci.users.manage_admin 权限。password 至少 8 位。",
+        "description": "仅更新传入字段；改或升为 admin / super_admin 需 ci.users.manage_admin",
         "operationId": "adminUserUpdate",
         "security": [
           {
@@ -4204,7 +5227,7 @@
           "Users"
         ],
         "summary": "删除用户",
-        "description": "删除指定后台用户。限制：1) 根账号（.env ADMIN_USER）任何人都不可删；2) 不能删除自己；3) 删除 admin/super_admin 角色需要 ci.users.manage_admin 权限。",
+        "description": "删除后台用户；根账号、自己、admin / super_admin 不可删（后者需 ci.users.manage_admin）",
         "operationId": "adminUserDelete",
         "security": [
           {
@@ -4262,7 +5285,7 @@
           "RBAC"
         ],
         "summary": "列出所有角色及权限",
-        "description": "返回角色列表，每个角色附带展开后的权限键数组。is_system=true 表示系统内置角色，不可删除、不可修改权限。",
+        "description": "返回角色列表，每项附带展开后的权限键；is_system=true 为内置角色，不可删改",
         "operationId": "adminRoleList",
         "security": [
           {
@@ -4297,7 +5320,7 @@
           "RBAC"
         ],
         "summary": "新建角色",
-        "description": "创建自定义角色。仅 ci.users.manage_admin 权限可创建。permissions 传入时后端会自动展开隐含权限，并只保留权限表中已定义的 key。is_system 始终为 0（非内置）。",
+        "description": "创建自定义角色；permissions 自动展开隐含权限并只保留已定义 key",
         "operationId": "adminRoleCreate",
         "security": [
           {
@@ -4385,7 +5408,7 @@
           "RBAC"
         ],
         "summary": "更新角色（名称 / 描述 / 权限，权限全量替换）",
-        "description": "仅 ci.users.manage_admin 权限可调用。仅允许修改自定义角色（is_system=0）。name 改了会级联同步 admin_users.role 中引用该旧名称的记录。只要传入 permissions key（即使是空数组）就会全量替换该角色的权限，且后端自动展开隐含权限。",
+        "description": "修改自定义角色（is_system=0）；传入 permissions 即全量替换并展开隐含权限",
         "operationId": "adminRoleUpdate",
         "security": [
           {
@@ -4472,7 +5495,7 @@
           "RBAC"
         ],
         "summary": "删除角色",
-        "description": "仅 ci.users.manage_admin 权限可调用。仅允许删除自定义角色（is_system=0）。仍有用户绑定此角色时拒绝删除，返回 400 role.in_use。删除时级联清理 role_permissions 关联记录。",
+        "description": "删除自定义角色；仍有用户绑定时返回 400 role.in_use",
         "operationId": "adminRoleDelete",
         "security": [
           {
@@ -4529,7 +5552,7 @@
           "Admin"
         ],
         "summary": "API Token scope 目录",
-        "description": "返回可选的 scope 列表（供 UI 渲染）。仅 super_admin 可访问。",
+        "description": "返回可选 scope 列表",
         "operationId": "adminApiTokenScopes",
         "security": [
           {
@@ -4615,7 +5638,7 @@
           "Admin"
         ],
         "summary": "创建 API Token",
-        "description": "创建 Token，返回一次性明文（仅此一次，请立即保存）。仅 super_admin 可访问。",
+        "description": "创建 Token，返回一次性明文",
         "operationId": "adminApiTokenCreate",
         "security": [
           {
@@ -4664,7 +5687,7 @@
           "Admin"
         ],
         "summary": "编辑 API Token 的 Scope",
-        "description": "改写该 Token 的 scope 清单。只改元数据（明文与摘要不变），调用方无需更换 Token，下一次请求即按新 Scope 校验。仅 super_admin 可访问；scope 必须来自目录且至少一个（否则 400），Token 不存在返回 404。",
+        "description": "改写该 Token 的 scope（明文与摘要不变，调用方无需更换）；scope 须来自目录且至少一个",
         "operationId": "adminApiTokenUpdateScopes",
         "security": [
           {
@@ -4728,7 +5751,7 @@
           "Admin"
         ],
         "summary": "撤销 API Token（禁用，保留记录）",
-        "description": "将 Token 置为禁用（enabled=0），立即失效但保留记录 —— 行与摘要都保留，因此它仍是**可恢复**的：集成服务的配套凭据被这样停用后，随该服务重新启用即恢复同一枚（原明文继续可用，CD 无需换配置）。要彻底作废/换发请改用 DELETE（硬删除，不可恢复）。仅 super_admin 可访问。",
+        "description": "停用 Token（enabled=0，立即失效但可恢复）；彻底作废改用 DELETE",
         "operationId": "adminApiTokenRevoke",
         "security": [
           {
@@ -4836,7 +5859,7 @@
           "Admin"
         ],
         "summary": "查询集成服务启用状态",
-        "description": "读取 integrated_services 契约行（CI 唯一写入，集成服务只读）。行不存在时返回 enabled=false 的默认状态（不做种子写入）。需要 ci.system 权限。",
+        "description": "读取 integrated_services 契约行；行不存在返回 enabled=false 默认状态",
         "operationId": "adminIntegratedServiceStatus",
         "security": [
           {
@@ -4888,7 +5911,7 @@
                         "auto",
                         "manual"
                       ],
-                      "description": "当前点启用将写入的 provision（跟随 CI DB_AUTO_MIGRATE 模式）"
+                      "description": "启用时写入的 provision（默认跟随 DB_AUTO_MIGRATE）"
                     },
                     "token_id": {
                       "type": [
@@ -4914,7 +5937,7 @@
                     },
                     "token_active": {
                       "type": "boolean",
-                      "description": "配套 Token 是否仍然有效（= token_exists && token_enabled && !token_expired）"
+                      "description": "配套 Token 是否仍有效"
                     },
                     "token_scopes": {
                       "type": "array",
@@ -4961,7 +5984,7 @@
           "Admin"
         ],
         "summary": "启用集成服务（签发新凭据，或恢复被冻结的同一枚凭据）",
-        "description": "事务内：按 CI 当前 DB_AUTO_MIGRATE 模式写入 provision（可用 body.provision 显式覆盖为 auto/manual）、处理配套服务 Token、upsert integrated_services 行。三条路径：① 首次启用 → 签发仅含 build.read/build.write/rbac.user.write 三个 scope 的服务 Token，明文仅在响应中返回一次；② 冻结恢复 → 契约行未启用、凭据只是被停用（撤销）且未过期时，**恢复同一枚凭据**（只把 enabled 置回 1，sha256 摘要未变 → 原明文重新生效），响应 reused=true 且不返回 token，CD 的 CI_API_TOKEN 无需更换；③ 作废补发 → 凭据被撤销（契约行仍启用）/ 被删除 / 已过期时，同事务作废旧凭据、签发新凭据并重绑契约行，响应 reissued=true + 新明文。契约行已启用**且凭据有效**时返回 409（真正重复启用）。仅 super_admin 可访问。",
+        "description": "启用集成服务并签发配套 Token：首次启用签发新 Token（明文仅返回一次）；冻结恢复复用原凭据（reused=true）；凭据失效则作废旧凭据并重发（reissued=true）",
         "operationId": "adminIntegratedServiceEnable",
         "security": [
           {
@@ -5041,7 +6064,7 @@
                         "string",
                         "null"
                       ],
-                      "description": "一次性明文 Token（dg_ 前缀）：仅在新签发时返回（首次启用 / 作废补发）；恢复路径返回 null（那枚凭据的明文调用方手上已有）"
+                      "description": "一次性明文 Token（dg_ 前缀）：新签发时返回，恢复路径为 null"
                     }
                   }
                 }
@@ -5075,7 +6098,7 @@
           "Admin"
         ],
         "summary": "禁用集成服务（冻结服务并停用配套 Token）",
-        "description": "事务内置 enabled=0（集成服务立即拒绝所有请求）并停用配套服务 Token（api_tokens.enabled=0）。**停用 = 冻结、不是作废**：凭据行与契约行的 api_token_id 都原样保留，所以再次启用即恢复同一枚凭据 —— 原明文继续有效，CD 无需更换 CI_API_TOKEN（要作废/换发请先在 Token 列表里撤销或删除那枚 Token）。不删除集成服务的任何数据表/数据。从未启用返回 409。仅 super_admin 可访问。",
+        "description": "停用集成服务（冻结，不作废）：凭据行与绑定保留，重新启用即恢复同一枚凭据",
         "operationId": "adminIntegratedServiceDisable",
         "security": [
           {
@@ -5141,7 +6164,7 @@
           "Admin"
         ],
         "summary": "CD 部署记录审计列表",
-        "description": "只读分页查询 CD 部署审计日志（经 CD 的 /api/integration/deploy-logs 只读端点拉取，不直读 CD 库）。未传 date_from/date_to 时默认查近 30 天；CD 未启用或端点不可用时返回 available=false 的空列表。需 ci.deploy-logs 权限。",
+        "description": "分页查询 CD 部署审计日志，默认近 30 天",
         "operationId": "adminDeployLogList",
         "security": [
           {
@@ -5288,13 +6311,213 @@
         }
       }
     },
+    "/api/admin/custom_builds": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Custom_Push 构建记录列表",
+        "description": "分页列出 custom_push 上报的构建记录，按完成时间倒序。",
+        "operationId": "adminCustomBuildList",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "构建记录列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "records": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "page": {
+                      "type": "integer"
+                    },
+                    "per_page": {
+                      "type": "integer"
+                    },
+                    "total_pages": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "缺少 ci.build-records.push 权限"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        }
+      }
+    },
+    "/api/admin/operation_logs": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "操作审计日志",
+        "description": "分页查询后台操作审计日志；username 模糊匹配，其余筛选项精确匹配。",
+        "operationId": "adminOperationLogList",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "username",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "操作人（模糊匹配）"
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "操作类型（精确匹配）"
+          },
+          {
+            "name": "result",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "结果（精确匹配）"
+          },
+          {
+            "name": "operator_type",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "操作人类型（精确匹配）"
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "起始日期（含当天，YYYY-MM-DD）"
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "结束日期（含当天，YYYY-MM-DD）"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "审计日志列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "total": {
+                      "type": "integer"
+                    },
+                    "page": {
+                      "type": "integer"
+                    },
+                    "per_page": {
+                      "type": "integer"
+                    },
+                    "total_pages": {
+                      "type": "integer"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "description": "缺少 ci.operation-logs 权限"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        }
+      }
+    },
     "/api/admin/api_access_logs": {
       "get": {
         "tags": [
           "Admin"
         ],
         "summary": "API Token 调用审计列表",
-        "description": "只读分页查询 API Token 调用审计日志。只返回 token 展示名等审计字段，绝无 token 原文/hash/body/query。未传 date_from/date_to 时默认查近 30 天。result/method 传入白名单外的值会被忽略。需 ci.api-logs 权限。",
+        "description": "分页查询 API Token 调用审计日志，默认近 30 天",
         "operationId": "adminApiAccessLogList",
         "security": [
           {
@@ -5469,7 +6692,7 @@
           "SSO"
         ],
         "summary": "OIDC Discovery 文档",
-        "description": "返回 OIDC 自动发现文档（RFC 8414），供 Jenkins/Harbor/GitLab 客户端自动发现各端点。",
+        "description": "返回 OIDC 自动发现文档（RFC 8414）",
         "operationId": "oidcDiscovery",
         "responses": {
           "200": {
@@ -5491,7 +6714,7 @@
           "SSO"
         ],
         "summary": "OIDC JWKS 公钥",
-        "description": "返回 RS256 签名公钥（n/e/kid），供客户端验签 id_token。绝不含私钥。",
+        "description": "返回 RS256 公钥（n/e/kid），供验签 id_token",
         "operationId": "oidcJwks",
         "responses": {
           "200": {
@@ -5513,7 +6736,7 @@
           "SSO"
         ],
         "summary": "OAuth 授权登录页",
-        "description": "浏览器跳转入口，校验 client_id/redirect_uri 后渲染登录表单（HTML）。",
+        "description": "浏览器跳转入口：校验 client_id / redirect_uri 后渲染登录表单",
         "operationId": "oauthAuthorizeForm",
         "parameters": [
           {
@@ -5588,7 +6811,7 @@
           "SSO"
         ],
         "summary": "提交登录，签发授权码",
-        "description": "表单提交（application/x-www-form-urlencoded）。认证成功 302 回跳 redirect_uri?code=xxx&state=xxx，失败 401 返回登录表单。",
+        "description": "表单提交登录；成功 302 回跳 redirect_uri?code&state，失败 401",
         "operationId": "oauthAuthorizeSubmit",
         "requestBody": {
           "required": true,
@@ -5649,7 +6872,7 @@
           "SSO"
         ],
         "summary": "授权码换访问令牌",
-        "description": "code 换 access_token（scope 含 openid 时另返回 id_token）。client 凭据支持 form 或 HTTP Basic Auth（RFC 6749 §2.3.1）。",
+        "description": "code 换 access_token（scope 含 openid 时另返回 id_token）；client 凭据支持 form 或 Basic Auth",
         "operationId": "oauthToken",
         "requestBody": {
           "required": true,
@@ -5705,8 +6928,36 @@
           "SSO"
         ],
         "summary": "用户信息",
-        "description": "用 Bearer access_token 换取用户信息（含 groups=Glue 角色）。",
+        "description": "用 Bearer access_token 换取用户信息（groups 为 Glue 角色）",
         "operationId": "oauthUserInfo",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "用户信息",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OidcUserInfo"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "invalid_token"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "SSO"
+        ],
+        "summary": "用户信息",
+        "description": "与 GET 行为一致，凭证走 Authorization 头。",
+        "operationId": "oauthUserInfoPost",
         "security": [
           {
             "bearerAuth": []
@@ -5778,8 +7029,8 @@
         "tags": [
           "Integration"
         ],
-        "summary": "集成服务契约自检（CD 专用，免于直读共享库）",
-        "description": "供 CD 等集成服务在运行时自检「本服务是否被 Glue 授权、以哪种建表方式授权」，避免直读共享库的 integrated_services 表（表名/列名/驱动都是耦合面，CI 改库结构会弄坏 CD，拆库独立部署更是直接失效）。判定口径：200 + enabled=false 表示**未启用**（契约行不存在或 enabled=0，两者对外同义）→ 服务应拒绝对外服务并零 DDL，此时 provision 归一化为 auto 仅为日志措辞、不得据此建表；200 + enabled=true + provision=auto 表示被授权自动建表/补列；200 + enabled=true + provision=manual 表示禁止建表、只认运维预建表。**404 与「未启用」严格区分**（服务名不在白名单 = 配置写错，不得当成未启用）。token_active 仅供展示（契约行绑定凭据的活性），不得当闸门条件。scope 复用 build.read；字段名与 /api/admin/integrated_services/{service} 的同名子集保持一致。",
+        "summary": "集成服务契约自检（CD 专用）",
+        "description": "供 CD 等集成服务在运行时自检。200 + enabled=true + provision=auto 表示被授权自动建表/补列；200 + enabled=true + provision=manual 表示禁止建表。",
         "operationId": "integrationServiceShow",
         "security": [
           {
@@ -5819,7 +7070,7 @@
                         "auto",
                         "manual"
                       ],
-                      "description": "建表授权：auto=允许自动建表/补列；manual=禁止建表，只认运维预建表。未启用时归一化为 auto，仅作日志措辞"
+                      "description": "建表授权：auto=允许自动建表/补列，manual=禁止建表"
                     },
                     "token_active": {
                       "type": "boolean",
@@ -5844,7 +7095,7 @@
             "description": "缺少 build.read scope（或非 API token）"
           },
           "404": {
-            "description": "服务名不在白名单（integrated.unknown_service）；与「未启用」（200 + enabled=false）严格区分"
+            "description": "服务名不在白名单"
           },
           "500": {
             "$ref": "#/components/responses/500"
@@ -5858,7 +7109,7 @@
           "RBAC"
         ],
         "summary": "列出所有用户（CD 服务账号读）",
-        "description": "返回全部用户（按 username 升序，无分页，不含密码哈希）。仅 API token（rbac.user.write scope）可访问，交互式登录态一律 403。",
+        "description": "返回全部用户（按 username 升序，不含密码哈希）",
         "operationId": "rbacUserList",
         "security": [
           {
@@ -5900,7 +7151,7 @@
           "RBAC"
         ],
         "summary": "建号（CD 服务账号写）",
-        "description": "创建 CD 用户：systems 恒为 cd（不接受入参），用户名后端转小写，密码最短 8 位，禁止创建 super_admin；role 必须是 roles 表里真实存在的角色（否则 400 role_not_found）。仅 API token（rbac.user.write scope）。",
+        "description": "创建 CD 用户：systems 恒为 cd，用户名转小写，密码至少 8 位，禁止 super_admin",
         "operationId": "rbacUserCreate",
         "security": [
           {
@@ -5985,7 +7236,7 @@
           "RBAC"
         ],
         "summary": "查询单个用户（CD 服务账号读）",
-        "description": "返回指定用户（不含密码哈希），不存在返回 404。仅 API token（rbac.user.write scope）。",
+        "description": "返回指定用户（不含密码哈希），不存在 404",
         "operationId": "rbacUserGet",
         "security": [
           {
@@ -6037,7 +7288,7 @@
           "RBAC"
         ],
         "summary": "改角色 / 改密码（CD 服务账号写）",
-        "description": "部分更新：password 非空时改密码（最短 8 位）；role 传入时改角色（不可为 super_admin，必须是 roles 表里已存在的角色，否则 400）。内置根账号与既有 super_admin 不可改。仅 API token（rbac.user.write scope）。",
+        "description": "改密码和/或改角色（不可为 super_admin）；root 与既有 super_admin 不可改",
         "operationId": "rbacUserUpdate",
         "security": [
           {
@@ -6119,7 +7370,7 @@
           "RBAC"
         ],
         "summary": "删号（CD 服务账号写）",
-        "description": "删除指定用户。内置根账号与 super_admin 不可删。仅 API token（rbac.user.write scope）。",
+        "description": "删除指定用户；root 与 super_admin 不可删",
         "operationId": "rbacUserDelete",
         "security": [
           {
@@ -6179,7 +7430,7 @@
           "RBAC"
         ],
         "summary": "角色目录（CD 服务账号读）",
-        "description": "返回全部角色（name + description，按 name 升序），供审批规则选角色。仅 API token（rbac.user.write scope）。",
+        "description": "返回全部角色（name + description，按 name 升序）",
         "operationId": "rbacRoleList",
         "security": [
           {
@@ -6223,7 +7474,7 @@
           "RBAC"
         ],
         "summary": "角色权限清单（CD 服务账号读）",
-        "description": "返回该角色被授予的权限 key 列表，供 CD 做会话权限收敛与权限映射（此前只有 name/description 的角色目录，CD 只能硬编码一份 Glue 权限清单）。边界：角色不存在返回 404（与「角色存在但零权限」严格区分，避免 CD 把查错角色名当成该角色无权限而清空权限）；super_admin 返回 [\"*\"]（通配，与 /api/admin/login 的 permissions:\"*\" 同语义；其权限由代码授予、不落在 role_permissions 表，照表读会把超管读成零权限）。仅 API token（rbac.user.write scope，整段 /api/rbac/* 统一判）。",
+        "description": "返回该角色的权限 key 列表；角色不存在 404，super_admin 返回 [\"*\"]",
         "operationId": "rbacRolePermissions",
         "security": [
           {
@@ -6274,7 +7525,7 @@
             "description": "非 API token 或缺少 rbac.user.write scope"
           },
           "404": {
-            "description": "角色不存在（user.role_not_found）；与「角色存在但未授予任何权限」（200 + 空数组）严格区分"
+            "description": "角色不存在"
           },
           "500": {
             "$ref": "#/components/responses/500"

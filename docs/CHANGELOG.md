@@ -17,12 +17,16 @@
   - Switching a platform's CI off demotes its active mappings to pending, so re-enabling does not silently resurrect them.
   - Build-record load failures show the backend reason instead of a bare status code, and a failed auto-refresh keeps the existing table.
   - The scanning notice no longer disappears after a few seconds, and consecutive notices no longer overwrite each other.
+  - Creating or editing a mapping writes only that row instead of "read all, change one, write all back", so concurrent edits no longer overwrite each other; batch writes run in a transaction, and empty input is rejected instead of clearing the table.
+  - Editing a mapping with an empty `job_name` no longer deletes the row: it returns 400.
+  - OpenAPI documents the endpoints that accept both GET and POST but only declared GET (the `main`, `build`, `git` and `harbor` list endpoints plus `/oauth/userinfo`), and adds the missing `custom_builds`, `operation_logs` and `pipelines/{id}/resolve-tag`.
 - **Improved**
   - nginx, php-fpm and the scheduled worker run as separate containers, so the web tier scales independently.
   - A distributed lease lock keeps each scheduled job to a single instance across replicas, and schema creation on cold start is mutually exclusive.
   - Two offline migration scripts move connection and OIDC settings from env into the database without overwriting existing values.
   - The seed-account warning fires only when the first-login password change is still pending.
   - A Kubernetes reference manifest is included.
+  - OpenAPI descriptions are trimmed to the action and its behaviour; field listings and rationale stay in the documentation.
 
 ## v2.9.0 (2026-10-15)
 
