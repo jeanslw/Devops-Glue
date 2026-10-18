@@ -17,7 +17,8 @@ class HostingTypeTest extends TestCase
         $this->assertSame(HostingType::SAAS, HostingType::classify('https://gitee.com/api/v5'));
         $this->assertSame(HostingType::SAAS, HostingType::classify('https://gitlab.com'));
         $this->assertSame(HostingType::SAAS, HostingType::classify('https://bitbucket.org'));
-        $this->assertSame(HostingType::SAAS, HostingType::classify('https://gitcode.net'));
+        // GitCode 官网是 gitcode.com（gitcode.net 不是其域名，早前误配会让 gitcode.com 仓库判成自建）
+        $this->assertSame(HostingType::SAAS, HostingType::classify('https://gitcode.com'));
     }
 
     public function testSaasBySubdomain(): void

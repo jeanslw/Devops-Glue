@@ -102,13 +102,13 @@ export async function loadMaps() {
             tableWrap.style.display = 'block';
             tbody.innerHTML = maps.map(m => {
                 const plat = m.git_platform || '—';
-                const bp = m.build_provider || 'jenkins';
+                const bp = m.build_provider || '';   // 不兜底 jenkins：未指定如实显示
                 const bpLabel = bp === 'jenkins' ? __.t('build.mode_jenkins')
                     : bp === 'gitlab_ci' ? __.t('build.mode_gitlab_ci')
                     : bp === 'gitea_ci' ? __.t('build.mode_gitea_ci')
                     : bp === 'github_actions' ? __.t('build.mode_github_actions')
                     : bp === 'custom_push' ? 'Custom_Push'
-                    : bp;
+                    : (bp || __.t('js.provider_unspecified'));
                 const bpBadge = bp === 'gitlab_ci' ? 'badge-gitlab' : bp === 'gitea_ci' ? 'badge-gitea' : bp === 'github_actions' ? 'badge-github' : bp === 'custom_push' ? 'badge-cus' : 'badge-default';
                 const badgeCls = plat !== '—' && platforms.includes(plat) ? 'badge-' + plat : 'badge-default';
                 return `<tr>
@@ -289,7 +289,13 @@ export function statusBadge(s) {
 }
 
 export async function activateMap(jobName, item) {
-    const bp = item.build_provider || 'jenkins';
+    const bp = item.build_provider || '';
+    if (!bp) {
+        // 未指定构建源：不允许激活（激活后依然无法构建）。
+        // 文案不复用 cannot_activate_mode——那是「某 CI 未启用」的措辞，「未指定」不是可启用的模式
+        toast(__.t('js.activate_need_provider'), false);
+        return;
+    }
     const isBuiltinBp = isPullProvider(bp);
     if (isBuiltinBp && !currentBuildModes.includes(bp)) {
         const itemLabel = pullProviderMeta(bp).label;

@@ -21,7 +21,7 @@ final class HostingType
         'gitee.com',
         'gitlab.com',
         'bitbucket.org',
-        'gitcode.net',
+        'gitcode.com',
     ];
 
     public static function classify(string $url): string

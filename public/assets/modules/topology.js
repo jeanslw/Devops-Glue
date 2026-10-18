@@ -95,14 +95,14 @@ export function renderTopology() {
                 : esc(harbor))
             : '<span class="topo-empty-field">' + __.t('js.topo_not_linked') + '</span>';
 
-        const build = p.build_provider || 'jenkins';
+        const build = p.build_provider || '';   // 不兜底 jenkins：未指定如实显示
         const buildLabel = build === 'jenkins' ? __.t('build.mode_jenkins')
             : build === 'gitlab_ci' ? __.t('build.mode_gitlab_ci')
             : build === 'gitea_ci' ? __.t('build.mode_gitea_ci')
             : build === 'github_actions' ? __.t('build.mode_github_actions')
             : build === 'custom_push' ? 'Custom_Push'
-            : build;
-        const buildIcon = build === 'gitlab_ci' ? '🐺' : build === 'gitea_ci' ? '🦎' : build === 'github_actions' ? '🐙' : build === 'custom_push' ? '📤' : '⚡';
+            : (build || __.t('js.provider_unspecified'));
+        const buildIcon = build === 'gitlab_ci' ? '🐺' : build === 'gitea_ci' ? '🦎' : build === 'github_actions' ? '🐙' : build === 'custom_push' ? '📤' : build === 'jenkins' ? '⚡' : '❓';
         const buildUrl = topoPlatformUrls.jenkins_url || '';
         const projectPath = (p.project || p.current_path || '').replace(/\/+$/, '');
         const jenkinsPath = projectPath

@@ -3,6 +3,7 @@
 namespace App\Service;
 
 use App\Config\AppConfig;
+use App\Exceptions\ApiException;
 
 /**
  * 统一映射层 —— ci_job_git_map 的全部读/写/过滤，以及构建 provider 启用状态判定集中于此。
@@ -148,7 +149,9 @@ class MappingManager
         return [
             $row['job_name'],
             $row['git_platform'] ?? null,
-            $row['build_provider'] ?? AppConfig::PROVIDER_JENKINS,
+            // 不兜底 jenkins：CI 源已不止一种，「未指定」就该落成 NULL 让 requireProvider() 明确拒绝，
+            // 而不是悄悄写成 jenkins（会把构建发到用户没选的 CI 上）。
+            $row['build_provider'] ?? null,
             $row['git_remote'] ?? null,
             $row['project_id'] ?? null,
             $row['web_url'] ?? null,
@@ -183,7 +186,13 @@ class MappingManager
         $cpEnabled = $this->hasCustomPush();
 
         $maps = array_filter($maps, function ($m) use ($enabled, $cpEnabled) {
-            $bp = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
+            $bp = (string) ($m['build_provider'] ?? '');
+            if ($bp === '') {
+                // 未指定构建源：保留在活跃集合里，让界面看得到、能去修。
+                // 在这里过滤掉的话，这类行会从 jobsList / 项目下拉里凭空消失，用户无从发现，
+                // 前端特意保留空值行也就收不到数据。构建时由 requireProvider() 明确拒绝，不做隐式兜底。
+                return true;
+            }
             if (in_array($bp, $enabled, true)) {
                 return true;
             }
@@ -231,6 +240,35 @@ class MappingManager
         // 解析前先归一到 canonical 键，与 buildEntry/saveDiscovered 的 trim 写入对齐。
         $projectPath = trim($projectPath);
 
+        $row = $this->resolveMapRow($projectPath);
+        if ($row === null) {
+            // 未命中映射：历史上无条件兜底 jenkins（unmapped 直连，JenkinsService 按路径拼 URL）。
+            // CI 不止一种后，无条件假定 jenkins 会把任意 path 发到 Jenkins（可能误命中同名 Job）。
+            // 仅当 jenkins 确实启用时保留该直连能力——此时界面会合并 Jenkins 实时 Job 供直接构建；
+            // 否则无从推断来源，明确拒绝，而不是默认发到某个 CI。
+            if (!in_array(AppConfig::PROVIDER_JENKINS, $this->activeBuildProviders(), true)) {
+                throw new ApiException('未匹配到任何映射，且 Jenkins 未启用（无法直连），无法确定构建源', 400);
+            }
+            return ['provider' => AppConfig::PROVIDER_JENKINS, 'projectId' => $projectPath];
+        }
+        return $this->resolveMap($projectPath, $row);
+    }
+
+    /**
+     * 按项目路径解析命中的映射行 —— canonical 解析的唯一入口。
+     *
+     * 凡是「按 path 取映射」的调用方都必须走这里，不要各自遍历 allMaps()：
+     * 各自循环容易写成「job_name / current_path 任一命中即取」，与这里的优先级不同，
+     * 在跨映射撞名（A.current_path === B.job_name）时会命中不同的行，
+     * 导致一次请求里 harbor 仓库取自 A、pipeline 身份取自 B 的错配。
+     *
+     * @return array<string,mixed>|null 命中的映射行；未命中返回 null
+     */
+    public function resolveMapRow(string $projectPath): ?array
+    {
+        // 防御：与 resolveProject 一致，先归一到 canonical 键
+        $projectPath = trim($projectPath);
+
         // Pass 1：按 job_name（canonical 主键）精确匹配，遍历全部映射（含 pending/disabled）。
         // job_name 是各 CI 中的唯一标识，不能被其它 provider 的 current_path 别名占用，
         // 否则 gitea_ci 未启用时，路径 jeanslw/Devops_CD（gitea 的 job_name）会落到 jenkins 的
@@ -239,7 +277,7 @@ class MappingManager
         foreach ($this->allMaps() as $m) {
             $job = trim((string) ($m['job_name'] ?? ''));
             if ($job !== '' && $job === $projectPath) {
-                return $this->resolveMap($projectPath, $m);
+                return $m;
             }
         }
 
@@ -247,12 +285,11 @@ class MappingManager
         foreach ($this->activeMaps() as $m) {
             $cp = trim((string) ($m['current_path'] ?? ''));
             if ($cp !== '' && $cp === $projectPath) {
-                return $this->resolveMap($projectPath, $m);
+                return $m;
             }
         }
 
-        // 完全未命中：保持 jenkins + 原始 path（unmapped 直连，JenkinsService 按路径拼 URL）。
-        return ['provider' => AppConfig::PROVIDER_JENKINS, 'projectId' => $projectPath];
+        return null;
     }
 
     /**
@@ -265,25 +302,56 @@ class MappingManager
      */
     private function resolveMap(string $projectPath, array $m): array
     {
-        $provider = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
-        if (empty($provider)) {
-            $provider = AppConfig::PROVIDER_JENKINS;
-        }
-        $job = trim((string) ($m['job_name'] ?? ''));
-        $cp  = trim((string) ($m['current_path'] ?? ''));
+        $provider = self::requireProvider($m);
 
-        if ($provider === AppConfig::PROVIDER_GITLAB_CI && !empty($m['project_id'])) {
+        return ['provider' => $provider, 'projectId' => self::canonicalProjectId($m, $projectPath, $provider)];
+    }
+
+    /**
+     * 取映射行声明的构建源；未指定（NULL / 空串）一律拒绝，不做任何兜底。
+     *
+     * 不兜底的理由：CI 源已不止一种，从「空」推断不出用户想用哪条。历史上曾兜底成 jenkins，
+     * 那时 jenkins 是唯一 CI；现在它只是可选项之一，静默兜底会把构建发到用户没选的 CI 上。
+     * 未指定就是配置缺失，明确报错让调用方补全，好过替他猜一个。
+     *
+     * @param array<string,mixed> $row 命中的映射行（resolveMapRow 的返回）
+     */
+    public static function requireProvider(array $row): string
+    {
+        $provider = trim((string) ($row['build_provider'] ?? ''));
+        if ($provider === '') {
+            throw new ApiException('该映射未指定 build_provider（构建源），无法确定使用哪个 CI 构建，请在映射中指定后再试', 400);
+        }
+        return $provider;
+    }
+
+    /**
+     * 把一条映射行归一成调外部 CI API 用的 project_id —— 归一化规则的唯一定义处。
+     *
+     * 规则（历史行为，勿在别处重写一遍）：
+     *   gitlab_ci：数字 project_id（缺失时回落 fallback）
+     *   jenkins  ：job_name（Jenkins Job 路径，不是 git 路径），缺失时回落
+     *   其余（custom_push / gitea_ci / github_actions）：job_name，current_path 兜底，最后回落
+     *
+     * @param array<string,mixed> $row 命中的映射行（resolveMapRow 的返回）
+     * @param string $fallback job_name / current_path 都缺失时的兜底（通常传原始 path）
+     * @param string $provider 已解析的构建源（requireProvider() 的返回值，保证非空）
+     */
+    public static function canonicalProjectId(array $row, string $fallback, string $provider): string
+    {
+        $job = trim((string) ($row['job_name'] ?? ''));
+        $cp  = trim((string) ($row['current_path'] ?? ''));
+
+        if ($provider === AppConfig::PROVIDER_GITLAB_CI && !empty($row['project_id'])) {
             // GitLab CI：用数字 project_id 调外部 API
-            $projectId = (string) $m['project_id'];
-        } elseif ($provider === AppConfig::PROVIDER_JENKINS) {
-            // Jenkins：projectId 必须是 Jenkins Job 路径（job_name），而非 current_path（git 路径）。
-            $projectId = (string) ($job !== '' ? $job : $projectPath);
-        } else {
-            // custom_push / gitea_ci / github_actions：以 job_name 为规范键，current_path 兜底。
-            $projectId = (string) ($job !== '' ? $job : ($cp !== '' ? $cp : $projectPath));
+            return (string) $row['project_id'];
         }
-
-        return ['provider' => $provider, 'projectId' => $projectId];
+        if ($provider === AppConfig::PROVIDER_JENKINS) {
+            // Jenkins：projectId 必须是 Jenkins Job 路径（job_name），而非 current_path（git 路径）。
+            return $job !== '' ? $job : $fallback;
+        }
+        // custom_push / gitea_ci / github_actions：以 job_name 为规范键，current_path 兜底。
+        return $job !== '' ? $job : ($cp !== '' ? $cp : $fallback);
     }
 
     /**

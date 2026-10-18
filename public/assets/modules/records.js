@@ -64,10 +64,11 @@ export async function loadPullProjects() {
         if (!res.ok) throw new Error(await readErrorMessage(res));
         const data = await res.json();
         const all = Array.isArray(data.data) ? data.data : [];
-        const projects = all.filter(m => isPullProvider(m.ci_provider));
+        // 未指定构建源（空）的映射也列出：过滤掉会导致项目在下拉里凭空消失，用户无从发现并修复
+        const projects = all.filter(m => isPullProvider(m.ci_provider) || !m.ci_provider);
         let opts = '<option value="">' + esc(__.t('form.please_select')) + '</option>';
         projects.forEach(m => {
-            const bp = m.ci_provider || 'jenkins';
+            const bp = m.ci_provider || '';   // 不兜底 jenkins：如实反映「未指定」
             const name = m.job_name || m.current_path || '';
             const path = m.job_name || m.current_path || '';
             const meta = pullProviderMeta(bp);
@@ -113,7 +114,7 @@ export async function loadPullRecords(silent) {
         const list = await res.json();
         const records = Array.isArray(list) ? list : [];
         const selOpt = sel.options[sel.selectedIndex];
-        const provider = selOpt ? (selOpt.getAttribute('data-provider') || 'jenkins') : 'jenkins';
+        const provider = selOpt ? (selOpt.getAttribute('data-provider') || '') : '';
         pullRecordsCache = records.map(r => Object.assign({}, r, {
             _runId: provider === 'gitlab_ci' ? (r.iid || r.id || 0) : (r.id || 0)
         }));

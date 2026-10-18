@@ -89,7 +89,9 @@ class BuildController extends BaseController
         foreach ($this->mapping->activeMaps() as $m) {
             $all[] = [
                 'job_name'         => $m['job_name'] ?? '',
-                'ci_provider'      => $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS,
+                // 如实返回：未指定构建源就是空，不兜底成 jenkins
+                // （界面显示 jenkins 但构建时报「未指定构建源」是矛盾，前端会对空值标注「未指定」）
+                'ci_provider'      => (string) ($m['build_provider'] ?? ''),
                 'project_id'       => $m['project_id'] ?? ($m['current_path'] ?? $m['job_name']),
                 'current_path'     => $m['current_path'] ?? '',
                 'harbor_repository' => $m['harbor_repository'] ?? '',
@@ -157,7 +159,7 @@ class BuildController extends BaseController
             }
             $result[] = [
                 'job_name'          => $job,
-                'build_provider'    => $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS,
+                'build_provider'    => (string) ($m['build_provider'] ?? ''),
                 'current_path'      => $cp,
                 'harbor_repository' => $m['harbor_repository'] ?? '',
                 'git_platform'      => $m['git_platform'] ?? '',
@@ -710,20 +712,13 @@ class BuildController extends BaseController
         }
 
         // ── 查找 git_platform ──
-        $maps = $this->mapping->allMaps();
-        $gitPlatform    = '';
-        $gitProjectId   = null;
-        $gitCurrentPath = '';
-        foreach ($maps as $m) {
-            $job = $m['job_name'] ?? '';
-            $cp  = $m['current_path'] ?? '';
-            if ($job === $path || $cp === $path) {
-                $gitPlatform    = $m['git_platform'] ?? '';
-                $gitProjectId   = $m['project_id'] ?? null;
-                $gitCurrentPath = $cp;
-                break;
-            }
-        }
+        //    与 scan-sync 同走 canonical 解析：同一 path 在两个端点必须命中同一条映射，
+        //    否则会出现「artifact 归 B、commit status 回写到 A」的跨端点错配。
+        //    未命中时字段保持空，由下方 empty($gitPlatform) 统一返回 400。
+        $row            = $this->mapping->resolveMapRow($path) ?? [];
+        $gitPlatform    = (string) ($row['git_platform'] ?? '');
+        $gitProjectId   = $row['project_id'] ?? null;
+        $gitCurrentPath = (string) ($row['current_path'] ?? '');
 
         if (empty($gitPlatform)) {
             return $this->jsonError($response, $this->__('build.commit_status_no_git_platform', ['path' => $path]), 400);
@@ -805,32 +800,25 @@ class BuildController extends BaseController
         $sourceUpdatedAt = trim((string) ($body['source_updated_at'] ?? ''));
 
         // 1. 获取 job_git_map 中的映射信息（不依赖 CI 系统）
-        $maps = $this->mapping->allMaps();
-        $harborRepo  = '';
-        $provider    = AppConfig::PROVIDER_JENKINS;
-        $gitPlatform = '';
-        $gitProjectId  = null;
-        $gitCurrentPath = '';
-        $ciProjectId    = $path;
-        foreach ($maps as $m) {
-            $job = $m['job_name'] ?? '';
-            $cp  = $m['current_path'] ?? '';
-            if ($job === $path || $cp === $path) {
-                $harborRepo     = $m['harbor_repository'] ?? '';
-                $provider       = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
-                $gitPlatform    = $m['git_platform'] ?? '';
-                $gitProjectId   = $m['project_id'] ?? null;
-                $gitCurrentPath = $cp;
-                // 规范 project_id（供 getPipelines 用）：gitlab_ci 用数字 project_id，
-                // custom_push 用 job_name（current_path 兜底），jenkins 用原始 path。
-                if ($provider === AppConfig::PROVIDER_GITLAB_CI && !empty($gitProjectId)) {
-                    $ciProjectId = (string) $gitProjectId;
-                } elseif ($provider !== AppConfig::PROVIDER_JENKINS) {
-                    $ciProjectId = (string) ($job !== '' ? $job : ($cp !== '' ? $cp : $path));
-                }
-                break;
-            }
+        //    统一走 canonical 解析（resolveMapRow / resolveProject），不再自行遍历 allMaps()：
+        //    harbor 仓库、provider、Git 平台、pipeline 身份必须来自同一条映射，
+        //    否则跨映射撞名（A.current_path === B.job_name）时会命中不同的行，
+        //    拼出「A 的仓库 + B 的身份」——Harbor 校验查错仓库、artifact 归属错配。
+        $row = $this->mapping->resolveMapRow($path);
+        if ($row === null) {
+            // 未命中映射：既没有 harbor 仓库也没有身份可解析，与下方空仓库同文案
+            return $this->jsonError($response, $this->__('build.no_harbor_repo', ['path' => $path]), 400);
         }
+        // 构建源未指定（NULL / 空串）直接 400：CI 源已不止一种，无从推断用户想用哪条，
+        // 不做 jenkins 兜底（历史遗留，会把构建发到用户没选的 CI 上）。
+        $provider       = MappingManager::requireProvider($row);
+        $harborRepo     = trim((string) ($row['harbor_repository'] ?? ''));
+        $gitPlatform    = (string) ($row['git_platform'] ?? '');
+        $gitProjectId   = $row['project_id'] ?? null;
+        $gitCurrentPath = (string) ($row['current_path'] ?? '');
+        // 规范 project_id（供 getPipelines 用）：规则在 MappingManager::canonicalProjectId()，
+        // 与 resolve() 共用同一份实现，不在这里重写一遍。
+        $ciProjectId = MappingManager::canonicalProjectId($row, $path, $provider);
 
         if (empty($harborRepo)) {
             return $this->jsonError($response, $this->__('build.no_harbor_repo', ['path' => $path]), 400);
@@ -1039,9 +1027,11 @@ class BuildController extends BaseController
             if (($request->getQueryParams()['format'] ?? 'raw') === 'raw') {
                 return $this->output($response, [], $request);
             }
+            // 只解析一次：resolveProject() 每次都要全表遍历（allMaps 无缓存），连调两次是双倍 SQL
+            $resolved = $this->mapping->resolveProject($path);
             return $this->output($response, [
-                'build_provider' => $this->mapping->resolveProject($path)['provider'],
-                'project_id'     => $this->mapping->resolveProject($path)['projectId'],
+                'build_provider' => $resolved['provider'],
+                'project_id'     => $resolved['projectId'],
                 'pipeline'       => $pipeline,
                 'tag'            => null,
                 'all'            => null,

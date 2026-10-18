@@ -10,6 +10,9 @@
   - Pull-mode CI failures are returned by HTTP semantics: resource not found (404), service unreachable (502), service unavailable (500); API-token calls follow the same semantics.
   - Auto-discovery reports success / partial failure / total failure and names the platforms that failed.
   - Platform connection cards are collapsed by default and expand on click.
+  - A mapping must declare its build source: creating one without `build_provider` returns 400, an explicitly empty value is rejected, and building a mapping with no provider is refused instead of falling back to Jenkins (a mapping left empty by an earlier release must be edited to pick its CI).
+  - Editing a mapping merges into the existing row, so sending only the fields you want to change no longer clears the rest.
+  - A mapping with no build provider is shown as "build source unspecified" everywhere — mapping list, topology and the project dropdown — instead of being labelled Jenkins or dropped from the list.
 - **Fixed**
   - Hosting type is derived from the base-URL domain, so the hosted GitLab service is no longer labelled self-hosted.
   - An unreachable Harbor, Git platform or Jenkins is reported as unreachable instead of "no data", "no branches" or "job not found".
@@ -20,6 +23,14 @@
   - Creating or editing a mapping writes only that row instead of "read all, change one, write all back", so concurrent edits no longer overwrite each other; batch writes run in a transaction, and empty input is rejected instead of clearing the table.
   - Editing a mapping with an empty `job_name` no longer deletes the row: it returns 400.
   - OpenAPI documents the endpoints that accept both GET and POST but only declared GET (the `main`, `build`, `git` and `harbor` list endpoints plus `/oauth/userinfo`), and adds the missing `custom_builds`, `operation_logs` and `pipelines/{id}/resolve-tag`.
+  - Commit-status write-back no longer echoes the raw upstream error, which could expose internal URLs; a safe summary with the HTTP status is returned instead.
+  - CI credential and permission failures (401 / 403) are reported as such instead of being labelled "service unavailable".
+  - Auto-discovery no longer treats a 5xx from GitHub or Gitea as "no projects found"; the failure is reported with the platform name.
+  - Jenkins unreachable errors no longer include the internal request URL; details stay in the log.
+  - GitCode repositories are recognised as SaaS — the SaaS host list used a domain GitCode does not use.
+  - Mappings with no provider are no longer filtered out of job lists, no longer match a Jenkins filter, and no longer demoted to pending when a CI is switched off.
+  - Auto-discovery no longer skips a project because a provider-less mapping with the same name exists, so its build source can still be filled in.
+  - A path that matches no mapping is only sent to Jenkins when Jenkins is enabled; otherwise it is rejected instead of being assumed to be a Jenkins job.
 - **Improved**
   - nginx, php-fpm and the scheduled worker run as separate containers, so the web tier scales independently.
   - A distributed lease lock keeps each scheduled job to a single instance across replicas, and schema creation on cold start is mutually exclusive.
@@ -27,6 +38,9 @@
   - The seed-account warning fires only when the first-login password change is still pending.
   - A Kubernetes reference manifest is included.
   - OpenAPI descriptions are trimmed to the action and its behaviour; field listings and rationale stay in the documentation.
+  - `resolve-tag` resolves the mapping once instead of scanning the whole table twice.
+  - CI-related wording lists every supported engine, and Custom_Push is described as a push-based channel (an external CI reports results; Glue does not schedule it) rather than as one of the CI engines.
+  - Which CI a mapping uses, and which project id to call it with, have a single definition shared by build, scan-sync and commit-status, so the three endpoints can no longer resolve to different rows.
 
 ## v2.9.0 (2026-10-15)
 

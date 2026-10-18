@@ -1423,7 +1423,7 @@ class Database
         self::buildTable($pdo, \App\Config\AppConfig::TABLE_JOB_GIT_MAP, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_JOB_GIT_MAP . " (
             job_name {$TEXT_PK},
             git_platform TEXT,
-            build_provider {$VARCHAR} DEFAULT '" . \App\Config\AppConfig::PROVIDER_JENKINS . "',
+            build_provider {$VARCHAR},
             git_remote TEXT,
             project_id INTEGER,
             web_url TEXT,

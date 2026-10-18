@@ -24,6 +24,7 @@ export function pullProviderMeta(bp) {
         case 'gitea_ci':   return { icon: '🦎', label: __.t('js.mode_gitea_ci_name'),  cls: 'gitea' };
         case 'github_actions': return { icon: '🐙', label: __.t('js.mode_github_actions_name'), cls: 'github' };
         case 'custom_push':return { icon: '📤', label: __.t('js.mode_custom_push_name'), cls: 'custom-push' };
-        default:           return { icon: '🔧', label: bp, cls: '' };
+        // 空 = 映射未指定构建源：明确标注，避免被当成 jenkins（构建时会因未指定而被拒绝）
+        default:           return bp ? { icon: '🔧', label: bp, cls: '' } : { icon: '❓', label: __.t('js.provider_unspecified'), cls: 'unknown' };
     }
 }

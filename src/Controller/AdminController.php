@@ -5,6 +5,7 @@ namespace App\Controller;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Config\AppConfig;
+use App\Exceptions\ApiException;
 use App\Service\Git\HostingType;
 use App\Service\AdminAuthService;
 use App\Service\AdminUserRepository;
@@ -440,7 +441,8 @@ class AdminController extends BaseController
             $filtered = array_filter($filtered, fn($m) => ($m['git_platform'] ?? '') === $platform);
         }
         if ($provider !== '') {
-            $filtered = array_filter($filtered, fn($m) => ($m['build_provider'] ?? AppConfig::PROVIDER_JENKINS) === $provider);
+            // 如实匹配：未指定构建源的映射不应被当成 jenkins 筛出来（界面显示与构建行为要一致）
+            $filtered = array_filter($filtered, fn($m) => (string) ($m['build_provider'] ?? '') === $provider);
         }
 
         // 重置索引
@@ -480,6 +482,11 @@ class AdminController extends BaseController
             return $this->jsonError($response, 'map.job_name_required', 400);
         }
 
+        // 构建源必填：新增时必须显式指定，不能依赖写入层/DDL 的 jenkins 默认值
+        if (trim((string) ($body['build_provider'] ?? '')) === '') {
+            return $this->jsonError($response, 'map.build_provider_required', 400);
+        }
+
         foreach ($this->mapping->allMaps() as $item) {
             if (($item['job_name'] ?? '') === $jobName) {
                 return $this->jsonError($response, $this->__('map.already_exists', ['{name}' => $jobName]), 409);
@@ -511,10 +518,12 @@ class AdminController extends BaseController
             return $this->jsonError($response, 'map.original_name_required', 400);
         }
 
-        $found = false;
+        $found  = false;
+        $oldRow = [];
         foreach ($this->mapping->allMaps() as $item) {
             if (($item['job_name'] ?? '') === $oldName) {
-                $found = true;
+                $found  = true;
+                $oldRow = $item;   // 留存原行，供下面的部分更新合并
                 break;
             }
         }
@@ -528,14 +537,18 @@ class AdminController extends BaseController
         if ($newName === '') {
             return $this->jsonError($response, 'map.job_name_required', 400);
         }
+        // 部分更新语义：saveMap 是固定 10 列 upsert（全列覆盖），直接保存 $updatedEntry 会把
+        // 本次没传的字段写成 NULL —— 只改 harbor_repository 却擦掉 build_provider / current_path。
+        // 先与原行合并：本次显式传入的字段覆盖原值（传 null = 主动清空，照常覆盖），未传的保持原值。
+        $merged = array_merge($oldRow, $updatedEntry);
         // 改名：先写新行再删旧行，任一步失败都不会丢数据
-        $this->mapping->saveMap($updatedEntry);
+        $this->mapping->saveMap($merged);
         if ($newName !== $oldName) {
             $this->mapping->deleteMap($oldName);
         }
         $this->invalidateTopologyCache();
-        $this->opLog()->record($this->currentUser, 'update_mapping', $oldName, ['job_name' => $updatedEntry['job_name'] ?? $oldName], $this->clientIp($request), 'success');
-        return $this->output($response, ['success' => true, 'entry' => $updatedEntry], $request);
+        $this->opLog()->record($this->currentUser, 'update_mapping', $oldName, ['job_name' => $merged['job_name'] ?? $oldName], $this->clientIp($request), 'success');
+        return $this->output($response, ['success' => true, 'entry' => $merged], $request);
     }
 
     /**
@@ -771,7 +784,10 @@ class AdminController extends BaseController
                 $maps = $this->mapping->allMaps();
                 $changed = false;
                 foreach ($maps as &$m) {
-                    $bp = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
+                    $bp = (string) ($m['build_provider'] ?? '');
+                    if ($bp === '') {
+                        continue;   // 未指定构建源：不属于任何 CI，不因某个 provider 被关闭而降 pending
+                    }
                     if (in_array($bp, $removed, true) && ($m['status'] ?? AppConfig::STATUS_ACTIVE) !== AppConfig::STATUS_PENDING) {
                         $m['status'] = AppConfig::STATUS_PENDING;
                         $changed = true;
@@ -2186,7 +2202,10 @@ class AdminController extends BaseController
                 $maps = $this->mapping->allMaps();
                 $changed = false;
                 foreach ($maps as &$m) {
-                    $bp = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
+                    $bp = (string) ($m['build_provider'] ?? '');
+                    if ($bp === '') {
+                        continue;   // 未指定构建源：不属于任何 CI，不因某个 provider 被关闭而降 pending
+                    }
                     if (in_array($bp, $removedProviders, true) && ($m['status'] ?? AppConfig::STATUS_ACTIVE) !== AppConfig::STATUS_PENDING) {
                         $m['status'] = AppConfig::STATUS_PENDING;
                         $changed = true;
@@ -2743,6 +2762,11 @@ class AdminController extends BaseController
         foreach ($fields as $f) {
             if (array_key_exists($f, $body)) {
                 $val = $body[$f];
+                if ($f === 'build_provider' && trim((string) $val) === '') {
+                    // 显式传空 = 绕过前端没选构建源：拒绝落库。空值在构建时无法确定用哪条 CI
+                    // （CI 源已不止一种，不做 jenkins 兜底）。不传该字段属部分更新，保持原值，不受影响。
+                    throw new ApiException('build_provider（构建源）不能为空，请指定该映射使用的 CI', 400);
+                }
                 if ($f === 'project_id' && ($val === '' || $val === null)) {
                     $entry[$f] = null;
                 } elseif ($f === 'project_id' && is_numeric($val)) {

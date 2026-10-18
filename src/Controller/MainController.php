@@ -115,7 +115,8 @@ class MainController extends BaseController
             if (!isset($grouped[$key])) {
                 $grouped[$key] = [
                     'git_platform'      => $map['git_platform'],
-                    'build_provider'    => $map['build_provider'] ?? AppConfig::PROVIDER_JENKINS,
+                    // 如实返回：未指定构建源就是空，不兜底成 jenkins
+                    'build_provider'    => (string) ($map['build_provider'] ?? ''),
                     'git_remote'        => $map['git_remote'],
                     'project_id'        => $map['project_id'] ?? null,
                     'web_url'           => $map['web_url'] ?? '',

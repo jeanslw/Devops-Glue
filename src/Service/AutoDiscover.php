@@ -48,7 +48,9 @@ class AutoDiscover
         $activeRemotes = [];   // 归一化后的 key：host/path（统一格式，跨协议去重）
         $existingNames = [];
         foreach ($this->mapping->allMaps() as $m) {
-            $bp = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
+            // 不兜底 jenkins：未指定构建源的行不参与去重，
+            // 否则 Jenkins 扫到同名项目会被判为「已存在」而跳过，堵死自动发现补全 provider 的路径
+            $bp = (string) ($m['build_provider'] ?? '');
 
             // 未知/非内置 provider 的记录不参与去重
             if (!in_array($bp, AppConfig::BUILTIN_PULL_PROVIDERS, true)) {
@@ -157,7 +159,8 @@ class AutoDiscover
         // 防止跨 provider 误判重复
         $names = [];
         foreach ($maps as $m) {
-            $bp = $m['build_provider'] ?? AppConfig::PROVIDER_JENKINS;
+            // 同 discover()：不兜底 jenkins，未指定构建源的行不参与去重
+            $bp = (string) ($m['build_provider'] ?? '');
             if (!in_array($bp, AppConfig::BUILTIN_PULL_PROVIDERS, true)) {
                 // custom_push 记录在 custom_push_enabled 时始终纳入去重
                 if (!($cpEnabled && $bp === AppConfig::PROVIDER_CUSTOM_PUSH)) {
@@ -345,6 +348,10 @@ class AutoDiscover
                 if ($resp->getStatusCode() === 401) {
                     throw new \RuntimeException('Gitea Token 无效，请检查后台平台连接里的 Gitea Token');
                 }
+                if ($resp->getStatusCode() >= 500) {
+                    // 同 GitHub：5xx 不能静默当空列表，否则 Gitea 不可用会被显示成「没有项目」
+                    throw new \RuntimeException('Gitea 服务暂时不可用（HTTP ' . $resp->getStatusCode() . '）');
+                }
                 if ($resp->getStatusCode() >= 400) {
                     break;
                 }
@@ -418,6 +425,11 @@ class AutoDiscover
                 $resp = $this->githubClient->get("{$base}/user/repos?per_page=100&page={$page}");
                 if ($resp->getStatusCode() === 401) {
                     throw new \RuntimeException('GitHub Token 无效，请检查后台平台连接里的 GitHub Token');
+                }
+                if ($resp->getStatusCode() >= 500) {
+                    // 5xx 是服务端故障，不能静默当空列表：否则用户会以为「没有项目」，
+                    // 实际是 GitHub 暂时不可用。与 401 一样抛给 discover() 汇总到 errors。
+                    throw new \RuntimeException('GitHub 服务暂时不可用（HTTP ' . $resp->getStatusCode() . '）');
                 }
                 if ($resp->getStatusCode() >= 400) {
                     break;
