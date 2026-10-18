@@ -92,6 +92,15 @@ export async function loadOidcConfig() {
     }
 }
 
+// OIDC 卡片默认折叠，点表头展开/收起（与平台接入状态一致）
+export function toggleOidcCard(hd) {
+    const card = document.getElementById('oidc-card');
+    if (!card) return;
+    card.classList.toggle('open');
+    const caret = hd ? hd.querySelector('.pc-caret') : null;
+    if (caret) caret.textContent = card.classList.contains('open') ? '▾' : '▸';
+}
+
 export function onOidcAddClient() {
     if (!_oidc) return;
     _oidc.clients = (_oidc.clients || []).concat([{

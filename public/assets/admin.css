@@ -533,10 +533,20 @@
             gap:16px;
             margin-top:8px;
         }
-        /* 平台配置：tag 三功能卡片并排（3 列）+ 开关紧凑居左 */
-        .pc-tag-cards { grid-template-columns:repeat(3, 1fr); }
+        /* 平台配置：tag 功能卡片并排（4 列）+ 开关紧凑居左 */
+        /* 与上方 OIDC / 平台接入状态同宽对齐，用分隔线区隔 */
+        .pc-tag-cards {
+            grid-template-columns:repeat(4, 1fr); gap:12px;
+        }
+        /* 划分线 + 小节标题：区分 OIDC 区与下方运维设置卡片 */
+        .pc-section-title { border-top:1px solid #e5e7eb; padding-top:16px; }
         .pc-tag-cards .mode-card-toggle { flex:0 0 auto; }
         .pc-tag-cards .mode-save-status { margin-left:0; }
+        /* 四列后卡片变窄：标题允许换行，文本框/下拉框不再撑破卡片 */
+        .pc-tag-cards .mode-card-title { white-space:normal; }
+        .pc-tag-cards select,
+        .pc-tag-cards input[type="text"],
+        .pc-tag-cards input[type="number"] { width:100%; min-width:0; box-sizing:border-box; }
         /* 手动立即执行（清理 / 回填）：按钮贴卡片底部，执行结果就地显示在按钮右侧 */
         .pc-tag-cards .mode-card-actions {
             display:flex; align-items:center; gap:8px; flex-wrap:wrap;
@@ -633,7 +643,12 @@
         .pc-body { display:none; flex-direction:column; gap:8px; }
         .pc-row.open .pc-body { display:flex; }
         .pc-row-hd { cursor:pointer; user-select:none; }
-        .pc-caret { width:14px; text-align:center; color:#6b7280; flex-shrink:0; font-size:12px; }
+        .pc-caret { width:25px; text-align:center; color:#6b7280; flex-shrink:0; font-size:25px; line-height:1; font-weight:700; }
+        /* OIDC / SSO 卡片默认折叠，点表头展开（与平台接入状态一致） */
+        #oidc-card { min-height:0; }
+        #oidc-card .mode-card-hd { cursor:pointer; user-select:none; }
+        #oidc-body { display:none; }
+        #oidc-card.open #oidc-body { display:block; }
 
         /* ── 配置模式：CI 流程图（拉取式 / 推送式，含响应式）── */
         #mode-display .mf-badges { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:20px; }
@@ -850,6 +865,7 @@
 [data-theme="dark"] .mode-card:hover { border-color:#6366f1; }
 [data-theme="dark"] .oidc-row { border-color:#334155; }
 [data-theme="dark"] .pc-row { border-color:#334155; }
+[data-theme="dark"] .pc-section-title { border-top-color:#334155; }
 [data-theme="dark"] .pc-grid input { background:#0f172a; color:#e5e7eb; border-color:#475569; }
 [data-theme="dark"] .mode-card-actions { border-top-color:#334155; }
 [data-theme="dark"] #build-mode-value { background:#334155; color:#e5e7eb; }

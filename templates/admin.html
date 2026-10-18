@@ -1198,12 +1198,14 @@
                         <h4 data-i18n="sys.platforms" style="margin:0 0 12px;">平台接入状态</h4>
                         <div id="pc-platforms"></div>
                         <div class="mode-card" id="oidc-card" style="margin-top:16px;">
-                            <div class="mode-card-hd">
+                            <div class="mode-card-hd" onclick="toggleOidcCard(this)">
+                                <span class="pc-caret">▸</span>
                                 <span class="mode-card-title" data-i18n="oidc.title">🔐 OIDC / SSO 配置</span>
                             </div>
                             <div id="oidc-body"></div>
                         </div>
-                        <div class="mode-cards pc-tag-cards" style="margin-top:16px;">
+                        <h4 data-i18n="sys.settings_section" class="pc-section-title" style="margin:16px 0 12px;">系统设置</h4>
+                        <div class="mode-cards pc-tag-cards">
                             <div class="mode-card">
                                 <div class="mode-card-hd switch-row" style="flex-wrap:wrap;">
                                     <span class="mode-card-title" data-i18n="build.stale_tag_cleanup_title" style="flex:0 0 100%;">🧹 过期镜像标签</span>
@@ -1219,7 +1221,7 @@
                                 </ul>
                                 <div class="mode-card-actions">
                                     <button id="stale-tag-run-btn" class="btn btn-pri" onclick="runStaleTagCleanup()" disabled
-                                            data-i18n="build.stale_tag_cleanup_run_btn">▶ 立即清理一次</button>
+                                            data-i18n="build.stale_tag_cleanup_run_btn">▶ 立即执行</button>
                                     <span id="stale-tag-run-status" class="mode-save-status"></span>
                                 </div>
                             </div>
@@ -1238,7 +1240,7 @@
                                 </ul>
                                 <div class="mode-card-actions">
                                     <button id="backfill-tag-run-btn" class="btn btn-pri" onclick="runTagBackfill()" disabled
-                                            data-i18n="build.tag_backfill_run_btn">▶ 立即回填一次</button>
+                                            data-i18n="build.tag_backfill_run_btn">▶ 立即执行</button>
                                     <span id="backfill-tag-run-status" class="mode-save-status"></span>
                                 </div>
                             </div>
@@ -1261,7 +1263,7 @@
                                 <div style="display:flex;flex-direction:column;gap:10px;padding:4px 0;">
                                     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                                         <label for="apilog-set-level" style="min-width:72px;font-size:13px;white-space:nowrap;" data-i18n="apilog.level_label">写入级别</label>
-                                        <select id="apilog-set-level" onchange="saveApiLogSettings()" style="width:200px;">
+                                        <select id="apilog-set-level" onchange="saveApiLogSettings()" style="width:100%;min-width:0;">
                                             <option value="all" data-i18n="apilog.level_all">全部（成功+拒绝+失败）</option>
                                             <option value="warning" data-i18n="apilog.level_warning">仅拒绝+失败</option>
                                             <option value="error" data-i18n="apilog.level_error">仅失败</option>
@@ -1270,14 +1272,14 @@
                                     </div>
                                     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                                         <label for="apilog-set-retain" style="min-width:72px;font-size:13px;white-space:nowrap;" data-i18n="apilog.retain_label">保留天数</label>
-                                        <select id="apilog-set-retain" onchange="onApiLogRetainChange()" style="width:120px;">
+                                        <select id="apilog-set-retain" onchange="onApiLogRetainChange()" style="width:100%;min-width:0;">
                                             <option value="90" data-i18n="apilog.retain_90">90 天</option>
                                             <option value="60" data-i18n="apilog.retain_60">60 天</option>
                                             <option value="30" data-i18n="apilog.retain_30">30 天</option>
                                             <option value="custom" data-i18n="apilog.retain_custom">自定义</option>
                                         </select>
                                         <input type="number" id="apilog-set-retain-custom" min="1" max="3650" placeholder="1-3650"
-                                               onchange="saveApiLogSettings()" style="display:none;width:100px;">
+                                               onchange="saveApiLogSettings()" style="display:none;width:100%;max-width:100px;">
                                     </div>
                                     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                                         <span style="min-width:72px;font-size:13px;white-space:nowrap;" data-i18n="apilog.cleanup_label">定时清理</span>

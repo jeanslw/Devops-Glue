@@ -87,8 +87,7 @@ function renderPlatforms() {
         + '</div>';
     }).join('');
 
-    body.innerHTML = '<div style="color:#6b7280;font-size:12px;margin-bottom:10px;">' + esc(__.t('platform_conn.note')) + '</div>'
-        + rows
+    body.innerHTML = rows
         + '<div style="display:flex;justify-content:flex-end;margin-top:12px;">'
             + '<button class="btn btn-pri" onclick="savePlatformConnections()">💾 ' + esc(__.t('platform_conn.save')) + '</button>'
         + '</div>';
