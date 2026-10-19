@@ -49,4 +49,20 @@ class BuildTagExtractTest extends TestCase
         $trace = "mycode/runner-ci:v20260827-130"; // 无 digest 关键字 → 视为非推送日志
         $this->assertSame('', $this->extract($trace, 'mycode/runner-ci', 'digest', 130));
     }
+
+    /** 不符合 Docker tag 规范的取值须丢弃：${TAG} 这类未展开变量不得充当 tag */
+    public function testDropsUnsanitizedCandidates(): void
+    {
+        $trace = 'digest: sha256:abc mycode/runner-ci:${TAG}' . "\n"
+            . 'docker push mycode/runner-ci:latest';
+        $this->assertSame('latest', $this->extract($trace, 'mycode/runner-ci', 'digest', 0));
+    }
+
+    /** 超过 Docker tag 上限（128 字符）的取值将被丢弃 */
+    public function testRejectsOverLongTag(): void
+    {
+        $long  = str_repeat('a', 200);
+        $trace = "digest: sha256:abc mycode/runner-ci:{$long}";
+        $this->assertSame('', $this->extract($trace, 'mycode/runner-ci', 'digest', 0));
+    }
 }
