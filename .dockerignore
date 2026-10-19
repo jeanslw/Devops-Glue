@@ -12,6 +12,8 @@ vendor/
 Dockerfile
 tests
 *.md
+# 随仓库阅读的文档与配图（`*.md` 不跨目录分隔符，需单独排除本目录）
+docs/
 LICENSE
 docker-compose.yml
 system_info.png
