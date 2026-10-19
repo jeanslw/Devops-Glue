@@ -32,6 +32,7 @@
   - Auto-discovery no longer skips a project because a provider-less mapping with the same name exists, so its build source can still be filled in.
   - A path that matches no mapping is only sent to Jenkins when Jenkins is enabled; otherwise it is rejected instead of being assumed to be a Jenkins job.
   - Running a tag job no longer distorts the platform-connection cards: the long one-line result wraps instead of stretching its grid column and squeezing the neighbouring cards.
+  - `BuildController::report()` now resolves the mapping for the reported path through `MappingManager::resolveMapRow()` instead of scanning all maps itself, so path lookup has a single definition across build, scan-sync and report.
 - **Improved**
   - nginx, php-fpm and the scheduled worker run as separate containers, so the web tier scales independently.
   - A distributed lease lock keeps each scheduled job to a single instance across replicas, and schema creation on cold start is mutually exclusive.
@@ -42,6 +43,7 @@
   - `resolve-tag` resolves the mapping once instead of scanning the whole table twice.
   - CI-related wording lists every supported engine, and Custom_Push is described as a push-based channel (an external CI reports results; Glue does not schedule it) rather than as one of the CI engines.
   - Which CI a mapping uses, and which project id to call it with, have a single definition shared by build, scan-sync and commit-status, so the three endpoints can no longer resolve to different rows.
+  - A CI data-flow diagram is added to the README and the architecture overview, with a legend explaining the line styles; all docs images are moved under `docs/Image/`.
 
 ## v2.9.0 (2026-10-15)
 

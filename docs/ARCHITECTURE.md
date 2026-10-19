@@ -2,42 +2,7 @@
 
 ## Overall Data Flow
 
-```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                                CODE PUSH                                     │
-│          GitLab / Gitee / GitHub / Gitea  →  Webhook Trigger                 │
-└────────────────────────────────────┬─────────────────────────────────────────┘
-                                     ↓
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                     CI LAYER：Devops-Glue API (PHP)                          │
-│                                                                              │
-│  ┌──────────────┐  ┌──────────────┐   ┌──────────────┐    ┌───────────────┐  │
-│  │   Jenkins    │  │  GitLab CI   │   │   Gitea CI   │    │  Custom Push  │<──── User CI
-│  │ BuildProvider│  │ BuildProvider│   │ BuildProvider│    │ (custom_push) │  │   (pusher)
-│  └──────┬───────┘  └──────┬───────┘   └──────┬───────┘    └───────┬───────┘  │
-│         └─────────────────┼──────────────────┼────────── ─────────┼          │
-│                                    ↓                                         │
-│                    Build → Docker Image → Harbor Registry                    │
-│                                    ↓                                         │
-│                      scan-sync → ci_pipeline_artifacts                       │
-└────────────────────────────────────┬─────────────────────────────────────────┘
-                                     ↓									 
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                          CD 层：Devops-cd (Python)                           │
-│                                                                              │
-│                         选择 Project + Tag  ──→  部署执行                    │
-│                                                                              │
-│		   ┌──────────────┐  ┌──────────────┐  ┌──────────────┐                │
-│		   │  SSH Script  │  │Docker Compose│  │  Kubernetes  │                │
-│		   │    Ansible   │  │  SFTP + up   │  │ kubectl/Helm │                │
-│		   │              │  │              │  │ ArgoCD/FluxCD│                │
-│		   └──────────────┘  └──────────────┘  └──────────────┘                │
-│                                    ↓                                         │
-│                        cd_deploy_logs (Deployment Records)                   │
-│                                    ↓                                         │
-│                        DingTalk / WeCom Webhook Notifications                │
-└──────────────────────────────────────────────────────────────────────────────┘									 
-```
+![CI 数据流全景](Image/glue-data-flow.png)
 
 ## Component Relationships
 ```

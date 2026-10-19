@@ -1409,14 +1409,13 @@ class BuildController extends BaseController
         // artifact 是最终部署依据，harbor_repository 与 tag 都必须真实存在于 Harbor，否则拒绝。
         $harborRepo = '';
         if ($status === 'success') {
-            foreach ($this->mapping->allMaps() as $m) {
-                $job = $m['job_name'] ?? '';
-                $cp  = $m['current_path'] ?? '';
-                if ($job === $path || $cp === $path) {
-                    $harborRepo = trim((string) ($m['harbor_repository'] ?? ''));
-                    break;
-                }
+            // 按 path 取映射一律走 resolveMapRow：job_name 优先匹配（全量）、current_path 仅 active
+            // 别名兜底的语义只有这一处定义，这里不再自己遍历 allMaps，避免匹配规则分叉。
+            $row = $this->mapping->resolveMapRow($path);
+            if ($row === null) {
+                return $this->jsonError($response, 'status=success 时未找到 path 对应的映射（job_git_map），无法写入 pipeline artifact', 400);
             }
+            $harborRepo = trim((string) ($row['harbor_repository'] ?? ''));
             if ($harborRepo === '') {
                 return $this->jsonError($response, 'status=success 时 job_git_map 未配置 harbor_repository，无法写入 pipeline artifact', 400);
             }

@@ -34,8 +34,8 @@ DevOps-Glue API is a Slim 4–based integration platform designed to enhance Dev
 
 > **[Chinese](README_ZH-CN.md)**
 
-![System Overview](system_info.png)
-![System Status](system_running.png)
+![System Overview](docs/Image/system_info.png)
+![System Status](docs/Image/system_running.png)
 
 ## Features
 
@@ -56,43 +56,7 @@ DevOps-Glue API is a Slim 4–based integration platform designed to enhance Dev
 ##  Architecture Overview
 <details>
 <summary>Click to expand</summary>
-
-```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                                CODE PUSH                                     │
-│          GitLab / Gitee / GitHub / Gitea  →  Webhook Trigger                 │
-└────────────────────────────────────┬─────────────────────────────────────────┘
-                                     ↓
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                     CI LAYER：Devops-Glue API (PHP)                          │
-│                                                                              │
-│  ┌──────────────┐  ┌──────────────┐   ┌──────────────┐    ┌───────────────┐  │
-│  │   Jenkins    │  │  GitLab CI   │   │   Gitea CI   │    │  Custom Push  │<──── User CI
-│  │ BuildProvider│  │ BuildProvider│   │ BuildProvider│    │ (custom_push) │  │   (pusher)
-│  └──────┬───────┘  └──────┬───────┘   └──────┬───────┘    └───────┬───────┘  │
-│         └─────────────────┼──────────────────┼────────── ─────────┼          │
-│                                    ↓                                         │
-│                    Build → Docker Image → Harbor Registry                    │
-│                                    ↓                                         │
-│                      scan-sync → ci_pipeline_artifacts                       │
-└────────────────────────────────────┬─────────────────────────────────────────┘
-                                     ↓									 
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                          CD 层：Devops-cd (Python)                           │
-│                                                                              │
-│                         选择 Project + Tag  ──→  部署执行                    │
-│                                                                              │
-│		   ┌──────────────┐  ┌──────────────┐  ┌──────────────┐                │
-│		   │  SSH Script  │  │Docker Compose│  │  Kubernetes  │                │
-│		   │    Ansible   │  │  SFTP + up   │  │ kubectl/Helm │                │
-│		   │              │  │              │  │ ArgoCD/FluxCD│                │
-│		   └──────────────┘  └──────────────┘  └──────────────┘                │
-│                                    ↓                                         │
-│                        cd_deploy_logs (Deployment Records)                   │
-│                                    ↓                                         │
-│                        DingTalk / WeCom Webhook Notifications                │
-└──────────────────────────────────────────────────────────────────────────────┘	
-```
+![CI Data Flow](docs/Image/glue-data-flow.png)
 </details>
 
 ## Quick Start
