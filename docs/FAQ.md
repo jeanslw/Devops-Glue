@@ -207,7 +207,7 @@ The selected `build_mode` enables a system whose platform connection is not conf
 
 ### Q: Build trigger timeout (504)?
 
-Jenkins build triggers have a timeout limit, defaulting to 300 seconds (`BUILD_TIMEOUT`). Increase this value if Jenkins responds slowly.
+Triggering a build is a synchronous HTTP request, and the per-CI timeouts are fixed in code: Jenkins **30 s** (`JenkinsService`), GitLab CI / GitHub Actions / Gitea Actions **15 s**, Harbor **10 s**. Exceeding it returns 504 and **no environment variable affects it**. A 504 usually means Jenkins itself is slow, or nginx / PHP-FPM timed out first — check Jenkins latency or raise the gateway timeout.
 
 ### Q: Pipeline list is empty?
 

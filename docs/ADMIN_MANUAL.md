@@ -806,7 +806,6 @@ Copy `config/app.env.example` to `config/app.env` and fill in your real values. 
 ```ini
 # ============ CI Systems ============
 BUILD_MODE=jenkins,gitlab_ci,gitea_ci   # enabled CI sources, comma-separated (seed value on first boot)
-BUILD_TIMEOUT=300         # Build timeout in seconds
 
 # ============ Git Platforms ============
 DEFAULT_GIT_PLATFORM=gitlab   # Fallback when a repository URL cannot be auto-detected
@@ -925,7 +924,7 @@ A joint deployment involves two services plus one shared MySQL:
 
 **② CI-only keys (CD never reads them)**
 
-Everything else in Appendix A — CI systems (`BUILD_MODE` / `BUILD_TIMEOUT`), Git platforms (`DEFAULT_GIT_PLATFORM`), admin panel, LDAP, the OIDC signing key (`OIDC_RSA_PRIVATE_KEY` / `OIDC_KEY_FILE`), `CD_BASE_URL` / `CD_API_TOKEN`, backup/log/cache, and the application keys (`APP_ENV` / `API_BASE_URL` / `CORS_ORIGIN` / `SYSTEM_TYPE` / `TRUSTED_PROXY_HOPS` etc.) — is read only by CI. Note that although `CD_BASE_URL` and `CD_API_TOKEN` start with "CD", they are configured on this service (the CI side).
+Everything else in Appendix A — CI systems (`BUILD_MODE`), Git platforms (`DEFAULT_GIT_PLATFORM`), admin panel, LDAP, the OIDC signing key (`OIDC_RSA_PRIVATE_KEY` / `OIDC_KEY_FILE`), `CD_BASE_URL` / `CD_API_TOKEN`, backup/log/cache, and the application keys (`APP_ENV` / `API_BASE_URL` / `CORS_ORIGIN` / `SYSTEM_TYPE` / `TRUSTED_PROXY_HOPS` etc.) — is read only by CI. Note that although `CD_BASE_URL` and `CD_API_TOKEN` start with "CD", they are configured on this service (the CI side).
 
 **③ CD's own keys (CI never reads them; they live in CD's config)**
 

@@ -87,7 +87,6 @@ return [
     'app' => [
         'env'           => env('APP_ENV', 'production'),
         'debug'         => env('APP_DEBUG') === 'true',
-        'build_timeout' => (int) env('BUILD_TIMEOUT', '300'),
         'log_path'      => env('LOG_PATH', '/data/logs/ci-platform/'),
         'log_retain_days' => max(0, (int) env('LOG_RETAIN_DAYS', '30')),
     ],

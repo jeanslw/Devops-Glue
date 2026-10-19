@@ -577,7 +577,7 @@ If only `ref` is present without other parameters, auto-convert to `{branches: r
 |---|---|---|
 | `Build system 'xxx' not configured` | build_mode inconsistent with actual Provider availability | 400 |
 | Project resolution failed | No mapping in `ci_job_git_map` | Falls back to path itself as projectId |
-| Jenkins 504 timeout | `BUILD_TIMEOUT` too small or network slow | 500 |
+| Jenkins 504 timeout | Trigger request exceeded the 30 s timeout fixed in `JenkinsService`, or the network is slow | 500 |
 
 ---
 
@@ -1102,7 +1102,6 @@ Next API call:
 # on the admin "Platform Connections" / "OIDC / SSO Config" pages.
 
 BUILD_MODE=jenkins,gitlab_ci,gitea_ci   # enabled CI sources, comma-separated (initial seed value)
-BUILD_TIMEOUT=300                  # Build timeout (seconds)
 DEFAULT_GIT_PLATFORM=gitlab        # Fallback platform when a URL cannot be recognized
 
 # ============ OIDC / SSO (signing key, not migrated) ============

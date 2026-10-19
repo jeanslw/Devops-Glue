@@ -191,7 +191,6 @@ return [
     'app' => [
         'env'           => env('APP_ENV', 'production'),
         'debug'         => env('APP_DEBUG') === 'true',
-        'build_timeout' => (int) env('BUILD_TIMEOUT', '300'),
         'log_path'      => env('LOG_PATH', '/data/logs/ci-platform/'),
         // 应用日志保留天数：Logger 按此清理旧的 app-*.log（0=不清理）；裸机/Docker 通吃
         'log_retain_days' => max(0, (int) env('LOG_RETAIN_DAYS', '30')),
