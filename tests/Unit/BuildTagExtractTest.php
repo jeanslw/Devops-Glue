@@ -65,4 +65,11 @@ class BuildTagExtractTest extends TestCase
         $trace = "digest: sha256:abc mycode/runner-ci:{$long}";
         $this->assertSame('', $this->extract($trace, 'mycode/runner-ci', 'digest', 0));
     }
+
+    /** 日志句末句号属于标点，清洗后还原真实 tag（v1.0. → v1.0） */
+    public function testTrimsTrailingSentencePeriod(): void
+    {
+        $trace = 'digest: sha256:abc Successfully pushed mycode/runner-ci:v1.0.';
+        $this->assertSame('v1.0', $this->extract($trace, 'mycode/runner-ci', 'digest', 0));
+    }
 }

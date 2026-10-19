@@ -1328,11 +1328,11 @@ class BuildController extends BaseController
         return $candidates[0];
     }
 
-    /** 清洗 tag：去引号/尾随标点，`repo:tag` 取冒号后段，并丢弃不符合 Docker tag 规范的取值。 */
+    /** 清洗 tag：去引号/尾随标点（含句末句号），`repo:tag` 取冒号后段，并丢弃不符合 Docker tag 规范的取值。 */
     private function sanitizeTag(string $raw): string
     {
         $tag = trim($raw, " \t\n\r\0\x0B\"'");
-        $tag = rtrim($tag, ",;)'\"");
+        $tag = rtrim($tag, ".,;)'\"");
         if (($pos = strrpos($tag, ':')) !== false) {
             $tag = substr($tag, $pos + 1);
         }
