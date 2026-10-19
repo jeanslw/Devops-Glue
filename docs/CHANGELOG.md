@@ -46,6 +46,8 @@
   - CI-related wording lists every supported engine, and Custom_Push is described as a push-based channel (an external CI reports results; Glue does not schedule it) rather than as one of the CI engines.
   - Which CI a mapping uses, and which project id to call it with, have a single definition shared by build, scan-sync and commit-status, so the three endpoints can no longer resolve to different rows.
   - A CI data-flow diagram is added to the README and the architecture overview, with a legend explaining the line styles; all docs images are moved under `docs/Image/`.
+  - The Docker build context excludes `docs/`: the existing `*.md` rule does not cross the path separator, so documents and images under `docs/` were still sent to the daemon.
+  - `config/app.env.staging` is a complete override-layer template: it documents which keys belong in it, which are secrets (pointed at `app.env.local`), and which are now database-managed (Jenkins / Git / Harbor / OIDC issuer). Only `APP_DEBUG=true` takes effect; the rest stays commented out as examples.
 
 ## v2.9.0 (2026-10-15)
 
