@@ -15,11 +15,13 @@ class AdminUserRepositoryTest extends TestCase
         parent::setUp();
         $_ENV['ADMIN_USER'] = 'admin';
         $_ENV['ADMIN_PASSWORD'] = 'secret';
+        // 避免 seed 后的安全告警写入默认 LOG_PATH（污染真实日志目录）
+        $_ENV['LOG_PATH'] = sys_get_temp_dir() . DIRECTORY_SEPARATOR;
     }
 
     protected function tearDown(): void
     {
-        unset($_ENV['ADMIN_USER'], $_ENV['ADMIN_PASSWORD'], $_ENV['ADMIN_EMAIL']);
+        unset($_ENV['ADMIN_USER'], $_ENV['ADMIN_PASSWORD'], $_ENV['ADMIN_EMAIL'], $_ENV['LOG_PATH']);
         parent::tearDown();
     }
 
