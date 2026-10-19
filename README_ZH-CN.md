@@ -53,10 +53,8 @@ Devops-Glue API 是基于 Slim4 为小团队打造的 DevOps 工具链增强集�
 - **国际化** — 中/英文双语界面，`?lang=` 即时切换，基于 `symfony/translation`。
 
 ## 架构全景图
-<details>
-<summary>点击展开</summary>
+
 ![CI 数据流](docs/Image/glue-data-flow.png)
-</details>
 
 ## 快速开始
 <details>

@@ -54,10 +54,8 @@ DevOps-Glue API is a Slim 4–based integration platform designed to enhance Dev
 - **i18n** — Chinese / English bilingual interface, `?lang=` instant switching via `symfony/translation` 
 
 ##  Architecture Overview
-<details>
-<summary>Click to expand</summary>
+
 ![CI Data Flow](docs/Image/glue-data-flow.png)
-</details>
 
 ## Quick Start
 <details>
