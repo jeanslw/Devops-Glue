@@ -33,7 +33,7 @@
   - A path that matches no mapping is only sent to Jenkins when Jenkins is enabled; otherwise it is rejected instead of being assumed to be a Jenkins job.
   - Running a tag job no longer distorts the platform-connection cards: the long one-line result wraps instead of stretching its grid column and squeezing the neighbouring cards.
   - `BuildController::report()` now resolves the mapping for the reported path through `MappingManager::resolveMapRow()` instead of scanning all maps itself, so path lookup has a single definition across build, scan-sync and report.
-  - Tags parsed out of build logs must satisfy the Docker tag charset (`[A-Za-z0-9_][A-Za-z0-9._-]{0,127}`): values such as an unexpanded `${TAG}` are dropped instead of being carried into the Harbor lookup, so failures no longer point at Harbor.
+  - Tags parsed out of build logs must satisfy the Docker tag charset (`[A-Za-z0-9_][A-Za-z0-9._-]{0,127}`): values such as an unexpanded `${TAG}` are dropped, and trailing punctuation including a sentence-final period is trimmed (`v1.0.` becomes `v1.0`), so neither kind of dirty value reaches the Harbor lookup and failures no longer point at Harbor.
   - `BUILD_TIMEOUT` is removed — nothing ever read it, and the docs wrongly implied that raising it would relax the Jenkins trigger timeout (which is a fixed 30 s in `JenkinsService`). The FAQ and failure tables now give the real per-CI timeouts.
 - **Improved**
   - nginx, php-fpm and the scheduled worker run as separate containers, so the web tier scales independently.
