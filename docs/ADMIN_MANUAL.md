@@ -620,30 +620,6 @@ Each job can be configured with the following fields. Only `job_name` is require
 | `harbor_repository` | | Associated Harbor repo, format `"project/repository"` (display only) |
 | `api_version` | | **Metadata only**; does not affect actual API routing (routes are hardcoded in each Service) |
 
-### Mapping Data
-
-Example (`config/settings.php`):
-
-```php
-'job_git_map' => [
-    // Self-hosted GitLab (domain lacks platform keyword → must specify git_platform)
-    [
-        'job_name'          => 'java/registry',
-        'git_platform'      => 'gitlab',
-        'git_remote'        => 'http://git.mycompany.com/tools/registry.git',
-        'project_id'        => 2,
-        'harbor_repository' => 'mycode/code-runtime',
-    ],
-    // SaaS Gitee (URL contains gitee.com → auto-detected, git_platform optional)
-    [
-        'job_name'          => 'static',
-        'harbor_repository' => 'mycode/static-app',
-    ],
-],
-```
-
----
-
 ## 14. Permissions and Roles (RBAC)
 
 Devops-Glue uses data-driven RBAC: permission keys and implied rules are stored in the database and can be managed directly in the admin panel.
@@ -741,14 +717,6 @@ Configure the connection to this system in Devops-Glue CD's `app.env`. Choose **
 ```ini
 CI_API_URL=http://devops-glue      # Address of this system
 CI_API_TOKEN=dg_xxx                # Token shown once by the enablement wizard
-```
-
-**Deprecated — service account** (`CI_ADMIN_USER` / `CI_ADMIN_PASS`, being phased out; prefer the API token):
-
-```ini
-CI_API_URL=http://devops-glue
-CI_ADMIN_USER=Service_Account      # Service account created in the admin panel
-CI_ADMIN_PASS=Service_Password
 ```
 
 > The two methods are mutually exclusive — do not configure both.
