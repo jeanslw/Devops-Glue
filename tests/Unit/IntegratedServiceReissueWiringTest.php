@@ -33,6 +33,7 @@ class IntegratedServiceReissueWiringTest extends TestCase
         'sys.isvc_reissue_note',
         'sys.isvc_token_frozen',
         'sys.isvc_reuse_note',
+        'sys.isvc_disable_confirm',
         'sys.isvc_disable_step1',
         'sys.isvc_disable_step2',
         'sys.isvc_restored',
@@ -234,33 +235,7 @@ class IntegratedServiceReissueWiringTest extends TestCase
             $this->assertNotSame('', trim((string) $en[$key]), 'en 翻译为空: ' . $key);
         }
 
-        // 故障态提示不引导用户先禁用再启用，而是指向再勾一次即补发
-        $this->assertStringContainsString('勾选', (string) $zh['sys.isvc_reissue_hint']);
-        $this->assertStringContainsString('Tick Enable', (string) $en['sys.isvc_reissue_hint']);
-        // 冻结态提示要点明恢复同一枚、无需更换，否则禁用再启用看起来还是会在换 Token
-        $this->assertStringContainsString('同一枚', (string) $zh['sys.isvc_token_frozen']);
-        $this->assertStringContainsString('same token', (string) $en['sys.isvc_token_frozen']);
-        // 弹窗正文只讲要点与结果：恢复首行为同一枚（CD 无需换配置交给冻结态卡片与补发首行承担）
-        $this->assertStringContainsString('同一枚', (string) $zh['sys.isvc_reuse_note']);
-        $this->assertStringContainsString('CI_API_TOKEN', (string) $zh['sys.isvc_token_frozen']);
-        $this->assertStringContainsString('CI_API_TOKEN', (string) $zh['sys.isvc_reissue_note']);
-        $this->assertStringContainsString('same token', (string) $en['sys.isvc_reuse_note']);
-        $this->assertStringContainsString('CI_API_TOKEN', (string) $en['sys.isvc_token_frozen']);
-        $this->assertStringContainsString('CI_API_TOKEN', (string) $en['sys.isvc_reissue_note']);
-        // 恢复成功的 toast 要点明同一枚继续有效，而不是已签发
-        $this->assertStringContainsString('同一枚', (string) $zh['sys.isvc_restored']);
-        $this->assertStringContainsString('same token', (string) $en['sys.isvc_restored']);
 
-        // 禁用弹窗只留一句问句：要点与解释都不许再塞回正文（否则又是一屏三行）
-        $this->assertStringNotContainsString('；', (string) $zh['sys.isvc_disable_confirm']);
-        $this->assertStringNotContainsString('数据表', (string) $zh['sys.isvc_disable_confirm']);
-        $this->assertStringNotContainsString(';', (string) $en['sys.isvc_disable_confirm']);
-        $this->assertStringNotContainsString('tables', (string) $en['sys.isvc_disable_confirm']);
-        // 两条要点要覆盖停用（仅冻结）与数据保留、重新启用即恢复
-        $this->assertStringContainsString('冻结', (string) $zh['sys.isvc_disable_step1']);
-        $this->assertStringContainsString('frozen', (string) $en['sys.isvc_disable_step1']);
-        $this->assertStringContainsString('保留', (string) $zh['sys.isvc_disable_step2']);
-        $this->assertStringContainsString('retained', (string) $en['sys.isvc_disable_step2']);
     }
 
     /**

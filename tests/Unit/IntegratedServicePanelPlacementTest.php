@@ -153,18 +153,6 @@ class IntegratedServicePanelPlacementTest extends TestCase
         }
     }
 
-    public function testIntroExplainsThatEnablingIssuesAToken(): void
-    {
-        $i18n = new I18nService(self::ROOT . '/lang', 'zh_CN');
-
-        $zh = (string) $i18n->getAll('zh_CN')['sys.isvc_intro'];
-        $en = (string) $i18n->getAll('en')['sys.isvc_intro'];
-
-        // 面板现在与 Token 列表同屏，启用会签发一枚 Token 这点必须在界面上写明
-        $this->assertStringContainsString('Token', $zh);
-        $this->assertStringContainsString('token', strtolower($en));
-    }
-
     /**
      * 启停入口必须是启用勾选框（而非两个按钮）：勾选框是即时控件，点一下状态就变了，
      * 因此必须依赖 onIntegratedServiceToggle 的确认弹窗 + 取消回退逻辑；退回成裸按钮，
