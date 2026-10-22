@@ -6,29 +6,37 @@ app.env.*.local
 *.db
 
 #test
-.claude/
-.codebuddy
-.trae/
 public/test_*
 .phpunit.cache
-vendor/
-backups/
 tests/report.py
 tests/smoke_api_tokens
-public/node_modules
-public/eslint.config.mjs
-public/package.json
-public/package-lock.json
-
-# tests: smoke_test.php tests/Unit 
 tests/smoke_api_tokens.php
 
 # IDE
 .vscode/
+.vs/
 .idea/
 .editorconfig
 .laragon
-bin/*
+.claude/
+.codebuddy/
+.cursor/
+.windsurf/
+.trae/
+.aider*
+.continue/
+.copilot/
+.gemini/
+.kilocode/
+.qoder/
+CLAUDE.md
+AGENTS.md
+.cursorrules
+.windsurfrules
+.clinerules
+.roomodes
+vendor/
+bin/
 
 # OS
 .DS_Store
@@ -46,8 +54,5 @@ config/gitlab_id_cache.php
 
 #backup && database
 config/data/
-# Docker 挂载的宿主机运行时数据（OIDC 私钥 /data/cache、SQLite /data/db 等），绝不提交
 /data/
 backups/
-
-.github/copilot-instructions.md
