@@ -470,9 +470,22 @@ The docs page requires authentication. Visiting `/api/docs` auto-redirects to th
 
 ### Q: What's the scan-sync process?
 
-1. Retrieve the vulnerability scan report for a specified tag (or the latest tag) from Harbor
-2. Write the scan result back to the Git platform's Commit Status (context: `harbor-scan`)
-3. Record in the `ci_pipeline_artifacts` table (tag → pipeline mapping)
+1. **Validate** mapping and Harbor repo from `ci_job_git_map` (canonical resolution, same row as build/commit-status)
+2. **Verify** tag exists in Harbor (if Harbor reachable; downgrade to pass-through if unreachable)
+3. **Parse** pipeline identity: `pipeline_iid` + `sha` from request body, or fallback to latest CI pipeline
+4. **Check `ci_status`** (required, no legacy compatibility): `success` / `failed` / `running` — gates artifact write
+5. **Fetch Harbor scan report** (if Harbor configured): `success` = clean, `failed` = vulns, `pending` = scan not enabled, `unknown` = Harbor not configured
+6. **Write commit status** to Git platform (if Git provider registered): state mirrors Harbor scan conclusion; `pending` when Harbor not configured
+7. **Record**:
+   - `ci_pipeline_artifacts`: **only when `ci_status=success`** (failed/running pipelines must not produce deployable artifacts)
+   - `ci_security_checks`: always — `writeback_status=success` (push fact), `scan_state` (Harbor conclusion), `writeback_message` carries `ci_status` + commit-status result + artifact write status for audit
+
+Three dimensions are independent:
+| Dimension | Value | Meaning |
+|---|---|---|
+| `writeback_status` (security_checks column) | always `success` | Push fact: tag + harborRepo + ci_status received = image pushed to Harbor |
+| `scanState` (security_checks column) | `success` / `failed` / `pending` / `unknown` | Harbor scan conclusion (unknown when Harbor not configured) |
+| `ci_status` (writeback_message prefix) | caller-supplied | CI pipeline final outcome; gates artifact write |
 
 ### Q: scan-sync reports "tag not found in Harbor"?
 

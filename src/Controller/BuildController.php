@@ -798,6 +798,13 @@ class BuildController extends BaseController
         $body       = is_array($parsedBody) ? $parsedBody : [];
         $tag        = $body['tag'] ?? null;
         $sourceUpdatedAt = trim((string) ($body['source_updated_at'] ?? ''));
+        $ciStatus   = trim((string) ($body['ci_status'] ?? ''));
+
+        // ci_status 必填：决定 artifact 是否写入，不兼容老客户端
+        $validCiStatus = ['success', 'failed', 'running'];
+        if (!in_array($ciStatus, $validCiStatus, true)) {
+            return $this->jsonError($response, $this->__('build.scan_sync_ci_status_required', ['statuses' => implode(', ', $validCiStatus)]), 400);
+        }
 
         // 1. 获取 job_git_map 中的映射信息（不依赖 CI 系统）
         //    统一走 canonical 解析（resolveMapRow / resolveProject），不再自行遍历 allMaps()：
@@ -896,85 +903,101 @@ class BuildController extends BaseController
         }
 
         // 4. Harbor 扫描 + commit status 回写（通过 Git Provider，跨所有平台）
+        //    三者解耦：
+        //      writeback_status（security_checks 列）= 推送是否成功（tag+harborRepo 已 guard）
+        //      scanState      = Harbor 扫描结论（success/failed/pending/unknown）
+        //      result         = Git commit status 回写结果（success/failed 含 message）
+        //    扫描和 commit status 是附加能力，不影响推送事实。
         $vulnCount = 0;
-        // scanState 只表达 Harbor 扫描结果，与 commit status 回写是否成功解耦。
-        // 二者不共用一个变量：回写失败（如 Gitee 公开版不支持 commit status API）不等于扫描失败，
-        // CI 按 scan_state 判断漏洞时不能把回写失败读成镜像有问题。
-        $scanState      = 'unknown';
-        $writebackState = 'unknown';
-        $result         = ['success' => false, 'message' => ''];
+        $scanState = 'unknown';
+        $result    = ['success' => false, 'message' => ''];
+        $desc      = '';  // 统一初始化，确保所有分支都有值
 
         // commit status 通过 Git 平台回写（不依赖 CI 系统）
         $canWriteBack = $sha && $gitPlatform && $this->gitRegistry
             && $this->gitRegistry->isRegistered($gitPlatform);
 
-        if ($canWriteBack) {
-            if (!$this->harbor) {
-                $scanState      = 'pending';
-                $writebackState = 'pending';
-                $result         = ['success' => false, 'message' => 'Harbor 未配置'];
-            } else {
+        // Harbor 可达：尝试扫描 + 回写 commit status；未配置/不可达/未启用时保持 scanState='unknown'
+        if ($this->harbor) {
+            try {
+                $scan = null;
                 try {
-                    $scan = null;
-                    try {
-                        $scan = $this->harbor->getScanReport($harborProject, $harborRepoName, $tag);
-                    } catch (\RuntimeException $e) {
-                        // Harbor 连接级不可达（getScanReport 上抛）：与扫描未启用分开处理，
-                        // scanState 记 pending（commit status 合法态，语义为暂无扫描结论），继续尽力回写
-                        \App\Helper\Log::exception($e);
-                        $scanState = 'pending';
-                        $result    = ['success' => false, 'message' => 'Harbor 服务不可达: ' . $e->getMessage()];
-                    }
-                    if (is_array($scan)) {
-                        if (isset($scan['error']) || isset($scan['code'])) {
-                            $scanState = 'pending';
-                            // 4xx 业务错误（412=扫描未启用 / 404=资源不存在 / 401|403=认证失败）：
-                            // 透出 HarborService 的具体原因，不一律报成扫描功能未启用
-                            $result = ['success' => false, 'message' => $this->harborScanErrorMessage($scan)];
-                        } else {
-                            // getScanReport 签名返回 array（永不为 null），?? [] 是不可达的死代码
-                            $vulns = $scan['vulnerabilities'] ?? $scan;
-                            $vulnCount = is_array($vulns) ? count($vulns) : 0;
-                            $scanState = $vulnCount > 0 ? 'failed' : 'success';
-                        }
-                    }
-                    // 回写状态默认跟随扫描结果；仅当回写自身失败时才降为 error，绝不反改 scanState
-                    $writebackState = $scanState;
-                    $desc  = "#{$iid} → {$tag} · " . ($vulnCount > 0 ? "{$vulnCount} vulns" : ($scanState === 'pending' ? '扫描未启用' : 'clean'));
-                    $harborUrl = $this->config->getHarborConfig()['url'] ?? '';
-                    // 通过 Git Provider 回写 commit status（所有平台统一接口）
-                    $gitProvider = $this->gitRegistry->create($gitPlatform);
-                    // 三级回退：project_id（数字）、current_path（真实路径）、Jenkins 短名
-                    $gitRepo = $gitProjectId ? (string) $gitProjectId
-                        : (!empty($gitCurrentPath) ? $gitCurrentPath : $path);
-                    $result = $gitProvider->setCommitStatus($gitRepo, $sha, $writebackState, 'harbor-scan', $desc, $harborUrl);
-                } catch (\Exception $e) {
-                    // 扫描/回写过程抛异常：仅标记回写为 error，scanState 保持现状（unknown/pending/failed/success），
-                    // 不能让回写失败污染扫描结果。原始异常进服务端日志，不外泄给调用方。
+                    $scan = $this->harbor->getScanReport($harborProject, $harborRepoName, $tag);
+                } catch (\RuntimeException $e) {
                     \App\Helper\Log::exception($e);
-                    $writebackState = 'error';
-                    $result = ['success' => false, 'message' => '回写失败：' . $e->getMessage()];
+                    $scanState = 'pending';
+                    $result    = ['success' => false, 'message' => 'Harbor 服务不可达: ' . $e->getMessage()];
                 }
+                if (is_array($scan)) {
+                    if (isset($scan['error']) || isset($scan['code'])) {
+                        $scanState = 'pending';
+                        $result    = ['success' => false, 'message' => $this->harborScanErrorMessage($scan)];
+                    } else {
+                        $vulns     = $scan['vulnerabilities'] ?? $scan;
+                        $vulnCount = is_array($vulns) ? count($vulns) : 0;
+                        $scanState = $vulnCount > 0 ? 'failed' : 'success';
+                    }
+                }
+
+                if ($canWriteBack) {
+                    $desc = "#{$iid} → {$tag} · " . ($vulnCount > 0 ? "{$vulnCount} vulns" : ($scanState === 'pending' ? '扫描未启用' : 'clean'));
+                    $harborUrl  = $this->config->getHarborConfig()['url'] ?? '';
+                    $gitProvider = $this->gitRegistry->create($gitPlatform);
+                    $gitRepo    = $gitProjectId ? (string) $gitProjectId
+                        : (!empty($gitCurrentPath) ? $gitCurrentPath : $path);
+                    $result = $gitProvider->setCommitStatus($gitRepo, $sha, $scanState, 'harbor-scan', $desc, $harborUrl);
+                } else {
+                    $desc = "#{$iid} → {$tag} · {$scanState} · commit status 跳过";
+                }
+            } catch (\Exception $e) {
+                \App\Helper\Log::exception($e);
+                $result = ['success' => false, 'message' => '回写失败：' . $e->getMessage()];
+                $desc   = "#{$iid} → {$tag} · Harbor 扫描异常";
             }
+        } elseif ($canWriteBack) {
+            // Harbor 未配置但 Git 平台可回写：commit status 也回写 pending，
+            // 让调用方知道推送已收到、扫描未执行。
+            $desc = "#{$iid} → {$tag} · Harbor 未配置";
+            $gitProvider = $this->gitRegistry->create($gitPlatform);
+            $gitRepo = $gitProjectId ? (string) $gitProjectId
+                : (!empty($gitCurrentPath) ? $gitCurrentPath : $path);
+            $result = $gitProvider->setCommitStatus($gitRepo, $sha, 'pending', 'harbor-scan', $desc, '');
+        } else {
+            $desc = "#{$iid} → {$tag} · Harbor 未配置 · commit status 跳过";
         }
 
-        // 5. 记录 pipeline 到 tag 的映射（含扫描状态）
-        if (!empty($iid)) {
-            $this->recordPipelineTag(
+        // 5. 记录 pipeline 到 tag 的映射 —— 闸门：ci_status 必须是 success 才写 artifact。
+        //    流水线失败/运行中不应产出可部署 artifact（与 custom_push report 语义对齐）。
+        $artifactMsg = '';
+        if (!empty($iid) && $ciStatus === 'success') {
+            $artifactOk = $this->recordPipelineTag(
                 $path,
                 $this->mapping->pipelineIdentity($path, (int) $iid),
                 $tag,
                 $harborRepo,
                 $scanState,
-                $sourceUpdatedAt ?: null
+                $sourceUpdatedAt ?: date('Y-m-d H:i:s')
             );
+            $artifactMsg = $artifactOk ? 'artifact_write=success' : 'artifact_write=failed';
+        } elseif (!empty($iid)) {
+            $artifactMsg = 'artifact_write=skipped (ci_status=' . $ciStatus . ')';
         }
 
         // 6. 记录回写结果到 ci_security_checks（审计追踪）
-        // 防御：Git provider 实现未必遵守形状契约，按可选偏移容忍
+        //    writeback_status = 推送是否成功 —— tag+harborRepo 已在 L823/L852 guard，
+        //                       到这里肯定非空；iid 为空时 scanSync 根本不会执行
         /** @var array{success?: bool, message?: string} $result */
-        $writebackStatus = !$canWriteBack ? 'skipped' : (($result['success'] ?? false) ? 'success' : 'failed');
-        $this->recordSecurityCheck($path, $sha, $scanState, 'harbor-scan', $desc ?? '', 'harbor-scan', $tag, $writebackStatus, $result['message'] ?? '');
+        $writebackStatus = 'success';
+        $parts = [];
+        $parts[] = 'ci_status=' . $ciStatus;
+        if (!empty($result['message'])) {
+            $parts[] = (string) $result['message'];
+        }
+        if ($artifactMsg !== '') {
+            $parts[] = $artifactMsg;
+        }
+        $writebackMsg = implode(' | ', $parts);
+        $this->recordSecurityCheck($path, $sha, $scanState, 'harbor-scan', $desc, 'harbor-scan', $tag, $writebackStatus, $writebackMsg);
 
         return $this->output($response, [
             'build_provider'       => $provider,

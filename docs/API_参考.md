@@ -256,7 +256,7 @@ GET /api/main/git/discovery
 | `/api/build/{path}/logs/{id}` | GET/POST | 构建日志（text/plain；`id`=job id，取自 `/pipelines/{runId}` 返回的 `jobs[].id`，非 run id） |
 | `/api/build/{path}/pipelines/{id}/retry` | POST | 重试流水线（仅 GitLab CI） |
 | `/api/build/{path}/pipelines/{id}/cancel` | POST | 取消流水线（仅 GitLab CI） |
-| `/api/build/{path}/scan-sync` | POST | Harbor 扫描同步（`{"tag":"v3.0.0"}`，tag 可选，不传取最新） |
+| `/api/build/{path}/scan-sync` | POST | Harbor 扫描同步（**ci_status 必填**：`success` / `failed` / `running`。`tag` 可选=最新；`pipeline_iid` + `sha` 可选=兜底取最新流水线。artifact 写入闸门：仅 `ci_status=success` 才写 `ci_pipeline_artifacts`；Harbor 扫描 + commit status 回写独立于 CI 成败） |
 | `/api/build/{path}/tag` | GET/POST | 流水线 → 标签映射（`?pipeline=10`） |
 | `/api/build/{path}/tags` | GET/POST | 项目 tag 列表（分页，`?page=1&page_size=50`） |
 | `/api/build/{path}/commit-status` | POST | 提交状态回写（安全扫描） |
@@ -629,10 +629,16 @@ curl -X POST "http://URL/api/harbor/mycode/repositories/diagnosis-runtime/tags/v
   -H "Authorization: Bearer $NEW_TOKEN"
 
 # 扫描结果回写（需 build.report scope，CI 脚本中调用）
+# ci_status 必填：success=artifact+回写，failed/running=仅回写（不写 artifact）
 curl -X POST "http://URL/api/build/static/scan-sync" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $NEW_TOKEN" \
-  -d '{"tag":"v1.0.0"}'
+  -d '{
+    "ci_status": "success",
+    "tag": "v1.0.0",
+    "pipeline_iid": 42,
+    "sha": "abc123def"
+  }'
 
 # 自定义推送式 CI 结果上报（需 build.report scope，custom_push 专用）
 curl -X POST "http://URL/api/build/php/myapp/report" \

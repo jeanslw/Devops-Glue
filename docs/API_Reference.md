@@ -256,7 +256,7 @@ Returns configured and unconfigured Git platform list.
 | `/api/build/{path}/logs/{id}` | GET/POST | Build logs (text/plain; `id`=job id from `jobs[].id` of `/pipelines/{runId}`, not the run id) |
 | `/api/build/{path}/pipelines/{id}/retry` | POST | Retry pipeline (GitLab CI only) |
 | `/api/build/{path}/pipelines/{id}/cancel` | POST | Cancel pipeline (GitLab CI only) |
-| `/api/build/{path}/scan-sync` | POST | Harbor scan sync (`{"tag":"v3.0.0"}`, tag optional = latest) |
+| `/api/build/{path}/scan-sync` | POST | Harbor scan sync (**ci_status required**: `success` / `failed` / `running`. `tag` optional = latest; `pipeline_iid` + `sha` optional = fallback to latest pipeline. Artifact write gated on `ci_status=success`; Harbor scan + commit status writeback independent of CI outcome. See docs for fields.) |
 | `/api/build/{path}/tag` | GET/POST | Pipeline -> Tag mapping (`?pipeline=10`) |
 | `/api/build/{path}/tags` | GET/POST | Paginated project tag list (`?page=1&page_size=50`) |
 | `/api/build/{path}/commit-status` | POST | Commit status write-back (security scans) |
@@ -628,10 +628,16 @@ curl -X POST "http://URL/api/harbor/mycode/repositories/diagnosis-runtime/tags/v
   -H "Authorization: Bearer $NEW_TOKEN"
 
 # Write back scan results (requires build.report scope, called from CI scripts)
+# ci_status is REQUIRED: success=artifact+writeback, failed/running=writeback only (no artifact)
 curl -X POST "http://URL/api/build/static/scan-sync" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $NEW_TOKEN" \
-  -d '{"tag":"v1.0.0"}'
+  -d '{
+    "ci_status": "success",
+    "tag": "v1.0.0",
+    "pipeline_iid": 42,
+    "sha": "abc123def"
+  }'
 
 # Custom Push CI result report (requires build.report scope, custom_push only)
 curl -X POST "http://URL/api/build/php/myapp/report" \
