@@ -6,15 +6,14 @@ Devops-Glue API 是基于 Slim4 为小团队打造的 DevOps 工具链增强集�
   PHP + Slim4 构建，专为小团队设计的持续集成/持续交付数据聚合平台
 </p>
 
-<p align="center">
-  <a href="https://github.com/jeanslw/Devops_CD"><img src="https://img.shields.io/badge/Paired-Devops__CD-green?logo=python" alt="CD"></a>
-  <a href="https://github.com/jeanslw/Devops-Glue/releases/latest"><img src="https://img.shields.io/github/v/release/jeanslw/Devops-Glue?style=flat-square&label=Release" alt="Release"></a>
-  <a href="https://github.com/jeanslw/Devops-Glue"><img src="https://img.shields.io/github/last-commit/jeanslw/Devops-Glue?style=flat-square&label=Last%20Commit" alt="Last Commit" /></a>
-  <a href="https://github.com/jeanslw/Devops-Glue/blob/main/LICENSE"><img src="https://img.shields.io/github/license/jeanslw/Devops-Glue?style=flat-square" alt="License" /></a>
-  <a href="https://www.php.net"><img src="https://img.shields.io/badge/PHP-8.1+-777BB4?logo=php&logoColor=white" alt="PHP" /></a>
-  <a href="https://www.slimframework.com"><img src="https://img.shields.io/badge/Slim-4-00A650?logo=slim&logoColor=white" alt="Slim" /></a>
-  <a href="https://hub.docker.com/r/jeanslw/devops-glue/tags"><img src="https://img.shields.io/docker/v/jeanslw/devops-glue/latest?label=version&logo=docker" alt="docker" /></a>
-</p>
+[![Releases](https://img.shields.io/github/v/release/jeanslw/Devops-Glue?style=flat-square&label=Release)](https://github.com/jeanslw/Devops-Glue/releases/latest)
+[![CI Pipeline](https://github.com/jeanslw/Devops-Glue/actions/workflows/ci.yml/badge.svg)](https://github.com/jeanslw/Devops-Glue/actions/workflows/ci.yml)
+[![Security Check](https://github.com/jeanslw/Devops-Glue/actions/workflows/security.yml/badge.svg)](https://github.com/jeanslw/Devops-Glue/actions/workflows/security.yml)
+[![Last Commit](https://img.shields.io/github/last-commit/jeanslw/Devops-Glue?style=flat-square&label=Last%20Commit)](https://github.com/jeanslw/Devops-Glue/commits/main/)
+[![Slim4](https://img.shields.io/badge/Slim-4-00A650?logo=slim&logoColor=white)](https://www.slimframework.com)
+[![Docker Tag](https://img.shields.io/docker/v/jeanslw/devops-glue/latest?label=version&logo=docker)](https://hub.docker.com/r/jeanslw/devops-glue)
+[![Docker Pulls](https://img.shields.io/docker/pulls/jeanslw/devops-glue)](https://hub.docker.com/r/jeanslw/devops-glue)
+[![Paired](https://img.shields.io/badge/Paired-Devops__CD-green?logo=python)](https://gitee.com/jeanslw/devops_cd)
 
 > 🔗 **本项目为CI增强组件** | 完整系统需配套 CD 部署服务 → [Devops_CD](https://gitee.com/jeanslw/devops_cd)
 
