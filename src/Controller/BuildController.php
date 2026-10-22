@@ -856,14 +856,18 @@ class BuildController extends BaseController
             $tag = $harborTags[0];
         }
         if (!$tag) {
-            return $this->jsonError($response, $this->__('build.no_tag_available'), 400);
+            $tag = '';
         }
 
         // 校验 tag 在 Harbor 中确实存在（防止写入已删除的 tag）
-        if ($this->harbor && !isset($harborTags['error'])) {
-            // Harbor 可达：严格校验 tag 是否存在
+        // 校验失败不 return：审计优先——security_checks 必须记录这条 CI 回写事件，
+        // 即使 tag 在 Harbor 里暂时找不到（刚 push 还没索引到、或已删除）。
+        // 后续 Harbor 扫描自然查不到 → scanState='unknown'，artifact 写入也会被 tag 空值 guard 跳过。
+        $tagVerified = true;
+        if ($this->harbor && !isset($harborTags['error']) && !empty($tag)) {
             if (!in_array($tag, $harborTags)) {
-                return $this->jsonError($response, $this->__('build.tag_not_found', ['tag' => $tag, 'repo' => $harborRepo]), 400);
+                $tagVerified = false;
+                \App\Helper\Log::warning('scanSync tag 校验未通过', ['tag' => $tag, 'repo' => $harborRepo]);
             }
         }
         // Harbor 不可达时降级放行：CI 刚 push 完 tag，大概率存在；读取侧 cleanupStaleTags 兜底清理
