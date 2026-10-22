@@ -457,8 +457,10 @@
                             <thead><tr><th data-i18n="platform.platform">平台</th><th data-i18n="platform.default">默认值</th><th data-i18n="platform.source">来源</th><th data-i18n="platform.current">当前版本</th><th data-i18n="platform.note">说明</th></tr></thead>
                             <tbody id="ver-tbody"></tbody>
                         </table>
-                        <div id="harbor-compat" class="ver-compat" style="display:none;margin-top:16px;"></div>
-                        <div id="jenkins-compat" class="ver-compat" style="display:none;margin-top:8px;"></div>
+                        <div style="display:flex;gap:12px;margin-top:16px;flex-wrap:wrap;">
+                            <div id="harbor-compat" class="ver-compat" style="display:none;flex:1 1 320px;"></div>
+                            <div id="jenkins-compat" class="ver-compat" style="display:none;flex:1 1 320px;"></div>
+                        </div>
                         <div style="margin-top:16px;text-align:right;">
                             <button class="btn btn-save" onclick="saveVersions()">💾 <span data-i18n="common.save">保存</span></button>
                             <span id="ver-status" style="font-size:13px;color:#16a34a;margin-left:12px;display:none;" data-i18n="build.mode_saved">已保存</span>
@@ -908,7 +910,7 @@
                      切换一律经确认弹窗；建表方式 provision 取自「数据管理 → 迁移模式」，在启用那一刻写入。 -->
                 <div class="monitor-card" style="margin-top:12px;">
                     <h4 data-i18n="sys.panel_integrated">🔌 集成服务</h4>
-                    <p style="font-size:12px;color:#9ca3af;margin:4px 0 10px;" data-i18n="sys.isvc_intro">集成服务与本平台共享数据库：启用即在同一事务内签发一枚限定权限的服务 Token（见下方 Token 列表，明文仅展示一次）并授权其建表；禁用只冻结服务、同时把该凭据停用（不作废），其数据表与数据保留 —— 重新启用即恢复同一枚凭据，CD 无需修改 CI_API_TOKEN。要作废或换发凭据，请先在下方列表里撤销 / 删除它。</p>
+                    <p style="font-size:12px;color:#9ca3af;margin:4px 0 10px;" data-i18n="sys.isvc_intro">集成服务与本平台共享数据库：启用即签发一枚限定权限的服务 token，禁用只冻结服务，数据保留，重新启用即恢复同一枚凭据。</p>
                     <div id="isvc-loading" style="text-align:center;padding:30px;color:#9ca3af;" data-i18n="common.loading">加载中…</div>
                     <div id="isvc-body" style="display:none;">
                         <div style="border:1px solid #e5e7eb;border-radius:8px;padding:12px 14px;">
@@ -945,6 +947,7 @@
                         <table>
                             <thead>
                                 <tr>
+                                    <th data-i18n="api_token.id">ID</th>
                                     <th data-i18n="api_token.name">名称</th>
                                     <th data-i18n="api_token.scopes">接口权限</th>
                                     <th data-i18n="api_token.expires">过期日期</th>

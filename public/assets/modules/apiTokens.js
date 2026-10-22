@@ -50,6 +50,7 @@ export async function loadApiTokens() {
                     '<button class="btn btn-sm btn-warn" onclick="revokeApiToken(' + t.id + ')">⛔ ' + esc(__.t('api_token.revoke')) + '</button> ')
                     + '<button class="btn btn-sm btn-del" onclick="deleteApiToken(' + t.id + ')">🗑 ' + esc(__.t('api_token.delete')) + '</button>';
                 return '<tr>' +
+                    '<td style="font-size:12px;color:#6b7280;">' + esc(t.id) + '</td>' +
                     '<td>' + esc(t.name) + '</td>' +
                     '<td class="scope-cell" style="font-size:12px;max-width:260px;">' + scopes + '</td>' +
                     '<td>' + exp + '</td>' +
