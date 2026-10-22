@@ -177,7 +177,7 @@ The admin panel sidebar contains the following modules:
 | Security Audit | SAST / secret / dependency vulnerability scan results and write-back records |
 | Build Records | Pull records (CI pipelines) and push records (Custom_Push reports); shown per `ci.build-records` permission (with pull/push sub-permissions) |
 | Platform Versions | API versions of each connected platform |
-| Build Mode | Build mode (jenkins / gitlab_ci / gitea_ci, multi-select) |
+| Build Mode | Build mode (jenkins / gitlab_ci / gitea_ci / github_actions, multi-select) |
 | User Management | User list, role management, change password |
 | Permission Management | Permission list, permission registration, implied rules |
 | API Management | Create / edit scopes / revoke / delete API tokens (visible to `super_admin` only) |
@@ -268,8 +268,38 @@ On the "Build Mode" page, select the enabled CI sources with checkboxes (multi-s
 - `jenkins`: Jenkins
 - `gitlab_ci`: GitLab CI
 - `gitea_ci`: Gitea Actions
+- `github_actions`: GitHub Actions
 
-The stored value is a comma-separated set in the database (e.g. `jenkins,gitlab_ci,gitea_ci`). `BUILD_MODE` in `app.env` is only a first-boot seed; afterwards the admin panel is authoritative. The legacy single value `both` is mapped to `jenkins,gitlab_ci` on read.
+The stored value is a comma-separated set in the database (e.g. `jenkins,gitlab_ci,gitea_ci,github_actions`). `BUILD_MODE` in `app.env` is only a first-boot seed; afterwards the admin panel is authoritative. The legacy single value `both` is mapped to `jenkins,gitlab_ci` on read.
+
+### How `BUILD_MODE` splits internally
+
+On first boot, `BUILD_MODE` from `app.env` is written into `ci_app_settings` as two separate keys:
+
+| DB key | Stores | What goes here |
+|---|---|---|
+| `build_mode` | Comma-separated standalone CI providers | `jenkins` only (independent CI, not tied to any Git platform) |
+| `git_ci_enabled` | Comma-separated **Git platform names** | `gitlab`, `gitea`, `github` — corresponding to `gitlab_ci`, `gitea_ci`, `github_actions` |
+
+The split is driven by `GIT_PLATFORM_CI_CAPABILITIES`:
+
+```
+gitlab_ci → gitlab
+gitea_ci  → gitea
+github_actions → github
+```
+
+Jenkins stays in `build_mode` because it has no Git-platform mapping. At read time, `mergeBuildModes()` concatenates both sides back into the full provider set — the split is transparent to all callers.
+
+**Example:** `BUILD_MODE=jenkins,gitlab_ci,gitea_ci,github_actions` → writes:
+- `build_mode = 'jenkins'`
+- `git_ci_enabled = 'gitlab,gitea,github'`
+
+`BUILD_MODE=jenkins,gitlab_ci,gitea_ci` → writes:
+- `build_mode = 'jenkins'`
+- `git_ci_enabled = 'gitlab,gitea'`
+
+After first boot, only the admin panel controls both keys directly — `BUILD_MODE` in `app.env` is ignored.
 
 ### Gitea Actions prerequisites
 
@@ -280,11 +310,24 @@ The stored value is a comma-separated set in the database (e.g. `jenkins,gitlab_
 - **Push image to Harbor**: Gitea Actions exposes no "artifact tag" API. The build-artifact tag association into `ci_pipeline_artifacts` uses the **Harbor scan-sync** flow — identical to Jenkins / GitLab CI. The workflow must push its image to Harbor, then call `POST /api/build/{owner/repo}/scan-sync` with `{ "tag", "pipeline_iid", "sha" }` (`pipeline_iid`/`sha` optional; when omitted, Glue falls back to the latest run and latest Harbor tag).
 - **`harbor_repository` configured**: the mapping must set `harbor_repository` to `project/repo` form, otherwise `scan-sync` returns 400.
 
+### GitHub Actions prerequisites
+
+`github_actions` uses **GitHub Actions** as the CI backend. To run a GitHub-hosted project end-to-end (trigger → pipeline/logs → artifact tag), the following are required:
+
+- **Workflow file**: the repository must contain a workflow with a `workflow_dispatch` trigger (e.g. `.github/workflows/build.yml`) for manual triggering. Without it, `trigger` returns a "workflow required" message; `push`-triggered workflows still run and are read back normally.
+- **Runner available**: at least one runner must be online. **Critical note for internal-network deployments** (Harbor not reachable from the public Internet):
+  - GitHub-hosted runners (Ubuntu / Windows / macOS on github.com) run on public cloud VMs and **cannot reach internal Harbor** — image push will fail.
+  - The solution is **GitHub Actions self-hosted runner**: install the `actions-runner` binary on any internal machine (VM / K8s pod / bare metal). The runner connects outbound to github.com on HTTPS 443 to pull jobs — no inbound hole needed on the internal firewall. The runner itself runs inside the internal network, so `docker login harbor.internal && docker push harbor.internal/project/repo:tag` works exactly the same as a Jenkins or GitLab runner.
+  - Self-hosted runners are registered at the repo, organization, or enterprise level. Use workflow labels to route jobs: `runs-on: [self-hosted, linux, x64]`.
+  - A single internal machine **cannot** act as a shared runner binary across GitHub / GitLab / Gitea simultaneously (each platform has its own runner protocol and binary). However, the same machine can run **all three** as separate processes — `actions-runner`, `gitlab-runner`, and `act_runner` are independent binaries with independent registrations. Docker daemon, image cache, and login credentials are shared.
+- **Push image to Harbor**: identical scan-sync flow as Jenkins / GitLab CI / Gitea Actions. After the workflow pushes its image to Harbor, call `POST /api/build/{owner/repo}/scan-sync` with `{ "tag", "pipeline_iid", "sha" }`.
+- **`harbor_repository` configured**: the mapping must set `harbor_repository` to `project/repo` form, otherwise `scan-sync` returns 400.
+
 ### Pull-based CI vs Push-based CI
 
 Devops-Glue supports two orthogonal CI paradigms:
 
-- **Pull-based CI**: controlled by the enabled CI source set (`jenkins` / `gitlab_ci` / `gitea_ci`). Devops-Glue actively queries Jenkins / GitLab CI / Gitea Actions to pull build status, logs, and image tags.
+- **Pull-based CI**: controlled by the enabled CI source set (`jenkins` / `gitlab_ci` / `gitea_ci` / `github_actions`). Devops-Glue actively queries Jenkins / GitLab CI / Gitea Actions / GitHub Actions to pull build status, logs, and image tags.
 - **Push-based CI**: controlled by the independent boolean switch `custom_push_enabled`. Users trigger builds in their own CI scripts and push build status, log URLs, and image tags back to Devops-Glue. Devops-Glue only stores build metadata and log URL pointers — it **does not participate in build execution** and **does not store log content**.
 
 The two are independent and can be enabled simultaneously (e.g. `jenkins + custom_push`).
@@ -324,7 +367,7 @@ Both cards also expose **▶ Clean up now** / **▶ Backfill now** buttons so yo
 
 No code changes needed — works out of the box:
 
-1. On the "Build Mode" page, check the **Custom_Push** checkbox. It is independent of the build-mode checkboxes (`jenkins` / `gitlab_ci` / `gitea_ci`).
+1. On the "Build Mode" page, check the **Custom_Push** checkbox. It is independent of the build-mode checkboxes (`jenkins` / `gitlab_ci` / `gitea_ci` / `github_actions`).
 2. Register a provider in the `build.custom_providers` array of `config/settings.php`.
 
 Configuration example:
@@ -600,7 +643,7 @@ Mapping management establishes the three-way Job ↔ Git repository ↔ Harbor i
 
 The system automatically scans enabled CI platforms and adds discovered jobs to the mapping list (initial status is "pending" and requires manual activation):
 
-Only CI sources currently enabled are scanned (jenkins / gitlab_ci / gitea_ci, per the multi-select).
+Only CI sources currently enabled are scanned (jenkins / gitlab_ci / gitea_ci / github_actions, per the multi-select).
 
 > **Note:** When multiple CI sources are enabled, the same repository may be discovered under several sources (e.g. Jenkins and Gitea Actions pointing at the same repo). Only one entry stays "active" at a time — the same repository is deduplicated by normalized remote (host + path, port ignored). Activating one entry auto-hides the others for that repository; reverting it to "pending" shows them again. This is expected behavior.
 
