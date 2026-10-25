@@ -1,4 +1,4 @@
-# Devops-Glue API Reference v2.10.0
+# Devops-Glue API Reference v2.11.0
 
 Base URL: `http://your-domain.com/api`
 
@@ -87,9 +87,9 @@ Unauthenticated external probe for Uptime Kuma / cloud load balancers / containe
 {
   "status": "ok",
   "db": true,
-  "app_version": "2.10.0",
-  "schema_version": "2.10.0",
-  "seed_version": "2.10.0",
+  "app_version": "2.11.0",
+  "schema_version": "2.11.0",
+  "seed_version": "2.11.0",
   "schema_current": true,
   "schema_ahead": false,
   "auto_migrate": true,
@@ -140,7 +140,7 @@ Returns connectivity status of Jenkins, Git platforms, and Harbor, plus system s
   "build_modes": ["jenkins", "gitlab_ci", "gitea_ci"],
   "build_mode_source": "database",
   "db_driver": "mysql",
-  "app_version": "2.10.0",
+  "app_version": "2.11.0",
   "app_env": "production",
   "time": "2026-08-10 12:00:00"
 }
@@ -148,8 +148,11 @@ Returns connectivity status of Jenkins, Git platforms, and Harbor, plus system s
 
 - `status`: `ok` | `degraded`
 - `jenkins`: `true` / `false` / `null` (null = gitlab_ci mode, Jenkins not checked)
-- `harbor`: `true` / `false` / `null` (null = Harbor not configured)
+- `harbor`: `true` / `false` / `null` (null = registry URL not configured)
+- `stats.harbor_repos`: number of distinct `registry_repository` values across active mappings (same for Harbor and registry:2)
 - HTTP 200 (ok) / 503 (degraded)
+
+> **Note:** for a `registry:2` connection (`registry_type=registry`), `checks.harbor` is a boolean reachability probe of `/v2/`, `harbor_version` is the string `"registry"`, and `harbor_components` is `{"registry": true}` when reachable. A Harbor connection keeps the `core` / `jobservice` / `registry` component probe.
 
 ### Static Health Info
 
@@ -169,7 +172,7 @@ Does not probe external platforms (Jenkins / Git / Harbor). Returns stats + syst
   "custom_push_enabled": true,
   "custom_push_providers": ["custom_push"],
   "db_driver": "mysql",
-  "app_version": "2.10.0",
+  "app_version": "2.11.0",
   "app_env": "production",
   "time": "2026-08-10 12:00:00"
 }
@@ -208,7 +211,7 @@ Returns JSON with `projects` keyed by job name (or current_path), plus platform 
       "git_remote": "http://URL/tools/registry.git",
       "project_id": 2,
       "web_url": "http://your-gitlab/group/project",
-      "harbor_repository": "mycode/code-runtime",
+      "registry_repository": "mycode/code-runtime",
       "platform_source": "auto",
       "detection_method": "",
       "jobs": ["java/registry"]
@@ -256,7 +259,8 @@ Returns configured and unconfigured Git platform list.
 | `/api/build/{path}/logs/{id}` | GET/POST | Build logs (text/plain; `id`=job id from `jobs[].id` of `/pipelines/{runId}`, not the run id) |
 | `/api/build/{path}/pipelines/{id}/retry` | POST | Retry pipeline (GitLab CI only) |
 | `/api/build/{path}/pipelines/{id}/cancel` | POST | Cancel pipeline (GitLab CI only) |
-| `/api/build/{path}/scan-sync` | POST | Harbor scan sync (**ci_status required**: `success` / `failed` / `running`. `tag` optional = latest; `pipeline_iid` + `sha` optional = fallback to latest pipeline. Artifact write gated on `ci_status=success`; Harbor scan + commit status writeback independent of CI outcome. See docs for fields.) |
+| `/api/build/{path}/scan-sync` | POST | Harbor scan sync (legacy Harbor entry; same write-back implementation as registry-sync, additionally reads the Harbor scan report. **ci_status required**: `success` / `failed` / `running`. `tag` optional = latest; `pipeline_iid` + `sha` must be supplied together, both omitted = fallback to latest pipeline. Artifact write gated on `ci_status=success` and complete pipeline identity; commit status writeback independent of CI outcome.) |
+| `/api/build/{path}/registry-sync` | POST | Base write-back for any configured registry; does not read scan results (**ci_status required**: `success` / `failed` / `running`. `tag` optional = latest; `pipeline_iid` + `sha` must be supplied together, both omitted = fallback to latest pipeline. Works with Harbor and `registry:2`; artifact write gated on `ci_status=success` and complete pipeline identity. Response: `build_provider`, `sha` (`N/A` when unknown), `tag`, `registry_repository`, `vulnerability_count`, `scan_state` (`unknown`), `commit_status` `{success, message}`) |
 | `/api/build/{path}/tag` | GET/POST | Pipeline -> Tag mapping (`?pipeline=10`) |
 | `/api/build/{path}/tags` | GET/POST | Paginated project tag list (`?page=1&page_size=50`) |
 | `/api/build/{path}/commit-status` | POST | Commit status write-back (security scans) |
@@ -284,13 +288,27 @@ Works with all Git providers (GitLab/GitHub/Gitee/Gitea), independent of CI syst
 
 ### Scan Sync
 
-Triggers Harbor vulnerability scan and writes result back to Git platform commit status (`harbor-scan` context). If `tag` is omitted, uses the latest tag from Harbor.
+`POST /api/build/{path}/scan-sync` is the legacy Harbor entry. In addition to the base write-back it reads the Harbor scan report and writes the result to the Git platform commit status (`harbor-scan` context). If `tag` is omitted, the first tag from the registry's tag list is used (for Harbor this is the most recently pushed).
+
+Both write-back endpoints share one implementation (`RegistrySyncService`) and differ only in whether scan results are read. Scanning capability is supplied by the registry: Harbor supports it, `registry:2` does not — use `registry-sync` for a `registry:2` connection.
+
+Request body: `ci_status` required (`success` / `failed` / `running`); `tag` optional (first tag from the registry's tag list when omitted); `sha` and `pipeline_iid` must be supplied together, both omitted falls back to the latest pipeline; `source_updated_at` optional.
+
+### Registry Sync
+
+`POST /api/build/{path}/registry-sync` performs the base write-back only: tag validation, `ci_pipeline_artifacts` write, the audit record and the Git commit status. It does not read vulnerability scan results, so it works with both Harbor and `registry:2`.
+
+Request body: `ci_status` required (`success` / `failed` / `running`); `tag` optional (first tag from the registry's tag list when omitted — for `registry:2` the order is not defined, prefer supplying `tag`); `sha` and `pipeline_iid` must be supplied together, both omitted falls back to the latest pipeline; `source_updated_at` optional.
+
+`ci_pipeline_artifacts` is written only when `ci_status=success` and the pipeline identity is complete (so a failed/running pipeline never produces a deployable artifact); the `ci_security_checks` audit record is written for every `ci_status` — `writeback_status=success` (push fact) / `skipped` (failed, running: audit only) — and the commit status is unaffected. Response fields: `build_provider`, `sha` (`N/A` when unknown), `tag`, `registry_repository`, `vulnerability_count`, `scan_state` (`unknown` for this endpoint unless the caller uses `scan-sync`), and `commit_status` (`{success, message}`).
+
+The audit record uses `check_type=registry-sync`; `scan-sync` uses `harbor-scan`. Readers accept both, so earlier records stay visible.
 
 ### Custom Push CI Result Report (report)
 
 For custom_push build provider only: after user CI completes, report the terminal result in one call — no `pending`/`running` intermediate states. Devops-Glue only stores metadata and log URL pointers; it does not participate in builds nor store log content.
 
-Required: `pipeline_iid` (build ID, integer), `status` (`success`/`failed`/`aborted`), `finished_at` (build completion time); when `status=success`, `tag` is required and `harbor_repository` is resolved from `job_git_map` (body value ignored). `harbor_repository` must be a two-segment `project/repo` path (e.g. `mycode/runner-ci`), not a registry URL; both the repository and the `tag` are verified to actually exist in Harbor on report (400 if either is missing).
+Required: `pipeline_iid` (build ID, integer), `status` (`success`/`failed`/`aborted`), `finished_at` (build completion time); when `status=success`, `tag` is required and `registry_repository` is resolved from `job_git_map` (body value ignored). `registry_repository` must be a path of at least two segments (e.g. `team/project/image`) and must not contain a scheme, host name or port; a value that does not match the format returns 400. On report, both the repository and the `tag` are verified to actually exist in the registry (400 if either is missing).
 Optional: `started_at`, `ref`, `sha`, `exit_code`, `log_url`, `web_url`.
 Custom variables: any other field (e.g. `env`) is stored in `variables_json`.
 
@@ -310,8 +328,8 @@ Custom variables: any other field (e.g. `env`) is stored in `variables_json`.
 }
 ```
 
-> On `success`, `tag` and a resolvable `harbor_repository` are mandatory and `ci_pipeline_artifacts` is written (provider, project_id, pipeline_iid, project_key, repository, tag, status), read by the CD layer via `GET /api/build/{path}/tag` (list views use `GET /api/build/projects` / `GET /api/build/{path}/tags`).
-> Fields outside control fields (`pipeline_iid`/`status`/`finished_at`/`started_at`/`ref`/`sha`/`exit_code`/`log_url`/`web_url`/`tag`/`harbor_repository`) are stored in `variables_json`.
+> On `success`, `tag` and a resolvable `registry_repository` are mandatory and `ci_pipeline_artifacts` is written (provider, project_id, pipeline_iid, project_key, repository, tag, status), read by the CD layer via `GET /api/build/{path}/tag` (list views use `GET /api/build/projects` / `GET /api/build/{path}/tags`).
+> Fields outside control fields (`pipeline_iid`/`status`/`finished_at`/`started_at`/`ref`/`sha`/`exit_code`/`log_url`/`web_url`/`tag`/`registry_repository`) are stored in `variables_json`.
 > `(job_name, pipeline_iid)` is a unique key; duplicate reports overwrite (UPDATE) the existing record.
 
 ---
@@ -356,6 +374,49 @@ Supports GitLab, Gitee, GitHub, and Gitea. Automatically resolves the Git reposi
 
 ---
 
+## Registry Module (`/api/registry`)
+
+> **Auth:** all Registry endpoints require a Bearer Token with the `registry.read` scope (the existing Image repository query scope is reused, so tokens that already hold `registry.read` keep working for both registry types — nothing is re-issued). **Note:** the CD service credential does **not** include `registry.read`, so calling this module with a service credential returns 403 — create/edit an API token under *API Management* and grant `registry.read`, or log in via `POST /api/admin/login`. Add the `Authorization: Bearer <token>` header.
+>
+> **Relationship to `/api/harbor`:** this module dispatches on the global registry type (`ci_app_settings.registry_type`: `harbor` | `registry`) and works for **both** Harbor and standard OCI Distribution (`registry:2`). `/api/harbor` keeps its Harbor-only contract (scan trigger / scan report exist for Harbor only), so existing integrators need no change. On a `registry:2` deployment use this module to list projects / repositories / tags.
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/registry/projects` | GET/POST | Project list. Harbor returns Harbor projects; `registry:2` derives them by de-duplicating the first path segment of every name in `/v2/_catalog` (the protocol has no project concept) |
+| `/api/registry/{project}/repositories` | GET/POST | Repository list (**short names, project prefix stripped**, same convention as `/api/harbor`) |
+| `/api/registry/{project}/repositories/{repository}/tags` | GET/POST | Tag list. Pass the short name as `repository`; when the short name contains `/` (e.g. `a/b` for `mycode/a/b`) it must be double-encoded as `%252F` |
+
+Status codes (identical to `/api/harbor/*`, so the same endpoint never changes status code with the registry type):
+
+| Status | Meaning |
+|---|---|
+| `200` | Array of names / tags |
+| `400` | Invalid project name / repository short name (`..`, an empty segment or characters other than the path separators); `/api/harbor/*` keeps its existing contract and does not validate |
+| `403` | Current user / token lacks the `ci.build-records.pull` permission |
+| `409` | Registry `url` not configured (a configuration problem, not a service failure) |
+| `500` | Provider business error (project/repository missing, `/v2/_catalog` disabled, upstream auth failure, …); the response carries the original `message` |
+| `502` | Connection-level failure (provider unreachable, mapped uniformly by middleware) |
+
+> **`registry:2` notes:**
+> - The project list depends on `/v2/_catalog`. When it is disabled on the registry (the default in most production setups) the endpoint returns `500` + `message`; in that case query tags directly by full repository name.
+> - Tag order is decided by the registry (it is *not* "most recently pushed first" — only Harbor does that). Do not assume an order; determine the newest tag from the digest/creation time or pass one explicitly.
+> - Single-segment root repositories (e.g. `/v2/static/tags/list`, whose full name has no `/`) are not counted as projects — they have no first segment to attribute.
+
+**curl examples:**
+
+```bash
+# Project list
+curl "http://URL/api/registry/projects" -H "Authorization: Bearer $TOKEN"
+
+# Repository list
+curl "http://URL/api/registry/mycode/repositories" -H "Authorization: Bearer $TOKEN"
+
+# Tag list (omit encoding when the short name has no /; use %252F when it does)
+curl "http://URL/api/registry/mycode/repositories/diagnosis-runtime/tags" -H "Authorization: Bearer $TOKEN"
+```
+
+---
+
 ## Integration-Service Contract Module (`/api/integration`)
 
 > **Purpose:** lets integration services such as CD check at runtime whether Glue has authorized them and with which provisioning mode — **without reading the shared `ci_integrated_services` table** (table name, columns and driver are all coupling surfaces: a CI schema change can break CD, and a split deployment would break it outright). CI stays the sole writer of the contract; consumers read this one narrow endpoint.
@@ -372,7 +433,9 @@ Response (wrapped in `data` with `format=json`; `raw`, the default, outputs the 
   "enabled": true,
   "provision": "auto",
   "token_active": true,
-  "updated_at": "2026-10-14 10:00:00"
+  "updated_at": "2026-10-14 10:00:00",
+  "registry_type": "harbor",
+  "registry_url": "https://hub.example.com"
 }
 ```
 
@@ -390,6 +453,7 @@ Response (wrapped in `data` with `format=json`; `raw`, the default, outputs the 
 > - **Scope:** reuses `build.read` (CD's service credential already holds it, so no privilege extension is needed); the controller re-checks `ci.build-records.pull`, injected automatically from the scope.
 > - **`token_active` is advisory only** (liveness of the credential bound to the contract row — e.g. to show "credential invalid, re-enable the integration service in CI"). It is normally the same credential the caller is using (otherwise this call would already have been rejected), so it must **never** be used as a gate condition.
 > - The endpoint deliberately **omits** `token_id` / `token_name` / `token_scopes` / `updated_by` (management-side fields, see `/api/admin/integrated_services/{service}`). Field names mirror that endpoint's subset so consumers using both channels can share one mapping.
+> - **`registry_type` / `registry_url` (since v2.11):** registry type (`harbor` | `registry`) and base URL. Glue is the source of truth for the image registry (pushes are performed by Glue's build tasks), so consumers must prefer the contract values and treat local environment variables only as a fallback when the endpoint is unavailable (older CI / network failure). **Both fields are delivered only when the credential holds the Image repository query scope (registry.read, which governs both Harbor and registry:2 queries)** — consumers connect to the registry directly with their own credentials once they have the address and never pass through Glue again, so the gate has to sit at delivery; without that scope, or when no registry is configured, both are empty strings. The CD service credential does not carry that scope by default: grant "Image repository query" to the credential in "API Management" when the image registry pages are needed. The four contract elements (service / enabled / provision / token_active) are unaffected by that scope. Authentication for `registry:2` is auto-detected by the consumer per the Docker Auth specification and is never carried by the contract.
 
 ---
 
@@ -530,11 +594,11 @@ Token expires in 24 hours. `super_admin` role returns `"*"` for permissions.
 |---|---|---|
 | `main` | MAIN (read-only) | `/api/main/*` |
 | `git` | GIT (read-only: branches / tags / refs) | `/api/git/*` |
-| `harbor.read` | Harbor read | `/api/harbor/*` (except scan trigger) |
+| `registry.read` | Image repository query | `/api/harbor/*` (except scan trigger), `/api/registry/*` (works for both registry types) |
 | `harbor.scan` | Harbor scan trigger | `POST /api/harbor/{project}/repositories/{repo}/tags/{tag}/scan` |
 | `build.read` | Build read + integration-service contract | `/api/build/*` (except write/report below), `/api/integration/*` |
 | `build.write` | Build execution | `trigger` / `retry` / `cancel` |
-| `build.report` | Build report | `scan-sync` / `commit-status` / `report` (CI script callbacks) |
+| `build.report` | Build report | `scan-sync` / `registry-sync` / `commit-status` / `report` (CI script callbacks) |
 | `rbac.user.write` | CD service-account management | create/read/update/delete users and list roles via `/api/rbac/*` |
 
 > **Notes:**
@@ -563,7 +627,7 @@ Request body:
 ```json
 {
   "name": "jenkins-scan-bot",
-  "scopes": ["main", "harbor.read", "harbor.scan", "build.report"],
+  "scopes": ["main", "registry.read", "harbor.scan", "build.report"],
   "expires_at": 1786579200,
   "note": "Used by the Jenkins scan writeback script"
 }
@@ -616,7 +680,7 @@ ADMIN_TOKEN=$(curl -s -X POST "http://URL/api/admin/login" \
 NEW_TOKEN=$(curl -s -X POST "http://URL/api/admin/api_tokens" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -d '{"name":"jenkins-scan-bot","scopes":["main","harbor.read","harbor.scan","build.report"]}' \
+  -d '{"name":"jenkins-scan-bot","scopes":["main","registry.read","harbor.scan","build.report"]}' \
   | jq -r '.token')
 
 # ③ Call business endpoints with the API token (same as admin login token)
@@ -630,6 +694,17 @@ curl -X POST "http://URL/api/harbor/mycode/repositories/diagnosis-runtime/tags/v
 # Write back scan results (requires build.report scope, called from CI scripts)
 # ci_status is REQUIRED: success=artifact+writeback, failed/running=writeback only (no artifact)
 curl -X POST "http://URL/api/build/static/scan-sync" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $NEW_TOKEN" \
+  -d '{
+    "ci_status": "success",
+    "tag": "v1.0.0",
+    "pipeline_iid": 42,
+    "sha": "abc123def"
+  }'
+
+# Base write-back for any registry (no scan results read; use this for registry:2)
+curl -X POST "http://URL/api/build/static/registry-sync" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $NEW_TOKEN" \
   -d '{
@@ -725,6 +800,12 @@ curl "http://URL/api/harbor/projects" \
 # Harbor tags (requires auth)
 curl "http://URL/api/harbor/mycode/repositories/diagnosis-runtime/tags" \
   -H "Authorization: Bearer $TOKEN"
+
+# Projects / repositories / tags for any registry type (Harbor or registry:2)
+# Requires auth with scope=registry.read
+curl "http://URL/api/registry/projects" -H "Authorization: Bearer $TOKEN"
+curl "http://URL/api/registry/mycode/repositories" -H "Authorization: Bearer $TOKEN"
+curl "http://URL/api/registry/mycode/repositories/diagnosis-runtime/tags" -H "Authorization: Bearer $TOKEN"
 
 # Trigger Harbor scan (requires auth)
 curl -X POST "http://URL/api/harbor/mycode/repositories/diagnosis-runtime/tags/v1.0.0/scan" \

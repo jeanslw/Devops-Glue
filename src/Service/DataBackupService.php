@@ -97,8 +97,6 @@ class DataBackupService
     private function listTables(): array
     {
         if ($this->driver === 'mysql') {
-            // 只取基础表（information_schema + table_type='BASE TABLE'）：视图不会被当成表导出——
-            // SHOW TABLES 会带上视图，导出视图会生成对视图执行 SELECT * 的假 INSERT，恢复时必然失败。
             $names = $this->pdo->query(
                 "SELECT table_name FROM information_schema.tables
                  WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'
@@ -171,7 +169,6 @@ class DataBackupService
             $dir = (string) $v;
         }
         if ($dir === '') {
-            // 非 Docker / 未设 BACKUP_DIR 时落仓库根 backups/（与 cli/backup-lib.php 的 CLI 默认一致）
             $dir = dirname(__DIR__, 2) . '/backups';
         }
         $dir = rtrim($dir, '/');
@@ -211,15 +208,15 @@ class DataBackupService
         }
         foreach ($grants as $grant) {
             $g = (string) $grant;
-            // 纯 USAGE 是无权限占位行，跳过
+
             if (preg_match('/^\s*GRANT\s+USAGE\s+ON/i', $g)) {
                 continue;
             }
             if (stripos($g, 'ON *.*') !== false) {
-                return ['key' => '', 'params' => []]; // 全局权限，库内表全可见
+                return ['key' => '', 'params' => []];
             }
             if (stripos($g, "ON `{$db}`.*") !== false || stripos($g, "ON {$db}.*") !== false) {
-                return ['key' => '', 'params' => []]; // 库级权限，库内表全可见
+                return ['key' => '', 'params' => []];
             }
         }
         return ['key' => 'sys.backup_warn_no_grants', 'params' => ['{db}' => $db]];
@@ -278,7 +275,7 @@ class DataBackupService
     {
         $dir = $this->backupDir();
 
-        // 1) 导出纯数据 .sql
+
         if ($this->driver === 'mysql') {
             $this->pdo->exec('SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ');
         }
@@ -294,7 +291,7 @@ class DataBackupService
                 $rows       = $this->pdo->query('SELECT * FROM ' . $t)->fetchAll(PDO::FETCH_NUM);
                 $counts[$t] = count($rows);
                 if (empty($rows)) {
-                    continue; // 空表不写 INSERT
+                    continue;
                 }
                 $head   = 'INSERT INTO ' . $t . ' (' . implode(', ', $cols) . ') VALUES';
                 $values = [];
@@ -311,7 +308,7 @@ class DataBackupService
             }
         } finally {
             if ($this->pdo->inTransaction()) {
-                $this->pdo->commit(); // 读事务尽快提交，不占用锁
+                $this->pdo->commit();
             }
         }
 
@@ -325,11 +322,11 @@ class DataBackupService
             . '-- META: app_version=' . AppConfig::APP_VERSION . "\n"
             . "-- META: mode={$mode}\n"
             . "-- META: tables=" . implode(',', $metaTables) . "\n"
-            // mysqldump 同款版本注释：MySQL 服务端执行、SQLite 视为普通注释，同一份文件两种引擎都能吃
+
             . "/*!40101 SET SQL_MODE='NO_BACKSLASH_ESCAPES' */;\n"
             . "/*!40014 SET FOREIGN_KEY_CHECKS=0 */;\n\n";
 
-        // 2) 写临时 .sql 再打入 zip，无论成败都清理临时 .sql
+
         $tmpSql  = $dir . '/' . $base . '.sql';
         $zipFile = $dir . '/' . $base . '.zip';
         if (file_put_contents($tmpSql, $header . $body) === false) {

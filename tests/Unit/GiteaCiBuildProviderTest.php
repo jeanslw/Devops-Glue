@@ -39,7 +39,7 @@ class GiteaCiBuildProviderTest extends TestCase
 
     public function testGetPipelinesParsesGitea127WorkflowRunsObject(): void
     {
-        // Gitea 1.27 GET /actions/runs 返回 {total_count, workflow_runs:[...]}（对象，非数组）
+        
         $provider = $this->providerWith([
             self::json(json_encode([
                 'total_count'    => 1,
@@ -61,15 +61,15 @@ class GiteaCiBuildProviderTest extends TestCase
         $this->assertSame(7, $pipes[0]['iid']);
         $this->assertSame('success', $pipes[0]['status']);
         $this->assertStringContainsString('/actions/runs/42', $pipes[0]['web_url']);
-        // run 对象时间字段是 started_at/completed_at（无 created_at/updated_at），映射到 created_at/updated_at
+        
         $this->assertSame(date('Y-m-d H:i:s', strtotime('2025-04-01T10:00:00Z')), $pipes[0]['created_at']);
         $this->assertSame(date('Y-m-d H:i:s', strtotime('2025-04-01T10:05:00Z')), $pipes[0]['updated_at']);
     }
 
     public function testGetJobsParsesGitea127JobsObjectAndCompletedAtDuration(): void
     {
-        // Gitea 1.27 GET /actions/runs/{run}/jobs 返回 {total_count, jobs:[...]}（对象，非数组）
-        // job 完成时间字段是 completed_at（无 stopped_at）
+        
+        
         $provider = $this->providerWith([
             self::json(json_encode([
                 'total_count' => 1,
@@ -96,8 +96,8 @@ class GiteaCiBuildProviderTest extends TestCase
 
     public function testTriggerReadsWorkflowRunIdFromRunDetails(): void
     {
-        // Gitea 1.27 触发成功返回 RunDetails {workflow_run_id, run_url, html_url}，
-        // 没有 GitHub 风格的 id 字段。
+        
+        
         $provider = $this->providerWith([
             self::json(json_encode([
                 'workflow_run_id' => 123,
@@ -113,7 +113,7 @@ class GiteaCiBuildProviderTest extends TestCase
 
     public function testGetJobsDurationZeroWithoutCompletedAt(): void
     {
-        // Gitea job 运行中（completed_at 缺失）不应把时间解析成负值/假值
+        
         $provider = $this->providerWith([
             self::json(json_encode([
                 'total_count' => 1,

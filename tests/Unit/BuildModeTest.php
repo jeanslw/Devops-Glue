@@ -61,7 +61,7 @@ class BuildModeTest extends TestCase
     {
         $this->seedBuildMode('both');
         $this->assertSame(['jenkins', 'gitlab_ci'], $this->repo()->getBuildModes());
-        // 二元拆分：git 平台 CI 迁入 git_ci_enabled，build_mode 只留独立 CI
+        
         $this->assertSame('jenkins', $this->storedBuildMode(), '旧值 both 读取时自愈并拆分 git CI');
         $this->assertSame('gitlab', $this->storedGitCiEnabled());
     }

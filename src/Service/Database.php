@@ -96,68 +96,58 @@ class Database
      */
     public static function bootstrap(\PDO $pdo): void
     {
-        // 幂等标记：重复调用直接返回，避免重复写库与校验。
-        // 仅在全部成功后才置位，中途异常保持可重试。
+
         if (self::$bootstrapped) {
             return;
         }
-        // 一致性自检（纯反射，不写库）：表常量与探测清单漂移时留下日志。
-        // 只记日志、不抛异常：清单笔误只影响可见性，建表由 ensureTables() 负责。
+
         self::logSchemaListDriftIfAny();
         self::$pdo = $pdo;
         if (empty(self::$config)) {
             self::init();
         }
-        // 一次读取同时判断是否当前版本与是否降级，后者决定播种模式。
+
         $needMark     = false;
         $needSeedMark = false;
         $seedMode     = self::SEED_MODE_PRUNE;
-        $recorded     = null; // 跃迁前的记录值（null = 首次初始化），供跃迁留痕使用
+        $recorded     = null;
         if (self::$config['auto_migrate'] ?? true) {
-            // 仅在 schema/种子版本与当前代码版本不一致时执行建表 + 种子，
-            // 避免每个请求都重复跑 ensureTables/seedRbac 的写库操作。
             $recorded = self::recordedVersion(self::SCHEMA_VERSION_KEY);
             if (!self::isVersionCurrent($recorded)) {
-                // 降级（记录版本高于代码版本）用合并播种：只补不删；显式迁移仍走 prune 收敛。
                 $seedMode = self::isVersionAhead($recorded) ? self::SEED_MODE_MERGE : self::SEED_MODE_PRUNE;
                 self::runExclusively(self::SCHEMA_VERSION_KEY, function () use ($seedMode): void {
-                    // 持锁后**重读**标记：另一节点可能刚完成迁移并释放了锁——本次就无需再跑（双检）。
+
                     if (self::isVersionCurrent(self::recordedVersion(self::SCHEMA_VERSION_KEY))) {
                         return;
                     }
-                    self::ensureTables($seedMode); // 建表 + RBAC 种子 + 索引 + JSON 迁移
+                    self::ensureTables($seedMode);
                 });
                 $needMark = true;
             }
         } else {
-            // 手动建库脚本模式（DB_AUTO_MIGRATE=false）：表由运维脚本创建，应用只补种子。
-            // 用独立键 seed_version 短路，避免每请求重复播种；补表或补列请跑 cli/migrate.php
-            // 或后台的同步库结构按钮。
             $recorded = self::recordedVersion(self::SEED_VERSION_KEY);
             if (!self::isVersionCurrent($recorded)) {
                 $seedMode = self::isVersionAhead($recorded) ? self::SEED_MODE_MERGE : self::SEED_MODE_PRUNE;
                 self::runExclusively(self::SEED_VERSION_KEY, function () use ($seedMode): void {
-                    // 持锁后重读标记（双检）：另一节点可能刚完成播种并释放了锁——本次就无需再跑
+
                     if (self::isVersionCurrent(self::recordedVersion(self::SEED_VERSION_KEY))) {
                         return;
                     }
-                    self::seedRbac($seedMode); // 表已存在，补/同步种子数据
+                    self::seedRbac($seedMode);
                 });
                 $needSeedMark = true;
             }
         }
-        // 自愈与种子走公共段：手动建库模式（上方 else 分支只补种子）同样需要把 CD 服务凭据
-        // scope 补齐到当前契约，否则手动模式升级后 CD 调新增 scope 的端点会 403。
+
         self::healCdServiceTokenScopes(self::pdo());
-        // 列结构对账只在自动模式自愈：同版本内迭代列定义时，schema_version 已相等会短路掉
-        // ensureTables()，没有这一步存量库的列宽漂移永远不会被修。只放宽（安全扩容）不收紧。
-        // 手动建库模式 DDL 归运维，不在引导期动结构，漂移由后台系统信息面板暴露。
+        self::migrateScopeHarborReadToRegistryRead(self::pdo());
+
         if (self::$config['auto_migrate'] ?? true) {
             self::reconcileColumns(self::pdo(), false);
         }
         self::seedAdmin();
         self::verifySeed();
-        // 自检通过后才标记版本并记一条跃迁审计；自检异常则不标记、不写审计，下次引导重试。
+
         if ($needMark) {
             self::markSchemaCurrent();
             self::noteVersionTransition(self::SCHEMA_VERSION_KEY, $recorded, $seedMode, 'schema');
@@ -190,7 +180,7 @@ class Database
             try {
                 $count = $pdo->query("SELECT COUNT(*) FROM {$table} WHERE {$like}")->fetchColumn();
             } catch (\Throwable $e) {
-                continue; // 表尚未建好等场景跳过，不误伤
+                continue;
             }
             if ((int) $count > 0) {
                 throw new \RuntimeException(
@@ -210,14 +200,14 @@ class Database
     private static function warnDeprecatedEnvKeys(): void
     {
         $deprecated = [
-            // Git/Harbor/Jenkins 连接（cli/migrate-platform-connections.php）
+
             'GITLAB_BASE_URL', 'GIT_BASE_URL', 'GITLAB_TOKEN', 'GIT_TOKEN',
             'GITHUB_BASE_URL', 'GITHUB_TOKEN',
             'GITEE_BASE_URL', 'GITEE_TOKEN',
             'GITEA_BASE_URL', 'GITEA_TOKEN',
             'HARBOR_BASE_URL', 'HARBOR_USER', 'HARBOR_PASSWORD',
             'JENKINS_BASE_URL', 'JENKINS_USER', 'JENKINS_TOKEN',
-            // OIDC（cli/migrate-oidc.php）
+
             'OIDC_ISSUER', 'OIDC_ID_TOKEN_TTL',
             'JENKINS_OIDC_SECRET', 'JENKINS_OIDC_REDIRECT_URI',
             'CD_OIDC_SECRET', 'CD_OIDC_REDIRECT_URI', 'CD_OIDC_SYSTEM',
@@ -253,7 +243,7 @@ class Database
             $row = $stmt->fetchColumn();
             return ($row === false) ? null : (string) $row;
         } catch (\Throwable $e) {
-            return null; // ci_app_settings 表尚未创建 → 视为未记录
+            return null;
         }
     }
 
@@ -319,7 +309,6 @@ class Database
                     ]
                 );
             } catch (\Throwable $e) {
-                // 纯诊断信息，失败不影响迁移
             }
         }
 
@@ -374,12 +363,11 @@ class Database
             $exists = $pdo->prepare($sql);
             $exists->execute($params);
             if ($exists->fetchColumn() !== false) {
-                return; // 去重窗口内已记录过同类事件
+                return;
             }
 
             (new OperationLogRepository($pdo))->record('system', $action, $target, $detail, '', $result, 'system');
         } catch (\Throwable $e) {
-            // 审计写入失败不影响引导 / 迁移
         }
     }
 
@@ -400,19 +388,19 @@ class Database
             return $v !== null && self::isVersionAhead($v);
         });
         if ($ahead === []) {
-            return; // 正向 / 平级 / 首次初始化：无方向异常，不留痕
+            return;
         }
         \App\Helper\Log::warning(
             '检测到数据库版本高于当前代码版本（疑似代码降级回滚）：本次显式迁移将把「'
             . implode('、', array_keys($ahead)) . '」标记改写为当前代码版本，'
             . '并按当前（旧）代码定义收敛系统角色权限（prune）。',
             [
-                'previous' => $ahead, // per-key 的改写前值
+                'previous' => $ahead,
                 'current'  => \App\Config\AppConfig::APP_VERSION,
                 'channel'  => 'explicit_migrate',
             ]
         );
-        // target 取最高被降级版本，兼作去重键
+
         $maxAhead = array_reduce(
             $ahead,
             static function (string $carry, string $v): string {
@@ -462,14 +450,13 @@ class Database
             \App\Config\AppConfig::TABLE_API_TOKENS,
             \App\Config\AppConfig::TABLE_USER_IDENTITIES,
             \App\Config\AppConfig::TABLE_OPERATION_LOGS,
-            // API token 调用审计日志（与 ci_operation_logs 同为 append-only 审计表，
-            // ensureTables() 会创建、cleanup-api-access-logs.php 会清理，故必须纳入探测清单）
+
             \App\Config\AppConfig::TABLE_API_ACCESS_LOGS,
-            // 集成服务启用契约表（CI 属主；ensureTables() 真实创建，CD 只读 enabled/provision）
+
             \App\Config\AppConfig::TABLE_INTEGRATED_SERVICES,
-            // OIDC/OAuth 客户端白名单（CI 属主；ensureTables() 真实创建）
+
             \App\Config\AppConfig::TABLE_OAUTH_CLIENTS,
-            // Git/Harbor/Jenkins 连接配置（CI 属主；ensureTables() 真实创建）
+
             \App\Config\AppConfig::TABLE_PLATFORM_CONNECTIONS,
         ];
     }
@@ -495,7 +482,7 @@ class Database
     {
         $probe = $probeList ?? self::schemaTables();
 
-        $owned = []; // 应用自有表：AppConfig 全部 TABLE_* 常量
+        $owned = [];
         $ref   = new \ReflectionClass(\App\Config\AppConfig::class);
         foreach ($ref->getConstants() as $name => $value) {
             if (!str_starts_with((string)$name, 'TABLE_') || !is_string($value)) {
@@ -594,12 +581,12 @@ class Database
             'schema_version' => $recorded,
             'app_version'    => \App\Config\AppConfig::APP_VERSION,
             'is_current'     => ($recorded !== null && $recorded === \App\Config\AppConfig::APP_VERSION),
-            // DB_AUTO_MIGRATE 实际生效值：后台系统信息的迁移模式行按此渲染
+
             'auto_migrate'   => self::isAutoMigrateEnabled(),
             'tables'         => $status,
-            // 探测清单自检结果（纯反射，与库无关）：后台系统信息的数据表一致性行按此渲染。
+
             'schema_list_drift' => self::schemaListDrift(),
-            // 列结构对账（查实际库）：safe 漂移会在自动模式引导时自愈，unsafe 仅提示人工评估。
+
             'column_drift' => [
                 'safe_count'   => $safeCount,
                 'unsafe_count' => count($columnDrift) - $safeCount,
@@ -717,7 +704,7 @@ class Database
         $missingColumns = [];
         foreach (self::columnMigrations() as $table => $columns) {
             if (!self::tableExists($pdo, $table)) {
-                continue; // 整表缺失：由「缺失表」兜住，不必逐列报告
+                continue;
             }
             foreach (array_keys($columns) as $column) {
                 if (!self::columnExists($pdo, $table, $column)) {
@@ -744,41 +731,40 @@ class Database
     private static function columnMigrations(): array
     {
         $isMySQL = self::$driver === 'mysql';
-        $VARCHAR = $isMySQL ? 'VARCHAR(255)' : 'TEXT';  // DEFAULT / INDEX 的列不能用 TEXT
-        $TS_TYPE = $isMySQL ? 'DATETIME' : 'TEXT';      // MySQL < 8.0.13 不允许 TEXT/BLOB 设 DEFAULT
+        $VARCHAR = $isMySQL ? 'VARCHAR(255)' : 'TEXT';
+        $TS_TYPE = $isMySQL ? 'DATETIME' : 'TEXT';
 
         return [
             \App\Config\AppConfig::TABLE_JOB_GIT_MAP => [
                 'status' => "{$VARCHAR} DEFAULT '" . \App\Config\AppConfig::STATUS_ACTIVE . "'",
+                'registry_repository' => 'TEXT',
             ],
             \App\Config\AppConfig::TABLE_SECURITY_CHECKS => [
-                'tag'               => "{$VARCHAR} DEFAULT ''", // 关联 tag
-                'writeback_status'  => "{$VARCHAR} DEFAULT ''", // commit status 回写结果（success/failed/skipped，空=历史）
+                'tag'               => "{$VARCHAR} DEFAULT ''",
+                'writeback_status'  => "{$VARCHAR} DEFAULT ''",
                 'writeback_message' => 'TEXT',
             ],
             \App\Config\AppConfig::TABLE_BUILD_TAG_CACHE => [
-                'provider'   => "{$VARCHAR} DEFAULT ''", // canonical identity (provider)，回填用
-                'project_id' => "{$VARCHAR} DEFAULT ''", // canonical identity (project_id)，回填用
-                'repository' => "{$VARCHAR} DEFAULT ''", // harbor 仓库，回填用
+                'provider'   => "{$VARCHAR} DEFAULT ''",
+                'project_id' => "{$VARCHAR} DEFAULT ''",
+                'repository' => "{$VARCHAR} DEFAULT ''",
             ],
             \App\Config\AppConfig::TABLE_PERMISSIONS => [
-                'parent_key' => $isMySQL ? 'VARCHAR(128)' : 'TEXT', // 权限层级
-                'created_at' => "{$TS_TYPE} DEFAULT NULL",          // 注册时间：内置为 NULL
+                'parent_key' => $isMySQL ? 'VARCHAR(128)' : 'TEXT',
+                'created_at' => "{$TS_TYPE} DEFAULT NULL",
             ],
             \App\Config\AppConfig::TABLE_OPERATION_LOGS => [
-                'operator_type' => "{$VARCHAR} DEFAULT 'admin'", // 操作人类型：admin / api_token
+                'operator_type' => "{$VARCHAR} DEFAULT 'admin'",
             ],
             \App\Config\AppConfig::TABLE_ADMIN_USERS => [
-                'email'      => "{$VARCHAR} NOT NULL DEFAULT ''", // 用户邮箱（OAuth userinfo 用，空则占位兜底）
-                'avatar_url' => 'TEXT',                                        // 头像 URL
-                'status'     => ($isMySQL ? 'TINYINT' : 'INTEGER') . " NOT NULL DEFAULT 1", // 1=启用 0=停用
-                'created_at' => "{$TS_TYPE} NULL DEFAULT NULL",                // 注册时间（存量行为 NULL，新行为 NOW）
-                'must_change_password' => ($isMySQL ? 'TINYINT' : 'INTEGER') . ' NOT NULL DEFAULT 0', // 首次登录强制改密（seed 建号置 1）
-                // 注：id 主键不通过此 ALTER 自动补——MySQL 中 AUTO_INCREMENT 主键列无法幂等补加、
-                // 且涉及旧主键（username）变更风险；存量库 id 主键由部署方手动迁移。
+                'email'      => "{$VARCHAR} NOT NULL DEFAULT ''",
+                'avatar_url' => 'TEXT',
+                'status'     => ($isMySQL ? 'TINYINT' : 'INTEGER') . " NOT NULL DEFAULT 1",
+                'created_at' => "{$TS_TYPE} NULL DEFAULT NULL",
+                'must_change_password' => ($isMySQL ? 'TINYINT' : 'INTEGER') . ' NOT NULL DEFAULT 0',
+
             ],
 
-            // user_identities 为 v2.6.3 新增整表，不存在存量列；若后续给该表新加列再据此追加
             \App\Config\AppConfig::TABLE_USER_IDENTITIES => [
             ],
         ];
@@ -828,7 +814,7 @@ class Database
         $drift = [];
         foreach (self::columnSpecs() as $table => $columns) {
             if (!self::tableExists($pdo, $table)) {
-                continue; // 整表缺失由 missing_tables 兜住
+                continue;
             }
             $stmt = $pdo->prepare(
                 'SELECT COLUMN_TYPE FROM information_schema.COLUMNS '
@@ -838,7 +824,7 @@ class Database
                 $stmt->execute([$table, $column]);
                 $actual = $stmt->fetchColumn();
                 if ($actual === false) {
-                    continue; // 列不存在由 missing_columns / ADD COLUMN 循环兜住
+                    continue;
                 }
                 $actualType   = self::normalizeColumnType((string) $actual);
                 $expectedType = self::normalizeColumnType(self::firstTypeToken($definition));
@@ -960,20 +946,20 @@ class Database
      */
     public static function migrateNow(): array
     {
-        self::connect();           // 迁移入口自带连接：不依赖既有 bootstrap 状态（空库/手动模式也能直接迁移）
-        // 改写标记前先取跃迁前的记录值：库标记高于代码版本（回滚后按 SOP 用旧代码迁移）
-        // 属于降级方向的显式动作，需与自动引导同等留痕。
+        self::connect();
+
         $prevSchema = self::recordedVersion(self::SCHEMA_VERSION_KEY);
         $prevSeed   = self::recordedVersion(self::SEED_VERSION_KEY);
-        self::ensureTables();      // 建表 + 旧表名 RENAME + RBAC 种子 + 索引 + JSON 迁移
-        self::healCdServiceTokenScopes(self::pdo()); // CD 服务凭据 scope 自愈（与 bootstrap 公共段一致）
-        self::seedAdmin();          // 补管理员种子（与 bootstrap() 一致，缺管理员时自愈）
-        self::verifySeed();         // 自检种子不变量，缺失直接抛异常，不标记当前
-        self::markSchemaCurrent();  // 自检通过后才标记当前版本
-        self::markSeedCurrent();    // 同步种子版本：手动模式随后的首次引导即短路，不再重复播种
+        self::ensureTables();
+        self::healCdServiceTokenScopes(self::pdo());
+        self::migrateScopeHarborReadToRegistryRead(self::pdo());
+        self::seedAdmin();
+        self::verifySeed();
+        self::markSchemaCurrent();
+        self::markSeedCurrent();
         self::noteExplicitDowngrade([self::SCHEMA_VERSION_KEY => $prevSchema, self::SEED_VERSION_KEY => $prevSeed]);
         $status = self::schemaStatus();
-        // 逐表建表结果（成功/失败），供 CLI/后台渲染「表1 成功…表2 失败」过程列表。
+
         $status['table_build_log'] = self::lastTableBuildLog();
         return $status;
     }
@@ -990,22 +976,22 @@ class Database
      */
     public static function classifyMigrationError(string $message, string $sqlState = '', int $driverCode = 0): string
     {
-        // MySQL 驱动错误码优先：1044 = 库级拒绝，1142 = 语句级拒绝（CREATE/ALTER command denied），1227 = 权限不足
+
         if (in_array($driverCode, [1044, 1142, 1227], true)) {
             return 'ddl_denied';
         }
-        // 连接层：1045 = 账号/口令被拒，1049 = 库不存在，2002/2003 = 连不上
+
         if (in_array($driverCode, [1045, 1049, 2002, 2003], true)) {
             return 'unreachable';
         }
         $lower = strtolower($message);
-        // SQLite：只读库 / 只读文件，与缺 DDL 权限同类处置
+
         if (str_contains($lower, 'readonly') || str_contains($lower, 'attempt to write')) {
             return 'ddl_denied';
         }
         if (
             str_contains($lower, 'unable to open database file')
-            || str_contains($lower, 'open_basedir')          // PHP open_basedir 限制导致 SQLite 打不开库文件
+            || str_contains($lower, 'open_basedir')
             || str_contains($lower, 'connection refused')
             || str_contains($lower, 'unknown database')
             || str_contains($lower, 'no such file')
@@ -1013,12 +999,8 @@ class Database
         ) {
             return 'unreachable';
         }
-        // 无驱动码时退回 SQLSTATE 兜底。42000 同时覆盖语法错误、重复列、表已存在与权限拒绝，
-        // 必须再用消息关键字确认是权限类，否则会把普通迁移失败误判为账号缺权限。
+
         if (str_starts_with($sqlState, '42000')) {
-            // 只认 denied（command denied / access denied ... need privilege）。不能用 'access violation'：
-            // PDO MySQL 标准异常前缀固定是 "Syntax error or access violation: <code>"，连 1064 语法错误也带
-            // 这串字，用它会把所有 42000 错误再次一律判成权限问题。
             return str_contains($lower, 'denied') ? 'ddl_denied' : 'other';
         }
         if (str_starts_with($sqlState, '28000')) {
@@ -1108,7 +1090,7 @@ class Database
                 self::$pdo = self::createPdo();
                 self::bootstrap(self::$pdo);
             } catch (\Throwable $e) {
-                self::$pdo = null; // 引导失败不缓存半成品，下次调用重新引导
+                self::$pdo = null;
                 throw $e;
             }
         }
@@ -1214,7 +1196,7 @@ class Database
             return;
         }
         if (!self::lockTableAvailable()) {
-            $critical(); // 空库首启：无从互斥，直接硬跑（幂等）
+            $critical();
             return;
         }
         $timeout  = self::$migrationWaitOverride ?? self::MIGRATION_WAIT_TIMEOUT_SECONDS;
@@ -1223,19 +1205,19 @@ class Database
         while (microtime(true) < $deadline) {
             usleep((int) round($interval * 1000000));
             if (self::isVersionCurrent(self::recordedVersion($waitKey))) {
-                return; // 另一节点已完成迁移，本次跳过
+                return;
             }
             $token = self::tryAcquireLock(self::MIGRATION_LOCK_KEY, self::MIGRATION_LOCK_TTL);
             if ($token !== null) {
                 try {
-                    $critical(); // 接管：上一持有者已崩 / 租约过期（闭包双检决定是否真的要跑）
+                    $critical();
                 } finally {
                     self::releaseLock(self::MIGRATION_LOCK_KEY, $token);
                 }
                 return;
             }
         }
-        $critical(); // 等待超时降级：幂等硬跑，绝不因锁卡死启动
+        $critical();
     }
 
     /** ci_cache 表当前是否可读（区分「锁被他人持有」与「空库首启无从互斥」） */
@@ -1283,7 +1265,6 @@ class Database
                 ->execute([$key, $token, $now + $ttlSeconds]);
             return $token;
         } catch (\Throwable $e) {
-            // 唯一键冲突（已有有效锁）或库异常：安全降级为「不抢锁」。
             return null;
         }
     }
@@ -1299,7 +1280,6 @@ class Database
             $pdo->prepare("DELETE FROM " . \App\Config\AppConfig::TABLE_CACHE . " WHERE cache_key = ? AND value = ?")
                 ->execute(['lock:' . $name, $token]);
         } catch (\Throwable $e) {
-            // 忽略：锁自动过期兜底
         }
     }
 
@@ -1405,21 +1385,17 @@ class Database
         $isMySQL = self::$driver === 'mysql';
         self::$tableBuildLog = [];
 
-        // v2.9.0 表名收口：先把存量旧表名 RENAME 到 ci_ 前缀，再走 CREATE IF NOT EXISTS——
-        // 存量库改名后建表全部跳过，新装库无旧表直接建新名，两条路径汇合同一结构。
         self::renameLegacyTables($pdo);
 
-        // 字段类型映射
         $PK       = $isMySQL ? 'INT AUTO_INCREMENT PRIMARY KEY' : 'INTEGER PRIMARY KEY AUTOINCREMENT';
         $TEXT_PK  = $isMySQL ? 'VARCHAR(255) PRIMARY KEY'      : 'TEXT PRIMARY KEY';
-        $VARCHAR  = $isMySQL ? 'VARCHAR(255)'                   : 'TEXT';  // DEFAULT / INDEX 的列不能用 TEXT
-        $VCHAR255 = $isMySQL ? 'VARCHAR(255) NOT NULL'          : 'TEXT NOT NULL';  // 复合主键中的列
+        $VARCHAR  = $isMySQL ? 'VARCHAR(255)'                   : 'TEXT';
+        $VCHAR255 = $isMySQL ? 'VARCHAR(255) NOT NULL'          : 'TEXT NOT NULL';
         $NOW      = self::sqlNow();
         $ENGINE   = $isMySQL ? ' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4' : '';
-        // 时间戳列：MySQL < 8.0.13 不允许 TEXT/BLOB 设置 DEFAULT，必须用 DATETIME
+
         $TS_TYPE  = $isMySQL ? 'DATETIME' : 'TEXT';
 
-        // ci_job_git_map
         self::buildTable($pdo, \App\Config\AppConfig::TABLE_JOB_GIT_MAP, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_JOB_GIT_MAP . " (
             job_name {$TEXT_PK},
             git_platform TEXT,
@@ -1428,18 +1404,16 @@ class Database
             project_id INTEGER,
             web_url TEXT,
             current_path TEXT,
-            harbor_repository TEXT,
+            registry_repository TEXT,
             api_version TEXT,
             status {$VARCHAR} DEFAULT '" . \App\Config\AppConfig::STATUS_ACTIVE . "'
         ){$ENGINE}");
-        // ci_platform_versions
+
         self::buildTable($pdo, \App\Config\AppConfig::TABLE_PLATFORM_VERSIONS, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_PLATFORM_VERSIONS . " (
             platform {$TEXT_PK},
             version TEXT NOT NULL
         ){$ENGINE}");
 
-        // ci_pipeline_artifacts：Pipeline 到 Primary Artifact（1:1）。
-        // canonical identity = (provider, project_id, pipeline_iid)。
         self::buildTable($pdo, \App\Config\AppConfig::TABLE_PIPELINE_ARTIFACTS, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_PIPELINE_ARTIFACTS . " (
             id {$PK},
             provider {$VARCHAR} NOT NULL,
@@ -1454,7 +1428,7 @@ class Database
             updated_at {$TS_TYPE} DEFAULT ({$NOW}),
             UNIQUE (provider, project_id, pipeline_iid)
         ){$ENGINE}");
-        // ci_custom_builds（自定义推送式 CI 的构建记录，只存元数据，不存日志内容）
+
         self::buildTable($pdo, \App\Config\AppConfig::TABLE_CUSTOM_BUILDS, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_CUSTOM_BUILDS . " (
             id {$PK},
             job_name {$VCHAR255},
@@ -1471,7 +1445,7 @@ class Database
             finished_at {$TS_TYPE},
             UNIQUE (job_name, pipeline_iid)
         ){$ENGINE}");
-        // cache
+
         if ($isMySQL) {
             self::buildTable($pdo, \App\Config\AppConfig::TABLE_CACHE, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_CACHE . " (
                 cache_key VARCHAR(255) PRIMARY KEY,
@@ -1486,7 +1460,6 @@ class Database
             )");
         }
 
-        // admin_users（v2.6.3 起：id 为主键，username 降为唯一约束；新增 avatar_url/status/created_at）
         self::buildTable($pdo, \App\Config\AppConfig::TABLE_ADMIN_USERS, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_ADMIN_USERS . " (
             id " . ($isMySQL ? 'BIGINT AUTO_INCREMENT PRIMARY KEY' : 'INTEGER PRIMARY KEY AUTOINCREMENT') . ",
             username " . ($isMySQL ? 'VARCHAR(255)' : 'TEXT') . " NOT NULL UNIQUE,
@@ -1501,8 +1474,6 @@ class Database
             updated_at {$TS_TYPE} DEFAULT ({$NOW})
         ){$ENGINE}");
 
-
-        // ci_app_settings（应用运行时配置，与缓存分离）
         if ($isMySQL) {
             self::buildTable($pdo, \App\Config\AppConfig::TABLE_APP_SETTINGS, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_APP_SETTINGS . " (
                 setting_key VARCHAR(255) PRIMARY KEY,
@@ -1517,7 +1488,6 @@ class Database
             )");
         }
 
-        // 迁移：将 cache 表中可能残留的 build_mode 移至 ci_app_settings
         try {
             $old = $pdo->query("SELECT value FROM " . \App\Config\AppConfig::TABLE_CACHE . " WHERE cache_key = 'build_mode'")->fetch();
             if ($old && in_array($old['value'], [\App\Config\AppConfig::BUILD_MODE_JENKINS, \App\Config\AppConfig::BUILD_MODE_GITLAB_CI, \App\Config\AppConfig::BUILD_MODE_GITEA_CI, \App\Config\AppConfig::BUILD_MODE_BOTH])) {
@@ -1531,10 +1501,6 @@ class Database
         } catch (\Exception $e) {
         }
 
-        // ci_build_tag_cache：镜像 Tag 日志的懒解析缓存（sha 到 tag）。
-        // sha 内容寻址、全局唯一，故为唯一键；project_key/pipeline_id 仅作溯源参考。
-        // provider/project_id/repository 记录 canonical identity 与 harbor 仓库，供回填 cron
-        // 直接写入 ci_pipeline_artifacts（无需重跑 provider 解析）。
         self::buildTable($pdo, \App\Config\AppConfig::TABLE_BUILD_TAG_CACHE, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_BUILD_TAG_CACHE . " (
             id {$PK},
             project_key {$VARCHAR} DEFAULT '',
@@ -1549,7 +1515,6 @@ class Database
             updated_at {$TS_TYPE} DEFAULT ({$NOW})
         ){$ENGINE}");
 
-        // ci_security_checks（安全扫描审计记录）
         self::buildTable($pdo, \App\Config\AppConfig::TABLE_SECURITY_CHECKS, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_SECURITY_CHECKS . " (
             id {$PK},
             project {$VARCHAR} NOT NULL,
@@ -1564,7 +1529,6 @@ class Database
             created_at {$TS_TYPE} DEFAULT ({$NOW})
         ){$ENGINE}");
 
-        // ci_operation_logs（后台操作审计日志，append-only，只增不删）
         self::buildTable($pdo, \App\Config\AppConfig::TABLE_OPERATION_LOGS, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_OPERATION_LOGS . " (
             id {$PK},
             username {$VARCHAR} NOT NULL,
@@ -1576,9 +1540,7 @@ class Database
             result {$VARCHAR} DEFAULT 'success',
             created_at {$TS_TYPE} DEFAULT ({$NOW})
         ){$ENGINE}");
-        // ci_api_access_logs（API token 调用审计日志，append-only + 定时清理）
-        // 安全约束：只记 token 展示名，不记 token/hash/body/query；route 存路由模板。
-        // 列宽显式声明并与 database/*_init.sql 保持一致（route/scopes/error_reason 需 500）。
+
         $S  = $isMySQL ? 'VARCHAR(255)' : 'TEXT';
         $L  = $isMySQL ? 'VARCHAR(500)' : 'TEXT';
         $M  = $isMySQL ? 'VARCHAR(10)'  : 'TEXT';
@@ -1598,8 +1560,8 @@ class Database
             duration_ms INTEGER NOT NULL DEFAULT 0,
             created_at {$TS_TYPE} DEFAULT ({$NOW})
         ){$ENGINE}");
-        // ── RBAC 权限系统 ──
-        // roles
+
+
         self::buildTable($pdo, \App\Config\AppConfig::TABLE_ROLES, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_ROLES . " (
             id {$PK},
             name {$VARCHAR} NOT NULL UNIQUE,
@@ -1607,7 +1569,7 @@ class Database
             is_system TINYINT NOT NULL DEFAULT 0,
             created_at {$TS_TYPE} DEFAULT ({$NOW})
         ){$ENGINE}");
-        // permissions
+
         if ($isMySQL) {
             self::buildTable($pdo, \App\Config\AppConfig::TABLE_PERMISSIONS, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_PERMISSIONS . " (
                 perm_key VARCHAR(128) PRIMARY KEY,
@@ -1623,7 +1585,7 @@ class Database
                 created_at {$TS_TYPE} DEFAULT NULL
             )");
         }
-        // role_permissions
+
         if ($isMySQL) {
             self::buildTable($pdo, \App\Config\AppConfig::TABLE_ROLE_PERMISSIONS, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_ROLE_PERMISSIONS . " (
                 role_id INTEGER NOT NULL,
@@ -1638,7 +1600,6 @@ class Database
             )");
         }
 
-        // implied_rules 表：权限隐含关系（source_key 到 target_key），运行时可由 CD 通过 API 注册
         if ($isMySQL) {
             self::buildTable($pdo, \App\Config\AppConfig::TABLE_IMPLIED_RULES, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_IMPLIED_RULES . " (
                 source_key VARCHAR(128) NOT NULL,
@@ -1653,9 +1614,6 @@ class Database
             )");
         }
 
-        // user_identities（身份源关联：一个 admin_users.username 可绑 ldap/local 等多个登录方式）
-        // 与 admin_users 解耦：admin_users 只保留"用户存在 + 角色 + 系统范围"，
-        // 而"通过哪种身份源登录、对应的标识符/凭据"在此，便于未来接入 oauth/saml 等。
         if ($isMySQL) {
             self::buildTable($pdo, \App\Config\AppConfig::TABLE_USER_IDENTITIES, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_USER_IDENTITIES . " (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -1685,7 +1643,6 @@ class Database
             )");
         }
 
-        // api_tokens（服务账号 / 第三方调用的 API token，独立于 RBAC 权限体系）
         self::buildTable($pdo, \App\Config\AppConfig::TABLE_API_TOKENS, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_API_TOKENS . " (
             id {$PK},
             name {$VARCHAR} NOT NULL,
@@ -1698,10 +1655,6 @@ class Database
             created_at {$TS_TYPE} DEFAULT ({$NOW})
         ){$ENGINE}");
 
-        // integrated_services：集成服务启用契约表（CI 唯一写入方，CD 只读 enabled/provision）。
-        // 在 api_tokens 之后创建：api_token_id 软引用 api_tokens(id)，凭据的签发与撤销在
-        // ApiTokenService，本表只登记服务配套的凭据；删除 token 时外键置空，启用行保留。
-        // enabled=0 仅冻结集成服务，不删除任何数据。
         $isvcTable = \App\Config\AppConfig::TABLE_INTEGRATED_SERVICES;
         if ($isMySQL) {
             self::buildTable($pdo, $isvcTable, "CREATE TABLE IF NOT EXISTS {$isvcTable} (
@@ -1731,8 +1684,6 @@ class Database
             )");
         }
 
-        // oauth_clients：OIDC/OAuth 客户端白名单（DB 唯一权威，彻底移除 env；secret/redirect_uri 可空，留空即 fail-closed）。
-        // MySQL < 8.0.13 不允许 TEXT/BLOB 设 DEFAULT，故 secret/redirect_uri 不设默认值。
         $oauthClientsTable = \App\Config\AppConfig::TABLE_OAUTH_CLIENTS;
         if ($isMySQL) {
             self::buildTable($pdo, $oauthClientsTable, "CREATE TABLE IF NOT EXISTS {$oauthClientsTable} (
@@ -1758,8 +1709,6 @@ class Database
             )");
         }
 
-        // platform_connections：Git/Harbor/Jenkins 连接配置（DB 唯一权威，彻底移除 env）。
-        // url/token/username/password 可空、无默认（MySQL < 8.0.13 不允许 TEXT 设 DEFAULT）。
         $platformConnectionsTable = \App\Config\AppConfig::TABLE_PLATFORM_CONNECTIONS;
         if ($isMySQL) {
             self::buildTable($pdo, $platformConnectionsTable, "CREATE TABLE IF NOT EXISTS {$platformConnectionsTable} (
@@ -1785,11 +1734,8 @@ class Database
             )");
         }
 
-        // ── 通用列迁移 ──
-        // 列清单统一由 columnMigrations() 提供（写路径与只读预检 pendingChanges() 共用同一份事实，避免两处漂移）。
-        // 补列循环：遍历有限映射，天然有界、必然终止（无 while/递归，无需显式 break）。
-        // 任一列检测/ALTER 失败会抛 PDOException 一路向上（fail-fast，与上方 CREATE TABLE 一致），
-        // 应用启动失败；但因 columnExists 幂等 + 尚未 markSchemaCurrent，下次启动会重跑补齐剩余列，不留半成品。
+
+
         foreach (self::columnMigrations() as $table => $columns) {
             foreach ($columns as $column => $definition) {
                 if (!self::columnExists($pdo, $table, $column)) {
@@ -1798,16 +1744,35 @@ class Database
             }
         }
 
-        // 列已存在但类型/宽度落后于建表定义（同版本内迭代 DDL、跨版本升级都可能发生）：
-        // 只对 columnSpecs() 登记的安全扩容执行 MODIFY；缩容/跨类型族只在对账结果里告警。
-        // 与上方 ADD 循环同属 fail-fast：失败抛出，尚未 markSchemaCurrent，下次引导重试。
+        if (
+            self::columnExists($pdo, \App\Config\AppConfig::TABLE_JOB_GIT_MAP, 'harbor_repository')
+            && self::columnExists($pdo, \App\Config\AppConfig::TABLE_JOB_GIT_MAP, 'registry_repository')
+        ) {
+            $pdo->exec(
+                'UPDATE ' . \App\Config\AppConfig::TABLE_JOB_GIT_MAP
+                . " SET registry_repository = harbor_repository"
+                . " WHERE (registry_repository IS NULL OR registry_repository = '')"
+                . " AND harbor_repository IS NOT NULL AND harbor_repository != ''"
+            );
+        }
+
+        if (self::columnExists($pdo, \App\Config\AppConfig::TABLE_JOB_GIT_MAP, 'harbor_repository')) {
+            try {
+                $pdo->exec('ALTER TABLE ' . \App\Config\AppConfig::TABLE_JOB_GIT_MAP . ' DROP COLUMN harbor_repository');
+            } catch (\Throwable $e) {
+                \App\Helper\Log::warning('旧列 harbor_repository 删除失败，已保留（不影响功能，可忽略）', [
+                    'table'      => \App\Config\AppConfig::TABLE_JOB_GIT_MAP,
+                    'sqlite_ver' => $pdo->getAttribute(\PDO::ATTR_SERVER_VERSION),
+                    'error'      => $e->getMessage(),
+                ]);
+            }
+        }
+
         self::reconcileColumns($pdo, true);
 
-        // 种子数据：RBAC（权限定义 / 隐含规则 / 系统角色 / 角色↔权限），幂等可重复执行
-        // seedMode 透传：降级回滚时用 merge（只补不删），避免回滚把系统角色权限收窄。
         self::seedRbac($seedMode);
 
-        // ── 索引（跨驱动幂等：MySQL 无 IF NOT EXISTS，先查 information_schema）──
+
         self::createIndex('idx_pipeline_artifacts_project_key', \App\Config\AppConfig::TABLE_PIPELINE_ARTIFACTS, 'project_key');
         self::createIndex('idx_pipeline_artifacts_created', \App\Config\AppConfig::TABLE_PIPELINE_ARTIFACTS, 'created_at');
         self::createIndex('idx_job_git_map_current_path', \App\Config\AppConfig::TABLE_JOB_GIT_MAP, $isMySQL ? 'current_path(255)' : 'current_path');
@@ -1821,23 +1786,19 @@ class Database
         self::createIndex('idx_api_access_logs_created', \App\Config\AppConfig::TABLE_API_ACCESS_LOGS, 'created_at');
         self::createIndex('idx_api_access_logs_token', \App\Config\AppConfig::TABLE_API_ACCESS_LOGS, 'token_name');
         self::createIndex('idx_api_access_logs_result', \App\Config\AppConfig::TABLE_API_ACCESS_LOGS, 'result');
-        // user_identities.username 查询索引：MySQL 的 CREATE TABLE 已带内联 KEY idx_username，
-        // SQLite 建表语句无索引，需与 sqlite_init.sql 一致单独补建
+
         if (!$isMySQL) {
             self::createIndex('idx_user_identities_username', \App\Config\AppConfig::TABLE_USER_IDENTITIES, 'username');
         }
 
-        // 一次性 JSON 迁移（仅 SQLite）
         if (!$isMySQL) {
             $baseDir = __DIR__ . '/../../config';
             self::migrateJobGitMap("{$baseDir}/job_git_map.json", $pdo);
             self::migratePlatformVersions("{$baseDir}/platform_versions.json", $pdo);
         }
 
-        // 新 canonical artifact 表的存量迁移：MySQL / SQLite 均需要执行一次。
         self::migratePipelineArtifacts($pdo);
 
-        // 存量脏数据清理：job_name/current_path 去除首尾空白（幂等，TRIM 语义两驱动一致）。
         self::trimJobGitMapWhitespace($pdo);
     }
 
@@ -1854,14 +1815,15 @@ class Database
     {
         foreach (\App\Config\AppConfig::LEGACY_TABLE_NAMES as $old => $new) {
             if (!self::tableExists($pdo, $old)) {
-                continue; // 新装库 / 已迁移库：无旧表
+                continue;
             }
             if (self::tableExists($pdo, $new)) {
                 \App\Helper\Log::warning('改名迁移跳过：新旧表并存，以新表为准', ['old' => $old, 'new' => $new]);
                 continue;
             }
             $pdo->exec("ALTER TABLE {$old} RENAME TO {$new}");
-            \App\Helper\Log::error('表名收口迁移完成', ['old' => $old, 'new' => $new]);
+
+            \App\Helper\Log::warning('表名收口迁移完成', ['old' => $old, 'new' => $new]);
         }
     }
 
@@ -1878,7 +1840,6 @@ class Database
             }
             $pdo->exec("UPDATE {$table} SET job_name = TRIM(job_name), current_path = TRIM(current_path)");
         } catch (\Throwable $e) {
-            // 清理失败不应阻断启动（属优化性修复），仅记录告警
             \App\Helper\Log::error('trimJobGitMapWhitespace 失败', ['error' => $e->getMessage()]);
         }
     }
@@ -1915,8 +1876,28 @@ class Database
 
             (new ApiTokenService($pdo))->addScopes((int) $tokenId, \App\Config\AppConfig::CD_SERVICE_TOKEN_SCOPES);
         } catch (\Throwable $e) {
-            // 属能力补齐而非结构变更：失败不阻断启动，仅记告警，管理员在集成服务页重新启用即可补齐
             \App\Helper\Log::error('healCdServiceTokenScopes 失败', ['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * 存量 token 的 harbor.read 重命名为 registry.read。harbor.scan 不变。
+     *
+     * @param \PDO $pdo
+     */
+    private static function migrateScopeHarborReadToRegistryRead(\PDO $pdo): void
+    {
+        try {
+            if (!self::tableExists($pdo, \App\Config\AppConfig::TABLE_API_TOKENS)) {
+                return;
+            }
+            $pdo->exec(
+                'UPDATE ' . \App\Config\AppConfig::TABLE_API_TOKENS
+                . " SET scopes = REPLACE(scopes, 'harbor.read', 'registry.read')"
+                . " WHERE scopes IS NOT NULL AND scopes LIKE '%harbor.read%'"
+            );
+        } catch (\Throwable $e) {
+            \App\Helper\Log::error('migrateScopeHarborReadToRegistryRead 失败', ['error' => $e->getMessage()]);
         }
     }
 
@@ -1935,14 +1916,13 @@ class Database
                 );
                 $stmt->execute([$table, $index]);
                 if ((int)$stmt->fetchColumn() > 0) {
-                    return; // 索引已存在
+                    return;
                 }
                 self::pdo()->exec("CREATE INDEX {$index} ON {$table} ({$columns})");
             } else {
                 self::pdo()->exec("CREATE INDEX IF NOT EXISTS {$index} ON {$table} ({$columns})");
             }
         } catch (\Exception $e) {
-            // 索引非关键路径，失败不阻断启动，但记录日志以便排查
             \App\Helper\Log::exception($e);
         }
     }
@@ -1953,10 +1933,9 @@ class Database
     {
         $pdo = self::pdo();
 
-        /** @var list<array{step:string,key:string,error:string}> 部分失败项；循环结束后统一处理 */
+
         $failures = [];
 
-        // 种子数据：权限定义（含 parent_key）
         $permUpsert = self::sqlUpsert(\App\Config\AppConfig::TABLE_PERMISSIONS, 'perm_key, description, parent_key', '?, ?, ?');
         $permStmt = $pdo->prepare($permUpsert);
         foreach (\App\Config\AppConfig::DEFAULT_PERMISSIONS as $key => $def) {
@@ -1970,7 +1949,6 @@ class Database
             }
         }
 
-        // 种子数据：隐含规则（与 DEFAULT_PERMISSIONS 一样作 bootstrap，运行时可被 API 覆盖/扩展）
         $ruleUpsert = self::sqlUpsert(\App\Config\AppConfig::TABLE_IMPLIED_RULES, 'source_key, target_key', '?, ?');
         $ruleStmt = $pdo->prepare($ruleUpsert);
         foreach (\App\Config\AppConfig::IMPLIED_PERMISSIONS as $src => $targets) {
@@ -1984,15 +1962,10 @@ class Database
             }
         }
 
-        // 种子数据：系统角色（幂等，is_system 由 DEFAULT_SYSTEM_ROLES 决定）。
-        // 不能用 sqlUpsert（REPLACE INTO）：roles.name 为 UNIQUE，REPLACE 会删旧行插新行，
-        // 自增 id 变化会使 role_permissions 中引用旧 id 的行变成孤儿；
-        // 故查得到就 UPDATE（保留 id），查不到才 INSERT。
         $findRoleStmt   = $pdo->prepare("SELECT id FROM " . \App\Config\AppConfig::TABLE_ROLES . " WHERE name = ?");
         $insertRoleStmt = $pdo->prepare("INSERT INTO " . \App\Config\AppConfig::TABLE_ROLES . " (name, description, is_system) VALUES (?, ?, ?)");
         $updateRoleStmt = $pdo->prepare("UPDATE " . \App\Config\AppConfig::TABLE_ROLES . " SET description = ?, is_system = ? WHERE id = ?");
         foreach (\App\Config\AppConfig::DEFAULT_ROLES as $roleName => $perms) {
-            // 系统角色描述从 DEFAULT_ROLE_DESCRIPTIONS 取（供 CD 角色目录 / 后台列表展示），自定义角色不在此处种子
             $roleDesc = \App\Config\AppConfig::DEFAULT_ROLE_DESCRIPTIONS[$roleName];
             $isSystem = in_array($roleName, \App\Config\AppConfig::DEFAULT_SYSTEM_ROLES) ? 1 : 0;
             try {
@@ -2002,11 +1975,10 @@ class Database
                     try {
                         $insertRoleStmt->execute([$roleName, $roleDesc, $isSystem]);
                     } catch (\Exception $e) {
-                        // 并发下另一进程可能已插入同名角色（roles.name UNIQUE）：回退为 UPDATE，保留其 id。
                         $findRoleStmt->execute([$roleName]);
                         $roleId = $findRoleStmt->fetchColumn();
                         if ($roleId === false) {
-                            throw $e; // 并非「被并发插入」场景，交给外层记录真实错误
+                            throw $e;
                         }
                         $updateRoleStmt->execute([$roleDesc, $isSystem, (int)$roleId]);
                     }
@@ -2019,15 +1991,11 @@ class Database
             }
         }
 
-        // 种子数据：角色↔权限（只同步系统角色，不碰自定义角色）
-        // 整段唯一的破坏性动作就是下面这条 DELETE：prune（默认）先清空该角色的映射再按当前代码重建；
-        // merge（降级回滚）跳过它——只补当前代码期望的映射（INSERT IGNORE 天然幂等），保留新版本授予的映射。
         $allPermKeys = array_keys(\App\Config\AppConfig::DEFAULT_PERMISSIONS);
         $delRpStmt = ($seedMode === self::SEED_MODE_PRUNE)
             ? $pdo->prepare("DELETE FROM " . \App\Config\AppConfig::TABLE_ROLE_PERMISSIONS . " WHERE role_id = (SELECT id FROM " . \App\Config\AppConfig::TABLE_ROLES . " WHERE name = ?)")
             : null;
-        // 用 INSERT IGNORE 而非裸 INSERT：web / worker 容器并发播种时会同时先 DELETE 再
-        // INSERT 同一批 (role_id, perm_key)，裸 INSERT 会撞联合主键报重复；IGNORE 让后到者跳过。
+
         $rpStmt = $pdo->prepare(self::sqlInsertIgnore(
             \App\Config\AppConfig::TABLE_ROLE_PERMISSIONS,
             'role_id, perm_key',
@@ -2053,8 +2021,6 @@ class Database
             }
         }
 
-        // 部分失败必须抛出异常，而不是记日志继续：权限只播一半表现为按钮缺失，易被当成功能 bug。
-        // 抛异常后 bootstrap() 不会标记版本，下次引导会重试整个 ensureTables()，并写文件日志与操作日志。
         if ($failures !== []) {
             $sample = array_slice($failures, 0, 5);
             \App\Helper\Log::error('seedRbac 部分失败：种子未播全', ['count' => count($failures), 'sample' => $sample]);
@@ -2070,8 +2036,6 @@ class Database
             );
         }
 
-        // 清扫孤儿行：早期 REPLACE INTO 换 id 遗留的 role_id 悬空引用；role_id NOT IN (roles.id)
-        // 即孤儿定义，不会误删有效行。每次播种执行，存量库下次发版即被清理。
         $pdo->exec(
             "DELETE FROM " . \App\Config\AppConfig::TABLE_ROLE_PERMISSIONS
             . " WHERE role_id NOT IN (SELECT id FROM " . \App\Config\AppConfig::TABLE_ROLES . ")"
@@ -2114,7 +2078,6 @@ class Database
             $problems[] = 'permissions 查询失败: ' . $e->getMessage();
         }
 
-        // 仅在配置了 ADMIN_PASSWORD 时才要求管理员账号存在（未设密码属首次初始化，允许为空）
         if (($_ENV['ADMIN_PASSWORD'] ?? '') !== '') {
             try {
                 $cnt = (int)$pdo->query("SELECT count(*) c FROM " . \App\Config\AppConfig::TABLE_ADMIN_USERS)->fetch()['c'];
@@ -2151,18 +2114,19 @@ class Database
         $isMySQL = self::$driver === 'mysql';
         $table = \App\Config\AppConfig::TABLE_JOB_GIT_MAP;
         $sql = $isMySQL
-            ? "INSERT IGNORE INTO {$table} (job_name,git_platform,build_provider,git_remote,project_id,web_url,current_path,harbor_repository,api_version) VALUES (?,?,?,?,?,?,?,?,?)"
-            : "INSERT OR IGNORE INTO {$table} (job_name,git_platform,build_provider,git_remote,project_id,web_url,current_path,harbor_repository,api_version) VALUES (?,?,?,?,?,?,?,?,?)";
+            ? "INSERT IGNORE INTO {$table} (job_name,git_platform,build_provider,git_remote,project_id,web_url,current_path,registry_repository,api_version) VALUES (?,?,?,?,?,?,?,?,?)"
+            : "INSERT OR IGNORE INTO {$table} (job_name,git_platform,build_provider,git_remote,project_id,web_url,current_path,registry_repository,api_version) VALUES (?,?,?,?,?,?,?,?,?)";
 
         $stmt = $pdo->prepare($sql);
         foreach ($data as $row) {
             if (empty($row['job_name'])) {
                 continue;
             }
+
             $stmt->execute([
                 $row['job_name'], $row['git_platform'] ?? null, $row['build_provider'] ?? \App\Config\AppConfig::PROVIDER_JENKINS,
                 $row['git_remote'] ?? null, $row['project_id'] ?? null, $row['web_url'] ?? null,
-                $row['current_path'] ?? null, $row['harbor_repository'] ?? null, $row['api_version'] ?? null,
+                $row['current_path'] ?? null, $row['registry_repository'] ?? $row['harbor_repository'] ?? null, $row['api_version'] ?? null,
             ]);
         }
         @unlink($path);
@@ -2206,10 +2170,9 @@ class Database
     private static function migratePipelineArtifacts(\PDO $pdo): void
     {
         $artifactTable = \App\Config\AppConfig::TABLE_PIPELINE_ARTIFACTS;
-        $tagTable      = 'ci_pipeline_tags'; // 遗留表名（迁移源），迁移完成后 DROP
+        $tagTable      = 'ci_pipeline_tags';
         $mapTable      = \App\Config\AppConfig::TABLE_JOB_GIT_MAP;
-        // getPdo() 在某些调用链中会直接执行 ensureTables()，因此这里必须低成本幂等。
-        // artifact 已有任意数据 = 迁移已完成；无遗留表 = 全新安装。两种情况都只需清理遗留表。
+
         $existing = $pdo->query('SELECT 1 FROM ' . $artifactTable . ' LIMIT 1')->fetchColumn();
         if ($existing !== false || !self::tableExists($pdo, $tagTable)) {
             self::dropTableIfExists($pdo, $tagTable);
@@ -2281,11 +2244,10 @@ class Database
             if (isset($started) && $started) {
                 $pdo->rollBack();
             }
-            // 存量迁移失败必须阻止 schema 被标记为完成，让下次启动继续尝试。
+
             throw $e;
         }
 
-        // 迁移完成（或遗留表本就为空）后删除遗留表，规范事实只剩 ci_pipeline_artifacts。
         self::dropTableIfExists($pdo, $tagTable);
     }
 

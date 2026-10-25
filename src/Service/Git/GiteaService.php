@@ -62,7 +62,7 @@ class GiteaService extends AbstractGitProvider
             return ['success' => false, 'message' => '仓库路径格式错误'];
         }
         $body = [
-            'state'       => $state,
+            'state'       => $state === 'failed' ? 'failure' : $state,
             'description' => $description,
             'context'     => $context,
         ];

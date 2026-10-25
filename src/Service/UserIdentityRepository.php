@@ -59,8 +59,8 @@ class UserIdentityRepository
     public function bind(string $username, string $providerType, string $providerUid, array $opts = []): bool
     {
         $email = (string)($opts['email'] ?? '');
-        $credential = $opts['credential'] ?? null; // 仅 local 用，外部 provider 保持 null
-        $rawProfile = $opts['raw_profile'] ?? null; // 数组 → JSON 存 raw_profile
+        $credential = $opts['credential'] ?? null;
+        $rawProfile = $opts['raw_profile'] ?? null;
         $now = Database::sqlNow();
 
         $stmt = $this->pdo->prepare(
@@ -78,7 +78,6 @@ class UserIdentityRepository
                 is_array($rawProfile) ? json_encode($rawProfile, JSON_UNESCAPED_UNICODE) : $rawProfile,
             ]);
         } catch (\PDOException $e) {
-            // 唯一索引冲突表示已绑定，返回 false 由上层决定（不直接覆盖）
             return false;
         }
     }

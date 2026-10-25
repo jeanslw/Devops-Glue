@@ -8,6 +8,7 @@ use App\Config\AppConfig;
 use App\Controller\ServiceContractController;
 use App\Service\I18nService;
 use App\Service\IntegratedServiceRepository;
+use App\Service\Settings;
 use App\Support\ApiScopeResolver;
 use PHPUnit\Framework\TestCase;
 use Slim\Psr7\Factory\ResponseFactory;
@@ -40,7 +41,8 @@ class ServiceContractEndpointTest extends TestCase
 
         $this->controller = new ServiceContractController(
             new I18nService(self::ROOT . '/lang', 'zh_CN'),
-            new IntegratedServiceRepository($this->pdo)
+            new IntegratedServiceRepository($this->pdo),
+            new Settings(['harbor' => ['registry_type' => 'registry', 'url' => 'https://registry.example.com']])
         );
     }
 
@@ -103,13 +105,62 @@ class ServiceContractEndpointTest extends TestCase
         $body = $this->call('cd')['body'];
 
         $this->assertSame(
-            ['service', 'enabled', 'provision', 'token_active', 'updated_at'],
+            ['service', 'enabled', 'provision', 'token_active', 'updated_at', 'registry_type', 'registry_url'],
             array_keys($body),
             '字段集合即契约：新增字段须同时改 OpenAPI 与文档'
         );
         foreach (['token_id', 'token_name', 'token_scopes', 'updated_by', 'default_provision'] as $managementField) {
             $this->assertArrayNotHasKey($managementField, $body, "{$managementField} 属管理面字段，不该暴露给集成服务");
         }
+    }
+
+    public function testRegistryFieldsRequireTheHarborReadScopeForApiTokens(): void
+    {
+        $this->insertContract('cd', 1, 'auto', null);
+
+        
+        
+        
+        $without = $this->callWithScopes('cd', [AppConfig::API_SCOPE_BUILD_READ]);
+        $this->assertSame(200, $without['status'], '契约四要素不受影响：scope 只闸镜像仓库两字段');
+        $this->assertTrue($without['body']['enabled'], '启用状态等契约要素照常下发');
+        $this->assertSame('', $without['body']['registry_type'], '无 镜像仓库 查询 scope 的 API token 不得拿到仓库类型');
+        $this->assertSame('', $without['body']['registry_url'], '无 镜像仓库 查询 scope 的 API token 不得拿到仓库地址');
+
+        
+        $with = $this->callWithScopes('cd', [AppConfig::API_SCOPE_BUILD_READ, AppConfig::API_SCOPE_REGISTRY_READ]);
+        $this->assertSame('registry', $with['body']['registry_type']);
+        $this->assertSame('https://registry.example.com', $with['body']['registry_url']);
+    }
+
+    public function testRegistryFieldsAlwaysPresentAndMirrorSettings(): void
+    {
+        $this->insertContract('cd', 1, 'auto', null);
+
+        $body = $this->call('cd')['body'];
+
+        $this->assertSame('registry', $body['registry_type'], '交互式会话（无 apiScopes）按权限放行，取值须与 ci_app_settings.registry_type 一致');
+        $this->assertSame('https://registry.example.com', $body['registry_url'], 'registry_url 恒有键，取自平台连接 harbor.url');
+    }
+
+    public function testRegistryUrlFallsBackToEmptyStringWhenHarborNotConfigured(): void
+    {
+        $controller = new ServiceContractController(
+            new I18nService(self::ROOT . '/lang', 'zh_CN'),
+            new IntegratedServiceRepository($this->pdo),
+            new Settings(['harbor' => ['registry_type' => 'harbor']])
+        );
+        $request = (new ServerRequestFactory())
+            ->createServerRequest('GET', '/api/integration/services/cd')
+            ->withAttribute('currentRole', AppConfig::ROLE_API_TOKEN)
+            ->withAttribute('userPermissions', [AppConfig::PERM_CI_BUILD_RECORDS_PULL]);
+
+        $result = $controller->show($request, (new ResponseFactory())->createResponse(), ['service' => 'cd']);
+        $body = json_decode((string) $result->getBody(), true);
+
+        $this->assertIsArray($body);
+        $this->assertSame('harbor', $body['registry_type'], 'registry_type 非法值归一化为 harbor');
+        $this->assertSame('', $body['registry_url'], 'harbor 未配置时 registry_url 为空串而非 null');
     }
 
     public function testMissingCiReadPermissionIsRejected(): void
@@ -167,6 +218,8 @@ class ServiceContractEndpointTest extends TestCase
             $props = $get['responses']['200']['content']['application/json']['schema']['properties'];
             $this->assertSame('boolean', $props['enabled']['type']);
             $this->assertSame(['auto', 'manual'], $props['provision']['enum'], 'provision 取值必须与契约常量一致');
+            $this->assertSame(['harbor', 'registry'], $props['registry_type']['enum'], "{$file} 缺少 registry_type 或其取值与 Settings::getRegistryType 归一化结果不一致");
+            $this->assertSame('string', $props['registry_url']['type'], "{$file} 缺少 registry_url");
         }
     }
 
@@ -182,6 +235,31 @@ class ServiceContractEndpointTest extends TestCase
             ->createServerRequest('GET', '/api/integration/services/' . $service)
             ->withAttribute('currentRole', AppConfig::ROLE_API_TOKEN)
             ->withAttribute('userPermissions', $perms);
+        return $this->dispatch($request, $service);
+    }
+
+    /**
+     * 带 apiScopes 属性调用：AuthMiddleware 对 API token 恒挂该属性，
+     * 契约端点按它判定是否下发镜像仓库两字段。
+     *
+     * @param list<string> $scopes
+     * @return array{status:int, body:array<string,mixed>}
+     */
+    private function callWithScopes(string $service, array $scopes): array
+    {
+        $request = (new ServerRequestFactory())
+            ->createServerRequest('GET', '/api/integration/services/' . $service)
+            ->withAttribute('currentRole', AppConfig::ROLE_API_TOKEN)
+            ->withAttribute('userPermissions', [AppConfig::PERM_CI_BUILD_RECORDS_PULL])
+            ->withAttribute('apiScopes', $scopes);
+        return $this->dispatch($request, $service);
+    }
+
+    /**
+     * @return array{status:int, body:array<string,mixed>}
+     */
+    private function dispatch(\Psr\Http\Message\ServerRequestInterface $request, string $service): array
+    {
         $response = (new ResponseFactory())->createResponse();
 
         $result = $this->controller->show($request, $response, ['service' => $service]);
@@ -192,7 +270,7 @@ class ServiceContractEndpointTest extends TestCase
 
     private function createTables(): void
     {
-        // 只建契约端点为真读到的两张表（不跑 ensureTables：本测试关注端点契约，不关注库结构）
+        
         $this->pdo->exec(
             'CREATE TABLE ' . AppConfig::TABLE_INTEGRATED_SERVICES
             . ' (id INTEGER PRIMARY KEY AUTOINCREMENT, service_name TEXT, enabled INTEGER, provision TEXT,'

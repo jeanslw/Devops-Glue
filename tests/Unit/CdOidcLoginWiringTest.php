@@ -46,7 +46,7 @@ class CdOidcLoginWiringTest extends TestCase
         parent::setUp();
         $_ENV['ADMIN_USER']     = 'admin';
         $_ENV['ADMIN_PASSWORD'] = 'secret';
-        // 避免 ensureTables() 里 ALTER 失败触发的日志写到 /data/logs 污染环境
+        
         $_ENV['LOG_PATH'] = sys_get_temp_dir() . DIRECTORY_SEPARATOR;
         $_ENV['DATA_ENC_KEY'] = base64_encode(random_bytes(32));
         Database::reset();
@@ -69,8 +69,8 @@ class CdOidcLoginWiringTest extends TestCase
         $pdo = new \PDO('sqlite::memory:');
         $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
         $pdo->setAttribute(\PDO::ATTR_DEFAULT_FETCH_MODE, \PDO::FETCH_ASSOC);
-        // Settings 闭包会经 PlatformConnectionRepository::resolveConnections() 查连接表，
-        // 裸内存库必须建表（与 ensureTables 的 SQLite 分支同构），否则容器解析 Settings 直接 500。
+        
+        
         $pdo->exec('CREATE TABLE IF NOT EXISTS ' . AppConfig::TABLE_PLATFORM_CONNECTIONS . ' (
             platform    TEXT PRIMARY KEY,
             url         TEXT,
@@ -89,13 +89,13 @@ class CdOidcLoginWiringTest extends TestCase
     {
         $settings = $this->read('config/settings.php');
 
-        // 彻底移除 env：settings.php 不再读 CD_OIDC_* / JENKINS_OIDC_*（否则旧 env 仍会兜底）
+        
         $this->assertStringNotContainsString("env('CD_OIDC_SECRET'", $settings);
         $this->assertStringNotContainsString("env('CD_OIDC_REDIRECT_URI'", $settings);
         $this->assertStringNotContainsString("env('CD_OIDC_SYSTEM'", $settings);
         $this->assertStringNotContainsString("env('JENKINS_OIDC_SECRET'", $settings);
 
-        // fail-closed 兜底仍在 OAuthService 构造函数：secret/redirect_uri 空则剔除
+        
         $oauth = $this->read('src/Service/OAuthService.php');
         $this->assertStringContainsString("trim((string)(\$c['secret'] ?? '')) !== ''", $oauth);
         $this->assertStringContainsString("trim((string)(\$c['redirect_uri'] ?? '')) !== ''", $oauth);
@@ -173,7 +173,7 @@ class CdOidcLoginWiringTest extends TestCase
     {
         $builder = new ContainerBuilder();
         $builder->addDefinitions(self::ROOT . '/config/container.php');
-        // 容器默认的 \PDO 定义走 Database::getPdo()（会碰真实库文件），测试换内存库
+        
         $builder->addDefinitions([\PDO::class => fn() => $this->memoryPdo()]);
         $container = $builder->build();
 
@@ -203,7 +203,7 @@ class CdOidcLoginWiringTest extends TestCase
         $requestFactory  = new ServerRequestFactory();
         $responseFactory = new ResponseFactory();
 
-        // 登录态（非 API token）一律 403
+        
         $sessionReq = $requestFactory->createServerRequest('GET', '/api/rbac/roles/viewer/permissions')
             ->withAttribute('currentRole', AppConfig::ROLE_ADMIN);
         $resp = $controller->rolePermissions(
@@ -216,7 +216,7 @@ class CdOidcLoginWiringTest extends TestCase
         $apiReq = $requestFactory->createServerRequest('GET', '/api/rbac/roles/viewer/permissions')
             ->withAttribute('currentRole', AppConfig::ROLE_API_TOKEN);
 
-        // 真实角色：权限与 TokenService::loadPermissions 同源
+        
         $expected = $tokens->loadPermissions(AppConfig::ROLE_VIEWER);
         $this->assertNotEmpty($expected, 'viewer 应被种子授予权限，否则本用例失去意义');
         $resp = $controller->rolePermissions(
@@ -229,7 +229,7 @@ class CdOidcLoginWiringTest extends TestCase
         $this->assertSame(AppConfig::ROLE_VIEWER, $body['role']);
         $this->assertSame(array_values($expected), $body['permissions']);
 
-        // super_admin：通配（与 /api/admin/login 的 permissions:"*" 同语义），不能照表读成 []
+        
         $resp = $controller->rolePermissions(
             $apiReq,
             $responseFactory->createResponse(),
@@ -237,7 +237,7 @@ class CdOidcLoginWiringTest extends TestCase
         );
         $this->assertSame(['*'], ((array) json_decode((string) $resp->getBody(), true))['permissions']);
 
-        // 角色不存在：返回 404，与零权限的情况区分开
+        
         $resp = $controller->rolePermissions(
             $apiReq,
             $responseFactory->createResponse(),
@@ -259,7 +259,7 @@ class CdOidcLoginWiringTest extends TestCase
         $pdo = $this->memoryPdo();
         Database::bootstrap($pdo);
 
-        // 客户端：唯一权威是 DB（resolveClients 传空基线，无 env 兜底）
+        
         $repo = new OAuthClientRepository($pdo);
         $repo->save('cd', [
             'secret' => 'db-secret', 'redirect_uri' => 'https://db/cb', 'system' => 'cd', 'enabled' => true, 'description' => '',
@@ -267,7 +267,7 @@ class CdOidcLoginWiringTest extends TestCase
         $oauth = new OAuthService($pdo, $repo->resolveClients([]));
         $this->assertTrue($oauth->validateClientSecret('cd', 'db-secret'), 'DB secret 必须生效（唯一权威）');
 
-        // issuer：唯一权威是 DB（即使残留 env 也不应生效）
+        
         $appSettings = new AppSettingRepository($pdo);
         $appSettings->setOidcIssuer('https://db-issuer');
         $_ENV['OIDC_ISSUER'] = 'https://env-issuer';

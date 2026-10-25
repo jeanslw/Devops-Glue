@@ -93,7 +93,7 @@ class Logger
         $file = $this->logPath . 'app-' . date('Y-m-d') . '.log';
         @file_put_contents($file, $line, FILE_APPEND | LOCK_EX);
 
-        // 应用层日志轮转：写完顺带清理过期文件（节流，避免每个请求都扫目录）
+
         $this->maybePurgeOldLogs();
     }
 

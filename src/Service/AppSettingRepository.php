@@ -13,6 +13,7 @@ use App\Helper\Log;
  *   - git_ci_enabled（git 平台 CI 能力启用态，与 build_mode 二元拆分）
  *   - custom_push_enabled / stale_tag_cleanup_enabled / backfill_tag_enabled
  *   - tag_log_keyword（推送成功关键字）
+ *   - registry_type（镜像仓库类型：harbor 默认 | registry，标准 OCI Distribution）
  *
  * settings.php / env 的纯配置读取见 {@see Settings}。
  */
@@ -61,6 +62,26 @@ class AppSettingRepository
         return $value === '1';
     }
 
+    // ─── 镜像仓库类型（全局单一值，DB 唯一来源） ───
+
+    /**
+     * 镜像仓库类型：harbor（默认）| registry（标准 OCI Distribution，如 registry:2）。
+     * 未设置（历史库）回退 harbor。
+     */
+    public function getRegistryType(): string
+    {
+        $value = $this->getString('registry_type');
+        return $value === 'registry' ? 'registry' : 'harbor';
+    }
+
+    /**
+     * 设置镜像仓库类型：仅 harbor|registry，其余值归一为 harbor。
+     */
+    public function setRegistryType(string $type): void
+    {
+        $this->setString('registry_type', $type === 'registry' ? 'registry' : 'harbor');
+    }
+
     // ─── 构建系统模式（数据库为唯一来源） ───
 
     /**
@@ -80,16 +101,14 @@ class AppSettingRepository
                 $this->migrateLegacyGitCi();
                 return $this->mergeBuildModes();
             }
-            // DB 无记录：首次运行，以 app.env 为种子写入 DB
+
             $modes = self::parseBuildModes($_ENV['BUILD_MODE'] ?? AppConfig::BUILD_MODE_BOTH);
             try {
                 $this->setBuildModes($modes);
             } catch (\Exception $e) {
-                // 写失败（DB 只读等）不阻塞读取
             }
             return $modes;
         } catch (\Exception $e) {
-            // DB 彻底不可用时的最后兜底
             return self::parseBuildModes($_ENV['BUILD_MODE'] ?? AppConfig::BUILD_MODE_BOTH);
         }
     }
@@ -111,7 +130,7 @@ class AppSettingRepository
         if (in_array($value, AppConfig::BUILTIN_PULL_PROVIDERS, true)) {
             return [$value];
         }
-        // 新格式：逗号分隔集合，只保留内置拉取式 provider，未知值丢弃。
+
         $parts = array_values(array_filter(array_map('trim', explode(',', $value)), fn($s) => $s !== ''));
         return array_values(array_intersect(AppConfig::BUILTIN_PULL_PROVIDERS, $parts));
     }
@@ -121,9 +140,9 @@ class AppSettingRepository
      */
     public function setBuildModes(array $modes): void
     {
-        // array_intersect 以 BUILTIN_PULL_PROVIDERS 的顺序返回，天然去重，保持规范顺序
+
         $modes = array_values(array_intersect(AppConfig::BUILTIN_PULL_PROVIDERS, array_map('trim', $modes)));
-        // 二元拆分：独立 CI（jenkins）留在 build_mode；git 平台 CI 记到 git_ci_enabled（平台名列表）
+
         $standalone = array_values(array_intersect([AppConfig::PROVIDER_JENKINS], $modes));
         $gitCiProviders = array_values(array_intersect(AppConfig::GIT_PLATFORM_CI_CAPABILITIES, $modes));
         $platforms = [];

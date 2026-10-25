@@ -142,7 +142,7 @@ class GithubActionsBuildProvider implements BuildProviderInterface
      */
     private function fetchPaged(string $url, ?string $key = null): array
     {
-        /** @var list<array<string, mixed>> $all */
+
         $all = [];
         $sep = str_contains($url, '?') ? '&' : '?';
         for ($page = 1; $page <= 100; $page++) {
@@ -155,7 +155,7 @@ class GithubActionsBuildProvider implements BuildProviderInterface
             if (!is_array($list)) {
                 break;
             }
-            /** @var array<int, array<string, mixed>> $items */
+
             $items = array_values($list);
             if ($items === []) {
                 break;
@@ -229,7 +229,7 @@ class GithubActionsBuildProvider implements BuildProviderInterface
             return ['success' => false, 'message' => '仓库路径格式错误'];
         }
         [$owner, $repoName] = $repo;
-        // GitHub Actions 触发依赖 workflow_dispatch 型 workflow，需显式传入 workflow 文件名
+
         $workflow = trim((string) ($variables['workflow'] ?? ''));
         unset($variables['workflow']);
         if ($workflow === '') {
@@ -243,14 +243,14 @@ class GithubActionsBuildProvider implements BuildProviderInterface
         $url = "{$this->baseUrl}/repos/{$owner}/{$repoName}/actions/workflows/" . rawurlencode($workflow) . '/dispatches';
         try {
             $ref = trim($ref) ?: 'main';
-            // GitHub workflow_dispatch 的 ref 要求裸分支名/tag 名，去掉可能的 refs/heads|tags 前缀
+
             $ref = preg_replace('#^refs/(heads|tags)/#', '', $ref);
             $body = ['ref' => $ref];
             if ($variables) {
                 $body['inputs'] = $variables;
             }
             $resp = $this->http->post($url, ['json' => $body]);
-            // dispatch 成功返回 204 No Content，无响应体
+
             return [
                 'success' => $resp->getStatusCode() < 400,
                 'run_id'  => null,
@@ -319,7 +319,7 @@ class GithubActionsBuildProvider implements BuildProviderInterface
         try {
             $resp = $this->http->get($url);
             if ($resp->getStatusCode() >= 400) {
-                return []; // variables 端点不可用（无权限/企业策略）→ 优雅降级
+                return [];
             }
             $data = json_decode($resp->getBody(), true);
             if (!is_array($data)) {
@@ -333,7 +333,7 @@ class GithubActionsBuildProvider implements BuildProviderInterface
                 }
                 $vars[] = [
                     'key'   => $name,
-                    'value' => '***', // 脱敏，对齐 Gitea provider
+                    'value' => '***',
                     'type'  => 'string',
                 ];
             }

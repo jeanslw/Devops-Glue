@@ -10,22 +10,45 @@ const DEFS = [
     { key: 'gitea',   label: '🦎 Gitea',   fields: ['url', 'token'] },
     { key: 'gitee',   label: '🐈 Gitee',   fields: ['url', 'token'] },
     { key: 'github',  label: '🐙 GitHub',  fields: ['url', 'token'] },
-    { key: 'harbor',  label: '🐳 Harbor',  fields: ['url', 'username', 'password'] },
+    { key: 'harbor',  labelKey: 'platform_conn.registry_label', fields: ['registry_type', 'url', 'username', 'password'] },
 ];
 
 const NAME_BY_KEY = {};
-DEFS.forEach(function (d) { NAME_BY_KEY[d.key] = d.label; });
+DEFS.forEach(function (d) { NAME_BY_KEY[d.key] = d; });
+
+// 平台显示名：品牌名直接内置，需要翻译的用 labelKey（镜像仓库 → Container Registry）
+function platformName(def) {
+    return def ? (def.labelKey ? __.t(def.labelKey) : def.label) : '';
+}
 
 const FIELD_META = {
     url:      { label: 'platform_conn.url_label', type: 'text', valueKey: 'url' },
     token:    { label: 'platform_conn.token_label', type: 'secret', setKey: 'token_set' },
     username: { label: 'platform_conn.username_label', type: 'text', valueKey: 'username' },
     password: { label: 'platform_conn.password_label', type: 'secret', setKey: 'password_set' },
+    registry_type: {
+        label: 'platform_conn.registry_type_label',
+        type: 'select',
+        valueKey: 'registry_type',
+        options: [
+            { value: 'harbor', label: 'platform_conn.registry_type_harbor' },
+            { value: 'registry', label: 'platform_conn.registry_type_registry' },
+        ],
+    },
 };
 
 function fieldHtml(p, field) {
     const meta = FIELD_META[field];
     const label = __.t(meta.label);
+    if (meta.type === 'select') {
+        const current = p[meta.valueKey] || 'harbor';
+        const options = (meta.options || []).map(function (o) {
+            return '<option value="' + esc(o.value) + '"' + (o.value === current ? ' selected' : '') + '>'
+                + esc(__.t(o.label)) + '</option>';
+        }).join('');
+        return '<label class="pc-lbl">' + esc(label) + '</label>'
+            + '<select class="pc-field-' + field + '">' + options + '</select>';
+    }
     if (meta.type === 'secret') {
         const set = !!p[meta.setKey];
         const hint = set
@@ -77,7 +100,7 @@ function renderPlatforms() {
             + '<div class="pc-row-hd" onclick="togglePlatformRow(this)">'
                 + '<span class="pc-caret">▸</span>'
                 + '<span style="width:10px;height:10px;border-radius:50%;background:' + dot + ';flex-shrink:0;display:inline-block;"></span>'
-                + '<span class="pc-name">' + esc(def.label) + hostingBadge + '</span>'
+                + '<span class="pc-name">' + esc(platformName(def)) + hostingBadge + '</span>'
                 + '<span style="margin-left:auto;color:' + (ok ? '#16a34a' : '#dc2626') + ';font-weight:600;font-size:12px;">'
                     + (ok ? '✓ ' : '✗ ') + (ok ? __.t('sys.configured') : __.t('sys.not_configured'))
                 + '</span>'
@@ -122,26 +145,30 @@ function collectPayload() {
         const token = tokenEl ? tokenEl.value.trim() : '';
         const passwordEl = row.querySelector('.pc-field-password');
         const password = passwordEl ? passwordEl.value : '';
+        const registryTypeEl = row.querySelector('.pc-field-registry_type');
+        const registryType = registryTypeEl ? registryTypeEl.value : '';
 
         const urlChanged = url !== (orig.url || '');
         const usernameChanged = username !== (orig.username || '');
         const tokenProvided = token !== '';
         const passwordProvided = password.trim() !== '';
+        const registryTypeChanged = registryTypeEl ? registryType !== (orig.registry_type || 'harbor') : false;
 
         // CI 能力开关（CI-capable 且已配置的平台，含 Jenkins 与 gitlab/gitea）
         const ciEl = row.querySelector('.pc-field-ci');
         const ciChanged = ciEl ? ((ciEl.checked === true) !== (orig.ci_enabled === true)) : false;
 
-        if (!urlChanged && !usernameChanged && !tokenProvided && !passwordProvided && !ciChanged) {
+        if (!urlChanged && !usernameChanged && !tokenProvided && !passwordProvided && !ciChanged && !registryTypeChanged) {
             return; // 无改动，不提交
         }
         if (url === '' && (tokenProvided || passwordProvided)) {
-            throw new Error(__.t('platform_conn.url_required', { name: NAME_BY_KEY[key] || key }));
+            throw new Error(__.t('platform_conn.url_required', { name: platformName(NAME_BY_KEY[key]) || key }));
         }
 
         const item = { platform: key, url: url, username: username };
         if (tokenProvided) item.token = token;
         if (passwordProvided) item.password = password;
+        if (registryTypeEl) item.registry_type = registryType;
         if (ciEl) item.ci_enabled = ciEl.checked;
         platforms.push(item);
     });
@@ -178,7 +205,7 @@ export async function savePlatformConnections() {
 export async function onPlatformDelete(key) {
     if (!await confirmDialog({
         title: __.t('common.confirm'),
-        message: __.t('platform_conn.delete_confirm', { name: NAME_BY_KEY[key] || key }),
+        message: __.t('platform_conn.delete_confirm', { name: platformName(NAME_BY_KEY[key]) || key }),
         confirmText: __.t('platform_conn.delete'),
     })) return;
     try {

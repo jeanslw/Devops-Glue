@@ -34,17 +34,13 @@ class GitRemote
         }
 
         if (preg_match('#^ssh://#i', $r)) {
-            // 显式 ssh:// 形式：交给 parse_url，端口被单独解析，不会混入 path
             $parts = parse_url($r);
             $path = is_array($parts) ? ($parts['path'] ?? '') : '';
         } else {
             $r = (string) preg_replace('#^(https?|git)://#i', '', $r);
             if (preg_match('#^[^/@]+@([^:/]+):(.+)$#', $r, $m)) {
-                // scp 形式 user@host:path —— 注意此形式本身不支持端口，
-                // git 自身也会把冒号后的内容整体当作路径，故这里保持同样语义。
                 $path = $m[2];
             } else {
-                // host/group/sub/repo：去掉第一段 host，其余全部保留
                 $slash = strpos($r, '/');
                 $path = $slash === false ? '' : substr($r, $slash + 1);
             }
@@ -54,7 +50,7 @@ class GitRemote
         $path = (string)preg_replace('#\.git$#i', '', $path);
         $path = rtrim($path, '/');
 
-        // 至少要有 owner/repo 两段才算有效项目路径
+
         if ($path === '' || strpos($path, '/') === false) {
             return null;
         }
@@ -86,16 +82,13 @@ class GitRemote
         $path = '';
 
         if (preg_match('#^[a-z][a-z0-9+.-]*://#i', $r)) {
-            // 带协议：ssh:// / https?:// / git:// 用 parse_url 拆出 host（端口自然排除）与 path
             $parts = parse_url($r);
             $host = strtolower((string) ($parts['host'] ?? ''));
             $path = ltrim((string) ($parts['path'] ?? ''), '/');
         } elseif (preg_match('#^git@([^:]+):(.+)#', $r, $m)) {
-            // scp 风格 git@host:path（无端口概念）
             $host = strtolower($m[1]);
             $path = ltrim($m[2], '/');
         } else {
-            // 裸路径（无 host）
             $path = ltrim($r, '/');
         }
 

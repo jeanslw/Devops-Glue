@@ -156,15 +156,14 @@ class PlatformConnectionRepository
         foreach (self::FIELD_MAP as $platform => $cols) {
             $row = $rows[$platform] ?? null;
             if ($row === null) {
-                // 整行不存在：整份回填代码级默认（github/gitee 的 SaaS base_url、admin 默认）。
                 $result[$platform] = self::DEFAULTS[$platform];
                 continue;
             }
             $cfg = [];
             foreach ($cols as $dbCol => $cfgKey) {
                 $value = (string)($row[$dbCol] ?? '');
-                // username/user 空值回填 'admin'（代码级默认，兼容历史空 username 行），
-                // url/base_url/token/password 空值保持空（= 未配置，不隐式给默认）。
+
+
                 if (($cfgKey === 'username' || $cfgKey === 'user') && $value === '') {
                     $value = 'admin';
                 }

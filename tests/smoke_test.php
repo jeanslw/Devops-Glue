@@ -756,7 +756,7 @@ if ($globalToken) {
 
     // 端点存在性：合法 payload。未配置 custom_push 映射时后端返回 4xx，不会返回 5xx。
     $tc = apiT('CustomPush report（合法payload）', "{$baseUrl}/api/build/static/report", 'POST', [
-        'pipeline_iid' => 1, 'status' => 'success', 'finished_at' => '2026-08-18 10:05:30', 'log_url' => 'http://example.com/log.txt', 'tag' => 'v1.0.0', 'harbor_repository' => 'mycode/static',
+        'pipeline_iid' => 1, 'status' => 'success', 'finished_at' => '2026-08-18 10:05:30', 'log_url' => 'http://example.com/log.txt', 'tag' => 'v1.0.0', 'registry_repository' => 'mycode/static',
     ], $authHeader);
     $tc->assertHttpRange('report 端点可达(2xx/4xx)', 200, 499);
     $tc->assertJson();

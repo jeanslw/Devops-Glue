@@ -45,7 +45,7 @@ class AdminTagJobTriggerTest extends TestCase
         'build.tag_cleanup_disabled',
         'build.tag_backfill_disabled',
         // 后端 409 / 500 文案
-        'build.harbor_unconfigured',
+        'build.registry_unconfigured',
         'build.stale_tag_cleanup_failed',
         'build.tag_backfill_failed',
         // 操作日志动作名

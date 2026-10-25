@@ -4,25 +4,26 @@ namespace App\Service;
 
 use App\Config\AppConfig;
 use App\Helper\Log;
+use App\Service\Registry\RegistryProviderInterface;
 
 /**
- * Pipeline artifact 的以 Harbor 为准的清理服务。
+ * Pipeline artifact 的镜像仓库校验与清理服务。
  *
  * ci_pipeline_artifacts 是唯一权威数据来源。
  */
 class PipelineTagService
 {
     private \PDO $pdo;
-    private ?HarborService $harbor;
+    private ?RegistryProviderInterface $registry;
 
-    public function __construct(\PDO $pdo, ?HarborService $harbor = null)
+    public function __construct(\PDO $pdo, ?RegistryProviderInterface $registry = null)
     {
         $this->pdo = $pdo;
-        $this->harbor = $harbor;
+        $this->registry = $registry;
     }
 
     /**
-     * 全表清理：删除 Harbor 中已不存在的 artifact/tag 记录。
+     * 全表清理：删除镜像仓库中已不存在的 artifact/tag 记录。
      *
      * @return array{deleted:int,checked:int,unreachable:int,unverifiable:int}
      */
@@ -30,7 +31,7 @@ class PipelineTagService
     {
         $stat = ['deleted' => 0, 'checked' => 0, 'unreachable' => 0, 'unverifiable' => 0];
 
-        if (!$this->harbor) {
+        if (!$this->registry) {
             return $stat;
         }
 
@@ -52,29 +53,24 @@ class PipelineTagService
         $staleKeys = [];
 
         foreach ($rows as $r) {
-            $harborRepo = (string) ($r['repository'] ?? '');
-            $tag        = (string) ($r['tag'] ?? '');
-            if ($harborRepo === '' || $tag === '') {
+            $registryRepo = (string) ($r['repository'] ?? '');
+            $tag          = (string) ($r['tag'] ?? '');
+            if ($registryRepo === '' || $tag === '') {
                 $stat['unverifiable']++;
                 continue;
             }
 
-            if (!array_key_exists($harborRepo, $repoCache)) {
-                $parts = explode('/', $harborRepo, 2);
-                if (count($parts) === 2) {
-                    try {
-                        $tags = $this->harbor->getTags($parts[0], $parts[1]);
-                        $repoCache[$harborRepo] = !isset($tags['error']) ? $tags : null;
-                    } catch (\Throwable $e) {
-                        Log::exception($e);
-                        $repoCache[$harborRepo] = null;
-                    }
-                } else {
-                    $repoCache[$harborRepo] = null;
+            if (!array_key_exists($registryRepo, $repoCache)) {
+                try {
+                    $tags = $this->registry->getTags($registryRepo);
+                    $repoCache[$registryRepo] = !isset($tags['error']) ? $tags : null;
+                } catch (\Throwable $e) {
+                    Log::exception($e);
+                    $repoCache[$registryRepo] = null;
                 }
             }
 
-            $validTags = $repoCache[$harborRepo];
+            $validTags = $repoCache[$registryRepo];
             if ($validTags === null) {
                 $stat['unreachable']++;
                 continue;
@@ -116,11 +112,11 @@ class PipelineTagService
     }
 
     /**
-     * 回填：把 ci_build_tag_cache 中日志推导出的 tag（source='log'）经 Harbor 校验存在后，
+     * 回填：把 ci_build_tag_cache 中日志推导出的 tag（source='log'）经镜像仓库校验存在后，
      * 提升写入 ci_pipeline_artifacts；仅当该 (provider, project_id, pipeline_iid)
-     * 尚无 tag 时才写，不覆盖 scanSync 的结果。
+     * 尚无 tag 时才写，不覆盖 registry-sync 的结果。
      *
-     * 信任边界：只有 Harbor 明确返回该 tag 存在才会落库，故回填数据与 scanSync 同信任级。
+     * 信任边界：只有镜像仓库明确返回该 tag 存在才会写入，故回填数据与 registry-sync 同信任级。
      *
      * @return array{promoted:int,checked:int,unreachable:int,unverifiable:int,skipped:int}
      */
@@ -128,7 +124,7 @@ class PipelineTagService
     {
         $stat = ['promoted' => 0, 'checked' => 0, 'unreachable' => 0, 'unverifiable' => 0, 'skipped' => 0];
 
-        if (!$this->harbor) {
+        if (!$this->registry) {
             return $stat;
         }
 
@@ -170,25 +166,20 @@ class PipelineTagService
                 continue;
             }
 
-            // 已有 tag：以已入库的为准，回填不覆盖
+
             $existing = $artifactSvc->find($identity);
             if ($existing && trim((string) ($existing['tag'] ?? '')) !== '') {
                 $stat['skipped']++;
                 continue;
             }
 
-            // Harbor 校验 tag 存在（按仓库缓存，与 cleanupStaleTags 同思路）
+
             if (!array_key_exists($repo, $repoCache)) {
-                $parts = explode('/', $repo, 2);
-                if (count($parts) === 2) {
-                    try {
-                        $tags = $this->harbor->getTags($parts[0], $parts[1]);
-                        $repoCache[$repo] = !isset($tags['error']) ? $tags : null;
-                    } catch (\Throwable $e) {
-                        Log::exception($e);
-                        $repoCache[$repo] = null;
-                    }
-                } else {
+                try {
+                    $tags = $this->registry->getTags($repo);
+                    $repoCache[$repo] = !isset($tags['error']) ? $tags : null;
+                } catch (\Throwable $e) {
+                    Log::exception($e);
                     $repoCache[$repo] = null;
                 }
             }
@@ -200,10 +191,10 @@ class PipelineTagService
             }
             $stat['checked']++;
             if (!in_array($tag, $validTags, true)) {
-                continue; // Harbor 中不存在该 tag，不回填
+                continue;
             }
 
-            // 回填写入 canonical
+
             try {
                 $res = $artifactSvc->record($identity, $projectKey, $tag, $repo, '');
                 if ($res['written']) {

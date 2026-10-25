@@ -1,4 +1,4 @@
-# Devops-Glue API 参考 v2.10.0
+# Devops-Glue API 参考 v2.11.0
 
 基础 URL: `http://your-domain.com/api`
 
@@ -87,9 +87,9 @@ GET /healthz
 {
   "status": "ok",
   "db": true,
-  "app_version": "2.10.0",
-  "schema_version": "2.10.0",
-  "seed_version": "2.10.0",
+  "app_version": "2.11.0",
+  "schema_version": "2.11.0",
+  "seed_version": "2.11.0",
   "schema_current": true,
   "schema_ahead": false,
   "auto_migrate": true,
@@ -140,7 +140,7 @@ GET /api/health
   "build_modes": ["jenkins", "gitlab_ci", "gitea_ci"],
   "build_mode_source": "database",
   "db_driver": "mysql",
-  "app_version": "2.10.0",
+  "app_version": "2.11.0",
   "app_env": "production",
   "time": "2026-08-10 12:00:00"
 }
@@ -148,8 +148,11 @@ GET /api/health
 
 - `status`: `ok` | `degraded`
 - `jenkins`: `true` / `false` / `null`（null = gitlab_ci 模式，不检查 Jenkins）
-- `harbor`: `true` / `false` / `null`（null = 未配置 Harbor）
+- `harbor`: `true` / `false` / `null`（null = 未配置镜像仓库地址）
+- `stats.harbor_repos`: 活跃映射中出现的不同 `registry_repository` 数量（Harbor 与 registry:2 同口径）
 - HTTP 200 (正常) / 503 (降级)
+
+> **说明：** 当镜像仓库类型为 `registry:2`（`registry_type=registry`）时，`checks.harbor` 为 `/v2/` 的可达性布尔值，`harbor_version` 为字符串 `"registry"`，可达时 `harbor_components` 为 `{"registry": true}`；Harbor 类型仍按 `core` / `jobservice` / `registry` 三组件探测。
 
 ### 快速健康信息
 
@@ -169,7 +172,7 @@ GET /api/health/static
   "custom_push_enabled": true,
   "custom_push_providers": ["custom_push"],
   "db_driver": "mysql",
-  "app_version": "2.10.0",
+  "app_version": "2.11.0",
   "app_env": "production",
   "time": "2026-08-10 12:00:00"
 }
@@ -208,7 +211,7 @@ GET /api/main/map/list
       "git_remote": "http://URL/tools/registry.git",
       "project_id": 2,
       "web_url": "http://your-gitlab/group/project",
-      "harbor_repository": "mycode/code-runtime",
+      "registry_repository": "mycode/code-runtime",
       "platform_source": "auto",
       "detection_method": "",
       "jobs": ["java/registry"]
@@ -252,11 +255,12 @@ GET /api/main/git/discovery
 | `/api/build/{path}/pipelines` | GET/POST | 流水线列表（`?list=id\|build\|time\|success`） |
 | `/api/build/{path}/pipelines/{id}` | GET/POST | 流水线详情 + Jobs（每项含 `id` + `log_url`）—— 仅 Gitea CI |
 | `/api/build/{path}/pipelines/{id}/logs` | GET/POST | 流水线日志（text/plain；`id`=run id，返回该 run 下全部 job 日志拼接）—— 仅 Gitea CI |
-| `/api/build/{path}/pipelines/{id}/resolve-tag` | POST | 镜像 Tag 日志兜底懒解析：对 success 且未命中 harbor-scan 回写的流水线，遍历 job 日志提取 tag 并落库缓存（body 可带 `sha` 命中缓存、`force=1` 强制重解析覆盖旧值） |
+| `/api/build/{path}/pipelines/{id}/resolve-tag` | POST | 镜像 Tag 日志兜底懒解析：对 success 且未命中 harbor-scan 回写的流水线，遍历 job 日志提取 tag 并写入缓存（body 可带 `sha` 命中缓存、`force=1` 强制重解析覆盖旧值） |
 | `/api/build/{path}/logs/{id}` | GET/POST | 构建日志（text/plain；`id`=job id，取自 `/pipelines/{runId}` 返回的 `jobs[].id`，非 run id） |
 | `/api/build/{path}/pipelines/{id}/retry` | POST | 重试流水线（仅 GitLab CI） |
 | `/api/build/{path}/pipelines/{id}/cancel` | POST | 取消流水线（仅 GitLab CI） |
-| `/api/build/{path}/scan-sync` | POST | Harbor 扫描同步（**ci_status 必填**：`success` / `failed` / `running`。`tag` 可选=最新；`pipeline_iid` + `sha` 可选=兜底取最新流水线。artifact 写入闸门：仅 `ci_status=success` 才写 `ci_pipeline_artifacts`；Harbor 扫描 + commit status 回写独立于 CI 成败） |
+| `/api/build/{path}/scan-sync` | POST | Harbor 扫描同步（Harbor 存量入口；与 registry-sync 共用同一套回写实现，额外读取 Harbor 扫描报告。**ci_status 必填**：`success` / `failed` / `running`。`tag` 可选（省略取仓库 tag 列表首个；`registry:2` 顺序由仓库决定，建议显式传）；`pipeline_iid` 与 `sha` 须成对提供，都不提供时回退到最新流水线。artifact 写入闸门：仅 `ci_status=success` 且流水线身份完整；commit status 回写独立于 CI 成败） |
+| `/api/build/{path}/registry-sync` | POST | 任意已配置镜像仓库的基础回写；不读取扫描结果（**ci_status 必填**：`success` / `failed` / `running`。`tag` 可选（省略取仓库 tag 列表首个；Harbor 为最近推送，`registry:2` 顺序由仓库决定，建议显式传）；`pipeline_iid` 与 `sha` 须成对提供，都不提供时回退到最新流水线。Harbor 与 `registry:2` 均可用；artifact 写入闸门：仅 `ci_status=success` 且流水线身份完整。响应字段：`build_provider`、`sha`（未知时为 `N/A`）、`tag`、`registry_repository`、`vulnerability_count`、`scan_state`（`unknown`）、`commit_status` `{success, message}`） |
 | `/api/build/{path}/tag` | GET/POST | 流水线 → 标签映射（`?pipeline=10`） |
 | `/api/build/{path}/tags` | GET/POST | 项目 tag 列表（分页，`?page=1&page_size=50`） |
 | `/api/build/{path}/commit-status` | POST | 提交状态回写（安全扫描） |
@@ -284,13 +288,27 @@ body 根级字段（除 `ref`、`variables`、`format`、`token` 外）会自动
 
 ### 扫描同步
 
-触发 Harbor 漏洞扫描，并将结果回写 Git 平台 commit status（`harbor-scan` 上下文）。`tag` 不传则取 Harbor 最新标签。
+`POST /api/build/{path}/scan-sync` 为 Harbor 存量入口：除基础回写外，还会读取 Harbor 扫描报告，并将结果回写 Git 平台 commit status（`harbor-scan` 上下文）。`tag` 不传则取仓库 tag 列表的第一个（Harbor 为最近推送的 tag；`registry:2` 的顺序由仓库决定，建议显式传 `tag`）。
+
+两个回写端点共用同一套回写实现（`RegistrySyncService`），差异仅在于是否读取扫描结果。扫描能力由镜像仓库提供方决定：Harbor 支持扫描，`registry:2` 不支持；`registry:2` 场景请使用 `registry-sync`。
+
+请求体：`ci_status` 必填（`success` / `failed` / `running`）；`tag` 可选（省略取仓库 tag 列表首个；Harbor 为最近推送，`registry:2` 顺序由仓库决定，建议显式传）；`sha` 与 `pipeline_iid` 须成对提供，都不提供时回退到最新流水线；`source_updated_at` 可选。
+
+### 镜像仓库回写
+
+`POST /api/build/{path}/registry-sync` 只做基础回写：tag 校验、`ci_pipeline_artifacts` 写入、审计记录与 Git commit status 回写，不读取漏洞扫描结果；Harbor 与 `registry:2` 都可用。
+
+请求体：`ci_status` 必填（`success` / `failed` / `running`）；`tag` 可选（省略取仓库 tag 列表首个；`registry:2` 顺序由仓库决定，建议显式传）；`sha` 与 `pipeline_iid` 须成对提供，都不提供时回退到最新流水线；`source_updated_at` 可选。
+
+写入规则：`ci_pipeline_artifacts` 仅当 `ci_status=success` 且流水线身份完整时写（`failed` / `running` 不产出可部署产物，防止被投影成「已推送成功」）；`ci_security_checks` 审计记录任何 `ci_status` 都写——`writeback_status=success`（推送事实）/ `skipped`（failed、running，仅保留审计记录），commit status 回写不受影响。响应字段：`build_provider`、`sha`（未知时返回 `N/A`）、`tag`、`registry_repository`、`vulnerability_count`、`scan_state`（本端点恒为 `unknown`，除非调用方走 `scan-sync`）、`commit_status`（`{success, message}`）。
+
+审计记录的 `check_type` 为 `registry-sync`；`scan-sync` 为 `harbor-scan`。读取端两者都接受，历史记录仍可见。
 
 ### 自定义推送式 CI 结果上报（report）
 
 custom_push 构建源专用：用户 CI 在构建完成后一次性上报终态结果（success/failed/aborted），无 pending/running 中间态。Devops-Glue 只存元数据与日志 URL 指针，不参与构建也不存日志内容。
 
-必填：`pipeline_iid`（构建编号，整数）、`status`（`success`/`failed`/`aborted`）、`finished_at`（构建完成时间）；`status=success` 时 `tag` 必填，`harbor_repository` 由 `job_git_map` 配置决定（body 传入会被忽略）。`harbor_repository` 须为 `project/repo` 两段式（如 `mycode/runner-ci`），不接受带 registry 地址的 URL；上报时校验仓库与 `tag` 均真实存在于 Harbor，仓库不存在或 tag 不存在均返回 400。
+必填：`pipeline_iid`（构建编号，整数）、`status`（`success`/`failed`/`aborted`）、`finished_at`（构建完成时间）；`status=success` 时 `tag` 必填，`registry_repository` 由 `job_git_map` 配置决定（body 传入会被忽略）。`registry_repository` 格式为至少两段路径（如 `team/project/image`），不得包含 scheme、主机名或端口，不符合格式返回 400；上报时校验仓库与 `tag` 均真实存在于镜像仓库，仓库不存在或 tag 不存在均返回 400。
 可选：`started_at`、`ref`、`sha`、`exit_code`、`log_url`、`web_url`。
 自定义变量：其余任意字段（如 `env`）存入 `variables_json`。
 
@@ -310,8 +328,8 @@ custom_push 构建源专用：用户 CI 在构建完成后一次性上报终态�
 }
 ```
 
-> `success` 时必须带 `tag` 且能解析出 `harbor_repository`，同步写入 `ci_pipeline_artifacts`（provider、project_id、pipeline_iid、project_key、repository、tag、status），CD 层通过 `GET /api/build/{path}/tag` 读取（列表视图可用 `GET /api/build/projects` / `GET /api/build/{path}/tags`）。
-> 控制字段（`pipeline_iid`/`status`/`finished_at`/`started_at`/`ref`/`sha`/`exit_code`/`log_url`/`web_url`/`tag`/`harbor_repository`）以外的字段存入 `variables_json`。
+> `success` 时必须带 `tag` 且能解析出 `registry_repository`，同步写入 `ci_pipeline_artifacts`（provider、project_id、pipeline_iid、project_key、repository、tag、status），CD 层通过 `GET /api/build/{path}/tag` 读取（列表视图可用 `GET /api/build/projects` / `GET /api/build/{path}/tags`）。
+> 控制字段（`pipeline_iid`/`status`/`finished_at`/`started_at`/`ref`/`sha`/`exit_code`/`log_url`/`web_url`/`tag`/`registry_repository`）以外的字段存入 `variables_json`。
 > `(job_name, pipeline_iid)` 为唯一键，重复上报按覆盖（UPDATE）处理。
 ```
 
@@ -357,6 +375,49 @@ GET /api/git/{path}/refs
 
 ---
 
+## Registry 模块 (`/api/registry`)
+
+> **认证：** 所有 Registry 接口需要 Bearer Token，scope 为 `registry.read`（复用现有 Harbor 读权限，已持有 `registry.read` 的 Token 对两种仓库类型都继续可用，无需重签）。**注意：CD 服务凭据不含 `registry.read`**，用服务凭据调用本模块会被判 403——请在「API 管理」新建或编辑一个 API Token 并授予 `registry.read`，或改用 `POST /api/admin/login` 登录。请在请求中添加 `Authorization: Bearer <token>` 头。
+>
+> **与 `/api/harbor` 的关系：** 本模块按全局镜像仓库类型（`ci_app_settings.registry_type`：`harbor` | `registry`）分派到当前提供方，Harbor 与标准 OCI Distribution（`registry:2`）**都可用**；`/api/harbor` 保持 Harbor 专用契约不变（扫描触发/扫描报告等仅 Harbor 有），已对接方无需改动。因此 `registry:2` 部署下想列出项目/仓库/tag，请用本模块。
+
+| 接口 | 方法 | 说明 |
+|---|---|---|
+| `/api/registry/projects` | GET/POST | 项目列表。Harbor 取 Harbor 项目；`registry:2` 取 `/v2/_catalog` 中仓库名的首段去重聚合（该协议没有 project 概念） |
+| `/api/registry/{project}/repositories` | GET/POST | 仓库列表（**去项目前缀的短名**，与 `/api/harbor` 同口径） |
+| `/api/registry/{project}/repositories/{repository}/tags` | GET/POST | Tag 列表。`repository` 传短名；短名含 `/`（如 `mycode/a/b` 的短名 `a/b`）时需双重编码为 `%252F` |
+
+状态码约定（与 `/api/harbor/*` 一致，避免同一端点在两种仓库类型下状态码不同）：
+
+| 状态码 | 含义 |
+|---|---|
+| `200` | 名称/tag 数组 |
+| `400` | 项目名 / 仓库短名非法（含 `..`、空段、路径分隔以外的非法字符）；`/api/harbor/*` 维持既有契约不做该校验 |
+| `403` | 当前用户 / Token 缺少 `ci.build-records.pull` 权限 |
+| `409` | 镜像仓库未配置 `url`（配置问题，不当作服务异常） |
+| `500` | 提供方业务错误（项目/仓库不存在、`/v2/_catalog` 未开启、上游认证失败等），响应带原始 `message` |
+| `502` | 连接级失败（提供方不可达，由中间件统一映射） |
+
+> **`registry:2` 注意事项：**
+> - 项目列表依赖 `/v2/_catalog`。仓库侧未开启（多数生产配置默认关闭）时返回 `500` + `message`，此时只能按已知的完整仓库名直接查 tag。
+> - Tag 顺序由仓库决定（非「最近推送在前」，Harbor 才是最近推送在前）；调用方勿假设顺序，需要最新 tag 时用 Digest/创建时间自行判断或显式指定。
+> - 单段根级仓库（如 `/v2/static/tags/list`，完整名无 `/`）不计入项目列表——它没有可归属的首段项目名。
+
+**curl 示例：**
+
+```bash
+# 项目列表
+curl "http://URL/api/registry/projects" -H "Authorization: Bearer $TOKEN"
+
+# 仓库列表
+curl "http://URL/api/registry/mycode/repositories" -H "Authorization: Bearer $TOKEN"
+
+# Tag 列表（短名不含 / 时直接写；含 / 时用 %252F 双重编码）
+curl "http://URL/api/registry/mycode/repositories/diagnosis-runtime/tags" -H "Authorization: Bearer $TOKEN"
+```
+
+---
+
 ## 集成服务契约模块 (`/api/integration`)
 
 > **用途：** 供 CD 等集成服务在运行时自检「本服务是否被 Glue 授权、以哪种建表方式授权」，**免于直读共享库的 `ci_integrated_services` 表**（表名/列名/驱动都是耦合面：CI 改库结构会弄坏 CD，将来拆库独立部署更是直接失效）。契约仍由 CI 唯一写入，消费方只读这一个窄接口。
@@ -373,7 +434,9 @@ GET /api/git/{path}/refs
   "enabled": true,
   "provision": "auto",
   "token_active": true,
-  "updated_at": "2026-10-14 10:00:00"
+  "updated_at": "2026-10-14 10:00:00",
+  "registry_type": "harbor",
+  "registry_url": "https://hub.example.com"
 }
 ```
 
@@ -391,6 +454,7 @@ GET /api/git/{path}/refs
 > - **scope：** 复用 `build.read`（CD 服务凭据已持有，无需扩权）；控制器内二次校验 `ci.build-records.pull`（由 scope 自动注入）。
 > - **`token_active` 仅供展示**（契约行绑定凭据的活性，如提示「凭据已失效，请在 CI 重新启用集成服务」），它与调用方自己的 Token 通常是同一枚（否则本次调用已被拒），**不可作为闸门条件**。
 > - 本端点刻意**不返回** `token_id` / `token_name` / `token_scopes` / `updated_by`（管理面字段，见 `/api/admin/integrated_services/{service}`）。字段名与管理的同名子集保持一致，便于同时使用两条通道的消费方共用映射。
+> - **`registry_type` / `registry_url`（v2.11 起）**：镜像仓库类型（`harbor` | `registry`）与地址。Glue 是镜像仓库的事实源（镜像 push 由 Glue 构建任务完成），消费方应以契约值为准、本地环境变量仅作端点不可用（旧版 CI / 网络异常）时的兜底。**两字段仅当凭据持有 镜像仓库 查询 scope（registry.read，同时管 Harbor 与 registry:2 查询）时下发**——消费方拿到地址后会用自己的凭据直连仓库，此后不再经过 Glue 接口，闸门必须设在下发这一步；无该 scope 或 `registry_url` 未配置时均为空串。CD 的服务凭据默认不含该 scope：需要使用镜像制品库时，在「API 管理」中为凭据勾选 镜像仓库 查询。契约四要素（service / enabled / provision / token_active）不受该 scope 影响。`registry:2` 的认证方式由消费方按 Docker Auth 规范自动探测，不经契约传递。
 
 ---
 
@@ -531,11 +595,11 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 |---|---|---|
 | `main` | MAIN（只读） | `/api/main/*` |
 | `git` | GIT（只读：分支 / Tag / refs） | `/api/git/*` |
-| `harbor.read` | Harbor 查询 | `/api/harbor/*`（除扫描触发外） |
+| `registry.read` | 镜像仓库 查询 | `/api/harbor/*`（除扫描触发外）、`/api/registry/*`（两种仓库类型通用） |
 | `harbor.scan` | Harbor 扫描触发 | `POST /api/harbor/{project}/repositories/{repo}/tags/{tag}/scan` |
 | `build.read` | 构建查询 + 集成服务契约 | `/api/build/*`（除下方写/回写接口外）、`/api/integration/*` |
 | `build.write` | 构建执行 | `trigger` / `retry` / `cancel` |
-| `build.report` | 构建回写 | `scan-sync` / `commit-status` / `report`（CI 脚本回调） |
+| `build.report` | 构建回写 | `scan-sync` / `registry-sync` / `commit-status` / `report`（CI 脚本回调） |
 | `rbac.user.write` | CD 服务账号管理 | `/api/rbac/*` 用户与角色的建/读/改/删 |
 
 > **说明：**
@@ -564,7 +628,7 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 ```json
 {
   "name": "jenkins-scan-bot",
-  "scopes": ["main", "harbor.read", "harbor.scan", "build.report"],
+  "scopes": ["main", "registry.read", "harbor.scan", "build.report"],
   "expires_at": 1786579200,
   "note": "Jenkins 扫描回写脚本使用"
 }
@@ -617,7 +681,7 @@ ADMIN_TOKEN=$(curl -s -X POST "http://URL/api/admin/login" \
 NEW_TOKEN=$(curl -s -X POST "http://URL/api/admin/api_tokens" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -d '{"name":"jenkins-scan-bot","scopes":["main","harbor.read","harbor.scan","build.report"]}' \
+  -d '{"name":"jenkins-scan-bot","scopes":["main","registry.read","harbor.scan","build.report"]}' \
   | jq -r '.token')
 
 # ③ 用 API Token 调用业务接口（与管理员登录 Token 用法一致）
@@ -631,6 +695,17 @@ curl -X POST "http://URL/api/harbor/mycode/repositories/diagnosis-runtime/tags/v
 # 扫描结果回写（需 build.report scope，CI 脚本中调用）
 # ci_status 必填：success=artifact+回写，failed/running=仅回写（不写 artifact）
 curl -X POST "http://URL/api/build/static/scan-sync" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $NEW_TOKEN" \
+  -d '{
+    "ci_status": "success",
+    "tag": "v1.0.0",
+    "pipeline_iid": 42,
+    "sha": "abc123def"
+  }'
+
+# 任意镜像仓库的基础回写（不读取扫描结果；registry:2 场景使用）
+curl -X POST "http://URL/api/build/static/registry-sync" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $NEW_TOKEN" \
   -d '{
@@ -726,6 +801,11 @@ curl "http://URL/api/harbor/projects" \
 # Harbor 标签列表（需要认证）
 curl "http://URL/api/harbor/mycode/repositories/diagnosis-runtime/tags" \
   -H "Authorization: Bearer $TOKEN"
+
+# 任意镜像仓库（Harbor / registry:2）的项目 / 仓库 / 标签列表（需要认证，scope=registry.read）
+curl "http://URL/api/registry/projects" -H "Authorization: Bearer $TOKEN"
+curl "http://URL/api/registry/mycode/repositories" -H "Authorization: Bearer $TOKEN"
+curl "http://URL/api/registry/mycode/repositories/diagnosis-runtime/tags" -H "Authorization: Bearer $TOKEN"
 
 # 触发 Harbor 扫描（需要认证）
 curl -X POST "http://URL/api/harbor/mycode/repositories/diagnosis-runtime/tags/v1.0.0/scan" \

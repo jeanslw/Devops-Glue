@@ -1,4 +1,4 @@
-# Devops-Glue API Admin Manual v2.10.0
+# Devops-Glue API Admin Manual v2.11.0
 
 > This manual is organized in a "from zero to usable" order, covering the installation, initialization, and full configuration of Devops-Glue API. Once you complete it in order, you will be able to: log in to the admin panel, connect CI / Git / Harbor platforms, configure build mode and mapping, manage permissions and roles, issue API tokens, and have the companion Devops-Glue CD call it correctly.
 
@@ -38,6 +38,7 @@ Devops-Glue API is a Slim4-based unified API layer that provides a single manage
 
 | Devops-Glue API | Devops-Glue CD |
 |:---:|:---:|
+| v2.11.0 | v1.6.1 |
 | v2.10.0 | v1.6.0 |
 | v2.9.0 | v1.6.0 |
 | v2.8.9 | v1.5.7 |
@@ -243,9 +244,16 @@ On "System Settings → Platform Management → Platform Connections", fill in t
 
 ## 11. Connect Harbor
 
-On "System Settings → Platform Management → Platform Connections", fill in the Harbor row's **URL / username / password** (username defaults to `admin`; for a robot account use `robot$xxx` + its secret).
+On "System Settings → Platform Management → Platform Connections", the image-registry row ("🐳 镜像仓库") carries a **Registry Type** selector (`registry_type`) plus **URL / username / password** (username defaults to `admin`; for a Harbor robot account use `robot$xxx` + its secret).
 
-Harbor is used to associate build artifacts (image repositories) and to trigger image scans in the security audit.
+| `registry_type` | Registry | Vulnerability scanning | Robot accounts |
+|---|---|---|---|
+| `harbor` (default) | Harbor | Supported; scan reports are read by `scan-sync` | Supported as described below |
+| `registry` | Standard OCI Distribution (`registry:2`) | Not available | No robot-account concept; use HTTP Basic credentials |
+
+One type per deployment; the two are not used side by side. With `registry:2`, scanning is unavailable and the version probe does not call Harbor endpoints (the health check probes `/v2/` instead). Switching from Harbor to `registry:2` clears the saved username/password (anonymous pulls are the norm, so stale Harbor credentials do not leak a `Basic` header); if you need an authenticated `registry:2`, fill in the username/password after switching.
+
+The image registry is used to associate build artifacts (image repositories); with Harbor it also triggers image scans in the security audit.
 
 > **About robot accounts:** Devops-Glue calls the Harbor REST API via HTTP Basic Auth, so the account must be usable for the REST API:
 >
@@ -307,8 +315,8 @@ After first boot, only the admin panel controls both keys directly — `BUILD_MO
 
 - **Workflow file**: the repository must contain a workflow with a `workflow_dispatch` trigger (e.g. `.gitea/workflows/build.yml`) for manual triggering. Without it, `trigger` returns a "workflow required" message; `push`-triggered workflows still run and are read back normally.
 - **Runner available**: the Gitea server must have Actions enabled (`[actions] ENABLED=true`) and at least one runner online.
-- **Push image to Harbor**: Gitea Actions exposes no "artifact tag" API. The build-artifact tag association into `ci_pipeline_artifacts` uses the **Harbor scan-sync** flow — identical to Jenkins / GitLab CI. The workflow must push its image to Harbor, then call `POST /api/build/{owner/repo}/scan-sync` with `{ "tag", "pipeline_iid", "sha" }` (`pipeline_iid`/`sha` optional; when omitted, Glue falls back to the latest run and latest Harbor tag).
-- **`harbor_repository` configured**: the mapping must set `harbor_repository` to `project/repo` form, otherwise `scan-sync` returns 400.
+- **Push image to Harbor**: Gitea Actions exposes no "artifact tag" API. The build-artifact tag association into `ci_pipeline_artifacts` uses the **write-back flow** — identical to Jenkins / GitLab CI. The workflow must push its image to the registry, then call `POST /api/build/{owner/repo}/scan-sync` with `{ "tag", "pipeline_iid", "sha" }` (`pipeline_iid`/`sha` supplied together; when omitted, Glue falls back to the latest run, and an omitted `tag` means the first tag in the registry's tag list — most recently pushed for Harbor, order not defined for `registry:2`, so supply it explicitly). For a `registry:2` connection, call `POST /api/build/{owner/repo}/registry-sync` instead.
+- **`registry_repository` configured**: the mapping must set `registry_repository` to a path of at least two segments (e.g. `team/project/image`), with no scheme, host or port; otherwise the write-back endpoint returns 400.
 
 ### GitHub Actions prerequisites
 
@@ -320,8 +328,8 @@ After first boot, only the admin panel controls both keys directly — `BUILD_MO
   - The solution is **GitHub Actions self-hosted runner**: install the `actions-runner` binary on any internal machine (VM / K8s pod / bare metal). The runner connects outbound to github.com on HTTPS 443 to pull jobs — no inbound hole needed on the internal firewall. The runner itself runs inside the internal network, so `docker login harbor.internal && docker push harbor.internal/project/repo:tag` works exactly the same as a Jenkins or GitLab runner.
   - Self-hosted runners are registered at the repo, organization, or enterprise level. Use workflow labels to route jobs: `runs-on: [self-hosted, linux, x64]`.
   - A single internal machine **cannot** act as a shared runner binary across GitHub / GitLab / Gitea simultaneously (each platform has its own runner protocol and binary). However, the same machine can run **all three** as separate processes — `actions-runner`, `gitlab-runner`, and `act_runner` are independent binaries with independent registrations. Docker daemon, image cache, and login credentials are shared.
-- **Push image to Harbor**: identical scan-sync flow as Jenkins / GitLab CI / Gitea Actions. After the workflow pushes its image to Harbor, call `POST /api/build/{owner/repo}/scan-sync` with `{ "tag", "pipeline_iid", "sha" }`.
-- **`harbor_repository` configured**: the mapping must set `harbor_repository` to `project/repo` form, otherwise `scan-sync` returns 400.
+- **Push image to Harbor**: identical write-back flow as Jenkins / GitLab CI / Gitea Actions. After the workflow pushes its image to the registry, call `POST /api/build/{owner/repo}/scan-sync` with `{ "tag", "pipeline_iid", "sha" }`; for a `registry:2` connection call `POST /api/build/{owner/repo}/registry-sync` instead.
+- **`registry_repository` configured**: the mapping must set `registry_repository` to a path of at least two segments (e.g. `team/project/image`), with no scheme, host or port; otherwise the write-back endpoint returns 400.
 
 ### Pull-based CI vs Push-based CI
 
@@ -346,8 +354,8 @@ The two are independent and can be enabled simultaneously (e.g. `jenkins + custo
 
 The "Image Tag" column of pull records is determined in this order:
 
-1. **Primary source (Harbor scan-sync writeback)**: after the artifact is pushed to Harbor, the scan writeback success (`ci_security_checks` rows where `check_type='harbor-scan'` and `writeback_status='success'`) yields `sha→tag` directly.
-2. **Log fallback (log-derived tag)**: when the primary source misses, Devops-Glue fetches the build log and extracts the tag by the configured **log keyword** + this project's `harbor_repository` path (`repo:tag` or `-t/--tag`), **preferring the tag whose trailing number equals the current build number** (to avoid picking the previous build's tag). The result is cached in `ci_build_tag_cache` (`source='log'`) so subsequent lists hit the cache without re-fetching logs.
+1. **Primary source (registry write-back)**: after the artifact is pushed to the registry, the write-back success (`ci_security_checks` rows where `check_type` is `harbor-scan` or `registry-sync` and `writeback_status='success'`) yields `sha→tag` directly.
+2. **Log fallback (log-derived tag)**: when the primary source misses, Devops-Glue fetches the build log and extracts the tag by the configured **log keyword** + this project's `registry_repository` path (`repo:tag` or `-t/--tag`), **preferring the tag whose trailing number equals the current build number** (to avoid picking the previous build's tag). The result is cached in `ci_build_tag_cache` (`source='log'`) so subsequent lists hit the cache without re-fetching logs.
 
 The related settings live on the **System Settings → Platform Config** page:
 
@@ -425,10 +433,10 @@ Called after the build completes (or is aborted); writes the terminal state dire
 | `log_url` | | URL | Log URL pointer — Devops-Glue only stores the link; it does not fetch or store log content |
 | `web_url` | | URL | Pipeline web entry |
 | `tag` | ✅ (success) | string | Image tag — required when `status=success`; written to `ci_pipeline_artifacts` |
-| `harbor_repository` | — | string | Harbor repo — resolved from `job_git_map` (body value ignored); must be `project/repo`; both repo and `tag` verified to actually exist in Harbor on report (400 if either missing) |
+| `registry_repository` | — | string | Registry repository — resolved from `job_git_map` (body value ignored); must be a path of at least two segments with no scheme, host or port; both repo and `tag` verified to actually exist in the registry on report (400 if either missing) |
 | (custom variables) | | — | Any other JSON keys are stored in `variables_json` (e.g. `env`) |
 
-> **Tag write semantics:** when `status=success`, `tag` and a resolvable `harbor_repository` are mandatory, and `ci_pipeline_artifacts` is written (`provider`, `project_id`, `pipeline_iid`, `project_key`, `repository`, `tag`, `status`), read by the deployment (CD) layer. Non-successful builds never write a tag, so the deployment system never picks up a failed build's tag.
+> **Tag write semantics:** when `status=success`, `tag` and a resolvable `registry_repository` are mandatory, and `ci_pipeline_artifacts` is written (`provider`, `project_id`, `pipeline_iid`, `project_key`, `repository`, `tag`, `status`), read by the deployment (CD) layer. Non-successful builds never write a tag, so the deployment system never picks up a failed build's tag.
 
 ### Push-name normalization
 
@@ -660,7 +668,7 @@ Each job can be configured with the following fields. Only `job_name` is require
 | `project_id` | | GitLab: auto-queried via API if omitted; GitHub/Gitee: fill if known |
 | `web_url` | | Project homepage link (display only) |
 | `current_path` | | Project path; auto-derived from `git_remote` if omitted |
-| `harbor_repository` | | Associated Harbor repo, format `"project/repository"` (display only) |
+| `registry_repository` | | Associated registry repository, format `"team/project/image"` (at least two segments; display only) |
 | `api_version` | | **Metadata only**; does not affect actual API routing (routes are hardcoded in each Service) |
 
 ## 14. Permissions and Roles (RBAC)
@@ -702,11 +710,11 @@ Go to "API Management" (requires the relevant permission) and choose the require
 |---|---|
 | `main` | Read-only: job list, mapping, Git platforms, Git discovery |
 | `git` | Read-only: Git branches / tags (`/api/git/*`, usable as build-ref candidates) |
-| `harbor.read` | Read-only: Harbor projects / repositories / tags |
+| `harbor.read` | Read-only: Harbor projects / repositories / tags; also all `/api/registry/*` endpoints for **both** registry types (`harbor` / `registry:2`). Not included in the CD service credential |
 | `harbor.scan` | Trigger Harbor image scans |
 | `build.read` | Read-only: build pipelines / logs / branches |
 | `build.write` | Write: trigger / retry / cancel builds |
-| `build.report` | Report: scan-sync / commit-status / report |
+| `build.report` | Report: scan-sync / registry-sync / commit-status / report |
 | `rbac.user.write` | CD service-account management: create/read/update/delete users and list roles via `/api/rbac/*` |
 
 > **Note:**

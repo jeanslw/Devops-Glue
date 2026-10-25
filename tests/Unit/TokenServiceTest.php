@@ -40,7 +40,7 @@ class TokenServiceTest extends TestCase
         $stmt = $this->pdo->prepare(
             'INSERT INTO ' . AppConfig::TABLE_CACHE . ' (cache_key, value, expires_at) VALUES (?, ?, ?)'
         );
-        // 入库 key 与生产一致：admin_token_ + sha256(token)，明文 token 绝不出现在 cache 表
+        
         $stmt->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . TokenService::hashAdminToken($token), $value, time() + $expiresAt]);
     }
 
@@ -72,7 +72,7 @@ class TokenServiceTest extends TestCase
 
     public function testUsernameWithPipeCannotInjectRole(): void
     {
-        // 用户名含 '|'：旧实现 parts[1]='super_admin' 会提权；新实现 role 取末尾 'viewer'
+        
         $this->seedToken('tok_pipe', 'admin|super_admin|viewer');
         $result = $this->service->validate('tok_pipe');
         $this->assertNotNull($result);
@@ -82,7 +82,7 @@ class TokenServiceTest extends TestCase
 
     public function testMalformedCacheReturnsNull(): void
     {
-        // 单段（无 '|'）视为格式异常，fail-closed 拒绝
+        
         $this->seedToken('tok_bad', 'onlyuser');
         $this->assertNull($this->service->validate('tok_bad'));
     }
@@ -94,8 +94,8 @@ class TokenServiceTest extends TestCase
 
     public function testPlaintextTokenKeyDoesNotMatch(): void
     {
-        // 锁死哈希化改造：若 cache 表里还留着旧实现的明文 token 当 key（或库被泄露），
-        // 校验端已改为按 sha256 查找，明文 key 无法命中，会话即作废（fail-closed）。
+        
+        
         $this->pdo->prepare(
             'INSERT INTO ' . AppConfig::TABLE_CACHE . ' (cache_key, value, expires_at) VALUES (?, ?, ?)'
         )->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . 'tok_plain', 'alice|admin', time() + 3600]);
@@ -110,7 +110,7 @@ class TokenServiceTest extends TestCase
 
     public function testDisabledUserTokenIsInvalidated(): void
     {
-        // 停用账号（status=0）：token 命中缓存但账号已停用，立即失效（踢下线）
+        
         $this->createAdminUsersTable();
         $this->seedUser('alice', 0);
         $this->seedToken('tok_disabled', 'alice|admin');
@@ -130,7 +130,7 @@ class TokenServiceTest extends TestCase
 
     public function testDeletedUserTokenIsInvalidated(): void
     {
-        // 账号已删除：admin_users 无此行，token 同样失效
+        
         $this->createAdminUsersTable();
         $this->seedToken('tok_deleted', 'ghost|admin');
         $this->assertNull($this->service->validate('tok_deleted'));
@@ -138,8 +138,8 @@ class TokenServiceTest extends TestCase
 
     public function testRoleDowngradeTakesEffectImmediately(): void
     {
-        // 降权即时生效：token 里冻结的是 super_admin，DB 里已降为 viewer，以 DB 为准。
-        // 否则 super_admin 在 hasPermission() 里无条件放行，降权最长延迟一个 token 周期（24h）。
+        
+        
         $this->createAdminUsersTable();
         $this->seedUser('alice', 1, 'viewer');
         $this->seedToken('tok_demoted', 'alice|super_admin');
@@ -151,7 +151,7 @@ class TokenServiceTest extends TestCase
 
     public function testMissingRoleColumnFallsBackToCachedRole(): void
     {
-        // 旧库无 role 列：回查抛异常 → 沿用登录时冻结的角色，不阻断已登录会话（fail-open 保可用）
+        
         $this->pdo->exec('CREATE TABLE ' . AppConfig::TABLE_ADMIN_USERS . ' (
             username TEXT PRIMARY KEY,
             status INTEGER NOT NULL DEFAULT 1
@@ -167,7 +167,7 @@ class TokenServiceTest extends TestCase
 
     public function testMissingStatusColumnDoesNotLockOut(): void
     {
-        // 旧库无 status 列（或 DB 不可达）：状态检查抛异常，放行（fail-open 保可用）
+        
         $this->seedToken('tok_legacy', 'alice|admin');
         $result = $this->service->validate('tok_legacy');
         $this->assertNotNull($result);
@@ -176,7 +176,7 @@ class TokenServiceTest extends TestCase
 
     public function testLegacyTokenDisabledByDefault(): void
     {
-        // 安全开关默认关：即使给出正确的 base64(user:password)，也不放行（fail-closed）
+        
         $this->assertFalse($this->service->validateLegacy(base64_encode('admin:secret')));
     }
 

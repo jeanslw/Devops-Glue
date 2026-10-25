@@ -21,19 +21,19 @@ class LdapServiceTest extends TestCase
 {
     public function testEscapeFilterNeutralizesLdapInjection(): void
     {
-        // LDAP filter 注入字符 * ( ) \ NUL 必须被转义，否则 '(uid=*)' 会被当成通配/子过滤器
+        
         $this->assertSame('\2a', LdapService::escapeFilter('*'));
         $this->assertSame('\28', LdapService::escapeFilter('('));
         $this->assertSame('\29', LdapService::escapeFilter(')'));
         $this->assertSame('\5c', LdapService::escapeFilter('\\'));
         $this->assertSame('\00', LdapService::escapeFilter("\x00"));
-        // 组合场景：'=' 不属于 filter 注入字符，保持原样
+        
         $this->assertSame('admin\2a\29\28uid=\2a', LdapService::escapeFilter('admin*)(uid=*'));
     }
 
     public function testEscapeDnNeutralizesDnInjection(): void
     {
-        // DN 注入字符 , = + < > # ; \ " 必须被转义，防止拼接 user_dn_pattern 时注入额外的 DN 分支
+        
         $this->assertSame('\2c', LdapService::escapeDn(','));
         $this->assertSame('\3d', LdapService::escapeDn('='));
         $this->assertSame('\2b', LdapService::escapeDn('+'));
@@ -50,7 +50,7 @@ class LdapServiceTest extends TestCase
     {
         $service = new LdapService(new Settings([]));
 
-        // 空凭据在 isAvailable() 之前短路，无需扩展即可断言
+        
         $this->assertSame(['ok' => false, 'error' => 'empty_credentials'], $service->authenticate('', ''));
         $this->assertSame(['ok' => false, 'error' => 'empty_credentials'], $service->authenticate('user', ''));
         $this->assertSame(['ok' => false, 'error' => 'empty_credentials'], $service->authenticate('', 'pass'));
@@ -58,7 +58,7 @@ class LdapServiceTest extends TestCase
 
     public function testIsEnabledFalseWhenConfigDisabled(): void
     {
-        $service = new LdapService(new Settings([])); // 未配置 ldap.enabled → getLdapConfig() = ['enabled' => false]
+        $service = new LdapService(new Settings([])); 
         $this->assertFalse($service->isEnabled());
     }
 
@@ -68,8 +68,8 @@ class LdapServiceTest extends TestCase
             $this->markTestSkipped('ext-ldap 已加载，无法覆盖「未安装扩展」降级分支');
         }
 
-        // 配置 enabled=true 但扩展缺失：isEnabled 必须为 false，authenticate 直接返回 extension_missing，
-        // 不尝试调用 ldap_connect（这正是不用 LDAP 也能正常运行的约定）。
+        
+        
         $service = new LdapService(new Settings(['ldap' => ['enabled' => true, 'host' => 'ldap.example.com']]));
 
         $this->assertFalse($service->isAvailable());

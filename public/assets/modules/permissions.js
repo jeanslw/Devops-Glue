@@ -149,8 +149,8 @@ export async function showImpliedForm() {
         const data = await res.json();
         const perms = data.permissions || [];
         const opts = perms.map(function(p) { return '<option value="' + p.perm_key + '">' + p.perm_key + '</option>'; }).join('');
-        srcSel.innerHTML = '<option value="">' + __.t('common.please_select') + '</option>' + opts;
-        tgtSel.innerHTML = '<option value="">' + __.t('common.please_select') + '</option>' + opts;
+        srcSel.innerHTML = '<option value="">' + __.t('form.please_select') + '</option>' + opts;
+        tgtSel.innerHTML = '<option value="">' + __.t('form.please_select') + '</option>' + opts;
     } catch(e) { toast(__.t('js.network_error') + ': ' + e.message, false); }
 }
 

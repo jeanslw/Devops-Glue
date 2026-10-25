@@ -54,7 +54,6 @@ class MainController extends BaseController
         } catch (\Exception $e) {
             return $this->output($response, $this->mapping->activeJobNames(), $request);
         }
-        // 多源模式：jenkins 实时 Job 之外，合并其余已启用拉取式 provider 的活跃映射 job_name
         $others = array_values(array_diff($modes, [AppConfig::PROVIDER_JENKINS]));
         if ($others) {
             foreach ($this->mapping->activeMaps() as $m) {
@@ -80,7 +79,6 @@ class MainController extends BaseController
         $buildModes = $this->appSettings->getBuildModes();
         $cacheKey = AppConfig::CACHE_KEY_MAP_LIST_PREFIX . implode(',', $buildModes);
 
-        // 有缓存且未过期，直接返回（cache key 已含启用集合，跨模式不会串数据）
         try {
             $pdo = $this->pdo;
             $cached = $pdo->prepare("SELECT value FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key = ? AND expires_at > ?");
@@ -96,7 +94,6 @@ class MainController extends BaseController
             \App\Helper\Log::exception($e);
         }
         try {
-            // 过滤禁用 + 启用集合筛选（custom_push 开启时一并保留），与 MappingManager::activeMaps 语义一致
             $maps = $this->mapping->activeMaps();
         } catch (\Exception $e) {
             $maps = [];
@@ -115,12 +112,11 @@ class MainController extends BaseController
             if (!isset($grouped[$key])) {
                 $grouped[$key] = [
                     'git_platform'      => $map['git_platform'],
-                    // 如实返回：未指定构建源就是空，不兜底成 jenkins
                     'build_provider'    => (string) ($map['build_provider'] ?? ''),
                     'git_remote'        => $map['git_remote'],
                     'project_id'        => $map['project_id'] ?? null,
                     'web_url'           => $map['web_url'] ?? '',
-                    'harbor_repository' => $map['harbor_repository'] ?? '',
+                    'registry_repository' => $map['registry_repository'] ?? '',
                     'platform_source'   => $map['platform_source'] ?? 'auto',
                     'detection_method'  => $map['detection_method'] ?? '',
                     'jobs'              => [],
@@ -134,7 +130,6 @@ class MainController extends BaseController
             sort($item['jobs']);
         }
 
-        // 附加平台 URL，方便前端直接生成链接（搭 Git git_remote 的便车）
         $harborRaw = $this->config->getHarborConfig()['url'] ?? '';
         $result = [
             'projects'    => $grouped,
@@ -142,14 +137,12 @@ class MainController extends BaseController
             'harbor_url'  => rtrim($harborRaw, '/'),
         ];
 
-        // 写入缓存（30s TTL）
         try {
             $pdo = $this->pdo;
             $sql = \App\Service\Database::sqlUpsert(AppConfig::TABLE_CACHE, 'cache_key, value, expires_at', '?, ?, ?');
             $stmt = $pdo->prepare($sql);
             $stmt->execute([$cacheKey, json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), time() + 30]);
         } catch (\Exception $e) {
-            // 缓存写入失败不影响响应
         }
 
         return $this->output($response, $result, $request);
@@ -169,7 +162,7 @@ class MainController extends BaseController
         $data = [
             'git_platforms' => $this->config->getGitPlatformsConfig(),
             'harbor'        => $this->config->getHarborApiInfo(),
-            'harbor_url'    => rtrim($harborRaw, '/'),   // 用户可见 URL（不带 /api/v2.0）
+            'harbor_url'    => rtrim($harborRaw, '/'),
             'jenkins_url'   => rtrim($this->config->getJenkinsConfig()['url'] ?? '', '/'),
         ];
         return $this->output($response, $data, $request);
@@ -191,7 +184,6 @@ class MainController extends BaseController
         $unconfigured = [];
         foreach ($usedPlatforms as $name) {
             if ($this->config->isPlatformConfigured($name)) {
-     // 从配置数组中找出该平台的 api_base_url
                 $apiBaseUrl = '';
                 foreach ($this->config->getGitPlatformsConfig() as $cfg) {
                     if (($cfg['name'] ?? '') === $name) {
@@ -230,8 +222,6 @@ class MainController extends BaseController
      */
     public function health(Request $request, Response $response): Response
     {
-        // 该方法已拆分为公开简化接口和需鉴权的详细接口。
-        // 旧的 `health` 路由已被重命名为 `healthDetail`，本方法保持向后兼容。
         $result = [
             'status'      => 'ok',
             'app_env'     => $this->config->getAppEnv(),
@@ -259,7 +249,6 @@ class MainController extends BaseController
             $jk = $this->config->getJenkinsConfig();
             $jenkinsUrl = rtrim((string)($jk['url'] ?? ''), '/');
             try {
-                // 健康检查用独立短超时 Client，避免 Jenkins 宕机时卡住
                 $probe = new \GuzzleHttp\Client([
                     'timeout'         => 5,
                     'connect_timeout' => 3,
@@ -270,20 +259,16 @@ class MainController extends BaseController
                     $probe->get($jenkinsUrl . '/api/json');
                 });
                 $checks['jenkins'] = true;
-                // 版本号沿用 JenkinsService 缓存（短超时探测连通性即可）
                 $checks['jenkins_version'] = $this->jenkins->getVersion();
             } catch (\Exception $e) {
                 \App\Helper\Log::error('[健康检查] Jenkins 连接失败', ['platform' => 'jenkins', 'url' => $jenkinsUrl, 'error' => $e->getMessage()]);
                 $checks['jenkins'] = false;
             }
         } else {
-            $checks['jenkins'] = null; // 构建模式未启用 Jenkins，不探测
+            $checks['jenkins'] = null;
         }
 
-        // Git 平台连通性检查
         $usedPlatforms = $this->mapping->usedGitPlatforms();
-
-        // 构建已配置平台的索引（URL + 版本号）
         $configuredPlatforms = [];
         $platformVersions    = [];
         foreach ($this->config->getGitPlatformsConfig() as $p) {
@@ -291,7 +276,6 @@ class MainController extends BaseController
             $platformVersions[$p['name']]    = $p['api_version'] ?? '';
         }
 
-        // 只检查 job_git_map 中实际引用的平台
         $usedPlatforms = array_values(array_intersect($usedPlatforms, array_keys($configuredPlatforms)));
 
         if (empty($usedPlatforms)) {
@@ -312,7 +296,6 @@ class MainController extends BaseController
                             $httpCode = $resp->getStatusCode();
                             $reachable = $httpCode > 0 && $httpCode < 500;
                             if (!$reachable) {
-                                // 5xx / 异常状态也重试一次（瞬时服务端抖动）
                                 throw new \RuntimeException("HTTP {$httpCode}");
                             }
                         });
@@ -330,11 +313,10 @@ class MainController extends BaseController
         }
 
         $harbor = $this->harbor;
-        if ($harbor !== null) {
+        if ($harbor !== null && trim((string) ($this->config->getHarborConfig()['url'] ?? '')) !== '') {
             $harborUrl = rtrim((string)($this->config->getHarborConfig()['url'] ?? ''), '/');
             $probeLogged = false;
             try {
-                // 健康检查用短超时 client，不影响正常 Harbor 操作
                 $qClient = new \GuzzleHttp\Client([
                     'base_uri' => $harborUrl,
                     'auth'     => [$this->config->getHarborConfig()['username'] ?? 'admin', $this->config->getHarborConfig()['password'] ?? ''],
@@ -342,47 +324,59 @@ class MainController extends BaseController
                     'connect_timeout' => 3,
                     'http_errors' => false,
                 ]);
-                // 多组件检查：每个端点独立判断，任一 true=false 则整体不健康
-                // 注意 404 不算失败（低版本 Harbor 缺少部分端点，如 v2.0 无 jobservice/ping）
-                $components = [
-                    'core'       => '/api/v2.0/projects',
-                    'jobservice' => '/api/v2.0/jobservice/ping',
-                    'registry'   => '/api/v2.0/registries',
-                ];
-                $componentResults = [];
-                foreach ($components as $name => $path) {
-                    try {
-                        $this->probeWithRetry(function () use ($qClient, $path, $name, &$componentResults) {
-                            $resp = $qClient->get($path);
-                            $code = $resp->getStatusCode();
-                            if ($code === 404) {
-                                // 该 Harbor 版本不支持此端点（如 v2.0 无 /jobservice/ping），跳过不判为失败
-                                $componentResults[$name] = true;
-                            } elseif ($code >= 200 && $code < 500) {
-                                $componentResults[$name] = true;
-                            } else {
-                                $componentResults[$name] = false;
-                                throw new \RuntimeException("HTTP {$code}"); // 5xx 重试一次
+
+                if ($this->config->getRegistryType() === 'registry') {
+                    $registryReachable = false;
+                    $this->probeWithRetry(function () use ($qClient, &$registryReachable) {
+                        $resp = $qClient->get('/v2/');
+                        $code = $resp->getStatusCode();
+                        $registryReachable = $code >= 200 && $code < 500;
+                        if (!$registryReachable) {
+                            throw new \RuntimeException("HTTP {$code}");
+                        }
+                    });
+                    $checks['harbor'] = $registryReachable;
+                    $checks['harbor_version'] = 'registry';
+                    $checks['harbor_components'] = ['registry' => $registryReachable];
+                } else {
+                    $components = [
+                        'core'       => '/api/v2.0/projects',
+                        'jobservice' => '/api/v2.0/jobservice/ping',
+                        'registry'   => '/api/v2.0/registries',
+                    ];
+                    $componentResults = [];
+                    foreach ($components as $name => $path) {
+                        try {
+                            $this->probeWithRetry(function () use ($qClient, $path, $name, &$componentResults) {
+                                $resp = $qClient->get($path);
+                                $code = $resp->getStatusCode();
+                                if ($code === 404) {
+                                    $componentResults[$name] = true;
+                                } elseif ($code >= 200 && $code < 500) {
+                                    $componentResults[$name] = true;
+                                } else {
+                                    $componentResults[$name] = false;
+                                    throw new \RuntimeException("HTTP {$code}");
+                                }
+                            });
+                        } catch (\Throwable $e) {
+                            $componentResults[$name] = false;
+                            if (!$probeLogged) {
+                                \App\Helper\Log::error('[健康检查] 镜像仓库连接失败', ['platform' => 'registry', 'url' => $harborUrl, 'error' => $e->getMessage()]);
+                                $probeLogged = true;
                             }
-                        });
-                    } catch (\Throwable $e) {
-                        $componentResults[$name] = false;
-                        // 连接类失败：三个组件会同时连不上，这里只记一次，避免日志重复
-                        if (!$probeLogged) {
-                            \App\Helper\Log::error('[健康检查] Harbor 连接失败', ['platform' => 'harbor', 'url' => $harborUrl, 'error' => $e->getMessage()]);
-                            $probeLogged = true;
                         }
                     }
+                    $checks['harbor'] = !in_array(false, $componentResults, true);
+                    $checks['harbor_version'] = $harbor->getHarborVersion() ?? 'v2';
+                    $checks['harbor_components'] = $componentResults;
                 }
-                $checks['harbor'] = !in_array(false, $componentResults, true);
-                $checks['harbor_version'] = $harbor->getHarborVersion() ?? 'v2';
-                $checks['harbor_components'] = $componentResults;
             } catch (\Exception $e) {
                 if (!$probeLogged) {
-                    \App\Helper\Log::error('[健康检查] Harbor 连接失败', ['platform' => 'harbor', 'url' => $harborUrl, 'error' => $e->getMessage()]);
+                    \App\Helper\Log::error('[健康检查] 镜像仓库连接失败', ['platform' => 'registry', 'url' => $harborUrl, 'error' => $e->getMessage()]);
                 }
                 $checks['harbor'] = false;
-                $checks['harbor_version'] = $harbor->getHarborVersion() ?? 'v2';
+                $checks['harbor_version'] = $this->config->getRegistryType() === 'registry' ? 'registry' : ($harbor->getHarborVersion() ?? 'v2');
                 $checks['harbor_components'] = null;
             }
         } else {
@@ -419,7 +413,7 @@ class MainController extends BaseController
                 if ($i >= $attempts - 1) {
                     throw $e;
                 }
-                usleep(500000); // 0.5s 后重试
+                usleep(500000);
             }
         }
     }
@@ -451,7 +445,7 @@ class MainController extends BaseController
             $stmt->execute([AppConfig::STATUS_ACTIVE]);
             $stats['active_maps'] = (int)$stmt->fetchColumn();
             $stats['git_platforms'] = (int)$pdo->query("SELECT count(DISTINCT git_platform) FROM " . AppConfig::TABLE_JOB_GIT_MAP . " WHERE git_platform IS NOT NULL AND git_platform != ''")->fetchColumn();
-            $stats['harbor_repos'] = (int)$pdo->query("SELECT count(DISTINCT harbor_repository) FROM " . AppConfig::TABLE_JOB_GIT_MAP . " WHERE harbor_repository IS NOT NULL AND harbor_repository != ''")->fetchColumn();
+            $stats['harbor_repos'] = (int)$pdo->query("SELECT count(DISTINCT registry_repository) FROM " . AppConfig::TABLE_JOB_GIT_MAP . " WHERE registry_repository IS NOT NULL AND registry_repository != ''")->fetchColumn();
         } catch (\Exception $e) {
         }
 
@@ -549,8 +543,6 @@ class MainController extends BaseController
     {
         $htmlFile = __DIR__ . '/../../templates/swagger.html';
         $html = file_exists($htmlFile) ? file_get_contents($htmlFile) : '<h1>Swagger file missing / 文档文件丢失</h1>';
-        // 静态资源 URL 带 ?v={{APP_VERSION}}（模板占位符）：服务端替换为当前版本号，
-        // 与 / 和 /admin 路由同一约定，避免升级镜像后浏览器沿用被强缓存的旧 JS/CSS。
         $html = str_replace('{{APP_VERSION}}', AppConfig::APP_VERSION, $html === false ? '' : $html);
         $response->getBody()->write($html);
         return $response->withHeader('Content-Type', 'text/html; charset=utf-8');
@@ -586,7 +578,6 @@ class MainController extends BaseController
         } else {
             $json = file_get_contents($specFile);
             if ($json === false) {
-                // 文件存在却读取失败（权限/IO 错误）属服务端异常：沿用本方法 JSON 错误响应风格返回 500，不忽略
                 $response->getBody()->write((string) json_encode([
                     'code'    => 500,
                     'message' => 'Unable to read OpenAPI spec file',
@@ -596,23 +587,23 @@ class MainController extends BaseController
             $spec = json_decode($json, true);
         }
 
-        $uri  = $request->getUri();
-        $port = $uri->getPort();
-        $isDefault = ($uri->getScheme() === 'http'  && $port === 80)
-                  || ($uri->getScheme() === 'https' && $port === 443);
 
-        // 优先使用配置的 API_BASE_URL，未设则自动推导
-        $apiBaseUrl = $this->config->getApiBaseUrl();
-        if (empty($apiBaseUrl)) {
-            $apiBaseUrl = $uri->getScheme() . '://' . $uri->getHost()
-                        . (($port && !$isDefault) ? ':' . $port : '');
-        }
+
+
+
 
         $locale = $this->i18n->detectLocale($request);
         $spec['servers'] = [[
-            'url'         => $apiBaseUrl,
+            'url'         => '/',
             'description' => $this->i18n->trans('admin.current_env', [], $locale),
         ]];
+        $apiBaseUrl = $this->config->getApiBaseUrl();
+        if ($apiBaseUrl !== '') {
+            $spec['servers'][] = [
+                'url'         => $apiBaseUrl,
+                'description' => $this->i18n->trans('admin.configured_api_base', [], $locale),
+            ];
+        }
 
         $response->getBody()->write((string) json_encode($spec, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
         return $response->withHeader('Content-Type', 'application/json');
@@ -638,12 +629,9 @@ class MainController extends BaseController
             return false;
         }
 
-        // 验证 cache 中的随机 token
         if ($this->tokenService?->validate($token) !== null) {
             return true;
         }
-
-        // 兼容旧版 base64 token
         return $this->tokenService?->validateLegacy($token) ?? false;
     }
 }

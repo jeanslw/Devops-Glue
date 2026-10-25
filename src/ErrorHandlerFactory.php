@@ -31,26 +31,23 @@ class ErrorHandlerFactory
         callable $resolveErrorLocale,
         ResponseFactoryInterface $responseFactory
     ): void {
-        // ── 通用错误：API 请求返回 JSON，其余返回 HTML ──
+
         $errorMiddleware->setDefaultErrorHandler(function ($request, $exception, $displayErrorDetails) use ($isApiRequest, $errorMessages, $resolveErrorLocale, $responseFactory) {
             $response = $responseFactory->createResponse();
             $code = 500;
             $message = null;
 
-            // 识别 ApiException：使用其自带的状态码和 message
+
             if ($exception instanceof ApiException) {
                 $code = $exception->getStatusCode();
                 $message = $exception->getMessage();
             } elseif ($exception instanceof \Slim\Exception\HttpException) {
-                // Slim 4 的 HttpException 没有 getStatusCode()，状态码存在 $code 上
-                // （各特化子类写死 protected $code = 4xx，由构造函数透传给父类）。
-                // 裸 new HttpException() 时 code 为 0，兜底到 500，避免 withStatus(0) 抛异常。
                 $c = $exception->getCode();
                 $code = ($c >= 400 && $c <= 599) ? $c : 500;
             }
 
             $lang = $resolveErrorLocale($request);
-            // ApiException 使用原始 message，其他异常使用友好文案
+
             $finalMessage = $message ?? ($errorMessages[$lang][$code] ?? $errorMessages[$lang][500]);
 
             if ($isApiRequest($request)) {

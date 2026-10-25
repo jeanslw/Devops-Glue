@@ -22,7 +22,7 @@ class ApiTokenScopeTest extends TestCase
         $expected = [
             AppConfig::API_SCOPE_MAIN,
             AppConfig::API_SCOPE_GIT,
-            AppConfig::API_SCOPE_HARBOR_READ,
+            AppConfig::API_SCOPE_REGISTRY_READ,
             AppConfig::API_SCOPE_HARBOR_SCAN,
             AppConfig::API_SCOPE_BUILD_READ,
             AppConfig::API_SCOPE_BUILD_WRITE,
@@ -47,8 +47,8 @@ class ApiTokenScopeTest extends TestCase
 
     public function testBuildReportScopeMapsToTriggerPermission(): void
     {
-        // #6 修复：scan-sync/commit-status 在 Controller 补了 requirePermission('ci.trigger')，
-        // 必须同步把 build.report scope 映射到 ci.trigger，否则 CI 回写 token 会被控制器 403。
+        
+        
         $this->assertContains(
             AppConfig::PERM_CI_TRIGGER,
             AppConfig::API_SCOPE_PERMS[AppConfig::API_SCOPE_BUILD_REPORT] ?? [],
@@ -58,7 +58,7 @@ class ApiTokenScopeTest extends TestCase
 
     public function testApiScopeCapabilitiesCoverEveryScope(): void
     {
-        // 每个可选 scope 都应在能力目录中有登记，确保列表能展开展示具体端点能力
+        
         foreach (AppConfig::API_SCOPES as $scope => $_label) {
             $this->assertArrayHasKey(
                 $scope,
@@ -70,12 +70,12 @@ class ApiTokenScopeTest extends TestCase
 
     public function testBuildReportScopeExpandsToWritebackEndpoints(): void
     {
-        // build.report 实际回写三个端点：scan-sync / commit-status / report，
-        // 列表需展开展示，避免用户只见抽象 scope 键而误判权限。
+        
+        
         $this->assertSame(
-            ['scan-sync', 'commit-status', 'report'],
+            ['scan-sync', 'registry-sync', 'commit-status', 'report'],
             AppConfig::API_SCOPE_CAPABILITIES[AppConfig::API_SCOPE_BUILD_REPORT] ?? [],
-            'build.report scope 应展开为 scan-sync / commit-status / report 三个端点'
+            'build.report scope 应展开为 scan-sync / registry-sync / commit-status / report 四个端点'
         );
     }
 
@@ -89,14 +89,15 @@ class ApiTokenScopeTest extends TestCase
             'main 只读'               => ['GET', '/api/main/map/list', AppConfig::API_SCOPE_MAIN],
             'main post 也只读'         => ['POST', '/api/main/jobs/list', AppConfig::API_SCOPE_MAIN],
             'git 只读'                => ['GET', '/api/git/group/proj/branches', AppConfig::API_SCOPE_GIT],
-            'harbor 项目列表读'        => ['GET', '/api/harbor/projects', AppConfig::API_SCOPE_HARBOR_READ],
+            'harbor 项目列表读'        => ['GET', '/api/harbor/projects', AppConfig::API_SCOPE_REGISTRY_READ],
             'harbor 扫描触发写'        => ['POST', '/api/harbor/p/repositories/r/tags/v/scan', AppConfig::API_SCOPE_HARBOR_SCAN],
-            'harbor 扫描报告读'        => ['GET', '/api/harbor/p/repositories/r/tags/v/scan', AppConfig::API_SCOPE_HARBOR_READ],
+            'harbor 扫描报告读'        => ['GET', '/api/harbor/p/repositories/r/tags/v/scan', AppConfig::API_SCOPE_REGISTRY_READ],
             'build jobs 读'           => ['GET', '/api/build/jobs/list', AppConfig::API_SCOPE_BUILD_READ],
             'build trigger 写'        => ['POST', '/api/build/static/trigger', AppConfig::API_SCOPE_BUILD_WRITE],
             'build retry 写'          => ['POST', '/api/build/static/pipelines/123/retry', AppConfig::API_SCOPE_BUILD_WRITE],
             'build cancel 写'         => ['POST', '/api/build/group/proj/pipelines/9/cancel', AppConfig::API_SCOPE_BUILD_WRITE],
             'build scan-sync 回写'     => ['POST', '/api/build/static/scan-sync', AppConfig::API_SCOPE_BUILD_REPORT],
+            'build registry-sync 回写' => ['POST', '/api/build/static/registry-sync', AppConfig::API_SCOPE_BUILD_REPORT],
             'build commit-status 回写' => ['POST', '/api/build/static/commit-status', AppConfig::API_SCOPE_BUILD_REPORT],
             'build report 回写'       => ['POST', '/api/build/static/report', AppConfig::API_SCOPE_BUILD_REPORT],
             'build pipelines 读'      => ['GET', '/api/build/static/pipelines', AppConfig::API_SCOPE_BUILD_READ],

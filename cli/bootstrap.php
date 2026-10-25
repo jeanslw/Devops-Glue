@@ -29,7 +29,7 @@ App\Support\EnvFileLoader::load(__DIR__ . '/../config');
 function encryptSensitiveColumns(\PDO $pdo, string $table, string $pk, array $cols): int
 {
     $enc = new App\Service\Encryptor();
-    $enc->rawKey(); // fail-closed：未配置 DATA_ENC_KEY 直接抛异常
+    $enc->rawKey(); 
 
     $rows = $pdo->query('SELECT ' . implode(', ', array_merge([$pk], $cols)) . ' FROM ' . $table)
         ->fetchAll(\PDO::FETCH_ASSOC) ?: [];

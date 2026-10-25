@@ -21,7 +21,7 @@ class ApiScopeResolver
     public static function resolve(string $method, string $path): ?string
     {
         $m = strtoupper($method);
-        // 归一化：去掉查询串、统一斜杠
+
         $parsed = parse_url($path, PHP_URL_PATH);
         $path = is_string($parsed) ? $parsed : $path;
         $path = '/' . trim($path, '/');
@@ -29,48 +29,47 @@ class ApiScopeResolver
             $path = rtrim($path, '/');
         }
 
-        // 健康检查：任意有效 token
+
         if ($path === '/api/health') {
             return '*';
         }
 
-        // 管理端点：API token 一律禁止（super_admin 交互式专属）
+
         if (preg_match('#^/api/admin($|/)#', $path)) {
             return null;
         }
 
-        // RBAC（CD 服务账号专用）：用户读写（建/读/改/删）+ 角色目录，统一 scope。
-        // 复用 rbac.user.write 而非新增 read scope：CD 是单一 trusted 消费方，token 本就有写权限，
-        // 读操作不构成额外提权，也避免为读接口再重签 token。不落入 /api/admin fail-closed。
+
+
+
         if (preg_match('#^/api/rbac($|/)#', $path)) {
             return AppConfig::API_SCOPE_RBAC_USER_WRITE;
         }
 
-        // 集成服务契约（CD 等集成服务的窄只读自检端点）：复用 build.read ——
-        // CD 服务凭据已持有该 scope，不为一个只读端点另行扩权；也避免整段落进未知路径 fail-closed。
+
         if (preg_match('#^/api/integration($|/)#', $path)) {
             return AppConfig::API_SCOPE_BUILD_READ;
         }
 
-        // MAIN：只读
         if (preg_match('#^/api/main($|/)#', $path)) {
             return AppConfig::API_SCOPE_MAIN;
         }
 
-        // GIT：只读
         if (preg_match('#^/api/git($|/)#', $path)) {
             return AppConfig::API_SCOPE_GIT;
         }
 
-        // Harbor：触发扫描（写）优先于读判断
         if (preg_match('#^/api/harbor/.+/repositories/.+/tags/.+/scan$#', $path) && $m === 'POST') {
             return AppConfig::API_SCOPE_HARBOR_SCAN;
         }
         if (preg_match('#^/api/harbor($|/)#', $path)) {
-            return AppConfig::API_SCOPE_HARBOR_READ;
+            return AppConfig::API_SCOPE_REGISTRY_READ;
         }
 
-        // Build：写操作（trigger / retry / cancel）
+        if (preg_match('#^/api/registry($|/)#', $path)) {
+            return AppConfig::API_SCOPE_REGISTRY_READ;
+        }
+
         if (preg_match('#^/api/build/.+/pipelines/\d+/(retry|cancel)$#', $path)) {
             return AppConfig::API_SCOPE_BUILD_WRITE;
         }
@@ -78,17 +77,17 @@ class ApiScopeResolver
             return AppConfig::API_SCOPE_BUILD_WRITE;
         }
 
-        // Build：CI 流水线回写（scan-sync / commit-status / report）
-        if (preg_match('#^/api/build/.+/(scan-sync|commit-status|report)$#', $path)) {
+
+        if (preg_match('#^/api/build/.+/(scan-sync|registry-sync|commit-status|report)$#', $path)) {
             return AppConfig::API_SCOPE_BUILD_REPORT;
         }
 
-        // Build：其余全部只读
+
         if (preg_match('#^/api/build($|/)#', $path)) {
             return AppConfig::API_SCOPE_BUILD_READ;
         }
 
-        // 未知路径：fail-closed
+
         return null;
     }
 }

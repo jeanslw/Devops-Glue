@@ -92,7 +92,7 @@ class DeployLogRepository
             if (!is_array($items)) {
                 $items = [];
             }
-            // 白名单：只带契约审计列，防 CD 未来多返回 output/stage_times 等大字段时被透传到审计页
+
             $whitelist = array_flip(self::AUDIT_COLUMNS);
             $items = array_map(
                 static function ($row) use ($whitelist) {

@@ -46,7 +46,7 @@ class AuthMiddleware implements MiddlewareInterface
         }
         $token = $m[1];
 
-        // 验证 cache 中的随机 token（交互式登录会话，不记 API 调用日志）
+
         $result = $this->tokenService->validate($token);
         if ($result) {
             $permissions = $this->tokenService->loadPermissions($result['role']);
@@ -58,14 +58,12 @@ class AuthMiddleware implements MiddlewareInterface
             );
         }
 
-        // 回退：验证 API token（服务账号 / 第三方调用），命中后做 scope 校验。
-        // 计时起点放在校验之前：耗时包含 token 解析/查库，慢 DB 也能在审计里暴露。
+
+
         $startedAt = hrtime(true);
         $api = $this->tokenService->validateApiToken($token);
 
         if ($api === null) {
-            // 带着 Bearer 来但两种 token 都不合法：可能是过期会话，也可能是伪造 API token。
-            // 安全上按 API token 鉴权失败留痕（不记任何 token 内容）。
             $response = $this->unauthorized($request, 'auth.token_invalid');
             $this->recordAccess($request, $response, $startedAt, null, 'invalid_token');
             return $response;
@@ -76,20 +74,20 @@ class AuthMiddleware implements MiddlewareInterface
             $request->getUri()->getPath()
         );
 
-        // 管理端点等不允许 API token 访问：返回 403（fail-closed）
+
         if ($required === null) {
             $response = $this->forbidden($request, 'api_token.scope_forbidden');
             $this->recordAccess($request, $response, $startedAt, $api, 'scope_forbidden');
             return $response;
         }
-        // 具体 scope：token 必须持有
+
         if ($required !== '*' && !in_array($required, $api['scopes'], true)) {
             $response = $this->forbidden($request, 'api_token.scope_forbidden');
             $this->recordAccess($request, $response, $startedAt, $api, 'missing_scope:' . $required);
             return $response;
         }
 
-        // scope 供控制器内二次校验所需权限（如 build.write/harbor.scan 需要 ci.trigger）
+
         $permissions = [];
         foreach ($api['scopes'] as $scope) {
             foreach (AppConfig::API_SCOPE_PERMS[$scope] ?? [] as $perm) {
@@ -102,16 +100,12 @@ class AuthMiddleware implements MiddlewareInterface
         $authenticatedRequest = $request
             ->withAttribute('currentUser', $api['user'])
             ->withAttribute('currentRole', AppConfig::ROLE_API_TOKEN)
-            ->withAttribute('userPermissions', $permissions);
+            ->withAttribute('userPermissions', $permissions)
+            ->withAttribute('apiScopes', $api['scopes']);
 
         try {
             $response = $handler->handle($authenticatedRequest);
         } catch (\Throwable $e) {
-            // 状态码优先级（ApiException 继承自 RuntimeException，必须先判，
-            // 否则 provider 经 BuildProviderError 映射出的 404/500 会被一律压成 502）：
-            //   1. ApiException → 用自带状态码（404 资源不存在 / 502 服务不可达 / 500 其它）
-            //   2. 其它 RuntimeException → 502（旧约定：CI 服务不可达）
-            //   3. 其余异常 → 500，冒泡给 Slim ErrorHandler
             if ($e instanceof ApiException) {
                 $statusCode = $e->getStatusCode();
             } elseif ($e instanceof \RuntimeException) {
@@ -119,8 +113,8 @@ class AuthMiddleware implements MiddlewareInterface
             } else {
                 $statusCode = 500;
             }
-            // 带 HTTP 语义的异常（ApiException / RuntimeException）直接返回，
-            // 不再冒泡给 Slim ErrorHandler（避免响应格式不一致）
+
+
             $handled = $e instanceof \RuntimeException;
             $errorResponse = $this->responseFactory
                 ->createResponse($statusCode)
@@ -156,7 +150,6 @@ class AuthMiddleware implements MiddlewareInterface
                 $result = 'success';
                 $errorReason = null;
             } else {
-                // 业务侧 4xx/5xx：客户端错误记 failure，401/403 记 denied
                 $result = in_array($statusCode, [401, 403], true) ? 'denied' : 'failure';
                 $errorReason = 'http_' . $statusCode;
             }
@@ -176,16 +169,15 @@ class AuthMiddleware implements MiddlewareInterface
                 'duration_ms'  => $durationMs,
             ];
 
-            // 数据表 + 文件双写都受级别开关控制（all/warning/error/off），避免审计日志失控增长。
+
             $level = $this->appSettings?->getApiAccessLogLevel()
                 ?? \App\Config\AppConfig::DEFAULT_API_ACCESS_LOG_LEVEL;
             if (ApiAccessLogRepository::shouldRecord($result, $level)) {
                 $this->apiLogs?->record($entry);
-                // 文件双写：一条廉价 JSON，便于不进后台也能 grep 审计；同样不含 token 原文。
+
                 $this->logger?->info('[API调用]', $entry);
             }
         } catch (\Throwable $e) {
-            // 审计本身绝不能反噬主流程
             $this->logger?->error('[API调用日志] 记录失败', ['error' => $e->getMessage()]);
         }
     }

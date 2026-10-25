@@ -32,7 +32,7 @@ class CustomPushBuildProviderTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        // sqlUpsert 依赖 Database::$driver 选择 SQLite / MySQL 语法，此处强制 sqlite
+        
         Database::init(['driver' => 'sqlite', 'auto_migrate' => false]);
 
         $this->pdo = new \PDO('sqlite::memory:');
@@ -131,7 +131,7 @@ class CustomPushBuildProviderTest extends TestCase
             'log_url'      => 'http://logs.example/10',
             'web_url'      => 'http://ci.example/10',
             'exit_code'    => 0,
-            'zone'         => 'az1',       // 自定义构建参数
+            'zone'         => 'az1',       
         ]);
 
         $this->assertTrue($result['success']);
@@ -146,10 +146,10 @@ class CustomPushBuildProviderTest extends TestCase
         $this->assertEquals('main', $row['ref']);
         $this->assertEquals('abc1234567', $row['sha']);
         $this->assertNotNull($row['triggered_at']);
-        // exit_code=0 应被落库为 0，而不是当作未传落为 NULL
+        
         $this->assertNotNull($row['exit_code']);
         $this->assertSame(0, (int) $row['exit_code']);
-        // 控制字段（pipeline_iid/status/finished_at/tag/...）不应被写进 variables_json
+        
         $vars = json_decode($row['variables_json'], true);
         $this->assertSame(['zone' => 'az1'], $vars);
     }
@@ -180,7 +180,7 @@ class CustomPushBuildProviderTest extends TestCase
         $before = $provider->findByIid('jobA', 30);
         $beforeId = (int) $before['id'];
 
-        // 重复上报同一 pipeline_iid：覆盖（UPDATE）而非新增，保留原自增 id
+        
         $second = $provider->report('jobA', [
             'pipeline_iid' => 30,
             'status'       => 'success',
@@ -204,7 +204,7 @@ class CustomPushBuildProviderTest extends TestCase
     public function testReportOverwritePreservesUnprovidedFields(): void
     {
         $provider = $this->makeProvider();
-        // 用 failed 到 aborted 演示覆盖（success 不可降级，故不用 success 到 failed 做覆盖样例）
+        
         $provider->report('jobA', [
             'pipeline_iid' => 35,
             'status'       => 'failed',
@@ -217,7 +217,7 @@ class CustomPushBuildProviderTest extends TestCase
             'zone'         => 'az1',
         ]);
 
-        // 重复上报只带必填字段（未带 log_url/ref/sha 等）时，应保留首次写入的值，而不是清空
+        
         $second = $provider->report('jobA', [
             'pipeline_iid' => 35,
             'status'       => 'aborted',
@@ -229,13 +229,13 @@ class CustomPushBuildProviderTest extends TestCase
         $row = $this->pdo->query('SELECT * FROM ' . AppConfig::TABLE_CUSTOM_BUILDS . ' WHERE job_name = "jobA" AND pipeline_iid = 35')->fetch();
         $this->assertEquals('aborted', $row['status']);
         $this->assertEquals('2026-08-18 10:20:00', $row['finished_at']);
-        // 未提供的字段保留原值
+        
         $this->assertEquals('main', $row['ref']);
         $this->assertEquals('abc1234567', $row['sha']);
         $this->assertEquals('http://logs.example/35', $row['log_url']);
         $this->assertEquals('http://ci.example/35', $row['web_url']);
         $this->assertEquals('2026-08-18 10:00:00', $row['started_at']);
-        // variables_json 同样保留
+        
         $vars = json_decode($row['variables_json'], true);
         $this->assertSame(['zone' => 'az1'], $vars);
     }
@@ -273,7 +273,7 @@ class CustomPushBuildProviderTest extends TestCase
             'finished_at'  => '2026-08-18 10:05:30',
         ]);
 
-        // 迟到/乱序的 failed 回调不得把 success 降级
+        
         $late = $provider->report('jobA', [
             'pipeline_iid' => 50,
             'status'       => 'failed',
@@ -282,7 +282,7 @@ class CustomPushBuildProviderTest extends TestCase
         $this->assertFalse($late['success']);
         $this->assertSame('success', $provider->findByIid('jobA', 50)['status']);
 
-        // aborted 同理
+        
         $lateAbort = $provider->report('jobA', [
             'pipeline_iid' => 50,
             'status'       => 'aborted',
@@ -325,12 +325,12 @@ class CustomPushBuildProviderTest extends TestCase
 
         $pipes = $provider->getPipelines('jobA');
         $this->assertCount(2, $pipes);
-        // 排序按 pipeline_iid DESC
+        
         $this->assertEquals(2, $pipes[0]['iid']);
         $this->assertEquals('success', $pipes[0]['status']);
         $this->assertArrayHasKey('created_at', $pipes[0]);
         $this->assertArrayHasKey('updated_at', $pipes[0]);
-        // updated_at = 完成时间（finished_at）
+        
         $this->assertEquals('2026-08-18 10:02:00', $pipes[0]['updated_at']);
     }
 
@@ -419,7 +419,7 @@ class CustomPushBuildProviderTest extends TestCase
     {
         $provider = $this->makeProvider([
             'variables' => [
-                'zone'     => 'az1',                              // string 简写
+                'zone'     => 'az1',                              
                 'branches' => ['type' => 'choice', 'choices' => ['master', 'dev'], 'description' => '分支'],
             ],
         ]);

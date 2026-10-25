@@ -85,7 +85,7 @@ export function renderTopology() {
                 : `<span class="topo-empty-field">${esc(gitUrl)}</span>`)
             : '<span class="topo-empty-field">' + __.t('js.topo_not_configured') + '</span>';
 
-        const harbor = p.harbor_repository || '';
+        const harbor = p.registry_repository || '';
         const harborUrl = topoPlatformUrls.harbor_url || '';
         // Harbor 未配置或 safeUrl 拒绝时回退纯文本，避免 href 为空/站内坏链接
         const safeHarborUrl = harborUrl ? safeUrl(harborUrl + '/harbor') : '';

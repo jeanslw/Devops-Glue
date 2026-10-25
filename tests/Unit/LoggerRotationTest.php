@@ -37,7 +37,7 @@ class LoggerRotationTest extends TestCase
         $recent = $this->dir . '/app-' . date('Y-m-d') . '.log';
         file_put_contents($old, "{\"level\":\"INFO\"}\n");
         file_put_contents($recent, "{\"level\":\"INFO\"}\n");
-        touch($old, time() - 40 * 86400); // 40 天前
+        touch($old, time() - 40 * 86400); 
         touch($recent, time());
 
         (new Logger($this->dir, 'info', 30))->purgeOldLogs();

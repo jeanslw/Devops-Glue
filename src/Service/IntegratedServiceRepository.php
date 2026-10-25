@@ -94,13 +94,13 @@ class IntegratedServiceRepository
         }
 
         $tokenId = $row['api_token_id'] !== null ? (int) $row['api_token_id'] : null;
-        // 左侧 JOIN 不到行时 t.* 全为 NULL，token_enabled 为 null 即凭据行已不存在（被硬删除或从未绑定）
+
         $tokenExists  = $tokenId !== null && $row['token_enabled'] !== null;
         $tokenEnabled = $tokenExists && (int) $row['token_enabled'] === 1;
         $tokenExpired = $tokenExists
             && $row['token_expires_at'] !== null
             && (int) $row['token_expires_at'] <= time();
-        // 活性（对外可见的唯一口径）：行在 且 未被停用 且 未过期
+
         $tokenActive = $tokenExists && $tokenEnabled && !$tokenExpired;
 
         return [

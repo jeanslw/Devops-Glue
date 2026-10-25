@@ -79,13 +79,13 @@ class BaseController
      */
     protected function output(Response $response, $data, Request $request = null, bool $forceRaw = false): Response
     {
-        // 强制原样输出（如控制台日志）
+
         if ($forceRaw) {
             $response->getBody()->write($data);
             return $response->withHeader('Content-Type', 'text/plain');
         }
 
-        // 读取格式参数，默认 raw（保持原有行为）
+
         $format = $request ? ($request->getQueryParams()['format'] ?? 'raw') : 'raw';
 
         switch ($format) {
@@ -95,7 +95,6 @@ class BaseController
                 return $this->xmlResponse($response, $data, 200);
             case 'raw':
             default:
-                // 原始行为：数组/对象转JSON，字符串原样输出
                 $response->getBody()->write(is_string($data) ? $data : (string) json_encode($data));
                 return $response->withHeader('Content-Type', is_string($data) ? 'text/plain' : 'application/json');
         }
@@ -109,13 +108,12 @@ class BaseController
      */
     protected function jsonResponse(Response $response, $data, int $code = 200): Response
     {
-        // 如果数据本身已经是完整的响应结构（比如 buildTrigger），直接输出
+
         if (is_array($data) && array_key_exists('code', $data)) {
             $response->getBody()->write((string) json_encode($data));
             $status = is_int($data['code']) ? $data['code'] : $code;
             return $response->withStatus($status)->withHeader('Content-Type', 'application/json');
         } else {
-            // 否则只包裹 data
             $response->getBody()->write((string) json_encode(['data' => $data]));
         }
         return $response->withStatus($code)->withHeader('Content-Type', 'application/json');
@@ -140,10 +138,10 @@ class BaseController
      */
     protected function jsonError(Response $response, string $message, int $code = 400, array $extra = []): Response
     {
-        // 消息看起来像翻译键（含点号且无空格）时尝试翻译
+
         if (str_contains($message, '.') && !str_contains($message, ' ')) {
             $translated = $this->i18n->trans($message);
-            // 翻译成功（不同于键本身）则使用翻译结果
+
             if ($translated !== $message) {
                 $message = $translated;
             }

@@ -98,7 +98,7 @@ class AppConfigTest extends TestCase
 
     public function testAppConfigHasNoConstructor(): void
     {
-        // 纯常量类：不允许再挂实例状态/IO，职责已拆到 Settings / *Repository / MappingManager
+        
         $this->assertFalse(
             (new \ReflectionClass(AppConfig::class))->hasMethod('__construct'),
             'AppConfig 必须是纯常量类，不能有构造函数'
@@ -128,8 +128,8 @@ class AppConfigTest extends TestCase
 
     public function testImpliedPermissionsNoCyclicDependency(): void
     {
-        // 简单检测：A 到 B 且 B 到 A 视为循环
-        // 例外：cd.notification-manage 与 cd.bot / cd.webhook 是有意设计的双向（勾父自动有子，勾子自动显示父菜单）
+        
+        
         $allowedCyclic = [
             [AppConfig::PERM_CD_NOTIFY, AppConfig::PERM_CD_BOT],
             [AppConfig::PERM_CD_NOTIFY, AppConfig::PERM_CD_WEBHOOK],
@@ -169,7 +169,7 @@ class AppConfigTest extends TestCase
         $this->assertContains(AppConfig::PERM_CI_PERMISSIONS_MANAGE, $implied[AppConfig::PERM_CI_PERMISSIONS_LIST], 'ci.permissions.list 必须隐含 ci.permissions.manage');
         $this->assertContains(AppConfig::PERM_CI_PERMISSIONS_MANAGE, $implied[AppConfig::PERM_CI_PERMISSIONS_REGISTER], 'ci.permissions.register 必须隐含 ci.permissions.manage');
         $this->assertContains(AppConfig::PERM_CI_PERMISSIONS_MANAGE, $implied[AppConfig::PERM_CI_PERMISSIONS_RULES], 'ci.permissions.rules 必须隐含 ci.permissions.manage');
-        // 新增：API 调用日志挂到日志中心父菜单
+        
         $this->assertContains(AppConfig::PERM_CI_LOGS, $implied[AppConfig::PERM_CI_API_LOGS], 'ci.api-logs 必须隐含 ci.logs');
     }
 

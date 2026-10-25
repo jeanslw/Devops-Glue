@@ -65,19 +65,18 @@ class LdapService
             return ['ok' => false, 'error' => 'ldap_connect_failed'];
         }
         try {
-            // 直连模式：已有 DN 模板，跳过搜索
             $dnPattern = (string)($cfg['user_dn_pattern'] ?? '');
             if ($dnPattern !== '') {
                 $dn = sprintf($dnPattern, $this->escapeDn($username));
                 if (!$this->bind($resource, $dn, $password)) {
                     return ['ok' => false, 'error' => 'ldap_bind_failed'];
                 }
-                // 拉一次属性用于缓存（可选：失败不阻断登录）
+
                 $attrs = $this->readAttributes($resource, $dn, $cfg);
                 return ['ok' => true, 'dn' => $dn, 'attrs' => $attrs];
             }
 
-            // 管理员搜索模式：先 bind 管理员，再搜用户 DN
+
             if (empty($cfg['bind_dn']) || empty($cfg['base_dn']) || empty($cfg['user_filter'])) {
                 return ['ok' => false, 'error' => 'ldap_search_config_missing'];
             }
@@ -100,7 +99,7 @@ class LdapService
             $userDn = (string)($entry['dn'] ?? '');
             $attrs  = $this->normalizeAttrs($entry);
 
-            // 用用户 DN + 密码替换连接身份，做最终认证
+
             if (!$this->bind($resource, $userDn, $password)) {
                 return ['ok' => false, 'error' => 'ldap_bind_failed'];
             }

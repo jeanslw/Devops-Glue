@@ -99,10 +99,9 @@ class GitService
         $platform       = $map['git_platform'];
         $platformSource = $map['platform_source'] ?? 'auto';
 
-        // 平台未注册：区分"手动指定但未配置"和"自动检测失败"
+
         if ($platform === 'unknown' || !$this->registry->isRegistered($platform)) {
             if ($platformSource === 'manual') {
-                // 用户在 job_git_map 中明确指定了 git_platform，但系统未配置该平台
                 $registered = implode(', ', $this->registry->getRegisteredNames());
                 throw new \RuntimeException(
                     "Job '{$jobPath}' 在 job_git_map 中指定了 git_platform='{$platform}'，" .
@@ -110,7 +109,7 @@ class GitService
                     "请在后台「平台接入状态」里配置该平台的连接（URL 与 Token）。"
                 );
             }
-            // 自动检测失败：无法从 URL 识别平台且 default_platform 也未注册
+
             $this->logger?->warning("Git 平台未注册或无法识别", [
                 'job'      => $jobPath,
                 'platform' => $platform,
@@ -182,9 +181,9 @@ class GitService
         if ($path === null) {
             return '';
         }
-        // GitLab 的 projects API 需接受 urlencode 后的 path 作为项目标识（子群组的
-        // group/sub/repo 会被整体编码为 group%2Fsub%2Frepo），
-        // 故在此编码后再下传 GitlabService::getBranches/getTags（下游不得再编码）。
+
+
+
         return $platform === 'gitlab' ? urlencode($path) : $path;
     }
 }

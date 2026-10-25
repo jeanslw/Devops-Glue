@@ -1,5 +1,30 @@
 # Changelog
 
+## v2.11.0 (2026-10-24)
+
+- **Added**
+  - The image registry is selectable per deployment: Harbor (default) or a standard OCI registry (`registry:2` and alike), configured on the admin platform-connection card; one deployment picks one, the two types never coexist. A standard registry has no vulnerability scanning, and the related pages hide the matching columns and actions.
+  - `POST /api/build/{path}/registry-sync` lets CI report a pushed image back to Glue. It does not require the registry to support scanning, so a standard registry also gets its push result recorded and the Git commit status written.
+  - The integration-service contract endpoint delivers the registry type and address, so consumers such as CD no longer keep a manually synchronized local copy; local environment variables remain as a fallback when the endpoint is unavailable.
+- **Changed**
+  - The registry field on mappings, build and deploy payloads, and the admin pages is renamed from `harbor_repository` to `registry_repository`; the automatic migration copies the old values into the new column and then drops the old one.
+  - `scan-sync` and `registry-sync` share one write-back implementation and differ only in whether scan results are read; `scan-sync` remains the Harbor-specific entry point.
+  - The audit row of a write-back is no longer limited to pipelines that ended successfully: when CI reported the image but the pipeline failed or did not finish, the audit stays (marked as "not written back"), while the artifact is still recorded only for successful pipelines and only those count as a push fact.
+  - The registry type and address from the contract are delivered only to credentials holding the "Harbor read" permission (which governs both Harbor and standard-registry queries): consumers connect to the registry directly once they have the address and never pass through Glue again, so the gate sits at delivery. The CD service credential does not carry that permission by default — grant "Harbor read" to the credential in "API Management" when CD needs the image registry.
+  - Health checks probe `/v2/` for a standard registry instead of the Harbor components; switching a platform connection from Harbor to a standard registry clears the saved username and password.
+  - Security-check records from the two write-back endpoints are marked `harbor-scan` / `registry-sync`; the audit page accepts both, so earlier records stay visible.
+  - `config/settings.example.php` no longer carries a `harbor.registry_type` entry: the registry type is configured only on the admin platform-connection card, and the file value never took effect.
+  - The image-registry query scope is renamed from `harbor.read` to `registry.read` (it governs both Harbor and standard OCI registry queries); existing tokens are migrated automatically at startup and need no reissue. `harbor.scan` is unchanged.
+- **Fixed**
+  - A registry path with more than two segments is accepted; the earlier two-segment limit is gone.
+  - The registry query endpoints reject an invalid project or repository name (`..`, an empty segment, characters other than `A-Za-z0-9._-`, a `/` in the project) with `400` and a message instead of passing it into the registry URL; multi-segment names such as `a/b` are still accepted, and `/api/harbor/*` keeps its existing contract without validation.
+  - Commit-status write-back sends the state each platform accepts: failures are normalized to `failure`, and without a scan conclusion the state is derived from the pipeline result instead of sending `unknown`, which the platforms reject.
+  - A standard registry with an empty password is treated as anonymous and sends no authentication header, so the default `admin` username no longer breaks anonymous pulls.
+  - `GET /api/registry/projects` always returns project names as strings: a purely numeric first segment (for example `123/app`) is no longer turned into a JSON number.
+  - Dropping the renamed-away column is best-effort on old SQLite versions that lack `DROP COLUMN`: a warning is logged instead of aborting the startup migration, and the leftover column is harmless.
+  - Two missing UI texts no longer surface as raw translation keys (the failed login-token message and the implied-permission dropdown).
+  - Messages built from translations render their placeholders correctly: the braces used to stay in the text and the substitution also replaced matching words anywhere in it.
+
 ## v2.10.0 (2026-10-17)
 
 - **Added**

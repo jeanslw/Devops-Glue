@@ -76,7 +76,7 @@ class IntegratedServicePanelPlacementTest extends TestCase
 
         $this->assertStringNotContainsString('sys.panel_integrated', $sysTab, '数据管理页不应再残留集成服务面板');
         $this->assertStringNotContainsString('isvc-', $sysTab, '数据管理页不应再残留任何 isvc-* 节点');
-        // 数据管理页仍必须保留数据库卡片（迁移模式是 provision 的取值来源）
+        
         $this->assertStringContainsString('data-i18n="sys.panel_database"', $sysTab);
         $this->assertStringContainsString('data-i18n="sys.migrate_mode"', $sysTab);
     }
@@ -101,8 +101,8 @@ class IntegratedServicePanelPlacementTest extends TestCase
             $systemJs,
             '面板渲染仍由 system.js 提供（admin.js 仅负责触发时机）'
         );
-        // 进入数据管理页不得再请求集成服务状态（enable/disable 成功后的自我刷新允许，见
-        // enableIntegratedService / disableIntegratedService），故只检查 loadSystemInfo 的函数体。
+        
+        
         $sysInfo = $this->functionBody($systemJs, 'export async function loadSystemInfo(');
         $this->assertStringNotContainsString(
             'loadIntegratedServices',
@@ -170,11 +170,11 @@ class IntegratedServicePanelPlacementTest extends TestCase
         );
         $this->assertStringContainsString('for="isvc-cd-toggle"', $apiTab, 'label 必须 for 到勾选框，否则点文字无效');
 
-        // 旧的两个按钮必须彻底消失，否则同一状态会有两个入口、行为不一致
+        
         $this->assertStringNotContainsString('isvc-cd-enable', $html);
         $this->assertStringNotContainsString('isvc-cd-disable', $html);
 
-        // 勾选框外观必须与平台管理各功能开关一致（同一 CSS 规则），避免退化成裸 checkbox
+        
         $this->assertStringContainsString(
             '#isvc-cd-toggle',
             $this->read(self::ROOT . '/public/assets/admin.css'),

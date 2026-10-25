@@ -58,8 +58,8 @@ class GitCodeService extends AbstractGitProvider
      */
     public function setCommitStatus(string $repository, string $sha, string $state, string $context, string $description, string $targetUrl = ''): array
     {
-        // GitCode 的 commit status 沿用 Gitea 语义：state 为 pending/success/error/failure。
-        // 该端点需按实际 GitCode 实例的 OpenAPI 校验；不可达与 4xx 都如实返回失败，不吞。
+
+
         $gcState = $state === 'failed' ? 'failure' : $state;
         $body = [
             'state'       => $gcState,

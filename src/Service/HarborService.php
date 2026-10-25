@@ -109,11 +109,11 @@ class HarborService
     private function probeHarborVersion(): ?string
     {
         $paths = [
-            '/api/v2.0/systeminfo', // Harbor v2.x
-            '/api/systeminfo',      // Harbor v1.x
+            '/api/v2.0/systeminfo',
+            '/api/systeminfo',
         ];
 
-        // 收集所有候选失败原因，供最终聚合告警使用
+
         $failures = [];
         $baseUri  = (string) $this->client->getConfig('base_uri');
 
@@ -127,7 +127,6 @@ class HarborService
                     $res = $client->get($path, ['http_errors' => false]);
                     $code = $res->getStatusCode();
                     if ($code < 200 || $code >= 300) {
-                        // 404/401/5xx 不算“连不上”，只是该候选端点不匹配——记录后继续尝试下一候选
                         $failures[] = ['path' => $path, 'kind' => $kind, 'http_code' => $code];
                         $this->logger?->debug('Harbor systeminfo 候选端点未命中（HTTP ' . $code . '），继续尝试下一候选', [
                             'path' => $path, 'kind' => $kind, 'http_code' => $code,
@@ -143,7 +142,6 @@ class HarborService
                         return $version;
                     }
                 } catch (\Throwable $e) {
-                    // 连接级失败：服务未启动 / 端口不通 / DNS 解析失败等
                     $failures[] = ['path' => $path, 'kind' => $kind, 'error' => $e->getMessage()];
                     $this->logger?->debug('Harbor systeminfo 候选端点不可达，继续尝试下一候选', [
                         'path' => $path, 'kind' => $kind, 'error' => $e->getMessage(),
@@ -152,8 +150,8 @@ class HarborService
             }
         }
 
-        // 所有候选（v2.0 + v1，各 匿名/带认证）均未还原出版本号：聚合一条明确告警，
-        // 避免运维只看到单条 "path=/api/systeminfo" 而误判为“地址/路径不对”。
+
+
         $base = rtrim($baseUri, '/');
         $this->logger?->warning(
             'Harbor 版本探测失败：/api/v2.0/systeminfo 与 /api/systeminfo 候选均不可用。'
@@ -190,7 +188,7 @@ class HarborService
         }
         $v = ltrim($v, 'vV');
         if (($pos = strpos($v, '-')) !== false) {
-            $v = substr($v, 0, $pos); // 去掉 commit 后缀
+            $v = substr($v, 0, $pos);
         }
         return preg_match('/^\d+(\.\d+){1,2}$/', $v) ? $v : null;
     }
@@ -211,7 +209,7 @@ class HarborService
             return $this->apiVersion;
         }
 
-        // 从缓存读取（1h TTL），避免每次请求都探测
+
         try {
             $pdo = $this->pdo;
             $row = $pdo->prepare("SELECT value FROM " . \App\Config\AppConfig::TABLE_CACHE . " WHERE cache_key = '" . \App\Config\AppConfig::CACHE_KEY_HARBOR_VERSION . "' AND expires_at > ?");
@@ -224,7 +222,7 @@ class HarborService
         } catch (\Exception $e) {
         }
 
-        // 直接用 v2 项目列表端点探测，比 HEAD systeminfo 更可靠
+
         try {
             $this->client->get('/api/v2.0/projects', [
                 'http_errors' => true,
@@ -234,14 +232,13 @@ class HarborService
             $this->logger?->info('Harbor 版本探测: v2.0');
         } catch (ClientException $e) {
             $code = $e->getResponse()->getStatusCode();
-            // 404 说明不是 v2，否则（401/403 等）v2 存在只是认证问题
+
             $this->apiVersion = ($code === 404) ? 'v1' : 'v2';
             $this->logger?->debug('Harbor v2 探测响应', [
                 'http_code' => $code,
                 'detected'  => $this->apiVersion,
             ]);
         } catch (\Throwable $e) {
-            // 连不上，尝试 v1
             $this->logger?->debug('Harbor v2 探测网络异常，回退尝试 v1', [
                 'error' => $e->getMessage(),
             ]);
@@ -250,13 +247,13 @@ class HarborService
                 $this->apiVersion = 'v1';
                 $this->logger?->info('Harbor 版本探测: v1 (v2 不可达后回退)');
             } catch (\Throwable $e2) {
-                $this->apiVersion = 'v2'; // 都连不上默认 v2
+                $this->apiVersion = 'v2';
                 $this->logger?->warning('Harbor 版本探测: v1/v2 均不可达，默认 v2', [
                     'error' => $e2->getMessage(),
                 ]);
             }
         }
-        // 缓存探测结果（1h TTL），避免后续请求重复 API 调用
+
         try {
             $pdo = $this->pdo;
             $sql = \App\Service\Database::sqlUpsert(\App\Config\AppConfig::TABLE_CACHE, 'cache_key, value, expires_at', '?, ?, ?');
@@ -290,7 +287,7 @@ class HarborService
                 if (!is_array($data)) {
                     return ['error' => 'Harbor返回数据格式异常'];
                 }
-                // 成功返回：记录重试日志（如有）
+
                 if ($attempt > 0) {
                     $this->logger?->info('Harbor 请求重试成功', [
                         'method' => $method,
@@ -301,7 +298,7 @@ class HarborService
                 return $data;
             } catch (ClientException $e) {
                 $code = $e->getResponse()->getStatusCode();
-                // 4xx 不重试（权限/不存在等问题重试无意义）
+
                 if ($code && $code < 500) {
                     $msg = $code === 404 ? "资源不存在(404)" : "Harbor服务响应异常(HTTP {$code})";
                     $this->logger?->warning('Harbor 请求失败', [
@@ -312,7 +309,7 @@ class HarborService
                     ]);
                     return ['error' => $msg, 'http_code' => $code];
                 }
-                // 5xx: 记录并继续重试
+
                 $lastException = $e;
                 $this->logger?->warning('Harbor 服务端错误，准备重试', [
                     'method'    => $method,
@@ -321,7 +318,6 @@ class HarborService
                     'attempt'   => $attempt + 1,
                 ]);
             } catch (\Throwable $e) {
-                // 网络错误（连接超时、DNS 解析失败等），重试
                 $lastException = $e;
                 $this->logger?->warning('Harbor 网络异常，准备重试', [
                     'method'  => $method,
@@ -332,15 +328,14 @@ class HarborService
             }
 
             if ($attempt < $maxRetries) {
-                // 指数退避：间隔由 200ms 增至 400ms
                 usleep(($attempt + 1) * 200000);
             }
         }
 
-        // 所有重试耗尽：连接级/5xx 失败必须上抛（RuntimeException），
-        // 由 AuthMiddleware 统一转 502 服务不可达，不得吞成 error 数组，
-        // 否则调用方会把 Harbor 宕机误判为业务错误（如扫描功能未启用、无 tag）。
-        // 4xx 业务错误仍走上方的 error 数组语义（资源不存在 / 认证失败等）。
+
+
+
+
         $this->logger?->error('Harbor 请求重试耗尽', [
             'method' => $method,
             'uri'    => $uri,
@@ -373,7 +368,7 @@ class HarborService
             $data = $this->request('GET', $path, ['query' => $query]);
 
             if (isset($data['error'])) {
-                return $page === 1 ? $data : $all; // 首页失败返回错误，后续页失败返回已收集数据
+                return $page === 1 ? $data : $all;
             }
 
             if (empty($data)) {
@@ -383,11 +378,9 @@ class HarborService
             $items = $extract($data);
             $all = array_merge($all, $items);
             $page++;
-
-            // 返回数量不足 pageSize 说明已是最后一页
         } while (count($data) === $pageSize && $page <= $maxPages);
 
-        // 达到 maxPages 且最后一页满数据：再请求一次确认是否真的超限
+
         if ($page > $maxPages && count($data) === $pageSize) {
             $checkQuery = array_merge(['page_size' => $pageSize, 'page' => $maxPages + 1], $extraQuery);
             $checkData = $this->request('GET', $path, ['query' => $checkQuery]);
@@ -413,7 +406,7 @@ class HarborService
         $version = $this->detectApiVersion();
         $path = ($version === 'v2') ? '/api/v2.0/projects' : '/api/projects';
         $pageSize = 100;
-        $maxPages = 10; // 最多 1000 个项目
+        $maxPages = 10;
         return $this->paginatedGet($path, $pageSize, $maxPages, function ($page) {
             return array_column($page, 'name');
         });
@@ -471,7 +464,7 @@ class HarborService
     {
         $version = $this->detectApiVersion();
         $pageSize = 100;
-        $maxPages = 20; // 最多 2000 个 tag
+        $maxPages = 20;
 
         if ($version === 'v2') {
             $encodedProject = rawurlencode($project);
@@ -513,7 +506,7 @@ class HarborService
             $path = "/api/v2.0/projects/{$encodedProject}/repositories/{$encodedRepo}/artifacts/{$encodedTag}/scan";
             return $this->request('POST', $path);
         }
-        // v1 路径（Harbor 1.10 有效）
+
         $fullRepo = $project . '/' . $repository;
         $encodedRepo = rawurlencode($fullRepo);
         $encodedTag  = rawurlencode($tag);
@@ -536,7 +529,7 @@ class HarborService
             if (isset($data['error'])) {
                 return $data;
             }
-            // Harbor v2 返回的漏洞数据在 mime type 键下
+
             foreach ($data as $key => $value) {
                 if (str_contains((string) $key, 'vulnerability') && is_array($value)) {
                     return $value;

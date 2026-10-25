@@ -67,8 +67,8 @@ class IntegratedServiceReissueWiringTest extends TestCase
             '补发对象必须只取「行上确实启用着」的旧凭据（禁用过的行留着旧 id，不应被当成补发）'
         );
 
-        // 顺序即语义：旧凭据作废必须落在 beginTransaction 与 commit 之间（同事务），
-        // 否则会出现新凭据已发但旧凭据还活着、或旧凭据失效新凭据回滚的中间态。
+        
+        
         $begin  = strpos($enable, 'beginTransaction()');
         $revoke = strpos($enable, '$this->apiTokens->revoke($previousTokenId);');
         $commit = strpos($enable, '$this->pdo->commit();');
@@ -82,7 +82,7 @@ class IntegratedServiceReissueWiringTest extends TestCase
             $enable,
             '响应必须带 reissued，调用方才能分辨「首次启用」与「补发」'
         );
-        // 补发靠仓储的 upsert 语义（行已存在则 UPDATE 重绑新凭据），不需要新方法
+        
         $this->assertStringContainsString(
             'public function enable(string $service, string $provision, int $tokenId, string $operator): void',
             $repo
@@ -97,13 +97,13 @@ class IntegratedServiceReissueWiringTest extends TestCase
         $enable       = $this->enableBody();
         $tokenService = $this->read(self::ROOT . '/src/Service/ApiTokenService.php');
 
-        // 复用判定必须与状态的三态定义一致：行未启用 + 凭据还在 + 只是被停用 + 未过期
+        
         $this->assertStringContainsString("\$reuseTokenId = !\$state['enabled']", $enable);
         $this->assertStringContainsString("\$state['token_exists']", $enable, '必须确认凭据行还在（被删除的恢复不了）');
         $this->assertStringContainsString("!\$state['token_enabled']", $enable, '只恢复「被停用」的凭据');
         $this->assertStringContainsString("!\$state['token_expired']", $enable, '恢复一枚过期凭据毫无意义，必须排除');
 
-        // 恢复分支：restore + 回写契约行同事务（与补发分支同款约束）
+        
         $begin   = strpos($enable, 'beginTransaction()');
         $restore = strpos($enable, '$this->apiTokens->restore($reuseTokenId);');
         $commit  = strpos($enable, '$this->pdo->commit();');
@@ -112,7 +112,7 @@ class IntegratedServiceReissueWiringTest extends TestCase
         $this->assertIsInt($commit);
         $this->assertTrue($begin < $restore && $restore < $commit, '恢复凭据必须与契约行回写同事务');
 
-        // 恢复分支里不签发新凭据，否则就是重新生成一条 API、CD 要改一次配置
+        
         $branchStart = strpos($enable, 'if ($reuseTokenId !== null) {');
         $branchEnd   = strpos($enable, '} else {', (int) $branchStart);
         $this->assertIsInt($branchStart);
@@ -126,10 +126,10 @@ class IntegratedServiceReissueWiringTest extends TestCase
         );
         $this->assertStringNotContainsString('createToken', $branch, '恢复分支必须复用原凭据，不得另签一枚');
 
-        // 响应要让前端能分辨：reused = 复用（无明文），reissued = 补发（有明文）
+        
         $this->assertStringContainsString("'reused'", $enable);
 
-        // restore 与 revoke 对称：只改 enabled 位，不碰 token_hash（改了原明文即失效）
+        
         $this->assertStringContainsString(
             "'UPDATE ' . AppConfig::TABLE_API_TOKENS . ' SET enabled = 1 WHERE id = ?'",
             $tokenService,
@@ -160,7 +160,7 @@ class IntegratedServiceReissueWiringTest extends TestCase
             $systemJs,
             '补发确认弹窗必须说明：本次只补发凭据，旧凭据不会复活，CD 必须换明文'
         );
-        // 文案走纯文本 + \n：confirmDialog 用 textContent 渲染，塞 HTML 会把标签原样显示出来
+        
         $this->assertStringContainsString("]).join('\\n');", $systemJs);
     }
 
@@ -193,7 +193,7 @@ class IntegratedServiceReissueWiringTest extends TestCase
             '恢复路径必须在弹窗里说明「复用原凭据、明文不再展示、CD 无需改配置」'
         );
 
-        // 恢复的响应没有明文，不应走进弹出 Token 框的分支，也不应显示已签发
+        
         $start = strpos($systemJs, 'if (res.ok && d.reused) {');
         $end   = strpos($systemJs, 'return true;', (int) $start);
         $this->assertIsInt($start);
@@ -249,7 +249,7 @@ class IntegratedServiceReissueWiringTest extends TestCase
     {
         $systemJs = $this->read(self::ROOT . '/public/assets/modules/system.js');
 
-        // 禁用：要点必须作为 note 传入（此前整段解释都塞在 message 里，一屏三行）
+        
         $disable = $this->jsBody($systemJs, 'export async function disableIntegratedService(service)');
         $this->assertStringContainsString('note: note,', $disable, '禁用确认要把要点作为 note 传入');
         $this->assertStringContainsString("'① ' + __.t('sys.isvc_disable_step1')", $disable);
@@ -261,7 +261,7 @@ class IntegratedServiceReissueWiringTest extends TestCase
             '禁用弹窗正文只留一句问句'
         );
 
-        // 启用：两条固定要点（原来的第 ③ 条解释已删），♻ / ⓪ 只是可选首行
+        
         $enable = $this->jsBody($systemJs, 'export async function enableIntegratedService(service)');
         $this->assertStringContainsString("'① ' + __.t('sys.isvc_enable_step1')", $enable);
         $this->assertStringContainsString("'② ' + __.t('sys.isvc_enable_step2')", $enable);

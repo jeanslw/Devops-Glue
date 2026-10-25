@@ -40,19 +40,17 @@ class AutoDiscover
         $this->scanSources = [];
         $enabled = $this->mapping->activeBuildProviders();
 
-        // 已有映射的去重范围：
-        // - 内置拉取式 provider（jenkins/gitlab_ci/gitea_ci）的记录始终纳入去重，因为 Git 平台
-        //   扫描按原生 CI 标记，已映射项目不应因对应 CI 未启用而被重复建议；
-        // - custom_push_enabled 开启时，custom_push 记录也纳入去重。
+
+
+
+
         $cpEnabled = $this->mapping->hasCustomPush();
-        $activeRemotes = [];   // 归一化后的 key：host/path（统一格式，跨协议去重）
+        $activeRemotes = [];
         $existingNames = [];
         foreach ($this->mapping->allMaps() as $m) {
-            // 不兜底 jenkins：未指定构建源的行不参与去重，
-            // 否则 Jenkins 扫到同名项目会被判为「已存在」而跳过，堵死自动发现补全 provider 的路径
             $bp = (string) ($m['build_provider'] ?? '');
 
-            // 未知/非内置 provider 的记录不参与去重
+
             if (!in_array($bp, AppConfig::BUILTIN_PULL_PROVIDERS, true)) {
                 if (!($cpEnabled && $bp === AppConfig::PROVIDER_CUSTOM_PUSH)) {
                     continue;
@@ -76,10 +74,10 @@ class AutoDiscover
         $errors    = [];
         $found     = [];
 
-        // 先扫描 Git 平台原生 CI（GitLab CI / Gitea Actions），构建仓库路径到平台的提示表，
-        // 供 Jenkins 扫描纠正自建平台的误识别：自建 GitLab/Gitea 可能同 host 仅端口不同，
-        // URL 子串匹配无法区分，会回退到默认平台。
-        $platformHints = [];  // strtolower(仓库路径) => git_platform
+
+
+
+        $platformHints = [];
 
         if (in_array(AppConfig::PROVIDER_GITLAB_CI, $enabled, true)) {
             try {
@@ -120,12 +118,11 @@ class AutoDiscover
             }
         }
 
-        // Git 平台扫描与 BUILD_MODE / custom_push 开关无关：平台已配置即发现其项目，
-        // build_provider 按平台原生 CI 标记（GitLab 为 gitlab_ci、Gitea 为 gitea_ci，
-        // 无原生 provider 的平台如 Bitbucket 用 custom_push）。原生 CI 已启用的平台
-        // 由其专属扫描覆盖（如 scanGitlabCi），scanGitPlatforms 内部跳过。
+
+
+
+
         try {
-            // 跨扫描去重：已被本轮前面扫描（Jenkins/GitLab CI/Gitea）发现的项目不再重复导入
             $foundRemotes = $activeRemotes;
             foreach ($found as $item) {
                 $r = $item['entry']['git_remote'] ?? '';
@@ -155,14 +152,12 @@ class AutoDiscover
         $cpEnabled = $this->mapping->hasCustomPush();
         $maps  = $this->mapping->allMaps();
 
-        // 与 discover() 同口径：内置 provider 记录始终纳入，custom_push 记录在开关开启时纳入，
-        // 防止跨 provider 误判重复
+
+
         $names = [];
         foreach ($maps as $m) {
-            // 同 discover()：不兜底 jenkins，未指定构建源的行不参与去重
             $bp = (string) ($m['build_provider'] ?? '');
             if (!in_array($bp, AppConfig::BUILTIN_PULL_PROVIDERS, true)) {
-                // custom_push 记录在 custom_push_enabled 时始终纳入去重
                 if (!($cpEnabled && $bp === AppConfig::PROVIDER_CUSTOM_PUSH)) {
                     continue;
                 }
@@ -177,7 +172,7 @@ class AutoDiscover
             if (!$e || empty($e['job_name']) || in_array($e['job_name'], $names)) {
                 continue;
             }
-            // 新发现全部设为 pending，用户手动启用后才变 active
+
             $e['status'] = AppConfig::STATUS_PENDING;
             $maps[] = $e;
             $saved++;
@@ -199,25 +194,25 @@ class AutoDiscover
     private function scanJenkins(array $activeRemotes, array $existingNames, array $platformHints = []): array
     {
         $found = [];
-        $seen  = [];  // 归一化 key，仅本 provider 内去重
+        $seen  = [];
         try {
             foreach ($this->jenkins->getAllJobs() as $jobName) {
                 $remotes  = $this->jenkins->getGitRemotes($jobName);
                 $remote   = $remotes[0] ?? '';
                 $rKey     = $remote ? $this->normalizeRemote($remote) : '';
-                // 该仓库已被当前模式的已有 active 记录映射（归一化 key 比对，跨协议生效）
+
                 if ($rKey && in_array($rKey, $activeRemotes)) {
                     continue;
                 }
-                // 本 provider 内同一仓库不重复显示
+
                 if ($rKey && in_array($rKey, $seen)) {
                     continue;
                 }
                 if (in_array($jobName, $existingNames)) {
                     continue;
                 }
-                // 平台识别：先用同轮扫描的提示表纠正（自建平台同 host 时 URL 无法区分），
-                // 查不到再走 URL 匹配或默认平台
+
+
                 $platform = '';
                 $pathKey  = $remote !== '' ? mb_strtolower($this->extractPath($remote, $jobName)) : '';
                 if ($pathKey !== '' && isset($platformHints[$pathKey])) {
@@ -237,12 +232,12 @@ class AutoDiscover
                     'current_path'   => $this->extractPath($remote, $jobName),
                     'project_id'     => null,
                     'web_url'        => '',
-                    'harbor_repository' => '',
+                    'registry_repository' => '',
                 ], 'source' => 'jenkins'];
             }
         } catch (\Exception $e) {
             $this->logger?->warning('AutoDiscover Jenkins 扫描失败', ['error' => $e->getMessage()]);
-            // 抛给 discover() 汇总到 __errors__：否则 Jenkins 不可达会被前端显示为无可发现项目
+
             throw $e;
         }
         return $found;
@@ -263,17 +258,16 @@ class AutoDiscover
         if (empty($base) || !$this->gitlabClient) {
             return $found;
         }
-        // 已配置才计为扫描源
+
         $this->scanSources[] = 'GitLab CI';
 
         try {
-            // 快速验证认证
             $test = $this->gitlabClient->get("{$base}/api/v4/user");
             if ($test->getStatusCode() === 401) {
                 throw new \RuntimeException('GitLab Token 无效，请检查后台平台连接里的 GitLab Token');
             }
             $page = 1;
-            $seen = [];  // 归一化 key，仅本 provider 内去重
+            $seen = [];
             while ($page <= 10) {
                 $resp = $this->gitlabClient->get("{$base}/api/v4/projects?per_page=100&page={$page}&membership=true&order_by=last_activity_at");
                 $data = json_decode($resp->getBody(), true);
@@ -286,11 +280,11 @@ class AutoDiscover
                     $pid  = $p['id'] ?? 0;
                     $remote = $p['http_url_to_repo'] ?? '';
                     $rKey   = $remote ? $this->normalizeRemote($remote) : '';
-                    // 该仓库已被当前模式的已有 active 记录映射（归一化 key 比对，跨协议生效）
+
                     if ($rKey && in_array($rKey, $activeRemotes)) {
                         continue;
                     }
-                    // 本 provider 内同一仓库不重复显示
+
                     if ($rKey && in_array($rKey, $seen)) {
                         continue;
                     }
@@ -309,14 +303,14 @@ class AutoDiscover
                         'current_path'   => $path,
                         'project_id'     => $p['id'] ?? null,
                         'web_url'        => $p['web_url'] ?? '',
-                        'harbor_repository' => '',
+                        'registry_repository' => '',
                     ], 'source' => 'gitlab_ci'];
                 }
                 $page++;
             }
         } catch (\Exception $e) {
             $this->logger?->warning('AutoDiscover GitLab CI 扫描失败', ['error' => $e->getMessage()]);
-            // 抛给 discover() 汇总到 __errors__：否则 GitLab 不可达或 Token 失效会被显示为空列表
+
             throw $e;
         }
         return $found;
@@ -337,19 +331,18 @@ class AutoDiscover
         if (empty($base) || !$this->giteaClient) {
             return $found;
         }
-        // 已配置才计为扫描源
+
         $this->scanSources[] = 'Gitea Actions';
 
         try {
             $page = 1;
-            $seen = [];  // 归一化 key，仅本 provider 内去重
+            $seen = [];
             while ($page <= 10) {
                 $resp = $this->giteaClient->get("{$base}/api/v1/user/repos?limit=100&page={$page}");
                 if ($resp->getStatusCode() === 401) {
                     throw new \RuntimeException('Gitea Token 无效，请检查后台平台连接里的 Gitea Token');
                 }
                 if ($resp->getStatusCode() >= 500) {
-                    // 同 GitHub：5xx 不能静默当空列表，否则 Gitea 不可用会被显示成「没有项目」
                     throw new \RuntimeException('Gitea 服务暂时不可用（HTTP ' . $resp->getStatusCode() . '）');
                 }
                 if ($resp->getStatusCode() >= 400) {
@@ -364,11 +357,11 @@ class AutoDiscover
                     $fullName = $p['full_name'] ?? '';
                     $remote   = $p['clone_url'] ?? '';
                     $rKey     = $remote ? $this->normalizeRemote($remote) : '';
-                    // 该仓库已被启用集合内的已有 active 记录映射（归一化 key 比对，跨源生效）
+
                     if ($rKey && in_array($rKey, $activeRemotes)) {
                         continue;
                     }
-                    // 本 provider 内同一仓库不重复显示
+
                     if ($rKey && in_array($rKey, $seen)) {
                         continue;
                     }
@@ -387,14 +380,14 @@ class AutoDiscover
                         'current_path'   => $fullName,
                         'project_id'     => null,
                         'web_url'        => $p['html_url'] ?? '',
-                        'harbor_repository' => '',
+                        'registry_repository' => '',
                     ], 'source' => 'gitea_ci'];
                 }
                 $page++;
             }
         } catch (\Exception $e) {
             $this->logger?->warning('AutoDiscover Gitea Actions 扫描失败', ['error' => $e->getMessage()]);
-            // 抛给 discover() 汇总到 __errors__：否则 Gitea 不可达或 Token 失效会被显示为空列表
+
             throw $e;
         }
         return $found;
@@ -415,20 +408,18 @@ class AutoDiscover
         if (empty($base) || !$this->githubClient) {
             return $found;
         }
-        // 已配置才计为扫描源
+
         $this->scanSources[] = 'GitHub Actions';
 
         try {
             $page = 1;
-            $seen = [];  // 归一化 key，仅本 provider 内去重
+            $seen = [];
             while ($page <= 10) {
                 $resp = $this->githubClient->get("{$base}/user/repos?per_page=100&page={$page}");
                 if ($resp->getStatusCode() === 401) {
                     throw new \RuntimeException('GitHub Token 无效，请检查后台平台连接里的 GitHub Token');
                 }
                 if ($resp->getStatusCode() >= 500) {
-                    // 5xx 是服务端故障，不能静默当空列表：否则用户会以为「没有项目」，
-                    // 实际是 GitHub 暂时不可用。与 401 一样抛给 discover() 汇总到 errors。
                     throw new \RuntimeException('GitHub 服务暂时不可用（HTTP ' . $resp->getStatusCode() . '）');
                 }
                 if ($resp->getStatusCode() >= 400) {
@@ -443,11 +434,11 @@ class AutoDiscover
                     $fullName = $p['full_name'] ?? '';
                     $remote   = $p['clone_url'] ?? '';
                     $rKey     = $remote ? $this->normalizeRemote($remote) : '';
-                    // 该仓库已被启用集合内的已有 active 记录映射（归一化 key 比对，跨源生效）
+
                     if ($rKey && in_array($rKey, $activeRemotes)) {
                         continue;
                     }
-                    // 本 provider 内同一仓库不重复显示
+
                     if ($rKey && in_array($rKey, $seen)) {
                         continue;
                     }
@@ -466,14 +457,14 @@ class AutoDiscover
                         'current_path'   => $fullName,
                         'project_id'     => null,
                         'web_url'        => $p['html_url'] ?? '',
-                        'harbor_repository' => '',
+                        'registry_repository' => '',
                     ], 'source' => 'github_actions'];
                 }
                 $page++;
             }
         } catch (\Exception $e) {
             $this->logger?->warning('AutoDiscover GitHub Actions 扫描失败', ['error' => $e->getMessage()]);
-            // 抛给 discover() 汇总到 __errors__：否则 GitHub 不可达或 Token 失效会被显示为空列表
+
             throw $e;
         }
         return $found;
@@ -496,63 +487,64 @@ class AutoDiscover
     {
         $found = [];
 
-        // GitLab：原生 CI（gitlab_ci）启用时由 scanGitlabCi() 覆盖，跳过避免重复扫描
+
         $glCfg = $this->config->getGitlabConfig();
         $base  = rtrim($glCfg['base_url'] ?? '', '/');
         if (!empty($base) && $this->gitlabClient && !in_array(AppConfig::PROVIDER_GITLAB_CI, $enabledProviders, true)) {
-            // 已配置才计为扫描源
             $this->scanSources[] = 'Git';
             try {
                 $test = $this->gitlabClient->get("{$base}/api/v4/user");
-                if ($test->getStatusCode() !== 401) {
-                    $page = 1;
-                    $seen = [];
-                    while ($page <= 10) {
-                        $resp = $this->gitlabClient->get("{$base}/api/v4/projects?per_page=100&page={$page}&membership=true&order_by=last_activity_at");
-                        $data = json_decode($resp->getBody(), true);
-                        if (!is_array($data) || empty($data)) {
-                            break;
-                        }
 
-                        foreach ($data as $p) {
-                            $path = $p['path_with_namespace'] ?? '';
-                            $remote = $p['http_url_to_repo'] ?? '';
-                            $rKey   = $remote ? $this->normalizeRemote($remote) : '';
-                            if ($rKey && in_array($rKey, $activeRemotes)) {
-                                continue;
-                            }
-                            if ($rKey && in_array($rKey, $seen)) {
-                                continue;
-                            }
-                            if (in_array($path, $existingNames)) {
-                                continue;
-                            }
-                            if ($rKey) {
-                                $seen[] = $rKey;
-                            }
-
-                            $found[] = ['entry' => [
-                                'job_name'       => $path,
-                                'build_provider' => AppConfig::PROVIDER_GITLAB_CI,
-                                'git_platform'   => 'gitlab',
-                                'git_remote'     => $remote,
-                                'current_path'   => $path,
-                                'project_id'     => $p['id'] ?? null,
-                                'web_url'        => $p['web_url'] ?? '',
-                                'harbor_repository' => '',
-                            ], 'source' => 'gitlab'];
-                        }
-                        $page++;
+                if ($test->getStatusCode() === 401) {
+                    throw new \RuntimeException('GitLab Token 无效，请检查后台平台连接里的 GitLab Token');
+                }
+                $page = 1;
+                $seen = [];
+                while ($page <= 10) {
+                    $resp = $this->gitlabClient->get("{$base}/api/v4/projects?per_page=100&page={$page}&membership=true&order_by=last_activity_at");
+                    $data = json_decode($resp->getBody(), true);
+                    if (!is_array($data) || empty($data)) {
+                        break;
                     }
+
+                    foreach ($data as $p) {
+                        $path = $p['path_with_namespace'] ?? '';
+                        $remote = $p['http_url_to_repo'] ?? '';
+                        $rKey   = $remote ? $this->normalizeRemote($remote) : '';
+                        if ($rKey && in_array($rKey, $activeRemotes)) {
+                            continue;
+                        }
+                        if ($rKey && in_array($rKey, $seen)) {
+                            continue;
+                        }
+                        if (in_array($path, $existingNames)) {
+                            continue;
+                        }
+                        if ($rKey) {
+                            $seen[] = $rKey;
+                        }
+
+                        $found[] = ['entry' => [
+                            'job_name'       => $path,
+                            'build_provider' => AppConfig::PROVIDER_GITLAB_CI,
+                            'git_platform'   => 'gitlab',
+                            'git_remote'     => $remote,
+                            'current_path'   => $path,
+                            'project_id'     => $p['id'] ?? null,
+                            'web_url'        => $p['web_url'] ?? '',
+                            'registry_repository' => '',
+                        ], 'source' => 'gitlab'];
+                    }
+                    $page++;
                 }
             } catch (\Exception $e) {
                 $this->logger?->warning('AutoDiscover Git 平台扫描失败 (GitLab)', ['error' => $e->getMessage()]);
-                // 抛给 discover() 汇总到 __errors__：否则 GitLab 不可达会被显示为空列表
+
                 throw $e;
             }
         }
 
-        // TODO: GitHub / Gitee / Gitea 项目列表 API 对接（按需扩展）
+
 
         return $found;
     }

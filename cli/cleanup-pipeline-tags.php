@@ -6,26 +6,21 @@
  *   php cli/cleanup-pipeline-tags.php
  *
  * 说明：
- *   - 以 Harbor 为准：逐条核对 ci_pipeline_artifacts，Harbor 里已不存在的 tag
- *     对应的记录会被删除。数据由 Glue（CI 层）维护，按解耦约定 CD 只读 ci_* 表
- *     不删除（用户可能不启用 CD 系统），故本脚本不依赖 CD 存活。
- *   - 安全约束：Harbor 未配置 / 不可达 / harbor_repository 或 tag 为空时跳过，
- *     不删除任何记录；只删 Harbor 明确返回了 tag 列表且其中没有这条的记录。
- *   - 幂等：可重复跑、并发跑无害。只操作 ci_pipeline_artifacts，不碰任何 cd_* 表。
- *   - 受后台开关 stale_tag_cleanup_enabled 控制：未开启时直接跳过（退出码 0）。
- *
  * 调度：用宿主 cron / 容器 crontab / Windows 计划任务定时调用即可，与 CD 完全解耦。
  *   例如每小时：0 * * * * php /path/to/cli/cleanup-pipeline-tags.php >> /data/logs/tag-cleanup.log 2>&1
  *
- * 退出码：0 = 完成（含开关未开启 / Harbor 未配置 / 不可达而安全跳过）；1 = 致命错误（库连不上、表缺失或异常）。
+ * 退出码：0 = 完成（含开关未开启 / 镜像仓库未配置 / 不可达而安全跳过）；1 = 致命错误（库连不上、表缺失或异常）。
  */
 require __DIR__ . '/bootstrap.php';
 
 use App\Config\AppConfig;
+use App\Service\AppSettingRepository;
 use App\Service\Database;
 use App\Service\HarborService;
 use App\Service\PipelineTagService;
 use App\Service\PlatformConnectionRepository;
+use App\Service\Registry\DockerRegistryProvider;
+use App\Service\Registry\HarborProvider;
 use GuzzleHttp\Client;
 
 // ── 1. 初始化数据库（Database::getPdo() 内部 createPdo()+bootstrap()，建表+种子+自检，只跑一次）──
@@ -48,27 +43,43 @@ if (!$cleanupEnabled) {
     exit(0);
 }
 
-// ── 4. 构造 HarborService（未配置时传 null，服务会安全跳过；连接值从 DB 解析）──
-$harbor = null;
-$harborCfg = (new PlatformConnectionRepository($pdo))->resolveConnections()['harbor'] ?? [];
-$harborUrl = rtrim($harborCfg['url'] ?? '', '/');
-if ($harborUrl !== '') {
-    $harborClient = new Client([
-        'base_uri' => $harborUrl,
-        'auth'     => [
-            $harborCfg['username'] ?? 'admin',
-            $harborCfg['password'] ?? '',
-        ],
-        'headers'         => ['Accept' => 'application/json'],
-        'connect_timeout' => 5,   // TCP 握手超时，防止 hang
-        'timeout'         => 15,  // 整个请求超时
-    ]);
-    $harbor = new HarborService($harborClient, $pdo, null);
+// ── 4. 构造镜像仓库提供方（未配置时传 null，服务会安全跳过；连接值从 DB 解析）──
+$registry = null;
+$registryCfg = (new PlatformConnectionRepository($pdo))->resolveConnections()['harbor'] ?? [];
+$registryUrl = rtrim((string)($registryCfg['url'] ?? ''), '/');
+if ($registryUrl !== '') {
+    if ((new AppSettingRepository($pdo))->getRegistryType() === 'registry') {
+        $registryClient = new Client([
+            'base_uri'        => $registryUrl . '/',
+            'headers'         => ['Accept' => 'application/json'],
+            'connect_timeout' => 5,
+            'timeout'         => 15,
+            'http_errors'     => false,
+        ]);
+        $registry = new DockerRegistryProvider(
+            $registryClient,
+            (string)($registryCfg['username'] ?? ''),
+            (string)($registryCfg['password'] ?? ''),
+            null
+        );
+    } else {
+        $harborClient = new Client([
+            'base_uri' => $registryUrl,
+            'auth'     => [
+                $registryCfg['username'] ?? 'admin',
+                $registryCfg['password'] ?? '',
+            ],
+            'headers'         => ['Accept' => 'application/json'],
+            'connect_timeout' => 5,   // TCP 握手超时，防止 hang
+            'timeout'         => 15,  // 整个请求超时
+        ]);
+        $registry = new HarborProvider(new HarborService($harborClient, $pdo, null));
+    }
 }
 
 // ── 5. 执行清理 ──
-if ($harbor === null) {
-    echo "跳过：Harbor 未配置（平台连接 URL 为空），ci_pipeline_artifacts 未做清理。\n";
+if ($registry === null) {
+    echo "跳过：镜像仓库未配置（平台连接 URL 为空），ci_pipeline_artifacts 未做清理。\n";
     exit(0);
 }
 
@@ -86,10 +97,10 @@ if ($lockToken === null) {
 // 用标志位收集失败，finally 内统一释放，再在块外按结果退出。
 $failed = false;
 try {
-    $svc  = new PipelineTagService($pdo, $harbor);
+    $svc  = new PipelineTagService($pdo, $registry);
     $stat = $svc->cleanupStaleTags();
     echo "✓ 清理完成：删除 {$stat['deleted']} 条"
-        . "（核对 {$stat['checked']} / Harbor 不可达跳过 {$stat['unreachable']} / 空 harbor_repository 或 tag 跳过 {$stat['unverifiable']}）\n";
+        . "（核对 {$stat['checked']} / 镜像仓库不可达跳过 {$stat['unreachable']} / 空 registry_repository 或 tag 跳过 {$stat['unverifiable']}）\n";
 } catch (\Throwable $e) {
     fwrite(STDERR, "错误：清理失败: {$e->getMessage()}\n");
     $failed = true;

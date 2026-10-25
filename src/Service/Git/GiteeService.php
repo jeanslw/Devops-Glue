@@ -47,7 +47,7 @@ class GiteeService extends AbstractGitProvider
     public function setCommitStatus(string $repository, string $sha, string $state, string $context, string $description, string $targetUrl = ''): array
     {
         $body = [
-            'state'       => $state,
+            'state'       => $state === 'failed' ? 'failure' : $state,
             'description' => $description,
             'context'     => $context,
         ];
@@ -63,15 +63,11 @@ class GiteeService extends AbstractGitProvider
                 'message' => $response->getStatusCode() < 400 ? 'status 已回写' : '回写失败',
             ];
         } catch (ConnectException | ServerException $e) {
-            // 连接级失败与公开版不支持 API 是两回事：不可达必须如实上报，
-            // 不得当成平台能力限制（原始异常仍只进服务端日志，不下发）
             $this->logger?->warning('Gitee commit status 回写失败（服务不可达）', [
                 'repository' => $repository, 'sha' => $sha, 'error' => $e->getMessage(),
             ]);
             return ['success' => false, 'message' => '回写失败: Gitee 服务不可达'];
         } catch (GuzzleException $e) {
-            // 原始异常（含完整 URL / repo / SHA）只进服务端日志，绝不下发到接口响应或落库，
-            // 避免把内部 Git 拓扑泄露给 API 调用方。
             $this->logger?->warning('Gitee commit status 回写失败', [
                 'repository' => $repository, 'sha' => $sha, 'error' => $e->getMessage(),
             ]);

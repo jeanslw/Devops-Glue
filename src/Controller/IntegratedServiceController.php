@@ -21,11 +21,6 @@ use Psr\Http\Message\ServerRequestInterface as Request;
  *   - 启用/禁用：仅 super_admin（与 API token 签发、库结构迁移同级：启用会签发服务凭据，
  *     禁用会冻结一整个下游系统），API token 与普通管理员不可达（/api/admin 组 fail-closed）；
  *   - 启用是签发新凭据或恢复被冻结的同一枚凭据 + 写契约行的事务；禁用是冻结 + 停用 token 的事务；
- *   - 语义分界：禁用只是冻结，凭据行与外键一直留着，再次启用即恢复同一枚凭据，
- *     原明文继续可用、CD 无需更换 CI_API_TOKEN；只有作废（Token 列表撤销 / 删除 / 已过期）
- *     才需要补发新凭据，此时服务处于已启用但无凭据的故障态：再次启用即在同一事务内补发 + 重绑
- *     （不算重复启用、不返回 409，否则服务卡死且无法自助恢复）；
- *   - 集成服务（CD）侧对 integrated_services 只读，启停权在 CI。
  */
 final class IntegratedServiceController extends BaseController
 {
@@ -63,16 +58,16 @@ final class IntegratedServiceController extends BaseController
         }
         $service = $this->knownService($response, (string) ($args['service'] ?? ''));
         if (!is_string($service)) {
-            return $service; // 404 响应
+            return $service;
         }
 
         return $this->output($response, array_merge($this->services->getState($service), [
             'service'           => $service,
-            // 启用时将写入的 provision：跟随 CI 当前迁移模式（界面据此提示下游将自动/手动建表）
+
             'default_provision' => Database::isAutoMigrateEnabled()
                 ? AppConfig::SERVICE_PROVISION_AUTO
                 : AppConfig::SERVICE_PROVISION_MANUAL,
-            // 前端展示将签发哪些能力，后端启用时仍以此常量为准（不采用前端入参）
+
             'token_scopes'      => AppConfig::CD_SERVICE_TOKEN_SCOPES,
         ]), $request);
     }
@@ -104,29 +99,29 @@ final class IntegratedServiceController extends BaseController
         }
 
         $state = $this->services->getState($service);
-        // 幂等判断：只有已启用且凭据仍有效才算重复启用。
-        // 已启用但凭据失效必须放行到下面的补发路径，否则在 Token 列表里撤销/删除 cd-service
-        // 会把服务卡在已启用却无凭据的状态：勾选框点不动、直接调接口又返回 409。
+
+
+
         if ($state['enabled'] && $state['token_active']) {
             return $this->jsonError($response, 'integrated.already_enabled', 409);
         }
 
-        // 冻结与作废分开处理，混成一种就会做错其中一件：
-        //   - 冻结：契约行未启用 + 凭据行还在、只是被 enabled=0 停用且未过期，即上一次禁用的现场。
-        //     revoke 只改 enabled、sha256 摘要未动，恢复同一枚即可让原明文重新生效，
-        //     已配在 CD 里的 CI_API_TOKEN 无需更换；
-        //   - 作废：凭据被撤销（契约行仍启用，说明有人显式作废了它）/ 被删除（外键置空、摘要已丢）/ 已过期，
-        //     原凭据已不可用或不该复活，只能补发新凭据（CD 必须换明文），故不走恢复。
+
+
+
+
+
+
         $reuseTokenId = !$state['enabled']
             && $state['token_exists']
             && !$state['token_enabled']
             && !$state['token_expired']
             ? $state['token_id']
             : null;
-        // 仅在已启用时把契约行上的旧凭据视为补发对象（禁用过的行仍留着旧 id，那条要么被恢复、要么已作废）
+
         $previousTokenId = $state['enabled'] ? $state['token_id'] : null;
 
-        // provision 默认跟随 CI 当前迁移模式；允许 body 显式覆盖（界面展示后可不传），只接受 auto/manual。
+
         $body      = $request->getParsedBody() ?? json_decode((string) $request->getBody(), true) ?? [];
         $provision = Database::isAutoMigrateEnabled()
             ? AppConfig::SERVICE_PROVISION_AUTO
@@ -142,22 +137,16 @@ final class IntegratedServiceController extends BaseController
         try {
             $this->pdo->beginTransaction();
             if ($reuseTokenId !== null) {
-                // 冻结后恢复：把同一枚凭据重新启用 + 回写契约行（provision 允许在恢复时改写）。
-                // 既不签发也不返回明文，CD 手上已有那枚 Token 的明文。
-                // 同时把 scope 补齐到当前契约（只补不删）：存量凭据可能缺 v2.9.0 新增的 git，
-                // 不补的话「禁用再启用」这个运维动作会恢复出一枚仍然调不了 /api/git/* 的凭据。
                 $this->apiTokens->restore($reuseTokenId);
                 $this->apiTokens->addScopes($reuseTokenId, AppConfig::CD_SERVICE_TOKEN_SCOPES);
                 $this->services->enable($service, $provision, $reuseTokenId, $this->currentUser);
                 $tokenId = $reuseTokenId;
                 $plain   = null;
             } else {
-                // 作废后补发：把失效的旧凭据彻底关掉（已撤销 / 已被删除的行无副作用，只是关掉过期的那枚），
-                // 与新凭据签发 + 契约行重绑同事务，避免留下两枚指向同一服务的凭据。
                 if ($previousTokenId !== null) {
                     $this->apiTokens->revoke($previousTokenId);
                 }
-                // 凭据签发与契约行写入同事务：任一步失败整体回滚，不留下启用了却没 token、有 token 却未启用的中间态。
+
                 $created = $this->apiTokens->createToken([
                     'name'       => $service . '-service',
                     'scopes'     => AppConfig::CD_SERVICE_TOKEN_SCOPES,
@@ -191,11 +180,11 @@ final class IntegratedServiceController extends BaseController
             'service'   => $service,
             'provision' => $provision,
             'token_id'  => $tokenId,
-            // true = 本次恢复了原有凭据（禁用后再启用的常规路径）：明文不重发，CD 无需换 Token
+
             'reused'    => $reuseTokenId !== null,
-            // true = 契约行本就启用、只是凭据已作废，本次补发新凭据（旧凭据保持作废，CD 必须换明文）
+
             'reissued'  => $plain !== null && $state['enabled'],
-            // 明文仅此一次：DB 只存 sha256 摘要，丢失只能重新启用/重签；恢复路径没有明文可发（也无需发）
+
             'token'     => $plain,
         ], $request);
     }
@@ -225,7 +214,7 @@ final class IntegratedServiceController extends BaseController
 
         try {
             $this->pdo->beginTransaction();
-            // 冻结契约行 + 撤销配套 token 同事务：禁用后该凭据对 CI 的 HTTP 调用也立即失效。
+
             $oldTokenId = $this->services->disable($service, $this->currentUser);
             if ($oldTokenId !== null) {
                 $this->apiTokens->revoke($oldTokenId);

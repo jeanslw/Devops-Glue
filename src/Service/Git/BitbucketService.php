@@ -23,7 +23,6 @@ class BitbucketService extends AbstractGitProvider
         $username = trim($config['username'] ?? '');
         $headers  = [];
         if ($username !== '') {
-            // App Password：username 为 Bitbucket 账号名，token 为 app password
             $headers['Authorization'] = 'Basic ' . base64_encode($username . ':' . $token);
         } elseif ($token !== '') {
             $headers['Authorization'] = 'Bearer ' . $token;
@@ -87,7 +86,7 @@ class BitbucketService extends AbstractGitProvider
             return ['success' => false, 'message' => '仓库路径格式错误'];
         }
 
-        // Bitbucket build status 的 state 为大写枚举，且无 error/failed 之分，失败统一映射到 FAILED
+
         $bbState = match ($state) {
             'pending' => 'INPROGRESS',
             'success' => 'SUCCESSFUL',
@@ -95,7 +94,7 @@ class BitbucketService extends AbstractGitProvider
             'error'   => 'FAILED',
             default   => 'FAILED',
         };
-        // key 是同一 commit 下的唯一标识，仅允许 [A-Z0-9_]
+
         $key = strtoupper(preg_replace('/[^A-Za-z0-9]+/', '_', $context) ?? '');
         if ($key === '') {
             $key = 'BUILD';

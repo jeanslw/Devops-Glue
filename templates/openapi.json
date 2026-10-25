@@ -2,18 +2,12 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Devops-Glue API",
-    "version": "2.10.0",
+    "version": "2.11.0",
     "description": "DevOps 工具链集成接口 —— Jenkins/GitLab CI、GitLab/Gitee/GitHub/Gitea、Harbor 统一 API。",
     "contact": {
       "email": "jeanslw@qq.com"
     }
   },
-  "servers": [
-    {
-      "url": "",
-      "description": "当前环境"
-    }
-  ],
   "tags": [
     {
       "name": "Health",
@@ -34,6 +28,10 @@
     {
       "name": "Harbor",
       "description": "镜像仓库与安全扫描"
+    },
+    {
+      "name": "Registry",
+      "description": "镜像仓库通用列表（Harbor / registry:2 均可用，按全局 registry_type 分派）"
     },
     {
       "name": "Integration",
@@ -195,12 +193,13 @@
               "harbor_version": {
                 "type": "string",
                 "nullable": true,
-                "example": "v2"
+                "example": "v2",
+                "description": "Harbor 模式返回实际版本（如 v2）；registry:2 模式固定返回 \"registry\""
               },
               "harbor_components": {
                 "type": "object",
                 "nullable": true,
-                "description": "Harbor 各子组件健康状态（core/jobservice/registry 任一为 false 则整体不健康）",
+                "description": "Harbor 模式：core/jobservice/registry 三组件（任一 false 则整体不健康）；registry:2 模式：仅 registry 单组件（探测 /v2/）",
                 "properties": {
                   "core": {
                     "type": "boolean",
@@ -348,9 +347,9 @@
             "description": "项目路径（URL slug）",
             "example": "tools/registry"
           },
-          "harbor_repository": {
+          "registry_repository": {
             "type": "string",
-            "description": "关联 Harbor 仓库",
+            "description": "关联镜像仓库",
             "example": "mycode/myapp"
           },
           "api_version": {
@@ -391,7 +390,7 @@
             "web_url": {
               "type": "string"
             },
-            "harbor_repository": {
+            "registry_repository": {
               "type": "string"
             },
             "platform_source": {
@@ -451,6 +450,43 @@
           }
         }
       },
+      "RegistrySyncRequest": {
+        "type": "object",
+        "required": [
+          "ci_status"
+        ],
+        "properties": {
+          "ci_status": {
+            "type": "string",
+            "enum": [
+              "success",
+              "failed",
+              "running"
+            ],
+            "description": "CI 流水线状态；仅 success 写入 ci_pipeline_artifacts"
+          },
+          "tag": {
+            "type": "string",
+            "example": "v3.0.0",
+            "description": "镜像 tag；不传取仓库 tag 列表首个（Harbor 为最近推送，registry:2 顺序由仓库决定）"
+          },
+          "sha": {
+            "type": "string",
+            "example": "abc123def",
+            "description": "提交 SHA；与 pipeline_iid 成对出现，两者都不传时回退最新流水线"
+          },
+          "pipeline_iid": {
+            "type": "integer",
+            "example": 123,
+            "description": "流水线编号；与 sha 成对出现"
+          },
+          "source_updated_at": {
+            "type": "string",
+            "example": "2026-10-23T10:00:00+08:00",
+            "description": "来源侧更新时间；不传使用 Glue 写入时间"
+          }
+        }
+      },
       "ScanSyncResult": {
         "type": "object",
         "properties": {
@@ -466,7 +502,7 @@
             "type": "string",
             "example": "v3.0.0"
           },
-          "harbor_repository": {
+          "registry_repository": {
             "type": "string",
             "example": "mycode/myapp"
           },
@@ -617,7 +653,7 @@
             "type": "string",
             "example": "success"
           },
-          "harbor_repository": {
+          "registry_repository": {
             "type": "string",
             "example": "mycode/myapp"
           },
@@ -1830,7 +1866,7 @@
                       "current_path": {
                         "type": "string"
                       },
-                      "harbor_repository": {
+                      "registry_repository": {
                         "type": "string"
                       },
                       "git_platform": {
@@ -1884,7 +1920,7 @@
                       "current_path": {
                         "type": "string"
                       },
-                      "harbor_repository": {
+                      "registry_repository": {
                         "type": "string"
                       },
                       "git_platform": {
@@ -1931,7 +1967,7 @@
                       "current_path": {
                         "type": "string"
                       },
-                      "harbor_repository": {
+                      "registry_repository": {
                         "type": "string"
                       },
                       "git_platform": {
@@ -1988,7 +2024,7 @@
                       "current_path": {
                         "type": "string"
                       },
-                      "harbor_repository": {
+                      "registry_repository": {
                         "type": "string"
                       },
                       "git_platform": {
@@ -2817,8 +2853,8 @@
         "tags": [
           "Build"
         ],
-        "summary": "Harbor 镜像扫描 → Commit Status 回写",
-        "description": "构建完成后回调：取 Harbor 漏洞报告回写到 Git 平台 commit status（harbor-scan 上下文）；tag 不传取 Harbor 最新",
+        "summary": "镜像仓库扫描 → Commit Status 回写（Harbor 存量入口）",
+        "description": "构建完成后回调：写回扫描结论（不支持的仓库类型自动跳过扫描）并回写 Git commit status（harbor-scan 上下文）；tag 不传取仓库 tag 列表首个（Harbor 为最近推送；registry:2 顺序由仓库决定，建议显式传）。新接入方请使用 registry-sync",
         "operationId": "buildScanSync",
         "security": [
           {
@@ -2837,17 +2873,11 @@
           }
         ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "properties": {
-                  "tag": {
-                    "type": "string",
-                    "example": "v3.0.0",
-                    "description": "镜像 tag，不传取 Harbor 最新"
-                  }
-                }
+                "$ref": "#/components/schemas/RegistrySyncRequest"
               }
             }
           }
@@ -2855,6 +2885,57 @@
         "responses": {
           "200": {
             "description": "扫描同步结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanSyncResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          }
+        }
+      }
+    },
+    "/api/build/{path}/registry-sync": {
+      "post": {
+        "tags": [
+          "Build"
+        ],
+        "summary": "镜像制品回写（不依赖扫描）",
+        "description": "基础回写端点：校验 tag、写入 ci_pipeline_artifacts、记录审计并回写 Git commit status（registry-sync 上下文）。ci_pipeline_artifacts 仅当 ci_status=success 时写（failed/running 不产出可部署产物，防止被投影成已推送成功）；审计记录（ci_security_checks）任何 ci_status 都写——writeback_status=success（推送事实）/ skipped（failed、running，仅留痕）；commit status 回写不受影响。镜像仓库不支持扫描时不产生扫描结论，scan_state=unknown",
+        "operationId": "buildRegistrySync",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "php/myapp"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistrySyncRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "回写结果",
             "content": {
               "application/json": {
                 "schema": {
@@ -2962,12 +3043,12 @@
                   "tag": {
                     "type": "string",
                     "example": "v1.0.0",
-                    "description": "镜像 tag（status=success 时必填，须真实存在于 Harbor，否则 400）"
+                    "description": "镜像 tag（status=success 时必填，须真实存在于镜像仓库，否则 400）"
                   },
-                  "harbor_repository": {
+                  "registry_repository": {
                     "type": "string",
                     "example": "team/myapp",
-                    "description": "Harbor 仓库路径（project/repo 两段式，取自 job_git_map，body 传入忽略）"
+                    "description": "镜像仓库路径（至少两段，如 team/app 或 team/project/image；取自 job_git_map，body 传入忽略）"
                   },
                   "env": {
                     "type": "string",
@@ -4051,6 +4132,302 @@
           },
           "503": {
             "description": "扫描功能未启用"
+          }
+        }
+      }
+    },
+    "/api/registry/projects": {
+      "get": {
+        "tags": [
+          "Registry"
+        ],
+        "summary": "当前镜像仓库的项目列表",
+        "description": "按全局镜像仓库类型分派：Harbor 取 Harbor 项目列表；registry:2 由 /v2/_catalog 的仓库名首段聚合（该协议无 project 概念，单段根级仓库不计入项目）。镜像仓库未配置 url 时返回 409。",
+        "operationId": "registryProjects",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "项目名数组",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "镜像仓库未配置（缺少 url）"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Registry"
+        ],
+        "summary": "当前镜像仓库的项目列表",
+        "description": "与 GET 行为一致，参数走 Query String。",
+        "operationId": "registryProjectsPost",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "项目名数组",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "镜像仓库未配置（缺少 url）"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        }
+      }
+    },
+    "/api/registry/{project}/repositories": {
+      "get": {
+        "tags": [
+          "Registry"
+        ],
+        "summary": "指定项目下的仓库列表（已去项目前缀）",
+        "description": "Harbor 走 Harbor 的 project repositories 接口；registry:2 由 /v2/_catalog 按“项目/”前缀过滤后去掉前缀（该协议无 project 概念）。项目不存在或该项目下没有仓库时返回 500 + message；仓库关闭了 /v2/_catalog 时同样明确报错，不返回空数组。",
+        "operationId": "registryRepositories",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "mycode"
+          },
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "仓库名数组（已去项目前缀）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "镜像仓库未配置（缺少 url）"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Registry"
+        ],
+        "summary": "指定项目下的仓库列表（已去项目前缀）",
+        "description": "与 GET 行为一致，参数走 Query String。",
+        "operationId": "registryRepositoriesPost",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "mycode"
+          },
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "仓库名数组（已去项目前缀）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "镜像仓库未配置（缺少 url）"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        }
+      }
+    },
+    "/api/registry/{project}/repositories/{repository}/tags": {
+      "get": {
+        "tags": [
+          "Registry"
+        ],
+        "summary": "指定仓库的 Tag 列表（自动翻页，上限 2000）",
+        "description": "按全局镜像仓库类型分派：Harbor 取其 tag API（最近推送在前）；registry:2 取 /v2/{name}/tags/list 并跟随 Link 翻页（顺序由仓库决定）。repository 为去项目前缀的短名；短名含 /（如 mycode/a/b 的短名 a/b）时需双重编码为 %252F。仓库不存在返回 500 + message。镜像仓库未配置 url 时返回 409。",
+        "operationId": "registryTags",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "mycode"
+          },
+          {
+            "name": "repository",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "devops-glue",
+            "allowReserved": true
+          },
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tag 名数组",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "镜像仓库未配置（缺少 url）"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Registry"
+        ],
+        "summary": "指定仓库的 Tag 列表（自动翻页，上限 2000）",
+        "description": "与 GET 行为一致，参数走 Query String。",
+        "operationId": "registryTagsPost",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "mycode"
+          },
+          {
+            "name": "repository",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "devops-glue",
+            "allowReserved": true
+          },
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tag 名数组",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "镜像仓库未配置（缺少 url）"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
           }
         }
       }
@@ -7082,6 +7459,18 @@
                         "null"
                       ],
                       "description": "契约行最后更新时间；未启用时为 null"
+                    },
+                    "registry_type": {
+                      "type": "string",
+                      "enum": [
+                        "harbor",
+                        "registry"
+                      ],
+                      "description": "镜像仓库类型（Glue 为事实源）：harbor=Harbor API，registry=标准 OCI Distribution（registry:2）。仅当调用凭据持有 镜像仓库 查询 scope（registry.read，同时管 Harbor 与 registry:2 查询）时下发，否则为空串；消费方以下发值为准，本地 env 仅作端点不可用时兜底"
+                    },
+                    "registry_url": {
+                      "type": "string",
+                      "description": "镜像仓库地址（与 Glue 平台连接中的 harbor.url 一致）；未配置、或调用凭据无 镜像仓库 查询 scope（registry.read）时为空串"
                     }
                   }
                 }

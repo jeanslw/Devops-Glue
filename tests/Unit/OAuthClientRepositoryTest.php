@@ -34,7 +34,7 @@ class OAuthClientRepositoryTest extends TestCase
         $this->pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
         $this->pdo->setAttribute(\PDO::ATTR_DEFAULT_FETCH_MODE, \PDO::FETCH_ASSOC);
 
-        // 与 src/Service/Database.php::ensureTables() 的 SQLite 分支保持同构
+        
         $this->pdo->exec('CREATE TABLE ' . AppConfig::TABLE_OAUTH_CLIENTS . ' (
             client_id    TEXT PRIMARY KEY,
             secret       TEXT,
@@ -117,7 +117,7 @@ class OAuthClientRepositoryTest extends TestCase
 
     public function testSaveUpdatePreservesCreatedAt(): void
     {
-        // 手工插入一行，created_at 固定在过去；save() 走 UPDATE 必须只刷新 updated_at。
+        
         $this->pdo->prepare(
             'INSERT INTO ' . AppConfig::TABLE_OAUTH_CLIENTS
             . ' (client_id, secret, redirect_uri, system, enabled, description, created_at, updated_at)'

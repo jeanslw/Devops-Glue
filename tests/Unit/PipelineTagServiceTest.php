@@ -4,21 +4,21 @@ declare(strict_types=1);
 namespace App\Test\Unit;
 
 use App\Config\AppConfig;
-use App\Service\HarborService;
 use App\Service\PipelineTagService;
+use App\Service\Registry\RegistryProviderInterface;
 use PHPUnit\Framework\TestCase;
 
 /**
- * PipelineTagService::cleanupStaleTags 单元测试
+ * PipelineTagService 单元测试
  *
- * 覆盖以 Harbor 为准清理 ci_pipeline_artifacts 时的安全约束：
- *   - 只删 Harbor 明确返回了 tag 列表且其中没有这条的记录；
- *   - Harbor 不可达：该仓库跳过，不删除任何记录；
+ * 覆盖以镜像仓库为准清理 ci_pipeline_artifacts 时的安全约束：
+ *   - 只删镜像仓库明确返回了 tag 列表且其中没有这条的记录；
+ *   - 镜像仓库不可达：该仓库跳过，不删除任何记录；
  *   - repository / tag 为空：跳过（无法校验即保留）；
- *   - Harbor 未配置（null）：整体跳过；
+ *   - 镜像仓库未配置（null）：整体跳过；
  *   - 只操作 ci_pipeline_artifacts，不碰 cd_* 表。
  *
- * 依赖 SQLite 内存库 + mock HarborService（override getTags），不触网。
+ * 依赖 SQLite 内存库 + mock RegistryProviderInterface，不触网。
  *
  * 运行：vendor/bin/phpunit tests/Unit/PipelineTagServiceTest.php
  */
@@ -47,12 +47,12 @@ class PipelineTagServiceTest extends TestCase
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
             UNIQUE (provider, project_id, pipeline_iid)
         )');
-        // 顺带造一张 cd_* 表，用于验证不会写到 cd_* 表
+        
         $this->pdo->exec('CREATE TABLE cd_registry_artifacts (
             id INTEGER PRIMARY KEY,
             tag TEXT
         )');
-        // 日志兜底缓存表（回填数据来源），含 canonical identity + repository 列
+        
         $this->pdo->exec('CREATE TABLE ' . AppConfig::TABLE_BUILD_TAG_CACHE . ' (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             project_key TEXT DEFAULT "",
@@ -88,75 +88,75 @@ class PipelineTagServiceTest extends TestCase
     }
 
     /**
-     * mock HarborService：只 override getTags，按 "project/repo" 返回可控 tag 列表。
-     * 未 stub 的仓库返回 ['error' => ...]（模拟 Harbor 不可达）。
+     * mock RegistryProviderInterface：按仓库返回可控 tag 列表。
+     * 未 stub 的仓库返回 ['error' => ...]（模拟镜像仓库不可达）。
      */
-    private function makeHarbor(array $tagsByRepo): HarborService
+    private function makeRegistry(array $tagsByRepo): RegistryProviderInterface
     {
-        $harbor = $this->getMockBuilder(HarborService::class)
-            ->disableOriginalConstructor()
-            ->onlyMethods(['getTags'])
-            ->getMock();
-        $harbor->method('getTags')->willReturnCallback(
-            function (string $project, string $repository) use ($tagsByRepo): array {
-                $key = $project . '/' . $repository;
-                if (!array_key_exists($key, $tagsByRepo)) {
-                    return ['error' => 'harbor unreachable (not stubbed)'];
+        $registry = $this->createMock(RegistryProviderInterface::class);
+        $registry->method('type')->willReturn('harbor');
+        $registry->method('supportsScanning')->willReturn(true);
+        $registry->method('repositoryExists')->willReturn(true);
+        $registry->method('getScanReport')->willReturn([]);
+        $registry->method('getTags')->willReturnCallback(
+            function (string $repository) use ($tagsByRepo): array {
+                if (!array_key_exists($repository, $tagsByRepo)) {
+                    return ['error' => 'registry unreachable (not stubbed)'];
                 }
-                return $tagsByRepo[$key];
+                return $tagsByRepo[$repository];
             }
         );
-        return $harbor;
+        return $registry;
     }
 
     public function testDeletesStaleTagsOnly(): void
     {
-        $this->insertTag('java/registry', 1, 'v1.0.0', 'mycode/registry'); // Harbor 有 → 保留
-        $this->insertTag('java/registry', 2, 'v0.9.0', 'mycode/registry'); // Harbor 无 → 删除
-        $harbor = $this->makeHarbor(['mycode/registry' => ['v1.0.0', 'latest']]);
+        $this->insertTag('java/registry', 1, 'v1.0.0', 'mycode/registry'); 
+        $this->insertTag('java/registry', 2, 'v0.9.0', 'mycode/registry'); 
+        $registry = $this->makeRegistry(['mycode/registry' => ['v1.0.0', 'latest']]);
 
-        $stat = (new PipelineTagService($this->pdo, $harbor))->cleanupStaleTags();
+        $stat = (new PipelineTagService($this->pdo, $registry))->cleanupStaleTags();
 
         $this->assertSame(1, $stat['deleted']);
         $this->assertSame(2, $stat['checked']);
         $this->assertSame(0, $stat['unreachable']);
         $this->assertSame(0, $stat['unverifiable']);
         $this->assertSame(1, $this->countTags());
-        // 剩下的那行是 v1.0.0
+        
         $row = $this->pdo->query('SELECT tag FROM ' . AppConfig::TABLE_PIPELINE_ARTIFACTS)->fetch();
         $this->assertSame('v1.0.0', $row['tag']);
     }
 
-    public function testSkipsWhenHarborUnreachable(): void
+    public function testSkipsWhenRegistryUnreachable(): void
     {
         $this->insertTag('java/registry', 1, 'v1.0.0', 'mycode/registry');
-        // getTags 返回 error，模拟 Harbor 不可达
-        $harbor = $this->makeHarbor(['mycode/registry' => ['error' => 'harbor down']]);
+        
+        $registry = $this->makeRegistry(['mycode/registry' => ['error' => 'registry down']]);
 
-        $stat = (new PipelineTagService($this->pdo, $harbor))->cleanupStaleTags();
+        $stat = (new PipelineTagService($this->pdo, $registry))->cleanupStaleTags();
 
         $this->assertSame(0, $stat['deleted']);
         $this->assertSame(0, $stat['checked']);
         $this->assertSame(1, $stat['unreachable']);
-        $this->assertSame(1, $this->countTags()); // 一条不删
+        $this->assertSame(1, $this->countTags()); 
     }
 
-    public function testSkipsEmptyHarborRepositoryOrTag(): void
+    public function testSkipsEmptyRegistryRepositoryOrTag(): void
     {
-        $this->insertTag('p1', 1, 'v1', '');               // harbor_repository 空
-        $this->insertTag('p2', 1, '', 'mycode/registry');  // tag 空
-        $harbor = $this->makeHarbor(['mycode/registry' => ['v1']]);
+        $this->insertTag('p1', 1, 'v1', '');               
+        $this->insertTag('p2', 1, '', 'mycode/registry');  
+        $registry = $this->makeRegistry(['mycode/registry' => ['v1']]);
 
-        $stat = (new PipelineTagService($this->pdo, $harbor))->cleanupStaleTags();
+        $stat = (new PipelineTagService($this->pdo, $registry))->cleanupStaleTags();
 
         $this->assertSame(0, $stat['deleted']);
         $this->assertSame(0, $stat['checked']);
         $this->assertSame(0, $stat['unreachable']);
         $this->assertSame(2, $stat['unverifiable']);
-        $this->assertSame(2, $this->countTags()); // 两条都保留
+        $this->assertSame(2, $this->countTags()); 
     }
 
-    public function testNullHarborDeletesNothing(): void
+    public function testNullRegistryDeletesNothing(): void
     {
         $this->insertTag('java/registry', 1, 'v1.0.0', 'mycode/registry');
 
@@ -168,17 +168,17 @@ class PipelineTagServiceTest extends TestCase
 
     public function testDoesNotTouchCdTables(): void
     {
-        // ci 表里有一条会过期的记录
+        
         $this->insertTag('java/registry', 1, 'gone', 'mycode/registry');
-        // cd 表里也放一条同名记录，清理后必须原封不动
+        
         $this->pdo->prepare('INSERT INTO cd_registry_artifacts (id, tag) VALUES (?, ?)')->execute([1, 'gone']);
-        $harbor = $this->makeHarbor(['mycode/registry' => ['latest']]); // 'gone' 已不在 Harbor
+        $registry = $this->makeRegistry(['mycode/registry' => ['latest']]); 
 
-        $stat = (new PipelineTagService($this->pdo, $harbor))->cleanupStaleTags();
+        $stat = (new PipelineTagService($this->pdo, $registry))->cleanupStaleTags();
 
         $this->assertSame(1, $stat['deleted']);
-        $this->assertSame(0, $this->countTags()); // ci 表清空了
-        // cd 表未被触碰
+        $this->assertSame(0, $this->countTags()); 
+        
         $this->assertSame(1, (int) $this->pdo->query('SELECT COUNT(*) FROM cd_registry_artifacts')->fetchColumn());
     }
 
@@ -187,9 +187,9 @@ class PipelineTagServiceTest extends TestCase
     public function testBackfillPromotesVerifiedTag(): void
     {
         $this->insertBuildLog('jenkins', 'java/registry', 99, 'v1.2.3', 'mycode/registry', 'sha-a');
-        $harbor = $this->makeHarbor(['mycode/registry' => ['v1.2.3', 'latest']]);
+        $registry = $this->makeRegistry(['mycode/registry' => ['v1.2.3', 'latest']]);
 
-        $stat = (new PipelineTagService($this->pdo, $harbor))->backfillTagsFromBuildLog();
+        $stat = (new PipelineTagService($this->pdo, $registry))->backfillTagsFromBuildLog();
 
         $this->assertSame(1, $stat['promoted']);
         $this->assertSame(1, $stat['checked']);
@@ -198,38 +198,38 @@ class PipelineTagServiceTest extends TestCase
         $this->assertSame('v1.2.3', $row['tag']);
     }
 
-    public function testBackfillSkipsTagNotInHarbor(): void
+    public function testBackfillSkipsTagNotInRegistry(): void
     {
         $this->insertBuildLog('jenkins', 'java/registry', 99, 'v9.9.9', 'mycode/registry', 'sha-b');
-        $harbor = $this->makeHarbor(['mycode/registry' => ['latest']]);
+        $registry = $this->makeRegistry(['mycode/registry' => ['latest']]);
 
-        $stat = (new PipelineTagService($this->pdo, $harbor))->backfillTagsFromBuildLog();
+        $stat = (new PipelineTagService($this->pdo, $registry))->backfillTagsFromBuildLog();
 
         $this->assertSame(0, $stat['promoted']);
         $this->assertSame(1, $stat['checked']);
-        $this->assertSame(0, $this->countTags()); // Harbor 里没有，不回填
+        $this->assertSame(0, $this->countTags()); 
     }
 
     public function testBackfillSkipsExistingCanonicalTag(): void
     {
-        $this->insertTag('java/registry', 99, 'v2.0.0', 'mycode/registry'); // canonical 已有
+        $this->insertTag('java/registry', 99, 'v2.0.0', 'mycode/registry'); 
         $this->insertBuildLog('jenkins', 'java/registry', 99, 'v1.2.3', 'mycode/registry', 'sha-c');
-        $harbor = $this->makeHarbor(['mycode/registry' => ['v1.2.3']]);
+        $registry = $this->makeRegistry(['mycode/registry' => ['v1.2.3']]);
 
-        $stat = (new PipelineTagService($this->pdo, $harbor))->backfillTagsFromBuildLog();
+        $stat = (new PipelineTagService($this->pdo, $registry))->backfillTagsFromBuildLog();
 
         $this->assertSame(0, $stat['promoted']);
         $this->assertSame(1, $stat['skipped']);
         $row = $this->pdo->query('SELECT tag FROM ' . AppConfig::TABLE_PIPELINE_ARTIFACTS)->fetch();
-        $this->assertSame('v2.0.0', $row['tag']); // 权威结果不被覆盖
+        $this->assertSame('v2.0.0', $row['tag']); 
     }
 
-    public function testBackfillSkipsHarborUnreachable(): void
+    public function testBackfillSkipsRegistryUnreachable(): void
     {
         $this->insertBuildLog('jenkins', 'java/registry', 99, 'v1.2.3', 'mycode/registry', 'sha-d');
-        $harbor = $this->makeHarbor(['mycode/registry' => ['error' => 'harbor down']]);
+        $registry = $this->makeRegistry(['mycode/registry' => ['error' => 'registry down']]);
 
-        $stat = (new PipelineTagService($this->pdo, $harbor))->backfillTagsFromBuildLog();
+        $stat = (new PipelineTagService($this->pdo, $registry))->backfillTagsFromBuildLog();
 
         $this->assertSame(0, $stat['promoted']);
         $this->assertSame(0, $stat['checked']);
@@ -237,7 +237,7 @@ class PipelineTagServiceTest extends TestCase
         $this->assertSame(0, $this->countTags());
     }
 
-    public function testBackfillNullHarborNoop(): void
+    public function testBackfillNullRegistryNoop(): void
     {
         $this->insertBuildLog('jenkins', 'java/registry', 99, 'v1.2.3', 'mycode/registry', 'sha-e');
 

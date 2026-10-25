@@ -103,7 +103,7 @@ Devops-Glue supports two orthogonal CI modes that can be enabled simultaneously:
 - **Switch**: `build_mode` — enabled CI source set (`jenkins` / `gitlab_ci` / `gitea_ci`, multi-select)
 - **Direction**: Devops-Glue actively calls CI APIs to trigger builds, poll status, and fetch image tags
 - **Providers**: `JenkinsBuildProvider`, `GitlabCiBuildProvider`, `GiteaCiBuildProvider`
-- **Flow**: Devops-Glue → CI API → Build → Harbor → scan-sync → `ci_pipeline_artifacts`.
+- **Flow**: Devops-Glue → CI API → Build → image registry → `scan-sync` (Harbor, with scan report) or `registry-sync` (any registry, no scan) → `ci_pipeline_artifacts`.
 
 ### Push-based CI (Custom_Push)
 
