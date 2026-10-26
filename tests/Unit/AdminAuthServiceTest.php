@@ -53,23 +53,23 @@ class AdminAuthServiceTest extends TestCase
 
     public function testDbPasswordWinsWhenRootExists(): void
     {
-        // DB 里已有根账号（.env 密码不同）
+        
         $this->seedRoot('admin', 'dbpass1234');
         $service = $this->makeService(['admin' => ['user' => 'admin', 'password' => 'envpass1234']]);
 
-        // DB 密码：正常登录
+        
         $ok = $service->authenticate('admin', 'dbpass1234', AppConfig::SYSTEM_CI);
         $this->assertTrue($ok['success']);
         $this->assertSame(AppConfig::ROLE_SUPER_ADMIN, $ok['role']);
 
-        // .env 明文密码：必须拒绝（否则等于常开明文旁路）
+        
         $env = $service->authenticate('admin', 'envpass1234', AppConfig::SYSTEM_CI);
         $this->assertFalse($env['success'], 'DB 已有 root 时 .env 密码不得登录');
     }
 
     public function testEnvFallbackWhenNoAdminUsers(): void
     {
-        // 首次部署：admin_users 为空时允许 .env 根密码
+        
         $service = $this->makeService(['admin' => ['user' => 'admin', 'password' => 'envpass1234']]);
         $result = $service->authenticate('admin', 'envpass1234', AppConfig::SYSTEM_CI);
         $this->assertTrue($result['success']);
@@ -79,8 +79,8 @@ class AdminAuthServiceTest extends TestCase
 
     public function testDbDownThrowsInsteadOfEnvFallback(): void
     {
-        // DB 完全不可访问：findByUsername 抛异常，直接向上传播（上层转 500），
-        // 不再回退到 .env 根密码登录。
+        
+        
         $brokenRepo = new class($this->pdo) extends AdminUserRepository {
             public function findByUsername(string $username): ?array
             {
@@ -114,15 +114,15 @@ class AdminAuthServiceTest extends TestCase
     public function testDisabledAccountReportsDisabledNotWrongPassword(): void
     {
         $this->seedRoot('admin', 'dbpass1234');
-        $this->repo->setStatus('admin', 0); // 停用
+        $this->repo->setStatus('admin', 0); 
         $service = $this->makeService(['admin' => ['user' => 'admin', 'password' => 'envpass1234']]);
 
-        // 密码正确也必须返回已停用的提示，不能放行
+        
         $correct = $service->authenticate('admin', 'dbpass1234', AppConfig::SYSTEM_CI);
         $this->assertFalse($correct['success']);
         $this->assertSame('auth.user_disabled', $correct['errorKey']);
 
-        // 密码错误：同样提示已停用，不返回账号或密码错误，避免误导用户（#1 修复点）
+        
         $wrong = $service->authenticate('admin', 'totally_wrong', AppConfig::SYSTEM_CI);
         $this->assertFalse($wrong['success']);
         $this->assertSame('auth.user_disabled', $wrong['errorKey']);

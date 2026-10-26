@@ -37,9 +37,9 @@ class OAuthService
     public function __construct(\PDO $pdo, array $clients = [])
     {
         $this->pdo = $pdo;
-        // fail-closed：secret 或 redirect_uri 为空/纯空白的客户端视为未配置，直接剔除。
-        // 空 secret 与空输入 hash_equals 相等，等于 token 端点使用公开默认密钥；空 redirect_uri
-        // 同理（请求带 redirect_uri= 即通过校验）。
+
+
+
         $this->clients = array_filter(
             $clients,
             fn($c) => is_array($c)
@@ -147,7 +147,7 @@ class OAuthService
             if (!$row) {
                 return null;
             }
-            // 一次性：无论后续校验是否通过都先删除，防重放
+
             $this->pdo->prepare(
                 "DELETE FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key = ?"
             )->execute([$key]);
@@ -156,7 +156,7 @@ class OAuthService
             if (!is_array($data)) {
                 return null;
             }
-            // 授权码绑定 client_id + redirect_uri
+
             if (
                 ($data['client_id'] ?? '') !== $clientId
                 || ($data['redirect_uri'] ?? '') !== $redirectUri
@@ -210,7 +210,7 @@ class OAuthService
             if (!is_array($data)) {
                 return null;
             }
-            // 回查账号状态与当前角色：停用/删除立即失效，降权即时生效，不再随签发冻结 1 小时。
+
             if (!$this->refreshAccount($data)) {
                 return null;
             }

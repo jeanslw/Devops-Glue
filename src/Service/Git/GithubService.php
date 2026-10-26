@@ -44,7 +44,7 @@ class GithubService implements GitProviderInterface
 
     public function getApiVersion(): string
     {
-        return 'v3'; // 显示用；实际 API 调用使用 X-GitHub-Api-Version header
+        return 'v3';
     }
 
     public function getBranches(string $repository): array
@@ -83,7 +83,7 @@ class GithubService implements GitProviderInterface
             return ['success' => false, 'message' => '仓库路径格式错误'];
         }
         $body = [
-            'state'       => $state,
+            'state'       => $state === 'failed' ? 'failure' : $state,
             'description' => $description,
             'context'     => $context,
         ];
@@ -183,8 +183,6 @@ class GithubService implements GitProviderInterface
             $body = (string) $response->getBody();
             return json_decode($body, true) ?? [];
         } catch (ConnectException | ServerException $e) {
-            // 连接级失败（拒绝/DNS/超时）与 5xx：上抛为平台不可达（502），
-            // 不得吞成 error 数组（否则 paginatedList 断页返回空或部分数据，与无分支无法区分）
             $this->logger?->warning('GitHub 平台不可达', [
                 'method' => $method,
                 'uri'    => $uri,

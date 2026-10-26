@@ -107,7 +107,7 @@ class ApiTokenServiceTest extends TestCase
         $created = $this->service->createToken([
             'name'       => 'ci-bot',
             'scopes'     => ['main'],
-            'expires_at' => time() - 1, // 已过期
+            'expires_at' => time() - 1, 
         ]);
         $this->assertNull($this->service->resolve(hash('sha256', $created['token'])), '过期 token 应视为无效');
     }
@@ -180,8 +180,8 @@ class ApiTokenServiceTest extends TestCase
 
     public function testUpdateScopesSucceedsWhenScopeSetUnchanged(): void
     {
-        // MySQL 对值未变化的 UPDATE 返回 0 受影响行：语义必须靠存在性判断，
-        // 否则保存了但没改动的情况会被前端当成失败。
+        
+        
         $created = $this->service->createToken(['name' => 'ci-bot', 'scopes' => ['main', 'git']]);
         $this->assertTrue($this->service->updateScopes($created['id'], ['main', 'git']));
     }
@@ -203,7 +203,7 @@ class ApiTokenServiceTest extends TestCase
 
     public function testUpdateScopesRejectsEmptySet(): void
     {
-        // 勾选界面全部取消时应当报错：直接清空会让以为已收回或已授权的判断与实际情况不符
+        
         $created = $this->service->createToken(['name' => 'ci-bot', 'scopes' => ['main']]);
         $this->expectException(\InvalidArgumentException::class);
         $this->service->updateScopes($created['id'], ['', '  ']);
@@ -265,7 +265,7 @@ class ApiTokenServiceTest extends TestCase
     {
         $created = $this->service->createToken(['name' => 'cd-service', 'scopes' => ['build.read']]);
 
-        // 与 updateScopes 的严格校验不同：自愈路径不该因脏值失败（目录外/空值静默忽略）
+        
         $this->assertTrue($this->service->addScopes($created['id'], ['not.a.scope', '', '   ']));
 
         $row = $this->service->findById($created['id']);

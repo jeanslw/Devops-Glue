@@ -1,8 +1,7 @@
 <?php
 // config/settings.example.php
 return [
-    // Git/Harbor/Jenkins 连接配置已迁入 DB（ci_platform_connections，后台「平台接入状态」可编辑），
-    // 彻底移除 env：下方 url/user/token/password 仅结构占位，实际值由容器从 DB 注入，不要再填 env。
+    // Git/Harbor/Jenkins 连接配置已迁入 DB（ci_platform_connections，后台「平台接入状态」可编辑）
     'jenkins' => [
         'url'   => '',
         'user'  => 'admin',
@@ -28,7 +27,7 @@ return [
             'token'    => '',
         ],
         'custom_providers' => [
-            // 示例：自定义 Git 平台（凭证通过 env() 从 .env 读取）。
+            // 示例：自定义 Git 平台
             // class 实现 GitProviderInterface，构造签名为 (array $config, ?Logger $logger)，详见 src/Service/Git/。
             // Bitbucket Cloud（API v2.0；App Password 填 username，仅 OAuth/仓库访问令牌可留空走 Bearer）：
             // [
@@ -57,21 +56,16 @@ return [
             // ],
         ],
     ],
+    // 注意：镜像仓库类型不在这里配。ci_app_settings.registry_type（后台「平台接入状态」卡片，
+    // 无环境变量种子）是唯一事实源，container.php 会用它覆盖本节的 registry_type；
+    // 所以以前写在这里的 'registry_type' => 'harbor' 不生效，已删除
+    // （Settings::getRegistryType() 在缺省时同样按 'harbor' 归一）。
     'harbor' => [
         'url'      => '',
         'username' => 'admin',
         'password' => '',
     ],
     'build' => [
-        // 自定义 Build Provider（推送式 CI）：默认已配置，开箱即用，无需修改。
-        // 启用方式：管理后台配置模式 Tab 勾选启用 Custom_Push，即时生效。
-        // build_mode 与 custom_push_enabled 相互独立，可任意组合。
-        //
-        // 用户 CI 对接一个接口（path = job_git_map.job_name）：
-        //   POST /api/build/{path}/report — 一次性上报构建终态结果（含 tag）
-        //
-        // variables 定义上报时允许传入的自定义构建参数。
-        // 如需更多参数（如 COMMIT_MSG、BUILDER），在下方追加即可。
         'custom_providers' => [
             [
                 'name'   => 'custom_push',
@@ -91,7 +85,7 @@ return [
         'log_retain_days' => max(0, (int) env('LOG_RETAIN_DAYS', '30')),
     ],
     'cors' => [
-        'allowed_origins' => ['*'],                     // 允许的域名，* 表示全部
+        'allowed_origins' => ['*'], 
         'allowed_methods' => ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
         'allowed_headers' => ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
     ],
@@ -107,7 +101,7 @@ return [
      * │ project_id   │      │ GitLab: 不填自动查 API                              │
      * │ web_url      │      │ 项目主页链接，仅展示                                 │
      * │ current_path │      │ 不填则从 git_remote 自动推导                        │
-     * │ harbor_      │      │ 关联 Harbor 仓库 "project/repository"               │
+     * │ registry_    │      │ 关联镜像仓库 "project/repository"                   │
      * │   repository │      │                                                   │
      * │ api_version  │      │ 纯元数据，不影响 API 路由                            │
      * └──────────────┴──────┴──────────────────────────────────────────────────┘
@@ -121,29 +115,15 @@ return [
         //     'project_id'        => 2,
         //     'web_url'           => 'http://git.company.com/group/project',
         //     'current_path'      => 'group/project',
-        //     'harbor_repository' => 'mycode/code-runtime',
+        //     'registry_repository' => 'mycode/code-runtime',
         // ],
     ],
-    /*
-     * OAuth2 / OIDC 客户端白名单（供外部系统用 Glue 账号登录）
-     *
-     * 已迁入 DB（ci_oauth_clients，后台「平台接入状态 → OIDC/SSO」页可编辑），
-     * 彻底移除 env：此数组恒为空，唯一权威由 OAuthClientRepository 从 DB 读取。
-     * 客户端在后台配置：client_id（如 jenkins / cd）、secret（强随机串）、
-     * redirect_uri（与外部系统回调逐字符一致）；secret/redirect_uri 留空即 fail-closed 剔除。
-     */
+    // OAuth2 / OIDC 客户端白名单
+
     'oauth_clients' => [],
 
-    /*
-     * OIDC Provider 配置（Glue 作为 OIDC Provider，供 Jenkins / Harbor / GitLab 单点登录）
-     *
-     *   issuer / id_token_ttl — 已迁入 DB（ci_app_settings，后台 OIDC 配置页可编辑），
-     *                           此处不再读 env，仅结构占位。
-     *   private_key  — id_token 签名私钥（RS256，RSA >= 2048 位 PEM）。保留 env 覆盖：
-     *                  多副本部署必须注入固定 OIDC_RSA_PRIVATE_KEY，否则各副本 kid 不一致、验签失败；
-     *                  留空则自动生成并持久化到 key_file。
-     *   key_file     — 自动生成私钥时的持久化路径（落盘后 chmod 0600）。
-     */
+    //OIDC Provider 配置
+
     'oidc' => [
         'issuer'       => '',
         'id_token_ttl' => 3600,

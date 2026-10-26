@@ -35,14 +35,14 @@ final class EnvFileLoader
     {
         $configDir = rtrim($configDir, '/\\');
 
-        // 1. 记录 OS 真实环境变量快照（此刻尚未被任何 .env 写入）
+
         $osEnv = getenv() ?: [];
 
-        // 2. 基础配置 app.env：Immutable —— OS 环境变量优先，app.env 只补缺省
+
         $configKeys = self::fileKeys($configDir . '/app.env');
         Dotenv::createImmutable($configDir, 'app.env')->load();
 
-        // 3. 环境覆盖 app.env.{APP_ENV}：Mutable 才能覆盖 app.env（文件不存在则跳过）
+
         $appEnv = self::envVal('APP_ENV', 'production');
         $appEnv = $appEnv === '' ? 'production' : $appEnv;
         $envFile = $configDir . '/app.env.' . $appEnv;
@@ -51,10 +51,10 @@ final class EnvFileLoader
             Dotenv::createUnsafeMutable($configDir, 'app.env.' . $appEnv)->load();
         }
 
-        // 4. 回写真实环境变量：其优先级高于 app.env / app.env.{APP_ENV}
+
         self::restoreOsValues($configKeys, $osEnv);
 
-        // 5. 本地覆盖 app.env.local：优先级最高，不回写 —— 本文件定义的键完全以该文件为准
+
         if (is_file($configDir . '/app.env.local')) {
             Dotenv::createUnsafeMutable($configDir, 'app.env.local')->load();
         }

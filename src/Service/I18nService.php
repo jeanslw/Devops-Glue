@@ -51,13 +51,27 @@ class I18nService
 
     /**
      * 翻译单个消息
+     *
+     * 占位符统一按 `{key}` 归一后再替换。原因：没有 intl 翻译器时 Symfony 的 MessageFormatter
+     * 退化为 `strtr($message, $params)`，即把「参数键」当普通子串全局替换——传裸键
+     * `['repo' => 'x/y']` 时文案里的 `{repo}` 会被留成 `{x/y}`，还会误伤同名单词
+     * （`registry_repository` → `registry_x/ysitory`）。归一后 `repo` 与 `{repo}` 两种写法
+     * 都能得到正确文案，且不再误伤单词。
+     *
      * @param string $id       翻译键
-     * @param array<string,mixed> $params   替换参数
+     * @param array<string,mixed> $params   替换参数（键可写 `repo` 或 `{repo}`）
      * @param string|null $locale 指定语言（null=默认）
      */
     public function trans(string $id, array $params = [], ?string $locale = null): string
     {
-        return $this->translator->trans($id, $params, 'messages', $locale ?? $this->defaultLocale);
+        $normalized = [];
+        foreach ($params as $key => $value) {
+            $key = (string) $key;
+            $placeholder = str_starts_with($key, '{') ? $key : '{' . $key . '}';
+            $normalized[$placeholder] = is_scalar($value) ? (string) $value : '';
+        }
+
+        return $this->translator->trans($id, $normalized, 'messages', $locale ?? $this->defaultLocale);
     }
 
     /**
@@ -92,19 +106,18 @@ class I18nService
      */
     public function detectLocale(\Psr\Http\Message\ServerRequestInterface $request): string
     {
-        // 1. URL 参数 ?lang=en
+
         $queryLang = $request->getQueryParams()['lang'] ?? '';
         if (in_array($queryLang, ['zh_CN', 'en'])) {
             return $queryLang;
         }
 
-        // 2. Accept-Language 头
+
         $acceptLang = $request->getHeaderLine('Accept-Language');
         if ($acceptLang) {
-            // 简单解析：取第一个语言
             if (preg_match('/^([a-z]{2})/i', trim($acceptLang), $m)) {
                 $lang = strtolower($m[1]);
-                // 'zh' 映射到 zh_CN
+
                 if ($lang === 'zh') {
                     return 'zh_CN';
                 }

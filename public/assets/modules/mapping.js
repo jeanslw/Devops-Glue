@@ -116,7 +116,7 @@ export async function loadMaps() {
                     <td><span class="badge ${bpBadge}">${bpLabel}</span></td>
                     <td>${plat !== '—' ? `<span class="badge ${badgeCls}">${esc(plat)}</span>` : '—'}</td>
                     <td class="mono">${esc(m.git_remote || '—')}</td>
-                    <td>${esc(m.harbor_repository || '—')}</td>
+                    <td>${esc(m.registry_repository || '—')}</td>
                     <td>${statusBadge(m.status)}</td>
                     <td style="white-space:nowrap">
                         ${(function(){
@@ -221,7 +221,7 @@ export function showForm(editData) {
         document.getElementById('f-project_id').value = editData.project_id ?? '';
         document.getElementById('f-web_url').value = editData.web_url || '';
         document.getElementById('f-current_path').value = editData.current_path || '';
-        document.getElementById('f-harbor_repository').value = editData.harbor_repository || '';
+        document.getElementById('f-registry_repository').value = editData.registry_repository || '';
     } else {
         document.getElementById('form-title').textContent = __.t('map.new');
         document.getElementById('original-name').value = '';
@@ -252,7 +252,7 @@ export async function submitForm(e) {
         project_id: document.getElementById('f-project_id').value.trim(),
         web_url: document.getElementById('f-web_url').value.trim(),
         current_path: document.getElementById('f-current_path').value.trim(),
-        harbor_repository: document.getElementById('f-harbor_repository').value.trim(),
+        registry_repository: document.getElementById('f-registry_repository').value.trim(),
     };
     if (isEdit) body._original_job_name = original;
     Object.keys(body).forEach(k => { if (body[k] === '') body[k] = null; });

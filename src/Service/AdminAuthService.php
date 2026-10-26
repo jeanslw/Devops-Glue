@@ -29,13 +29,11 @@ class AdminAuthService
         }
 
         $rootUser = $this->config->getRootAdminUser();
-        // DB 是登录唯一权威：连接失败时 findByUsername 直接抛异常（上层转 500），
-        // 不再降级到 .env 兜底登录。
+
+
         $dbUser = $this->repository->findByUsername($username);
 
         if ($dbUser !== null) {
-            // 停用账号（status=0）禁止登录：无论密码对错都返回已停用提示，不返回账号或密码错误。
-            // 必须先于密码校验判断，否则停用账号输入错误密码会落到密码错误分支，提示与实际情况不符。
             if ((int)($dbUser['status'] ?? 1) === 0) {
                 return ['success' => false, 'errorKey' => 'auth.user_disabled'];
             }
@@ -54,10 +52,10 @@ class AdminAuthService
             }
         }
 
-        // 本地 DB 校验未通过时尝试 LDAP（先拿账号密码打 LDAP，再在 user_identities 里找已绑定账号）
-        // 策略：LDAP 只负责验证身份，授权（role/systems/email）仍以 admin_users 对应行为准，
-        //       未绑定（provider_uid 未出现在 user_identities）一律拒绝，不自动建号；
-        //       若 LDAP 链路有故障（连接失败等），落到后续 .env 判断（仅首次部署生效）。
+
+
+
+
         if ($this->ldap !== null && $this->ldap->isEnabled()) {
             $ldapRes = $this->ldap->authenticate($username, $password);
             if (!empty($ldapRes['ok'])) {
@@ -69,20 +67,18 @@ class AdminAuthService
                 if ($identity !== null && $identities !== null) {
                     $boundUser = $this->repository->findByUsername($identity['username']);
                     if ($boundUser !== null) {
-                        // 停用账号（status=0）禁止通过 LDAP 登录
                         if ((int)($boundUser['status'] ?? 1) === 0) {
                             return ['success' => false, 'errorKey' => 'auth.user_disabled'];
                         }
                         if (!$this->isAllowedSystem($boundUser['systems'], $systemType)) {
                             return ['success' => false, 'errorKey' => $this->getSystemErrorKey($systemType)];
                         }
-                        // 顺手回填最新 LDAP 属性到 user_identities（email / raw_profile），失败不阻断登录
+
                         $attrs = is_array($ldapRes['attrs'] ?? null) ? $ldapRes['attrs'] : [];
                         $email = (string)($attrs['mail'] ?? $attrs['email'] ?? $identity['email'] ?? '');
                         try {
                             $identities->refreshProfile('ldap', $dn, $email, $attrs === [] ? null : $attrs);
                         } catch (\Throwable $e) {
-                            // 缓存写入失败不影响登录
                         }
 
                         return [
@@ -96,18 +92,18 @@ class AdminAuthService
                         ];
                     }
                 }
-                // LDAP 通过但未绑定本地账号：明确拒绝，不放行、不自动建号
+
                 return ['success' => false, 'errorKey' => 'auth.ldap_not_bound'];
             }
-            // LDAP 明确失败（密码错误 / 用户不存在）：直接拒绝；其余错误放行到 .env 判断
+
             if (in_array($ldapRes['error'] ?? '', ['ldap_bind_failed', 'ldap_user_not_found'], true)) {
                 return ['success' => false, 'errorKey' => 'auth.wrong_credentials'];
             }
         }
 
-        // .env 根密码仅限首次部署（admin_users 为空）。登录判定以 DB 为准，禁止常开明文旁路；
-        // DB 不可访问时 findByUsername 已抛异常（上层转 500），没有灾难恢复式的登录路径。
-        // 忘记密码走离线补丁。
+
+
+
         if ($this->hasNoAdminUsers() && $this->authenticateEnvRoot($username, $password)) {
             return [
                 'success' => true,
@@ -126,8 +122,8 @@ class AdminAuthService
         if ($dbUser && password_verify($password, $dbUser['password_hash'])) {
             return true;
         }
-        // 仅首次部署（无任何账号）才接受 .env 密码，与 authenticate 保持一致；
-        // DB 不可访问时 findByUsername 抛异常（上层转 500），不再降级到 .env。
+
+
         if ($this->hasNoAdminUsers()) {
             $cred = $this->config->getAdminCredentials();
             return \hash_equals(strtolower($cred['user']), strtolower($username)) && \hash_equals($cred['password'], $password) && $password !== '';
@@ -138,7 +134,7 @@ class AdminAuthService
     private function authenticateEnvRoot(string $username, string $password): bool
     {
         $cred = $this->config->getAdminCredentials();
-        // 恒定时间比较，消除用户名/密码 === 的时序侧信道（兜底路径，成本极低）
+
         return \hash_equals(strtolower($cred['user']), strtolower($username))
             && \hash_equals($cred['password'], $password)
             && $password !== '';
@@ -187,7 +183,7 @@ class AdminAuthService
             $val = $stmt->fetchColumn();
             return $val !== false && (int)$val >= AppConfig::LOGIN_FAIL_MAX_ATTEMPTS;
         } catch (\Throwable $e) {
-            return false; // DB 异常不阻断登录（fail-open 保可用）
+            return false;
         }
     }
 

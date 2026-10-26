@@ -64,7 +64,7 @@ class GiteaCiBuildProvider implements BuildProviderInterface
         $url = "{$this->baseUrl}/api/v1/repos/{$owner}/{$repoName}/actions/runs?limit={$perPage}&page=1";
         try {
             $resp = $this->http->get($url);
-            // 404 / 405：Gitea 未启用 Actions 或该版本无此端点，返回空结果
+
             if ($resp->getStatusCode() >= 400) {
                 $this->logger?->debug('Gitea Actions runs 端点不可用', ['project' => $projectId, 'status' => $resp->getStatusCode()]);
                 return [];
@@ -73,8 +73,8 @@ class GiteaCiBuildProvider implements BuildProviderInterface
             if (!is_array($data)) {
                 return [];
             }
-            // Gitea 1.27 的 /actions/runs 返回 ActionWorkflowRunsResponse 对象 {total_count, workflow_runs:[...]}
-            //（GitHub 兼容风格），真实列表在 workflow_runs 键下，不能把整个对象当数组遍历。
+
+
             $runs = $data['workflow_runs'] ?? $data;
             if (!is_array($runs)) {
                 return [];
@@ -134,8 +134,8 @@ class GiteaCiBuildProvider implements BuildProviderInterface
             if (!is_array($data)) {
                 return [];
             }
-            // Gitea 1.27 的 /actions/runs/{run}/jobs 返回 ActionWorkflowJobsResponse 对象
-            // {total_count, jobs:[...]}，真实列表在 jobs 键下；job 完成时间字段是 completed_at（无 stopped_at）。
+
+
             $jobs = $data['jobs'] ?? $data;
             if (!is_array($jobs)) {
                 return [];
@@ -188,11 +188,10 @@ class GiteaCiBuildProvider implements BuildProviderInterface
             return ['success' => false, 'message' => '仓库路径格式错误'];
         }
         [$owner, $repoName] = $repo;
-        // Gitea Actions 触发依赖 workflow 文件（dispatch 型 workflow），需显式传入 workflow 文件名
+
         $workflow = trim((string) ($variables['workflow'] ?? ''));
         unset($variables['workflow']);
         if ($workflow === '') {
-            // 未指定 workflow 时自动发现仓库可用 workflow，返回列表供调用方选择
             $workflows = $this->getWorkflows($projectId);
             return [
                 'success'   => false,
@@ -202,7 +201,6 @@ class GiteaCiBuildProvider implements BuildProviderInterface
         }
         $url = "{$this->baseUrl}/api/v1/repos/{$owner}/{$repoName}/actions/workflows/" . rawurlencode($workflow) . '/dispatches?return_run_details=true';
         try {
-            // 裸分支名补全为完整 ref；已是 refs/ 开头则原样保留
             $ref = trim($ref) ?: 'main';
             if (!str_starts_with($ref, 'refs/')) {
                 $ref = 'refs/heads/' . $ref;
@@ -214,8 +212,8 @@ class GiteaCiBuildProvider implements BuildProviderInterface
             $resp = $this->http->post($url, ['json' => $body]);
             $data = json_decode($resp->getBody(), true);
             $ok = $resp->getStatusCode() < 400;
-            // Gitea 1.27 在 return_run_details=true 时返回 RunDetails {workflow_run_id, run_url, html_url}，
-            // 没有 GitHub 风格的 id 字段，故优先取 workflow_run_id、兼容 id 为回退。
+
+
             return [
                 'success' => $ok,
                 'run_id'  => $ok ? ($data['workflow_run_id'] ?? $data['id'] ?? null) : null,
@@ -263,8 +261,8 @@ class GiteaCiBuildProvider implements BuildProviderInterface
             $resp = $this->http->post($url);
             $status = $resp->getStatusCode();
             $data = json_decode($resp->getBody(), true);
-            // Gitea 1.27.0 起提供 POST /actions/runs/{run}/cancel（同批还有 force-cancel/rerun/approve/logs），
-            // 老版本（<1.27）或 Actions 未启用时该端点返回 404/405，需区分端点不存在与取消失败。
+
+
             if ($status === 404 || $status === 405) {
                 return ['success' => false, 'message' => '当前 Gitea 版本不提供取消运行的 API（需 Gitea 1.27+），请在 Gitea 界面操作'];
             }
@@ -290,7 +288,7 @@ class GiteaCiBuildProvider implements BuildProviderInterface
         try {
             $resp = $this->http->get($url);
             if ($resp->getStatusCode() >= 400) {
-                return []; // Actions variables 端点不可用（老版本）→ 优雅降级
+                return [];
             }
             $data = json_decode($resp->getBody(), true);
             if (!is_array($data)) {
@@ -304,7 +302,7 @@ class GiteaCiBuildProvider implements BuildProviderInterface
                 }
                 $vars[] = [
                     'key'   => $name,
-                    'value' => '***', // 脱敏，对齐 GitLab provider
+                    'value' => '***',
                     'type'  => 'string',
                 ];
             }

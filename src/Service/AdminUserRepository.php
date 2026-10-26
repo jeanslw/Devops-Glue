@@ -27,8 +27,8 @@ class AdminUserRepository
     public function createUser(string $username, string $passwordHash, string $role, string $systems = 'ci,cd', string $email = ''): void
     {
         $username = $this->normalizeUsername($username);
-        // 机制级兜底：所有建号路径共用本方法，非法用户名在这里一律拒绝，
-        // 不依赖各控制器各自记得校验。
+
+
         if (!self::isValidUsername($username)) {
             throw new \InvalidArgumentException("createUser: 非法用户名 {$username}");
         }
@@ -41,8 +41,8 @@ class AdminUserRepository
     public function updatePassword(string $username, string $passwordHash): void
     {
         $username = $this->normalizeUsername($username);
-        // 只更新密码，不可用 REPLACE INTO / INSERT OR REPLACE：
-        // 那会整行删除重建，把 role/systems 回退到列默认值（super_admin 被降级成 admin）。
+
+
         $stmt = $this->pdo->prepare(
             "UPDATE " . AppConfig::TABLE_ADMIN_USERS
             . " SET password_hash = ?, updated_at = " . Database::sqlNow()
@@ -50,9 +50,9 @@ class AdminUserRepository
             . " WHERE username = ?"
         );
         $stmt->execute([$passwordHash, $username]);
-        // 防御：调用方已先校验用户存在，此处 rowCount 必须为 1；
-        // 若为 0（用户被并发删除 / 用户名大小写不匹配）直接抛异常，不忽略。
-        // 新 bcrypt 哈希必然与旧值不同，不存在"值未变导致 rowCount=0"的误报。
+
+
+
         if ($stmt->rowCount() !== 1) {
             throw new \RuntimeException("updatePassword: 未命中用户 {$username}");
         }
@@ -83,8 +83,8 @@ class AdminUserRepository
     public function findUser(string $username): ?array
     {
         $username = $this->normalizeUsername($username);
-        // systems 一并无脑带出：跨系统服务账号（如 RbacController）要据此做归属校验，
-        // 多返回一列对既有调用方无副作用。
+
+
         $stmt = $this->pdo->prepare("SELECT username, role, systems FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE username = ?");
         $stmt->execute([$username]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -180,9 +180,9 @@ class AdminUserRepository
             return;
         }
 
-        // 先查存在性、再 UPDATE：不能依赖 rowCount，MySQL 下 rowCount 是变更行数而非命中行数，
-        // 同一秒内重复提交（role/email 值未变，updated_at 的 NOW() 为秒级精度也未变）时 rowCount 会误报 0，
-        // 导致对存在的用户误抛未命中用户异常。同 setStatus()。
+
+
+
         if (!$this->userExists($username)) {
             throw new \RuntimeException("updateUser: 未命中用户 {$username}");
         }
@@ -200,8 +200,8 @@ class AdminUserRepository
     public function setStatus(string $username, int $status): void
     {
         $username = $this->normalizeUsername($username);
-        // 先查存在性、再 UPDATE：不能依赖 rowCount，MySQL 下 rowCount 是变更行数而非命中行数，
-        // 同一秒内重复 toggle（status 值未变）时 rowCount 会误报 0，导致误抛未命中用户异常。
+
+
         if (!$this->userExists($username)) {
             throw new \RuntimeException("setStatus: 未命中用户 {$username}");
         }
@@ -243,12 +243,12 @@ class AdminUserRepository
 
     public static function seedAdminFromEnv(\PDO $pdo): void
     {
-        // 种子账号邮箱：ADMIN_EMAIL 未配置时落一个按部署唯一化的占位地址。
-        // 这样既保证 OIDC/OAuth 的 userinfo / id_token 有 email 可用，
-        // 又避免不同部署环境共享同一个固定邮箱造成误识别。
+
+
+
         $adminEmail = trim((string)($_ENV['ADMIN_EMAIL'] ?? ''));
         if ($adminEmail !== '' && !filter_var($adminEmail, FILTER_VALIDATE_EMAIL)) {
-            $adminEmail = ''; // 格式非法则忽略，回落到部署唯一化占位值，不把脏值写进库
+            $adminEmail = '';
         }
         if ($adminEmail === '') {
             $hostname = strtolower(trim((string)($_ENV['APP_HOST'] ?? $_ENV['HOSTNAME'] ?? gethostname())));
@@ -263,7 +263,6 @@ class AdminUserRepository
 
         $cnt = (int)$pdo->query("SELECT count(*) c FROM " . AppConfig::TABLE_ADMIN_USERS)->fetch()['c'];
         if ($cnt === 0) {
-            // 统一小写存储，与登录/建号规范化一致（SQLite 大小写敏感）
             $user = strtolower($_ENV['ADMIN_USER'] ?? 'root');
             $pass = $_ENV['ADMIN_PASSWORD'] ?? '';
             if ($pass !== '') {
@@ -272,16 +271,16 @@ class AdminUserRepository
                     ->execute([$user, $hash, AppConfig::ROLE_SUPER_ADMIN, $adminEmail]);
             }
         }
-        // 表非空后，config 的 ADMIN_USER/ADMIN_PASSWORD 即失效：DB 是唯一权威，登录/改密均以库中
-        // super_admin 为准。此处不比对、不告警——用户改密后 config 里的种子密码自然过期，即使与
-        // 库中密码恰好一致也不作为任何依据。
+
+
+
 
         $rootUser = strtolower($_ENV['ADMIN_USER'] ?? 'root');
         $pdo->prepare("UPDATE " . AppConfig::TABLE_ADMIN_USERS . " SET role = ? WHERE username = ? AND role = ?")
             ->execute([AppConfig::ROLE_SUPER_ADMIN, $rootUser, AppConfig::ROLE_ADMIN]);
 
-        // 存量库回填：仅在 email 为空、或仍是占位地址时补写，绝不覆盖用户已在界面上改过的邮箱。
-        // 旧库（auto_migrate=false 的手工建库模式）可能尚无 email 列，失败不阻断启动。
+
+
         try {
             $pdo->prepare(
                 "UPDATE " . AppConfig::TABLE_ADMIN_USERS
@@ -291,9 +290,9 @@ class AdminUserRepository
             \App\Helper\Log::exception($e);
         }
 
-        // 安全提示：seed 账号仍在用初始种子密码（must_change_password=1，尚未完成首次登录强制改密）
-        // 时告警。种子密码写在 config，属已知值；不尽快改密等于留下「已知口令的 super_admin」。
-        // 旧库可能尚无 must_change_password 列，失败不阻断启动（同 email 回填）。
+
+
+
         try {
             $stmt = $pdo->prepare(
                 'SELECT username FROM ' . AppConfig::TABLE_ADMIN_USERS . ' WHERE must_change_password = 1 LIMIT 1'

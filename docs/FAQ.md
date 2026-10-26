@@ -1,4 +1,4 @@
-# Devops-Glue API FAQ v2.10.0
+# Devops-Glue API FAQ v2.11.0
 
 ## Table of Contents
 
@@ -278,7 +278,7 @@ A mapping is the relationship between a Jenkins Job / GitLab CI project, a Git r
 | Build Provider | jenkins / gitlab_ci |
 | Git Remote URL | Repository HTTP/SSH address |
 | Git Repo Path | e.g., `tools/my-project` |
-| Harbor Repository | Format `project_name/repo_name` |
+| Registry Repository | Format `team/project/image` (at least two path segments) |
 
 ### Q: What does "Auto Discover" do?
 
@@ -470,32 +470,53 @@ The docs page requires authentication. Visiting `/api/docs` auto-redirects to th
 
 ### Q: What's the scan-sync process?
 
-1. **Validate** mapping and Harbor repo from `ci_job_git_map` (canonical resolution, same row as build/commit-status)
-2. **Verify** tag exists in Harbor (if Harbor reachable; downgrade to pass-through if unreachable)
+`scan-sync` is the legacy Harbor entry: in addition to the base write-back it reads the Harbor scan report. Both `scan-sync` and `registry-sync` share one write-back implementation (`RegistrySyncService`) and differ only in whether scan results are read. Scanning is supplied by the registry: Harbor supports it, `registry:2` does not — for a `registry:2` connection use `registry-sync`.
+
+1. **Validate** mapping and registry repository from `ci_job_git_map` (canonical resolution, same row as build/commit-status)
+2. **Verify** tag against the registry tag list (if the registry is reachable); a mismatch only logs, it does not block the audit record
 3. **Parse** pipeline identity: `pipeline_iid` + `sha` from request body, or fallback to latest CI pipeline
-4. **Check `ci_status`** (required, no legacy compatibility): `success` / `failed` / `running` — gates artifact write
-5. **Fetch Harbor scan report** (if Harbor configured): `success` = clean, `failed` = vulns, `pending` = scan not enabled, `unknown` = Harbor not configured
-6. **Write commit status** to Git platform (if Git provider registered): state mirrors Harbor scan conclusion; `pending` when Harbor not configured
-7. **Record**:
-   - `ci_pipeline_artifacts`: **only when `ci_status=success`** (failed/running pipelines must not produce deployable artifacts)
-   - `ci_security_checks`: always — `writeback_status=success` (push fact), `scan_state` (Harbor conclusion), `writeback_message` carries `ci_status` + commit-status result + artifact write status for audit
+4. **Check `ci_status`** (required, no legacy compatibility): `success` / `failed` / `running` — gates the artifact write (the audit record is ungated and always written)
+5. **Fetch scan report** (only when the registry supports scanning, i.e. Harbor): `success` = clean, `failed` = vulns, `pending` = scan not enabled; otherwise `scan_state` stays `unknown`
+6. **Write commit status** to Git platform (if Git provider registered): state mirrors the scan conclusion; when there is no scan conclusion (registry:2 or scan unavailable) it derives from `ci_status` (`success`→success, `running`→pending, `failed`→failed)
+7. **Record** (the artifact write is gated, the audit record is not):
+   - `ci_pipeline_artifacts`: **only when `ci_status=success`** (failed/running pipelines must not produce deployable artifacts, so they can never be projected as a successful push)
+   - `ci_security_checks`: **every `ci_status` is written** (the audit trail must not be lost — same as the commit-status endpoint) — `writeback_status=success` marks the push fact (`ci_status=success`), `skipped` marks a CI that did not succeed (`failed` / `running`: recorded for audit, never counted as a push); `scan_state` (Harbor conclusion) and `writeback_message` (`ci_status` + commit-status result + artifact write status) are stored alongside
 
 Three dimensions are independent:
 | Dimension | Value | Meaning |
 |---|---|---|
-| `writeback_status` (security_checks column) | always `success` | Push fact: tag + harborRepo + ci_status received = image pushed to Harbor |
-| `scanState` (security_checks column) | `success` / `failed` / `pending` / `unknown` | Harbor scan conclusion (unknown when Harbor not configured) |
+| `writeback_status` (security_checks column) | `success` / `skipped` | `success` = push fact (tag + repository received and `ci_status=success`); `skipped` = audit-only record for a CI that did not succeed (failed/running) — no artifact, never projected as a push. The projection only trusts `success` |
+| `scanState` (security_checks column) | `success` / `failed` / `pending` / `unknown` | scan conclusion (unknown when scanning is unavailable) |
 | `ci_status` (writeback_message prefix) | caller-supplied | CI pipeline final outcome; gates artifact write |
 
-### Q: scan-sync reports "tag not found in Harbor"?
+### Q: Deploying a standard `registry:2` (no scanning) — how do I write the tag back after CI pushes the image?
 
-- Verify the tag was actually pushed to Harbor
-- Tag names in Harbor are case-sensitive
-- If Harbor is unreachable, the system downgrades and passes through (doesn't block CI)
+Call `POST /api/build/{path}/registry-sync` with `ci_status` (required), `tag` (optional), and `pipeline_iid` + `sha` supplied together. It performs the base write-back only — tag validation, `ci_pipeline_artifacts`, the audit record and the commit status — and does not read scan results. Do not call `scan-sync` for this case: there is no scan result to read. If `tag` is omitted, the first tag from the registry's tag list is used — for Harbor that is the most recently pushed tag, for `registry:2` the order is not defined, so prefer supplying `tag` explicitly.
 
-### Q: What's the Harbor repository format?
+### Q: On a `registry:2` deployment, how do I list the projects / repositories / tags in the image registry?
 
-`harbor_repository` must be `project_name/repo_name` (two segments separated by `/`). Example: `myteam/myapp`.
+Use `/api/registry/*` (scope `registry.read` — tokens that already hold that scope keep working; note the **CD service credential does not include `registry.read`**, so grant it to an API token in *API Management* first). It is registry-type agnostic — Harbor and `registry:2` both work:
+
+```bash
+curl "http://URL/api/registry/projects" -H "Authorization: Bearer $TOKEN"
+curl "http://URL/api/registry/mycode/repositories" -H "Authorization: Bearer $TOKEN"
+curl "http://URL/api/registry/mycode/repositories/<short-name>/tags" -H "Authorization: Bearer $TOKEN"
+```
+
+- The project list is derived from `/v2/_catalog`: when that endpoint is disabled on the registry (the default in most production setups) you get `500` + `message`; in that case query tags directly by full repository name.
+- Repository names come back as **short names with the project prefix stripped** (same convention as `/api/harbor`); when a short name contains `/` (e.g. `a/b` for `mycode/a/b`) it must be double-encoded as `%252F`.
+- Tag order is decided by the registry (only Harbor puts the most recently pushed tag first); do not rely on the order when you need the newest tag.
+- `/api/harbor/*` still supports Harbor only (scan trigger / scan report are Harbor features) — use `/api/registry/*` on a `registry:2` deployment.
+
+### Q: scan-sync reports "tag not found in the image registry"?
+
+- Verify the tag was actually pushed to the image registry
+- Tag names in the registry are case-sensitive
+- If the registry is unreachable, the system downgrades and passes through (doesn't block CI)
+
+### Q: What's the registry repository format?
+
+`registry_repository` must be a path with at least two segments separated by `/` (for example `team/project/image`). It must not contain a scheme, host name or port. A value that does not match the format returns 400.
 
 ### Q: Harbor scan shows "pending"?
 
@@ -816,4 +837,4 @@ No. API responses always return raw data. i18n only affects the frontend UI and 
 
 ---
 
-*Document version: v2.10.0 | Last updated: 2026-10-17*
+*Document version: v2.11.0 | Last updated: 2026-10-24*

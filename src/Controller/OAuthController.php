@@ -91,8 +91,8 @@ class OAuthController extends BaseController
             return $this->jsonError($response, 'oauth.invalid_request', 400);
         }
 
-        // 登录失败限流：与 /api/admin/login 同一策略（IP + 用户名 5 次/15 分钟），
-        // 避免 OAuth 登录页成为绕过管理后台限流的暴力破解入口。
+
+
         $clientIp = $this->clientIp($request);
         if ($this->auth->isLoginLocked($clientIp, $username)) {
             $this->opLog()->record($username, 'login_locked', '', [], $clientIp, 'failure');
@@ -107,8 +107,8 @@ class OAuthController extends BaseController
             return $response->withStatus(429)->withHeader('Content-Type', 'text/html; charset=utf-8');
         }
 
-        // 复用现有认证逻辑（DB 用户 + .env 兜底）：按客户端声明的归属系统校验账号；
-        // 未声明 system 的客户端（Jenkins / Harbor / GitLab）回退 CI。
+
+
         $systemType = $this->oauth->clientSystem($clientId) ?: AppConfig::SYSTEM_CI;
         $result = $this->auth->authenticate($username, $password, $systemType);
         if (empty($result['success'])) {
@@ -159,7 +159,7 @@ class OAuthController extends BaseController
         $clientId     = (string)($body['client_id'] ?? '');
         $clientSecret = (string)($body['client_secret'] ?? '');
 
-        // 部分客户端用 HTTP Basic Auth 传 client_id/client_secret（RFC 6749 §2.3.1）
+
         if ($clientId === '' || $clientSecret === '') {
             [$basicId, $basicSecret] = $this->parseBasicAuth($request);
             if ($clientId === '') {
@@ -194,10 +194,10 @@ class OAuthController extends BaseController
         $payload = [
             'access_token' => $accessToken,
             'token_type'   => 'Bearer',
-            'expires_in'   => OAuthService::ACCESS_TOKEN_TTL, // 引用常量：与 cache 实际过期时间同源
+            'expires_in'   => OAuthService::ACCESS_TOKEN_TTL,
         ];
 
-        // 仅当授权请求 scope 含 openid 才签发 id_token（纯 OAuth2 客户端不签发）
+
         if ($this->hasOpenidScope($scope)) {
             $payload['id_token'] = $this->oidc->signIdToken(
                 $this->buildIdTokenClaims((string)$data['user'], (string)$data['role'], $this->resolveIssuer($request)),
@@ -235,7 +235,7 @@ class OAuthController extends BaseController
         $role      = (string)($data['role'] ?? '');
         $emailInfo = $this->resolveEmailInfo($username);
         $response->getBody()->write((string) json_encode([
-            'sub'                => $username,   // OAuth/OIDC 标准唯一标识
+            'sub'                => $username,
             'username'           => $username,
             'preferred_username' => $username,
             'name'               => $username,
@@ -308,8 +308,8 @@ class OAuthController extends BaseController
         if ($email !== '') {
             return ['email' => $email, 'verified' => true];
         }
-        // 用户未配置邮箱时退回 username@devops-glue.local 占位（客户端要求 email 非空）。
-        // 占位域非用户真实邮箱、无法验证，故 email_verified/verified 必须为 false。
+
+
         return ['email' => $username . '@devops-glue.local', 'verified' => false];
     }
 
@@ -372,8 +372,8 @@ class OAuthController extends BaseController
         $scheme = $uri->getScheme() !== '' ? $uri->getScheme() : 'http';
         $host   = $uri->getHost();
         $port   = $uri->getPort();
-        // 非默认端口（80/443）需拼回 issuer，否则 discovery 文档里的端点 URL 会丢端口，
-        // 客户端（Harbor/Jenkins/GitLab）按文档拿到的端点就无法访问。
+
+
         if ($port !== null && !(($scheme === 'http' && $port === 80) || ($scheme === 'https' && $port === 443))) {
             $host .= ':' . $port;
         }
@@ -426,7 +426,6 @@ class OAuthController extends BaseController
     {
         $template = file_get_contents(__DIR__ . '/../../templates/oauth_login.html');
         if ($template === false) {
-            // 模板缺失属部署异常，直接抛错暴露问题，不做降级处理
             throw new \RuntimeException('OAuth 登录模板缺失: templates/oauth_login.html');
         }
 

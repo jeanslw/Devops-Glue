@@ -99,8 +99,8 @@ class OidcService
         if (!function_exists('openssl_pkey_new')) {
             throw new \RuntimeException('OIDC 需要 PHP openssl 扩展');
         }
-        // Windows 下 openssl_pkey_new/export 依赖 openssl.cnf，需显式定位并传入；
-        // Linux 通常已内置默认 config，找不到也不影响。
+
+
         $cfg    = $this->opensslConfig();
         $genOpt = [
             'private_key_bits' => 2048,
@@ -153,7 +153,7 @@ class OidcService
         }
         if (defined('PHP_BINARY')) {
             $binDir = dirname((string)PHP_BINARY);
-            $candidates[] = $binDir . '/extras/ssl/openssl.cnf'; // Laragon/XAMPP
+            $candidates[] = $binDir . '/extras/ssl/openssl.cnf';
             $candidates[] = $binDir . '/openssl.cnf';
         }
         if (defined('PHP_BINDIR')) {
@@ -229,10 +229,9 @@ class OidcService
         if ($nonce !== null && $nonce !== '') {
             $payload['nonce'] = $nonce;
         }
-        // 只搬运 OPTIONAL_CLAIMS 白名单内的 claim（新增 claim 需 4 处同改，见该常量注释）。
+
         foreach (self::OPTIONAL_CLAIMS as $k) {
             if (array_key_exists($k, $claims)) {
-                // email_verified 是布尔语义需强制转型；其余（含 groups 数组）原样搬运 —— 与白名单化之前逐字节一致
                 $payload[$k] = $k === 'email_verified' ? (bool)$claims[$k] : $claims[$k];
             }
         }

@@ -34,7 +34,7 @@ class CustomPushBuildProvider implements BuildProviderInterface
     private const REPORT_FIELDS = [
         'pipeline_iid', 'status', 'finished_at', 'started_at',
         'ref', 'sha', 'exit_code', 'log_url', 'web_url',
-        'tag', 'harbor_repository',
+        'tag', 'registry_repository',
     ];
 
     /**
@@ -70,7 +70,7 @@ class CustomPushBuildProvider implements BuildProviderInterface
                  FROM ' . AppConfig::TABLE_CUSTOM_BUILDS . '
                  WHERE job_name = ? ORDER BY pipeline_iid DESC LIMIT ?'
             );
-            // LIMIT 必须按整数绑定：execute([...]) 默认全按字符串，MySQL 对 `LIMIT '20'` 报语法错误
+
             $stmt->bindValue(1, $projectId, \PDO::PARAM_STR);
             $stmt->bindValue(2, $perPage, \PDO::PARAM_INT);
             $stmt->execute();
@@ -84,7 +84,7 @@ class CustomPushBuildProvider implements BuildProviderInterface
                     'web_url'    => $r['web_url'] ?? '',
                     'log_url'    => $r['log_url'] ?? '',
                     'created_at' => $r['triggered_at'] ?? '',
-                    // 完成时间：构建列表按此展示；未完成（无 finished_at）时留空，不回落 triggered_at
+
                     'updated_at' => $r['finished_at'] ?? '',
                 ];
             }, $stmt->fetchAll()));
@@ -138,16 +138,16 @@ class CustomPushBuildProvider implements BuildProviderInterface
                 return '无构建日志';
             }
 
-            // SSRF 防护：log_url 由用户 CI 上报、不可信，服务端拉取前先校验
-            // 协议仅 http/https，且目标主机不得是回环 / 链路本地（含云元数据）/ 保留地址。
-            // 私网段（10/8、172.16/12、192.168/16 等）有意放行：本系统为内网部署，CI 日志常落在内网。
+
+
+
             if (!$this->isSafeLogUrl((string) $logUrl)) {
                 $this->logger?->error('custom_push 日志 URL 校验失败（疑似 SSRF）', ['project' => $projectId, 'job' => $jobId]);
                 return '日志 URL 不合法（仅允许公网或内网 http/https 地址，禁止回环/链路本地地址），请直接访问：' . $logUrl;
             }
 
-            // 代理拉取 log_url 内容（不缓存，每次重新拉取）。
-            // 关闭重定向：防止 log_url 先 302 跳转到内网/元数据地址绕过上面的校验。
+
+
             $client = new \GuzzleHttp\Client([
                 'timeout'         => 15,
                 'connect_timeout' => 5,
@@ -184,19 +184,19 @@ class CustomPushBuildProvider implements BuildProviderInterface
             return false;
         }
 
-        // 白名单（可选）：内部 DevOps 场景下 CI 日志来源是已知的，白名单比公网/私网判断
-        // 更简单可靠。配置后 host 必须精确命中，否则拒绝。
+
+
         if ($this->allowedLogHosts !== [] && !in_array($host, $this->allowedLogHosts, true)) {
             return false;
         }
 
-        // host 本身是 IP 字面量时直接校验，避免依赖 DNS 反查
+
         if (filter_var($host, FILTER_VALIDATE_IP) !== false) {
             return $this->isSafeIp($host);
         }
 
-        // 域名：同时取 A + AAAA 逐 IP 校验，防止把内网/回环地址藏在域名下，
-        // 也避免只有 IPv6（AAAA）的合法日志服务器被误判为不安全。
+
+
         $ips = $this->resolveHostIps($host);
         if ($ips === []) {
             return false;
@@ -238,13 +238,13 @@ class CustomPushBuildProvider implements BuildProviderInterface
         if (str_contains($ip, ':')) {
             return $this->isSafeIpv6($ip);
         }
-        // IPv4：NO_RES_RANGE 拦截 0.0.0.0/8（未指定）、127.0.0.0/8（回环）、
-        // 169.254.0.0/16（链路本地，含云元数据 169.254.169.254）、240.0.0.0/4（保留+广播）。
-        // 公网与私网（10/8、172.16/12、192.168/16）均有意放行。
+
+
+
         if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_RES_RANGE) === false) {
             return false;
         }
-        // 组播 224.0.0.0/4：NO_RES_RANGE 不覆盖，需单独拦（首位字节 224~239）
+
         $long = ip2long($ip);
         return $long !== false && ($long & 0xF0000000) !== 0xE0000000;
     }
@@ -254,29 +254,25 @@ class CustomPushBuildProvider implements BuildProviderInterface
         $n = strtolower($ip);
         if (
             $n === '::' || $n === '::1'
-            || str_starts_with($n, 'fe80:')   // 链路本地
-            || str_starts_with($n, 'ff0')     // 组播
+            || str_starts_with($n, 'fe80:')
+            || str_starts_with($n, 'ff0')
         ) {
             return false;
         }
-        // 过渡机制内嵌 IPv4：解包后按 IPv4 复检，防止回环/云元数据藏在 NAT64/6to4/映射地址下。
+
         $bin = @inet_pton($ip);
         if ($bin !== false && strlen($bin) === 16) {
             $embedded = null;
             if (substr($bin, 0, 12) === "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff") {
-                // IPv4-mapped（::ffff:a.b.c.d）：末 4 字节按 IPv4 复检
                 $embedded = substr($bin, 12, 4);
             } elseif (substr($bin, 0, 4) === "\x00\x64\xff\x9b") {
-                // NAT64（64:ff9b::/96、64:ff9b:1::/48）：末 4 字节内嵌 IPv4 复检
                 $embedded = substr($bin, 12, 4);
             } elseif (substr($bin, 0, 2) === "\x20\x02") {
-                // 6to4（2002::/16）：第 2-5 字节内嵌 IPv4 复检
                 $embedded = substr($bin, 2, 4);
             }
             if ($embedded !== null) {
                 $unpacked = unpack('N', $embedded);
                 if ($unpacked === false) {
-                    // 内嵌 IPv4 解包失败：无法确认安全性，按不安全处理
                     return false;
                 }
                 $ip = long2ip($unpacked[1]);
@@ -284,7 +280,7 @@ class CustomPushBuildProvider implements BuildProviderInterface
                 return is_string($ip) ? $this->isSafeIp($ip) : false;
             }
         }
-        return true; // 公网 IPv6 或 fc00::/7 唯一本地（等价私网）放行
+        return true;
     }
 
     // ── 上报（用户 CI 一次性回写终态结果） ─────────────────────────
@@ -333,8 +329,8 @@ class CustomPushBuildProvider implements BuildProviderInterface
 
         $existing = $this->findByIid($jobName, $pipelineIid);
 
-        // 终态单调性 + 来源时间单调：success 不可逆；更早的旧事件也不得覆盖新事实。
-        // 这样可避免 CI 重试/乱序回调让 Glue 的聚合结果回退。
+
+
         if (($existing['status'] ?? '') === 'success' && $status !== 'success') {
             return ['success' => false, 'message' => '该 pipeline 已是 success 终态，拒绝用 ' . $status . ' 覆盖'];
         }
@@ -347,21 +343,20 @@ class CustomPushBuildProvider implements BuildProviderInterface
             ];
         }
 
-        // 可选字段：本次未提供则保留已有值。覆盖只作用于本次上报携带的字段，
-        // 避免重复上报把首次写入的 log_url / web_url / ref / sha 等清空。
+
+
         $ref       = array_key_exists('ref', $body)       ? (string) $body['ref']        : (string) ($existing['ref'] ?? '');
         $sha       = array_key_exists('sha', $body)       ? (string) $body['sha']        : (string) ($existing['sha'] ?? '');
         $logUrl    = array_key_exists('log_url', $body)   ? (string) $body['log_url']    : (string) ($existing['log_url'] ?? '');
         $webUrl    = array_key_exists('web_url', $body)   ? (string) $body['web_url']    : (string) ($existing['web_url'] ?? '');
         $exitCode  = array_key_exists('exit_code', $body) ? $body['exit_code']           : ($existing['exit_code'] ?? null);
         $startedAt = !empty($body['started_at'])          ? (string) $body['started_at'] : ($existing['started_at'] ?? null);
-        // 构建参数 = 排除控制字段后的剩余 body 字段；未带自定义变量则保留原有 variables_json
+
         $buildVars = array_diff_key($body, array_flip(self::REPORT_FIELDS));
         $varsJson  = !empty($buildVars) ? json_encode($buildVars, JSON_UNESCAPED_UNICODE) : ($existing['variables_json'] ?? null);
 
         try {
             if ($existing) {
-                // 覆盖走 UPDATE 保住原自增 id（避免 REPLACE INTO 删行重插导致 id 漂移）
                 $stmt = $this->pdo->prepare(
                     'UPDATE ' . AppConfig::TABLE_CUSTOM_BUILDS . '
                      SET ref = ?, sha = ?, variables_json = ?, status = ?, exit_code = ?,
@@ -485,7 +480,7 @@ class CustomPushBuildProvider implements BuildProviderInterface
     /** @return list<array<string, mixed>> */
     public function getRunners(string $projectId): array
     {
-        return []; // runner 状态暂仅 Gitea Actions 提供，custom_push 降级为空
+        return [];
     }
 
     /** @return array<string, mixed> */

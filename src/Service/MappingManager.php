@@ -97,7 +97,6 @@ class MappingManager
     {
         $rows = array_values(array_filter($data, fn($row) => !empty($row['job_name'])));
         if ($rows === []) {
-            // 空输入一律拒绝：早期实现会据此清空整表
             throw new \InvalidArgumentException('saveMaps: 空数据不做全表清理');
         }
 
@@ -136,7 +135,7 @@ class MappingManager
     private function upsertSql(): string
     {
         $cols = 'job_name,git_platform,build_provider,git_remote,project_id,web_url,'
-            . 'current_path,harbor_repository,api_version,status';
+            . 'current_path,registry_repository,api_version,status';
         return Database::sqlUpsert(AppConfig::TABLE_JOB_GIT_MAP, $cols, '?,?,?,?,?,?,?,?,?,?');
     }
 
@@ -149,14 +148,14 @@ class MappingManager
         return [
             $row['job_name'],
             $row['git_platform'] ?? null,
-            // 不兜底 jenkins：CI 源已不止一种，「未指定」就该落成 NULL 让 requireProvider() 明确拒绝，
-            // 而不是悄悄写成 jenkins（会把构建发到用户没选的 CI 上）。
+
+
             $row['build_provider'] ?? null,
             $row['git_remote'] ?? null,
             $row['project_id'] ?? null,
             $row['web_url'] ?? null,
             $row['current_path'] ?? null,
-            $row['harbor_repository'] ?? null,
+            $row['registry_repository'] ?? null,
             $row['api_version'] ?? null,
             $row['status'] ?? AppConfig::STATUS_ACTIVE,
         ];
@@ -188,9 +187,6 @@ class MappingManager
         $maps = array_filter($maps, function ($m) use ($enabled, $cpEnabled) {
             $bp = (string) ($m['build_provider'] ?? '');
             if ($bp === '') {
-                // 未指定构建源：保留在活跃集合里，让界面看得到、能去修。
-                // 在这里过滤掉的话，这类行会从 jobsList / 项目下拉里凭空消失，用户无从发现，
-                // 前端特意保留空值行也就收不到数据。构建时由 requireProvider() 明确拒绝，不做隐式兜底。
                 return true;
             }
             if (in_array($bp, $enabled, true)) {
@@ -236,16 +232,12 @@ class MappingManager
      */
     public function resolveProject(string $projectPath): array
     {
-        // 防御：入参/存量数据可能带首尾空白（历史脏数据曾导致 Jenkins `job/ foo` 404），
-        // 解析前先归一到 canonical 键，与 buildEntry/saveDiscovered 的 trim 写入对齐。
+
+
         $projectPath = trim($projectPath);
 
         $row = $this->resolveMapRow($projectPath);
         if ($row === null) {
-            // 未命中映射：历史上无条件兜底 jenkins（unmapped 直连，JenkinsService 按路径拼 URL）。
-            // CI 不止一种后，无条件假定 jenkins 会把任意 path 发到 Jenkins（可能误命中同名 Job）。
-            // 仅当 jenkins 确实启用时保留该直连能力——此时界面会合并 Jenkins 实时 Job 供直接构建；
-            // 否则无从推断来源，明确拒绝，而不是默认发到某个 CI。
             if (!in_array(AppConfig::PROVIDER_JENKINS, $this->activeBuildProviders(), true)) {
                 throw new ApiException('未匹配到任何映射，且 Jenkins 未启用（无法直连），无法确定构建源', 400);
             }
@@ -266,14 +258,14 @@ class MappingManager
      */
     public function resolveMapRow(string $projectPath): ?array
     {
-        // 防御：与 resolveProject 一致，先归一到 canonical 键
+
         $projectPath = trim($projectPath);
 
-        // Pass 1：按 job_name（canonical 主键）精确匹配，遍历全部映射（含 pending/disabled）。
-        // job_name 是各 CI 中的唯一标识，不能被其它 provider 的 current_path 别名占用，
-        // 否则 gitea_ci 未启用时，路径 jeanslw/Devops_CD（gitea 的 job_name）会落到 jenkins 的
-        // current_path 别名上，拼出 job/jeanslw/... 导致 404（历史 bug）。
-        // 命中未启用 provider 时也返回该 provider，让调用方走 registry 的未配置或未启用分支。
+
+
+
+
+
         foreach ($this->allMaps() as $m) {
             $job = trim((string) ($m['job_name'] ?? ''));
             if ($job !== '' && $job === $projectPath) {
@@ -281,7 +273,7 @@ class MappingManager
             }
         }
 
-        // Pass 2：current_path 别名兜底（仅 active 映射，供 custom_push 推 git 路径归一化用）。
+
         foreach ($this->activeMaps() as $m) {
             $cp = trim((string) ($m['current_path'] ?? ''));
             if ($cp !== '' && $cp === $projectPath) {
@@ -343,14 +335,12 @@ class MappingManager
         $cp  = trim((string) ($row['current_path'] ?? ''));
 
         if ($provider === AppConfig::PROVIDER_GITLAB_CI && !empty($row['project_id'])) {
-            // GitLab CI：用数字 project_id 调外部 API
             return (string) $row['project_id'];
         }
         if ($provider === AppConfig::PROVIDER_JENKINS) {
-            // Jenkins：projectId 必须是 Jenkins Job 路径（job_name），而非 current_path（git 路径）。
             return $job !== '' ? $job : $fallback;
         }
-        // custom_push / gitea_ci / github_actions：以 job_name 为规范键，current_path 兜底。
+
         return $job !== '' ? $job : ($cp !== '' ? $cp : $fallback);
     }
 

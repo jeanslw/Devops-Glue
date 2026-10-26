@@ -103,7 +103,7 @@ class OperationLogRepository
         $listStmt->execute($bind);
         $items = $listStmt->fetchAll();
 
-        // detail 由 JSON 解析为数组，便于前端直接展示
+
         foreach ($items as &$item) {
             if ($item['detail'] !== null && $item['detail'] !== '') {
                 $decoded = json_decode($item['detail'], true);

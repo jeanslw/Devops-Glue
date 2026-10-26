@@ -15,7 +15,7 @@ class AdminUserRepositoryTest extends TestCase
         parent::setUp();
         $_ENV['ADMIN_USER'] = 'admin';
         $_ENV['ADMIN_PASSWORD'] = 'secret';
-        // 避免 seed 后的安全告警写入默认 LOG_PATH（污染真实日志目录）
+        
         $_ENV['LOG_PATH'] = sys_get_temp_dir() . DIRECTORY_SEPARATOR;
     }
 
@@ -45,7 +45,7 @@ class AdminUserRepositoryTest extends TestCase
 
     public function testSeedAdminDefaultsToDeploymentSpecificPlaceholderEmail(): void
     {
-        // 未配置 ADMIN_EMAIL 时，必须落一个按部署唯一化的占位地址，避免不同环境互相碰撞。
+        
         $pdo = $this->createMemoryDatabase();
         AdminUserRepository::seedAdminFromEnv($pdo);
 
@@ -61,7 +61,7 @@ class AdminUserRepositoryTest extends TestCase
         $pdo = $this->createMemoryDatabase();
         AdminUserRepository::seedAdminFromEnv($pdo);
 
-        // 脏值不得落库：回落到部署唯一化占位地址
+        
         $email = $this->emailOf($pdo, 'admin');
         $this->assertNotNull($email);
         $this->assertMatchesRegularExpression('/^admin@.+\.local$/', $email);
@@ -70,7 +70,7 @@ class AdminUserRepositoryTest extends TestCase
 
     public function testSeedAdminBackfillsEmptyEmailOnExistingDatabase(): void
     {
-        // 模拟存量库中 root 账号的 email 为空：启动时必须补齐
+        
         $pdo = $this->createMemoryDatabase();
         $hash = password_hash('secret', PASSWORD_BCRYPT);
         $pdo->prepare('INSERT INTO ' . AppConfig::TABLE_ADMIN_USERS . ' (username, password_hash, role, systems, email) VALUES (?, ?, ?, ?, ?)')
@@ -92,7 +92,7 @@ class AdminUserRepositoryTest extends TestCase
         $_ENV['ADMIN_EMAIL'] = 'seed@example.com';
         AdminUserRepository::seedAdminFromEnv($pdo);
 
-        // 用户在后台把邮箱改成了别的，之后重启不得被 ADMIN_EMAIL 覆盖回去
+        
         $this->assertSame('changed@example.com', $this->emailOf($pdo, 'admin'));
     }
 
@@ -211,7 +211,7 @@ class AdminUserRepositoryTest extends TestCase
     {
         $pdo = $this->createMemoryDatabase();
         $repo = new AdminUserRepository($pdo);
-        // 超级管理员，systems 非默认值，用于验证不会被回退
+        
         $repo->createUser('root', password_hash('oldpass123', PASSWORD_BCRYPT), AppConfig::ROLE_SUPER_ADMIN, 'cd');
 
         $repo->updatePassword('root', password_hash('newpass456', PASSWORD_BCRYPT));
@@ -241,7 +241,7 @@ class AdminUserRepositoryTest extends TestCase
         $repo->setStatus('grace', 0);
         $this->assertSame(0, (int)$repo->findByUsername('grace')['status']);
 
-        // 同一秒内重复 toggle（status 值未变）不得误报未命中用户，这正是 rowCount 方案会误伤的场景
+        
         $repo->setStatus('grace', 0);
         $repo->setStatus('grace', 1);
         $this->assertSame(1, (int)$repo->findByUsername('grace')['status']);
@@ -275,11 +275,11 @@ class AdminUserRepositoryTest extends TestCase
         $pdo = $this->createMemoryDatabaseWithRoles();
         $repo = new AdminUserRepository($pdo);
 
-        // 真实存在的角色：返回 roles 表存储的规范名（建号/改号据此归一大小写变体）
+        
         $pdo->exec("INSERT INTO " . AppConfig::TABLE_ROLES . " (name, description, is_system) VALUES ('deployer', '', 0)");
         $this->assertSame('deployer', $repo->canonicalRole('deployer'));
 
-        // 不存在的角色：返回 null（建号/改号据此拦下不存在的角色名）
+        
         $this->assertNull($repo->canonicalRole('ghost_role'));
     }
 

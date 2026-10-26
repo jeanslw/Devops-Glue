@@ -14,6 +14,7 @@ use App\Service\ApiTokenService;
 use App\Service\AppSettingRepository;
 use App\Service\AutoDiscover;
 use App\Service\HarborService;
+use App\Service\Registry\RegistryProviderInterface;
 use App\Service\I18nService;
 use App\Service\JenkinsService;
 use App\Service\DeployLogRepository;
@@ -42,6 +43,7 @@ class AdminController extends BaseController
     private AdminAuthService $adminAuthService;
     private AdminUserRepository $adminUserRepository;
     private ?HarborService $harbor;
+    private ?RegistryProviderInterface $registryProvider;
     private ?JenkinsService $jenkins = null;
     private ?OperationLogRepository $operationLog = null;
     private ?DeployLogRepository $deployLog = null;
@@ -62,7 +64,8 @@ class AdminController extends BaseController
         ?TokenService $tokenService = null,
         ?ApiTokenService $apiTokenService = null,
         ?HarborService $harbor = null,
-        ?JenkinsService $jenkins = null
+        ?JenkinsService $jenkins = null,
+        ?RegistryProviderInterface $registryProvider = null
     ) {
         parent::__construct($i18n);
         $this->config             = $config;
@@ -79,6 +82,7 @@ class AdminController extends BaseController
         $this->adminUserRepository = $adminUserRepository;
         $this->harbor             = $harbor;
         $this->jenkins            = $jenkins;
+        $this->registryProvider   = $registryProvider;
     }
 
     /** 操作日志仓储（懒加载，写路径不阻塞主流程） */
@@ -122,8 +126,6 @@ class AdminController extends BaseController
         try {
             $result = $this->autoDiscover->discover();
             $found = $result['found'];
-            // errors：平台级扫描错误；sources：本次实际发起扫描的源（前端据此
-            // 区分扫描全部失败、部分失败与成功）
             $errors  = $result['errors'];
             $sources = $result['sources'];
             $saved = $this->autoDiscover->saveDiscovered($found);
@@ -241,15 +243,12 @@ class AdminController extends BaseController
     public function login(Request $request, Response $response): Response
     {
         $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
-        // 请求体字段统一为 username（与用户管理接口一致）；保留 user 作为兼容别名
-        // 用户名统一小写规范化，与建号/种子一致（SQLite 大小写敏感，防止跨驱动行为分裂）
         $user = strtolower(trim($body['username'] ?? $body['user'] ?? ''));
         $pass = $body['password'] ?? '';
         if ($user === '' || $pass === '') {
             return $this->jsonError($response, 'auth.wrong_credentials', 401);
         }
 
-        // 登录失败限流：连续失败锁定（防暴力破解）
         $clientIp = $this->clientIp($request);
         if ($this->adminAuthService->isLoginLocked($clientIp, $user)) {
             $this->opLog()->record($user, 'login_locked', '', [], $clientIp, 'failure');
@@ -276,9 +275,7 @@ class AdminController extends BaseController
         }
 
         $token = bin2hex($randomBytes);
-        // 持久化 token，24h 过期
         try {
-            // 谁创建谁清理：登录时顺带清扫已过期的 admin_token 残留，避免 cache 表越存越多
             $this->pdo->prepare("DELETE FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key LIKE ? AND expires_at <= ?")
                 ->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . '%', time()]);
             $sql = \App\Service\Database::sqlUpsert(AppConfig::TABLE_CACHE, 'cache_key, value, expires_at', '?, ?, ?');
@@ -328,7 +325,6 @@ class AdminController extends BaseController
         return $this->output($response, ['message' => 'logged_out'], $request);
     }
 
-    /** 从 cache 表反查 token 对应的用户名（login 时存的是 "user|role"） */
     private function tokenUserFromCache(string $token): string
     {
         try {
@@ -336,8 +332,6 @@ class AdminController extends BaseController
             $stmt->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . TokenService::hashAdminToken($token)]);
             $value = $stmt->fetchColumn();
             if ($value !== false && $value !== '') {
-                // 与 TokenService::validate 同向解析：role 取末段，用户名为其余部分，
-                // 用户名含 '|' 时两处结论一致（新建账号已禁止 '|'，这里兜底存量数据）
                 $parts = explode('|', (string)$value);
                 if (count($parts) >= 2) {
                     array_pop($parts);
@@ -349,7 +343,6 @@ class AdminController extends BaseController
         return '';
     }
 
-    /** PUT /api/admin/password — 修改当前登录用户的密码 */
     public function changePassword(Request $request, Response $response): Response
     {
         $this->initAuthFromRequest($request);
@@ -366,7 +359,6 @@ class AdminController extends BaseController
         }
 
         try {
-            // 修改当前登录用户的密码（而非 .env 中的 root 账号）
             $username = $this->currentUser;
             if ($username === '') {
                 return $this->jsonError($response, 'auth.not_logged_in', 401);
@@ -381,7 +373,6 @@ class AdminController extends BaseController
             $repository = new \App\Service\AdminUserRepository($this->pdo);
             $repository->updatePassword($username, $hash);
 
-            // 只踢当前用户的 token（而非所有用户）
             try {
                 $header = $request->getHeaderLine('Authorization');
                 if (preg_match('/^Bearer\s+(.+)$/i', $header, $m)) {
@@ -424,12 +415,11 @@ class AdminController extends BaseController
         $gitPlatforms = $this->config->getGitPlatformsConfig();
         $platformNames = array_map(fn($p) => $p['name'], $gitPlatforms);
 
-        // 筛选
         $filtered = $allMaps;
         if ($search !== '') {
             $s = mb_strtolower($search);
             $filtered = array_filter($filtered, function ($m) use ($s) {
-                foreach (['job_name','git_remote','current_path','harbor_repository'] as $f) {
+                foreach (['job_name','git_remote','current_path','registry_repository'] as $f) {
                     if (mb_strpos(mb_strtolower($m[$f] ?? ''), $s) !== false) {
                         return true;
                     }
@@ -441,7 +431,6 @@ class AdminController extends BaseController
             $filtered = array_filter($filtered, fn($m) => ($m['git_platform'] ?? '') === $platform);
         }
         if ($provider !== '') {
-            // 如实匹配：未指定构建源的映射不应被当成 jenkins 筛出来（界面显示与构建行为要一致）
             $filtered = array_filter($filtered, fn($m) => (string) ($m['build_provider'] ?? '') === $provider);
         }
 
@@ -482,7 +471,6 @@ class AdminController extends BaseController
             return $this->jsonError($response, 'map.job_name_required', 400);
         }
 
-        // 构建源必填：新增时必须显式指定，不能依赖写入层/DDL 的 jenkins 默认值
         if (trim((string) ($body['build_provider'] ?? '')) === '') {
             return $this->jsonError($response, 'map.build_provider_required', 400);
         }
@@ -523,7 +511,7 @@ class AdminController extends BaseController
         foreach ($this->mapping->allMaps() as $item) {
             if (($item['job_name'] ?? '') === $oldName) {
                 $found  = true;
-                $oldRow = $item;   // 留存原行，供下面的部分更新合并
+                $oldRow = $item;
                 break;
             }
         }
@@ -537,11 +525,7 @@ class AdminController extends BaseController
         if ($newName === '') {
             return $this->jsonError($response, 'map.job_name_required', 400);
         }
-        // 部分更新语义：saveMap 是固定 10 列 upsert（全列覆盖），直接保存 $updatedEntry 会把
-        // 本次没传的字段写成 NULL —— 只改 harbor_repository 却擦掉 build_provider / current_path。
-        // 先与原行合并：本次显式传入的字段覆盖原值（传 null = 主动清空，照常覆盖），未传的保持原值。
         $merged = array_merge($oldRow, $updatedEntry);
-        // 改名：先写新行再删旧行，任一步失败都不会丢数据
         $this->mapping->saveMap($merged);
         if ($newName !== $oldName) {
             $this->mapping->deleteMap($oldName);
@@ -598,7 +582,6 @@ class AdminController extends BaseController
         }
         $versions = $this->config->getPlatformApiVersionsWithSource();
 
-        // 附加配置状态
         $gitPlatforms = $this->config->getGitPlatformsConfig();
         $configuredGit = array_column($gitPlatforms, 'name');
 
@@ -607,13 +590,14 @@ class AdminController extends BaseController
         }
         unset($info);
 
-        // Harbor 机器人账户（配置态，快速）；实际版本探测已拆到 /platform_versions/probe，
-        // 本接口保持毫秒级返回，避免外部探测拖慢整页。
         if (isset($versions['harbor'])) {
-            $versions['harbor']['robot_account'] = $this->config->isHarborRobotAccount();
+            $registryType = $this->config->getRegistryType();
+            $versions['harbor']['registry_type'] = $registryType;
+            $versions['harbor']['robot_account'] = $registryType === 'registry'
+                ? false
+                : $this->config->isHarborRobotAccount();
         }
 
-        // Jenkins：只读检测版本（Jenkins 无独立 API 版本，直接展示服务器版本；未配置则不显示）
         $hasJenkins = !empty($this->config->getJenkinsConfig()['url']);
         $versions['jenkins'] = [
             'value'      => '',
@@ -636,11 +620,13 @@ class AdminController extends BaseController
         }
 
         $result = ['harbor' => [], 'jenkins' => []];
-        try {
-            $result['harbor']['detected_version'] = $this->harbor?->getHarborVersion();
-            $result['harbor']['robot_support']    = $this->harbor?->getRobotAccountSupport() ?? 'unknown';
-        } catch (\Throwable $e) {
-            \App\Helper\Log::error('[版本探测] Harbor 连接失败', ['error' => $e->getMessage()]);
+        if ($this->config->getRegistryType() !== 'registry') {
+            try {
+                $result['harbor']['detected_version'] = $this->harbor?->getHarborVersion();
+                $result['harbor']['robot_support']    = $this->harbor?->getRobotAccountSupport() ?? 'unknown';
+            } catch (\Throwable $e) {
+                \App\Helper\Log::error('[版本探测] 镜像仓库连接失败', ['error' => $e->getMessage()]);
+            }
         }
 
         if (!empty($this->config->getJenkinsConfig()['url'])) {
@@ -670,7 +656,6 @@ class AdminController extends BaseController
             return $this->jsonError($response, 'platform.versions_empty', 400);
         }
 
-        // 空数组/空对象 = 未作任何更改：合法（前端已短路，此处兜底），直接返回当前生效版本
         if ($versions === []) {
             return $this->output($response, ['success' => true, 'changed' => false, 'versions' => $this->config->getPlatformApiVersions()], $request);
         }
@@ -693,7 +678,6 @@ class AdminController extends BaseController
         }
         $modes = $this->appSettings->getBuildModes();
 
-        // 检查实际可用性（由配置决定，不是模式）
         $jenkinsCfg = $this->config->getJenkinsConfig();
         $hasJenkins = !empty($jenkinsCfg['url']);
         $hasGitlab = $this->config->isPlatformConfigured('gitlab');
@@ -707,7 +691,7 @@ class AdminController extends BaseController
         $hasGithubActions = $hasGithub && !empty($githubCfg['base_url']) && !empty($githubCfg['token']);
 
         return $this->output($response, [
-            'mode'          => $this->appSettings->getBuildMode(), // 兼容：join 串
+            'mode'          => $this->appSettings->getBuildMode(),
             'modes'         => $modes,
             'source'        => $this->appSettings->getBuildModeSource(),
             'has_jenkins'   => $hasJenkins,
@@ -729,7 +713,6 @@ class AdminController extends BaseController
             return $resp;
         }
         $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
-        // 优先读 modes 数组；兼容旧单值 mode
         $modes = $body['modes'] ?? null;
         if (!is_array($modes)) {
             $modes = isset($body['mode']) ? [trim((string) $body['mode'])] : [];
@@ -743,7 +726,6 @@ class AdminController extends BaseController
             }
         }
 
-        // 拒绝不可用的 Provider
         $jenkinsCfg = $this->config->getJenkinsConfig();
         $hasJenkins = !empty($jenkinsCfg['url']);
         $hasGitlab = $this->config->isPlatformConfigured('gitlab');
@@ -768,8 +750,6 @@ class AdminController extends BaseController
         if (in_array(AppConfig::PROVIDER_GITHUB_ACTIONS, $modes, true) && !$hasGithubActions) {
             return $this->jsonError($response, 'build.github_actions_unavail', 400);
         }
-
-        // custom_push 开启时要求至少配了一个 custom_providers
         if ($cpEnabled && empty($this->config->getCustomBuildProviders())) {
             return $this->jsonError($response, 'build.custom_push_no_provider', 400);
         }
@@ -778,7 +758,6 @@ class AdminController extends BaseController
             $this->appSettings->setBuildModes($modes);
             $this->appSettings->setCustomPushEnabled($cpEnabled);
 
-            // 将不在启用集合中的拉取式 provider 的 active 记录降为 pending
             $removed = array_values(array_diff(AppConfig::BUILTIN_PULL_PROVIDERS, $modes));
             if (!empty($removed)) {
                 $maps = $this->mapping->allMaps();
@@ -786,7 +765,7 @@ class AdminController extends BaseController
                 foreach ($maps as &$m) {
                     $bp = (string) ($m['build_provider'] ?? '');
                     if ($bp === '') {
-                        continue;   // 未指定构建源：不属于任何 CI，不因某个 provider 被关闭而降 pending
+                        continue;
                     }
                     if (in_array($bp, $removed, true) && ($m['status'] ?? AppConfig::STATUS_ACTIVE) !== AppConfig::STATUS_PENDING) {
                         $m['status'] = AppConfig::STATUS_PENDING;
@@ -799,7 +778,6 @@ class AdminController extends BaseController
                 }
             }
 
-            // custom_push 关闭时，将 custom_push 的 active 记录降为 pending
             if (!$cpEnabled) {
                 $maps = $this->mapping->allMaps();
                 $changed = false;
@@ -842,7 +820,6 @@ class AdminController extends BaseController
         try {
             $pdo = $this->pdo;
 
-            // 总数按构建记录计（不 JOIN tag，避免一对多重复计数）
             $total = (int) $pdo->query("SELECT count(*) FROM " . AppConfig::TABLE_CUSTOM_BUILDS)->fetchColumn();
 
             $totalPages = max(1, (int) ceil($total / $perPage));
@@ -924,7 +901,6 @@ class AdminController extends BaseController
         }
 
         $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
-        // 统一小写存储，与登录规范化一致（SQLite 大小写敏感）
         $username = strtolower(trim($body['username'] ?? ''));
         $password = $body['password'] ?? '';
         $role     = trim($body['role'] ?? AppConfig::ROLE_DEPLOYER);
@@ -941,35 +917,27 @@ class AdminController extends BaseController
             return $this->jsonError($response, 'user.invalid_username', 400);
         }
 
-        // 角色以 roles 表存储的规范名为准：MySQL 大小写不敏感匹配会放过 'SUPER_ADMIN'
-        // 这类变体，必须回写规范名后再做 === 守卫与落库
         $canonicalRole = $this->adminUserRepository->canonicalRole($role);
         if ($canonicalRole === null) {
             return $this->jsonError($response, 'user.role_not_found', 400);
         }
         $role = $canonicalRole;
 
-        // 创建 super_admin 必须由当前已是 super_admin 的操作者执行（防普通 admin 提权）
         if ($role === AppConfig::ROLE_SUPER_ADMIN && $this->currentRole !== AppConfig::ROLE_SUPER_ADMIN) {
             return $this->jsonError($response, 'user.cannot_create_super_admin', 403);
         }
-        // 系统只允许一个 super_admin：已存在则禁止再建（唯一性约束，防后台造出第二个超级管理员）
         if ($role === AppConfig::ROLE_SUPER_ADMIN && $this->adminUserRepository->countByRole(AppConfig::ROLE_SUPER_ADMIN) > 0) {
             return $this->jsonError($response, 'user.only_one_super_admin', 409);
         }
-
-        // 只有拥有 ci.users.manage_admin 权限的用户能创建管理员角色
         if ($role === AppConfig::ROLE_ADMIN || $role === AppConfig::ROLE_SUPER_ADMIN) {
             if (!$this->hasPermission(AppConfig::PERM_CI_USERS_MANAGE_ADMIN)) {
                 return $this->jsonError($response, 'user.cannot_create_admin', 403);
             }
-            // 管理员账号 system 至少含 cd
             if (!self::systemsContain($systems, AppConfig::SYSTEM_CD)) {
                 $systems = $systems === '' ? AppConfig::SYSTEM_CD : $systems . ',' . AppConfig::SYSTEM_CD;
             }
         }
 
-        // 非管理员创建的账号不能包含 ci
         if (!$this->isAdminRole() && self::systemsContain($systems, AppConfig::SYSTEM_CI)) {
             return $this->jsonError($response, 'user.cd_no_ci_access', 403);
         }
@@ -1020,8 +988,6 @@ class AdminController extends BaseController
                 return $this->jsonError($response, 'user.not_found', 404);
             }
 
-            // 内置根账号（.env ADMIN_USER）：仅允许本人修改自己的 email 资料；
-            // 角色不可改（防自降权锁死），密码走 PUT /api/admin/password（需旧密码）
             $rootAdmin = $this->config->getRootAdminUser();
             if ($targetUser === $rootAdmin) {
                 if ($targetUser !== $this->currentUser || $role !== null || ($password !== null && $password !== '')) {
@@ -1029,24 +995,19 @@ class AdminController extends BaseController
                 }
             }
 
-            // 修改管理员账号需要 ci.users.manage_admin 权限
             if ($this->isTargetAdmin($target['role']) && !$this->hasPermission(AppConfig::PERM_CI_USERS_MANAGE_ADMIN)) {
                 return $this->jsonError($response, 'user.cannot_edit_admin', 403);
             }
 
             if ($role !== null) {
-                // 角色以 roles 表存储的规范名为准：MySQL 大小写不敏感匹配会放过
-                // super_admin 的大小写变体，守卫与落库统一用规范名
                 $canonicalRole = $this->adminUserRepository->canonicalRole($role);
                 if ($canonicalRole === null) {
                     return $this->jsonError($response, 'user.role_not_found', 400);
                 }
                 $role = $canonicalRole;
-                // 提升为 super_admin 必须由 super_admin 操作（防普通 admin 提权）
                 if ($role === AppConfig::ROLE_SUPER_ADMIN && $this->currentRole !== AppConfig::ROLE_SUPER_ADMIN) {
                     return $this->jsonError($response, 'user.cannot_promote_super_admin', 403);
                 }
-                // 系统只允许一个 super_admin：目标非 super_admin 且已存在 super_admin 时，禁止再提升
                 if (
                     $role === AppConfig::ROLE_SUPER_ADMIN
                     && $target['role'] !== AppConfig::ROLE_SUPER_ADMIN
@@ -1054,7 +1015,6 @@ class AdminController extends BaseController
                 ) {
                     return $this->jsonError($response, 'user.only_one_super_admin', 409);
                 }
-                // 提升为管理员需要 ci.users.manage_admin 权限
                 if (($role === AppConfig::ROLE_ADMIN || $role === AppConfig::ROLE_SUPER_ADMIN) && !$this->hasPermission(AppConfig::PERM_CI_USERS_MANAGE_ADMIN)) {
                     return $this->jsonError($response, 'user.cannot_promote_admin', 403);
                 }
@@ -1092,7 +1052,6 @@ class AdminController extends BaseController
     public function userModifyPassword(Request $request, Response $response, array $args): Response
     {
         $this->initAuthFromRequest($request);
-        // 硬门槛：仅 super_admin
         if ($this->currentRole !== AppConfig::ROLE_SUPER_ADMIN) {
             return $this->jsonError($response, 'user.modify_password_forbidden', 403);
         }
@@ -1115,7 +1074,6 @@ class AdminController extends BaseController
                 return $this->jsonError($response, 'user.not_found', 404);
             }
 
-            // 根账号密码走 changePassword（需旧密码）或离线 CLI
             if ($targetUser === $this->config->getRootAdminUser()) {
                 return $this->jsonError($response, 'user.cannot_edit_root', 403);
             }
@@ -1172,7 +1130,6 @@ class AdminController extends BaseController
         }
 
         $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
-        // enabled=true/false（Bool 语义清晰）；兼容直接传 status=0/1
         $enabled = array_key_exists('enabled', $body)
             ? \filter_var($body['enabled'], \FILTER_VALIDATE_BOOLEAN)
             : !empty($body['status']);
@@ -1190,7 +1147,6 @@ class AdminController extends BaseController
             if (!$enabled && $targetUser === $this->currentUser) {
                 return $this->jsonError($response, 'user.cannot_disable_self', 403);
             }
-            // 停用管理员需相应权限
             if (!$enabled && $this->isTargetAdmin($target['role']) && !$this->hasPermission(AppConfig::PERM_CI_USERS_MANAGE_ADMIN)) {
                 return $this->jsonError($response, 'user.cannot_edit_admin', 403);
             }
@@ -1226,16 +1182,13 @@ class AdminController extends BaseController
                 return $this->jsonError($response, 'user.not_found', 404);
             }
 
-            // 内置根账号（.env ADMIN_USER）任何人都不能删除
             $rootAdmin = $this->config->getRootAdminUser();
             if ($targetUser === $rootAdmin) {
                 return $this->jsonError($response, 'user.cannot_delete_root', 403);
             }
-            // 不能删除自己
             if ($targetUser === $this->currentUser) {
                 return $this->jsonError($response, 'user.cannot_delete_self', 403);
             }
-            // 删除管理员用户需要 ci.users.manage_admin 权限
             if ($this->isTargetAdmin($target['role']) && !$this->hasPermission(AppConfig::PERM_CI_USERS_MANAGE_ADMIN)) {
                 return $this->jsonError($response, 'user.cannot_delete_admin', 403);
             }
@@ -1295,7 +1248,6 @@ class AdminController extends BaseController
             }
             $pdo->prepare("INSERT INTO " . AppConfig::TABLE_ROLES . " (name, description, is_system, created_at) VALUES (?, ?, 0, " . \App\Service\Database::sqlNow() . ")")->execute([$name, $desc]);
             $roleId = $pdo->lastInsertId();
-            // 展开隐含权限 + 只分配已定义的权限键（数据驱动，从 DB 读）
             $expanded = $this->expandPermissions($perms);
             $validKeys = $this->allPermissionKeys();
             $permInsert = $pdo->prepare("INSERT INTO " . AppConfig::TABLE_ROLE_PERMISSIONS . " (role_id, perm_key) VALUES (?, ?)");
@@ -1329,7 +1281,6 @@ class AdminController extends BaseController
         $roleId = (int)($args['id'] ?? 0);
 
         $parsedBody = $request->getParsedBody();
-        // 兜底：如果中间件没解析（某些环境下 PUT 的 body 可能不被解析），手动读 raw body
         if (!is_array($parsedBody) && !is_object($parsedBody)) {
             $rawBody = (string) $request->getBody();
             $parsedBody = json_decode($rawBody, true);
@@ -1337,7 +1288,6 @@ class AdminController extends BaseController
         $body  = is_array($parsedBody) ? $parsedBody : [];
         $name  = trim($body['name'] ?? '');
         $desc  = trim($body['description'] ?? '');
-        // 前端始终发送 permissions（至少为空数组），null 表示 key 不存在（理论上不会发生）
         $perms = array_key_exists('permissions', $body) ? $body['permissions'] : null;
 
         try {
@@ -1352,17 +1302,14 @@ class AdminController extends BaseController
                 return $this->jsonError($response, 'user.cannot_create_admin', 403);
             }
 
-            // 动态构建 UPDATE：只更新实际传入的字段
             $fields = [];
             $params = [];
             if ($name !== '' && $name !== $r['name']) {
-                // 检查名称冲突
                 $dup = $pdo->prepare("SELECT id FROM " . AppConfig::TABLE_ROLES . " WHERE name = ? AND id != ?");
                 $dup->execute([$name, $roleId]);
                 if ($dup->fetch()) {
                     return $this->jsonError($response, 'user.username_exists', 409);
                 }
-                // 同步更新 admin_users 表中引用该角色的用户
                 $this->adminUserRepository->updateRoleName($r['name'], $name);
                 $fields[] = 'name = ?';
                 $params[] = $name;
@@ -1376,10 +1323,8 @@ class AdminController extends BaseController
                 $pdo->prepare("UPDATE " . AppConfig::TABLE_ROLES . " SET " . implode(', ', $fields) . " WHERE id = ?")->execute($params);
             }
 
-            // 权限更新：只要有 permissions key 就全量替换（含空数组 = 清空所有权限）
             if (is_array($perms)) {
                 $pdo->prepare("DELETE FROM " . AppConfig::TABLE_ROLE_PERMISSIONS . " WHERE role_id = ?")->execute([$roleId]);
-                // 展开隐含权限
                 $expanded = $this->expandPermissions($perms);
                 $validKeys = $this->allPermissionKeys();
                 $permInsert = $pdo->prepare("INSERT INTO " . AppConfig::TABLE_ROLE_PERMISSIONS . " (role_id, perm_key) VALUES (?, ?)");
@@ -1424,7 +1369,6 @@ class AdminController extends BaseController
             if ($r['is_system']) {
                 return $this->jsonError($response, 'user.cannot_create_admin', 403);
             }
-            // 检查是否有用户绑定此角色
             if ($this->adminUserRepository->countByRole($r['name']) > 0) {
                 return $this->jsonError($response, 'role.in_use', 400);
             }
@@ -1447,12 +1391,10 @@ class AdminController extends BaseController
         try {
             $pdo = $this->pdo;
             $rows = $pdo->query("SELECT perm_key, description, parent_key, created_at FROM " . AppConfig::TABLE_PERMISSIONS . " ORDER BY perm_key")->fetchAll();
-            // 标注内置/注册（与删除保护逻辑同一判定源 DEFAULT_PERMISSIONS）
             foreach ($rows as &$row) {
                 $row['is_builtin'] = array_key_exists($row['perm_key'], AppConfig::DEFAULT_PERMISSIONS);
             }
             unset($row);
-            // 附带 implied 关系（数据驱动，前端可直接用）
             $implied = [];
             try {
                 $ruleRows = $pdo->query("SELECT source_key, target_key FROM " . AppConfig::TABLE_IMPLIED_RULES)->fetchAll();
@@ -1493,7 +1435,6 @@ class AdminController extends BaseController
         if (!preg_match('/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_-]*)+$/i', $permKey)) {
             return $this->jsonError($response, 'validation.invalid_perm_key', 400);
         }
-        // 系统内置权限 key 不可被注册覆盖（与 permissionDelete 的保护对称）
         if (array_key_exists($permKey, AppConfig::DEFAULT_PERMISSIONS)) {
             return $this->jsonError($response, 'permission.builtin_immutable', 400);
         }
@@ -1502,10 +1443,8 @@ class AdminController extends BaseController
             $exists = $pdo->prepare("SELECT COUNT(*) FROM " . AppConfig::TABLE_PERMISSIONS . " WHERE perm_key = ?");
             $exists->execute([$permKey]);
             if ((int)$exists->fetchColumn() > 0) {
-                // 已存在：仅更新描述/父级，保留首次注册时间
                 $pdo->prepare("UPDATE " . AppConfig::TABLE_PERMISSIONS . " SET description = ?, parent_key = ? WHERE perm_key = ?")->execute([$desc, $parent, $permKey]);
             } else {
-                // 新注册：写入注册时间
                 $pdo->prepare("INSERT INTO " . AppConfig::TABLE_PERMISSIONS . " (perm_key, description, parent_key, created_at) VALUES (?, ?, ?, " . \App\Service\Database::sqlNow() . ")")->execute([$permKey, $desc, $parent]);
             }
             $this->opLog()->record($this->currentUser, 'register_permission', $permKey, ['description' => $desc, 'parent_key' => $parent], $this->clientIp($request), 'success');
@@ -1531,7 +1470,6 @@ class AdminController extends BaseController
         if ($permKey === '') {
             return $this->jsonError($response, 'validation.required', 400);
         }
-        // 防误删系统内置权限
         if (array_key_exists($permKey, AppConfig::DEFAULT_PERMISSIONS)) {
             return $this->jsonError($response, 'permission.builtin_protected', 400);
         }
@@ -1566,7 +1504,6 @@ class AdminController extends BaseController
         }
         try {
             $pdo = $this->pdo;
-            // 校验 source/target 在 permissions 表中存在
             $check = $pdo->prepare("SELECT COUNT(*) FROM " . AppConfig::TABLE_PERMISSIONS . " WHERE perm_key IN (?, ?)");
             $check->execute([$src, $tgt]);
             if ((int)$check->fetchColumn() < 2) {
@@ -1574,7 +1511,6 @@ class AdminController extends BaseController
             }
             $sql = \App\Service\Database::sqlUpsert(AppConfig::TABLE_IMPLIED_RULES, 'source_key, target_key', '?, ?');
             $pdo->prepare($sql)->execute([$src, $tgt]);
-            // 隐含权限只在角色创建/更新时展开，写入规则后对自定义角色重算一次
             $resynced = 0;
             try {
                 $resynced = $this->resyncImpliedPermissions();
@@ -1604,7 +1540,6 @@ class AdminController extends BaseController
         if ($src === '' || $tgt === '') {
             return $this->jsonError($response, 'validation.required', 400);
         }
-        // 内置隐含规则（种子数据，来自 IMPLIED_PERMISSIONS）不可删除
         if (isset(AppConfig::IMPLIED_PERMISSIONS[$src]) && in_array($tgt, AppConfig::IMPLIED_PERMISSIONS[$src], true)) {
             return $this->jsonError($response, 'implied.builtin_protected', 400);
         }
@@ -1731,8 +1666,6 @@ class AdminController extends BaseController
         try {
             $updated = $this->apiTokenService->updateScopes($id, $payload);
         } catch (\InvalidArgumentException $e) {
-            // 服务层有两类拒绝原因，这里按目录内是否命中任何 scope 区分提示：
-            // 一个都没命中 = 空集合；命中了一部分 = 里面夹了目录外的 key。
             return $this->jsonError($response, $scopes === [] ? 'api_token.scopes_required' : 'api_token.scopes_invalid', 400);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.query_failed') . ': ' . $e->getMessage(), 500);
@@ -1859,7 +1792,6 @@ class AdminController extends BaseController
         }
 
         $params  = $request->getQueryParams();
-        // result/method 白名单过滤，非法值直接忽略（仓储按精确匹配，避免无意义条件）
         $result  = trim((string)($params['result'] ?? ''));
         $method  = strtoupper(trim((string)($params['method'] ?? '')));
         $filters = [
@@ -1924,7 +1856,7 @@ class AdminController extends BaseController
             $gitea   = $c->getGiteaConfig();
             $harbor  = $c->getHarborConfig();
 
-            // 只算已配置/未配置，不回传任何连接信息
+
             $git = fn(array $cfg) => !empty($cfg['base_url']) && !empty($cfg['token']);
 
             return $this->output($response, [
@@ -1934,9 +1866,9 @@ class AdminController extends BaseController
                     'github'      => ['configured' => $git($github)],
                     'gitee'       => ['configured' => $git($gitee)],
                     'gitea'       => ['configured' => $git($gitea)],
-                    'harbor'      => ['configured' => !empty($harbor['url']) && !empty($harbor['password'])],
+                    'harbor'      => ['configured' => !empty($harbor['url']) && ($c->getRegistryType() === 'registry' || !empty($harbor['password']))],
                 ],
-                // 平台级 tag 设置（清理/回填/日志关键字），仅存于 ci_app_settings，由 ci.platform-config 控制
+                // 平台级 tag 设置（清理/回填/日志关键字）
                 'stale_tag_cleanup_enabled' => $this->appSettings->getStaleTagCleanupEnabled(),
                 'backfill_tag_enabled'      => $this->appSettings->getBackfillTagEnabled(),
                 'tag_log_keyword'           => $this->appSettings->getTagLogKeyword(),
@@ -2028,7 +1960,7 @@ class AdminController extends BaseController
                 $tokenSet    = false;
                 $username    = (string)($cfg['username'] ?? '');
                 $passwordSet = trim((string)($row['password'] ?? '')) !== '';
-                $configured  = $url !== '' && $passwordSet;
+                $configured  = $url !== '' && ($this->appSettings->getRegistryType() === 'registry' || $passwordSet);
             } elseif ($p === 'jenkins') {
                 $url         = (string)($cfg['url'] ?? '');
                 $tokenSet    = trim((string)($row['token'] ?? '')) !== '';
@@ -2050,6 +1982,7 @@ class AdminController extends BaseController
                 'username'     => $username,
                 'password_set' => $passwordSet,
                 'description'  => (string)($row['description'] ?? ''),
+                'registry_type' => $p === 'harbor' ? $this->appSettings->getRegistryType() : null,
                 'configured'   => $configured,
                 'hosting'      => in_array($p, AppConfig::GIT_PLATFORMS, true) ? HostingType::classify($url) : null,
                 'ci_capable'   => $p === 'jenkins' || isset(AppConfig::GIT_PLATFORM_CI_CAPABILITIES[$p]),
@@ -2107,7 +2040,16 @@ class AdminController extends BaseController
                     if (!in_array($platform, $valid, true)) {
                         continue;
                     }
-                    // 独立 CI（Jenkins）开关：删除平台一并关闭；否则按显式 ci_enabled 设置
+
+                    $switchedToRegistry = false;
+                    if ($platform === 'harbor' && array_key_exists('registry_type', $p)) {
+                        $newType = (string)($p['registry_type'] ?? 'harbor');
+                        if ($newType === 'registry' && $this->appSettings->getRegistryType() !== 'registry') {
+                            $switchedToRegistry = true;
+                        }
+                        $this->appSettings->setRegistryType($newType);
+                    }
+
                     if ($platform === AppConfig::PROVIDER_JENKINS) {
                         if (!empty($p['delete'])) {
                             if ($jenkinsEnabled) {
@@ -2126,7 +2068,7 @@ class AdminController extends BaseController
                             }
                         }
                     }
-                    // git 平台 CI 能力开关：删除平台一并关闭其 CI；否则按显式 ci_enabled 增删
+
                     if (isset(AppConfig::GIT_PLATFORM_CI_CAPABILITIES[$platform])) {
                         $ciProvider = AppConfig::GIT_PLATFORM_CI_CAPABILITIES[$platform];
                         if (!empty($p['delete'])) {
@@ -2168,7 +2110,11 @@ class AdminController extends BaseController
                             $password = $pw;
                         }
                     }
-                    // URL 与凭证均空 → 删除行（未配置）；有凭证但无 URL → 拒绝，避免凭证悬空。
+
+                    // 注意：不再因切换 registry_type 而清空凭据。
+                    // 镜像仓库连接（harbor 行）在 harbor / registry 两种模式下复用同一个连接，
+                    // 切换类型只改变访问协议（Harbor v2 API 或 registry:2），不应丢弃凭据，
+                    // 否则每次切回都会因凭据丢失而 401。
                     if ($url === '' && $token === '' && $password === '') {
                         $this->platformConnections->delete($platform);
                         continue;
@@ -2195,8 +2141,8 @@ class AdminController extends BaseController
             if ($jenkinsTouched) {
                 $this->appSettings->setJenkinsEnabled($jenkinsEnabled);
             }
-            // 关闭 CI / Jenkins 时，把对应 provider 的 active 映射降为 pending（与构建模式更新一致），
-            // 避免「重开 CI 后映射又自动恢复为 active」的隐式复活。
+
+
             if ($removedProviders !== []) {
                 $removedProviders = array_values(array_unique($removedProviders));
                 $maps = $this->mapping->allMaps();
@@ -2204,7 +2150,7 @@ class AdminController extends BaseController
                 foreach ($maps as &$m) {
                     $bp = (string) ($m['build_provider'] ?? '');
                     if ($bp === '') {
-                        continue;   // 未指定构建源：不属于任何 CI，不因某个 provider 被关闭而降 pending
+                        continue;
                     }
                     if (in_array($bp, $removedProviders, true) && ($m['status'] ?? AppConfig::STATUS_ACTIVE) !== AppConfig::STATUS_PENDING) {
                         $m['status'] = AppConfig::STATUS_PENDING;
@@ -2249,7 +2195,7 @@ class AdminController extends BaseController
         $ttl   = $dbTtl ?? AppConfig::DEFAULT_OIDC_ID_TOKEN_TTL;
         $ttlSource = $dbTtl !== null ? 'database' : '';
 
-        // 客户端：DB 是唯一权威（已彻底移除 env 兜底），disabled 行显式置为不可用。
+
         $clients = [];
         foreach ($this->oauthClients->list() as $row) {
             $id = trim((string)($row['client_id'] ?? ''));
@@ -2380,7 +2326,7 @@ class AdminController extends BaseController
     }
 
     /**
-     * 手动触发 tag 定时任务的前置校验（开关 + Harbor），与两个 CLI 脚本的安全不变量保持一致。
+     * 手动触发 tag 定时任务的前置校验（开关 + 镜像仓库），与两个 CLI 脚本的安全不变量保持一致。
      * 返回 null 表示可执行；否则返回应直接下发的错误响应。
      * 权限由调用方先行校验（ci.platform-config）。
      */
@@ -2389,9 +2335,9 @@ class AdminController extends BaseController
         if (!$enabled) {
             return $this->jsonError($response, $disabledKey, 409);
         }
-        $harbor = $this->config->getHarborConfig();
-        if (empty($harbor['url']) || $this->harbor === null) {
-            return $this->jsonError($response, 'build.harbor_unconfigured', 409);
+        $registry = $this->config->getHarborConfig();
+        if (empty($registry['url']) || $this->registryProvider === null) {
+            return $this->jsonError($response, 'build.registry_unconfigured', 409);
         }
         return null;
     }
@@ -2400,8 +2346,8 @@ class AdminController extends BaseController
      * POST /api/admin/tag_cleanup — 后台手动立即执行一次清理过期 tag
      *（等价于跑一遍 cli/cleanup-pipeline-tags.php，供无 cron / 无 CLI 的部署主动触发）。
      * 权限：ci.platform-config（与启用清理过期 tag 记录开关同权限）。
-     * 与 CLI 一致的校验：开关未开启返回 409；Harbor 未配置返回 409；
-     * Harbor 不可达以及 harbor_repository 或 tag 为空的行一律跳过，不删除。幂等，可重复执行。
+     * 与 CLI 一致的校验：开关未开启返回 409；镜像仓库未配置（url 为空或提供方不可用）返回 409；
+     * 镜像仓库（Harbor 或 registry:2）不可达以及 registry_repository 或 tag 为空的行一律跳过，不删除。幂等，可重复执行。
      */
     public function runTagCleanup(Request $request, Response $response): Response
     {
@@ -2412,11 +2358,10 @@ class AdminController extends BaseController
         if ($resp = $this->guardTagJob($response, $this->appSettings->getStaleTagCleanupEnabled(), 'build.tag_cleanup_disabled')) {
             return $resp;
         }
-        // 手动触发属长任务（逐仓库探测 Harbor），尽力解除 PHP 脚本时限；
-        // 部分共享主机禁用该函数，故抑制告警（失败时仍受 php.ini max_execution_time 约束）。
+
         @set_time_limit(0);
         try {
-            $service = new \App\Service\PipelineTagService($this->pdo, $this->harbor);
+            $service = new \App\Service\PipelineTagService($this->pdo, $this->registryProvider);
             $stat    = $service->cleanupStaleTags();
             $this->opLog()->record($this->currentUser, 'cleanup_pipeline_tags', '', $stat, $this->clientIp($request), 'success');
             return $this->output($response, $stat + ['success' => true], $request);
@@ -2435,9 +2380,9 @@ class AdminController extends BaseController
      * POST /api/admin/tag_backfill — 后台手动立即执行一次镜像 Tag 日志回填
      *（等价于跑一遍 cli/backfill-pipeline-tags.php，供无 cron / 无 CLI 的部署主动触发）。
      * 权限：ci.platform-config（与启用镜像 Tag 日志回填开关同权限）。
-     * 与 CLI 一致的校验：开关未开启返回 409；Harbor 未配置返回 409；
-     * 仅当 Harbor 确认该 tag 存在、且该 (provider,project_id,pipeline_iid) 尚无 canonical tag 时才写入，
-     * 不覆盖 scan-sync 的结果。幂等，可重复执行。
+     * 与 CLI 一致的校验：开关未开启返回 409；镜像仓库未配置（url 为空或提供方不可用）返回 409；
+     * 仅当镜像仓库（Harbor 或 registry:2）确认该 tag 存在、且该 (provider,project_id,pipeline_iid) 尚无
+     * canonical tag 时才写入，不覆盖 scan-sync 的结果。幂等，可重复执行。
      */
     public function runTagBackfill(Request $request, Response $response): Response
     {
@@ -2450,7 +2395,7 @@ class AdminController extends BaseController
         }
         @set_time_limit(0);
         try {
-            $service = new \App\Service\PipelineTagService($this->pdo, $this->harbor);
+            $service = new \App\Service\PipelineTagService($this->pdo, $this->registryProvider);
             $stat    = $service->backfillTagsFromBuildLog();
             $this->opLog()->record($this->currentUser, 'backfill_pipeline_tags', '', $stat, $this->clientIp($request), 'success');
             return $this->output($response, $stat + ['success' => true], $request);
@@ -2484,7 +2429,6 @@ class AdminController extends BaseController
             $this->opLog()->record($this->currentUser, 'migrate_schema', '', ['driver' => $status['driver'], 'app_version' => $status['app_version']], $this->clientIp($request), 'success');
             return $this->output($response, ['success' => true, 'status' => $status], $request);
         } catch (\Exception $e) {
-            // 先归因再回话：把账号无 DDL 权限与其它失败区分开，给出可操作的下一步
             $driverCode = $e instanceof \PDOException ? (int) ($e->errorInfo[1] ?? 0) : 0;
             $kind       = \App\Service\Database::classifyMigrationError(
                 (string) $e->getMessage(),
@@ -2507,7 +2451,6 @@ class AdminController extends BaseController
         }
     }
 
-    /** 结构同步失败写操作日志（库本身不可用时记录同样会失败，故整体兜住，绝不覆盖原始错误） */
     private function recordSchemaSyncFailure(Request $request, string $message, string $kind): void
     {
         if ($this->currentUser === '') {
@@ -2551,7 +2494,6 @@ class AdminController extends BaseController
 
             $detail = ['driver' => $service->driver(), 'files' => count($files)];
             if ($warningKey !== '') {
-                // 操作日志存默认语言（zh_CN）文本，便于运维审计；前端弹窗按请求语言另行翻译
                 $detail['warning'] = $this->i18n->trans($warningKey, $warningParams);
             }
             $this->opLog()->record(
@@ -2576,7 +2518,7 @@ class AdminController extends BaseController
             return $this->output($response, [
                 'success'  => true,
                 'files'    => $out,
-                // 前端按当前界面语言翻译（与 localStorage 语言一致，避免后端 Accept-Language 与前端界面语言不一致）
+
                 'warnings' => $warningKey !== '' ? [['key' => $warningKey, 'params' => $warningParams]] : [],
             ], $request);
         } catch (\Throwable $e) {
@@ -2622,7 +2564,7 @@ class AdminController extends BaseController
     }
 
     /**
-     * 展开权限列表：根据 implied_rules 表自动添加隐含权限（数据驱动，不再读常量）
+     * 展开权限列表：根据 implied_rules 表自动添加隐含权限
      *
      * @param array<array-key, string> $perms
      *
@@ -2634,17 +2576,15 @@ class AdminController extends BaseController
         $queue  = array_values($perms);
         try {
             $pdo = $this->pdo;
-            // 一次性把所有 source_key 的目标拉出来，避免 N+1
             $implied = [];
             $rows = $pdo->query("SELECT source_key, target_key FROM " . AppConfig::TABLE_IMPLIED_RULES)->fetchAll();
             foreach ($rows as $r) {
                 $implied[$r['source_key']][] = $r['target_key'];
             }
         } catch (\Exception $e) {
-            // DB 不可用时回退到常量（避免硬故障）
             $implied = AppConfig::IMPLIED_PERMISSIONS;
         }
-        // 队列展开到不动点：链式规则（A 推出 B、B 推出 C）也必须把 C 补进来，否则只选 A 会永久丢 C。
+
         while ($queue) {
             $pk = array_shift($queue);
             if (in_array($pk, $result, true)) {
@@ -2665,9 +2605,8 @@ class AdminController extends BaseController
     /**
      * 隐含规则变更后，对自定义角色（is_system=0）重算权限，补进新规则带来的隐含权限。
      *
-     * 只补不删，重复执行幂等；删除规则不回撤（无法区分显式与隐含带来的权限）。
      *
-     * @return int 实际补了权限的角色数
+     * @return int
      */
     private function resyncImpliedPermissions(): int
     {
@@ -2758,13 +2697,11 @@ class AdminController extends BaseController
     private function buildEntry(array $body): array
     {
         $entry = [];
-        $fields = ['job_name', 'git_platform', 'build_provider', 'git_remote', 'project_id', 'web_url', 'current_path', 'harbor_repository', 'api_version', 'status'];
+        $fields = ['job_name', 'git_platform', 'build_provider', 'git_remote', 'project_id', 'web_url', 'current_path', 'registry_repository', 'api_version', 'status'];
         foreach ($fields as $f) {
             if (array_key_exists($f, $body)) {
                 $val = $body[$f];
                 if ($f === 'build_provider' && trim((string) $val) === '') {
-                    // 显式传空 = 绕过前端没选构建源：拒绝落库。空值在构建时无法确定用哪条 CI
-                    // （CI 源已不止一种，不做 jenkins 兜底）。不传该字段属部分更新，保持原值，不受影响。
                     throw new ApiException('build_provider（构建源）不能为空，请指定该映射使用的 CI', 400);
                 }
                 if ($f === 'project_id' && ($val === '' || $val === null)) {
@@ -2779,13 +2716,13 @@ class AdminController extends BaseController
         if (!isset($entry['job_name'])) {
             $entry['job_name'] = '';
         }
-        // 主键归一到 canonical 键：job_name/current_path 去除首尾空白，防脏入参（历史曾因首部空格导致 Jenkins 404）
-        foreach (['job_name', 'current_path', 'git_remote', 'harbor_repository', 'web_url'] as $trimKey) {
+
+        foreach (['job_name', 'current_path', 'git_remote', 'registry_repository', 'web_url'] as $trimKey) {
             if (isset($entry[$trimKey]) && is_string($entry[$trimKey])) {
                 $entry[$trimKey] = trim($entry[$trimKey]);
             }
         }
-        // 未启用 Custom_Push 时，新增/编辑为 custom_push 的映射强制降为待定，避免开关关闭仍能新增 active 映射
+
         if (
             ($entry['build_provider'] ?? '') === AppConfig::PROVIDER_CUSTOM_PUSH
             && !$this->appSettings->getCustomPushEnabled()
@@ -2803,10 +2740,8 @@ class AdminController extends BaseController
     {
         try {
             $pdo = $this->pdo;
-            // 构建模式集合化后缓存 key 变多，按前缀统一清理
             $pdo->prepare("DELETE FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key LIKE ?")->execute([AppConfig::CACHE_KEY_MAP_LIST_PREFIX . '%']);
         } catch (\Exception $e) {
-            // 缓存清理失败不影响主流程
         }
     }
 }

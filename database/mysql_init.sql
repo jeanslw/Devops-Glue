@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS `ci_job_git_map` (
     `project_id`        INT,
     `web_url`           TEXT,
     `current_path`      TEXT,
-    `harbor_repository` TEXT,
+    `registry_repository` TEXT,
     `api_version`       TEXT,
     `status`            VARCHAR(255) DEFAULT 'active'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

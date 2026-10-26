@@ -9,6 +9,10 @@ use App\Service\GitService;
 use App\Service\GitRemoteResolver;
 use App\Service\AutoDiscover;
 use App\Service\HarborService;
+use App\Service\Registry\RegistryProviderInterface;
+use App\Service\Registry\HarborProvider;
+use App\Service\Registry\DockerRegistryProvider;
+use App\Service\RegistrySyncService;
 use App\Service\MappingManager;
 use App\Service\PipelineTagService;
 use App\Service\PipelineArtifactService;
@@ -32,6 +36,7 @@ use App\Service\Build\GithubActionsBuildProvider;
 use App\Controller\MainController;
 use App\Controller\GitController;
 use App\Controller\HarborController;
+use App\Controller\RegistryController;
 use App\Controller\AdminController;
 use App\Controller\ServiceContractController;
 use App\Controller\IntegratedServiceController;
@@ -59,14 +64,12 @@ return [
         return new ResponseFactory();
     },
 
-    // PDO 数据库连接：统一走 Database::getPdo()（内部 createPdo()+bootstrap()，只初始化一次）。
+    // PDO 数据库连接
     \PDO::class => function () {
         return \App\Service\Database::getPdo();
     },
 
-    // 运行时配置（只读 settings.php / env 合并数组）。
-    // Git/Harbor/Jenkins 连接配置：DB（ci_platform_connections）唯一权威，覆盖 settings.php 里的结构占位，
-    // 使所有经 Settings 访问器的消费者（ProviderRegistry / harborClient / gitlabHttpClient 等）零改动拿到 DB 值。
+    // 运行时配置
     Settings::class => function (\Psr\Container\ContainerInterface $c) use ($settings) {
         $conns = $c->get(PlatformConnectionRepository::class)->resolveConnections();
         $settings['git'] = array_merge($settings['git'], [
@@ -77,35 +80,37 @@ return [
         ]);
         $settings['harbor']  = $conns['harbor'];
         $settings['jenkins'] = $conns['jenkins'];
+        
+        $settings['harbor']['registry_type'] = $c->get(AppSettingRepository::class)->getRegistryType();
         return new Settings($settings, $c->get(PlatformVersionRepository::class));
     },
 
-    // ci_app_settings 运行时开关/配置（build_mode、custom_push、tag 关键字等）
+    // ci_app_settings 运行时开关/配置
     AppSettingRepository::class => function (\Psr\Container\ContainerInterface $c) {
         return new AppSettingRepository($c->get(\PDO::class));
     },
 
-    // 敏感字段对称加密（AES-256-GCM）；密钥 DATA_ENC_KEY 显式配置，缺失即抛异常（fail-closed）
+    // 敏感字段对称加密（AES-256-GCM）
     Encryptor::class => function () {
         return new Encryptor();
     },
 
-    // OIDC/OAuth 客户端白名单（ci_oauth_clients：DB 唯一权威，彻底移除 env）
+    // OIDC/OAuth 客户端白名单
     OAuthClientRepository::class => function (\Psr\Container\ContainerInterface $c) {
         return new OAuthClientRepository($c->get(\PDO::class), $c->get(Encryptor::class));
     },
 
-    // Git/Harbor/Jenkins 连接配置（ci_platform_connections：DB 唯一权威，彻底移除 env）
+    // Git/Harbor/Jenkins 连接配置
     PlatformConnectionRepository::class => function (\Psr\Container\ContainerInterface $c) {
         return new PlatformConnectionRepository($c->get(\PDO::class), $c->get(Encryptor::class));
     },
 
-    // 平台 API 版本覆盖（ci_platform_versions）
+    // 平台 API 版本覆盖
     PlatformVersionRepository::class => function (\Psr\Container\ContainerInterface $c) {
         return new PlatformVersionRepository($c->get(\PDO::class));
     },
 
-    // API token 调用审计日志（ci_api_access_logs）
+    // API token 调用审计日志
     ApiAccessLogRepository::class => function (\Psr\Container\ContainerInterface $c) {
         return new ApiAccessLogRepository($c->get(\PDO::class));
     },
@@ -142,21 +147,16 @@ return [
         $config = $c->get(Settings::class);
         return new Logger(
             $config->getLogPath(),
-            // 与环境无关：APP_DEBUG=true 时为 debug（全量），false 时为 info（保留诊断信息，仅过滤 debug 噪声）
             $config->isDebug() ? 'debug' : 'info'
         );
     },
 
-    // CORS 中间件：只读纯配置，不经过 Settings。Settings 构造会连带解析
-    // PlatformVersionRepository 与 \PDO，从而建立 DB 连接。若 DB 宕机，全局中间件
-    // 在每请求解析阶段就抛异常，/healthz 这类无鉴权探针自己的 try/catch 根本进不去，
-    // 会先被转成 500。这里直接读 $settings['cors']（与 Settings::getCorsConfig() 同源），
-    // 断开 DB 依赖。
+    // CORS 中间件：只读纯配置，不经过 Settings
     CorsMiddleware::class => function () use ($settings) {
         return new CorsMiddleware($settings['cors'] ?? ['allowed_origins' => ['*']]);
     },
 
-    // Token 验证服务（统一封装 cache token / 旧版 base64 token / API token 验证逻辑）
+    // Token 验证服务
     TokenService::class => function (\Psr\Container\ContainerInterface $c) {
         return new TokenService(
             $c->get(\PDO::class),
@@ -165,12 +165,12 @@ return [
         );
     },
 
-    // API Token 服务（服务账号 / 第三方调用，独立于 RBAC）
+    // API Token 服务
     ApiTokenService::class => function (\Psr\Container\ContainerInterface $c) {
         return new ApiTokenService($c->get(\PDO::class));
     },
 
-    // 集成服务启用契约仓储（integrated_services；CI 唯一写入，CD 等只读 enabled/provision）
+    // 集成服务启用契约仓储
     IntegratedServiceRepository::class => function (\Psr\Container\ContainerInterface $c) {
         return new IntegratedServiceRepository($c->get(\PDO::class));
     },
@@ -182,12 +182,12 @@ return [
         );
     },
 
-    // 用户身份源（user_identities）仓储：维护 ldap/local 等外部身份与 admin_users 的绑定
+    // 用户身份源（user_identities）仓储
     UserIdentityRepository::class => function (\Psr\Container\ContainerInterface $c) {
         return new UserIdentityRepository($c->get(\PDO::class));
     },
 
-    // LDAP 认证客户端：仅在 ldap.enabled=true 且 PHP ext-ldap 加载时工作
+    // LDAP 认证客户端
     LdapService::class => function (\Psr\Container\ContainerInterface $c) {
         return new LdapService($c->get(Settings::class));
     },
@@ -224,9 +224,9 @@ return [
         $logger  = $c->get(Logger::class);
         $registry = new ProviderRegistry($logger);
 
-        // ---- 内置平台（仅已配置的才注册，未配置的不可用也不展示）----
+        
 
-        // GitLab（自建，base_url 为空则跳过）
+        
         if ($config->isPlatformConfigured('gitlab')) {
             $gitlabCfg = $config->getGitlabConfig();
             $registry->register(
@@ -242,7 +242,7 @@ return [
             );
         }
 
-        // Gitee（SaaS，默认 base_url 始终存在）
+        // Gitee
         if ($config->isPlatformConfigured('gitee')) {
             $giteeCfg = $config->getGiteeConfig();
             $registry->register(
@@ -258,7 +258,7 @@ return [
             );
         }
 
-        // GitHub（SaaS，默认 base_url 始终存在）
+        // GitHub
         if ($config->isPlatformConfigured('github')) {
             $githubCfg = $config->getGithubConfig();
             $registry->register(
@@ -274,7 +274,7 @@ return [
             );
         }
 
-        // Gitea（自建，base_url 为空则跳过）
+        // Gitea
         if ($config->isPlatformConfigured('gitea')) {
             $giteaCfg = $config->getGiteaConfig();
             $registry->register(
@@ -333,9 +333,7 @@ return [
         $config   = $c->get(Settings::class);
         $logger   = $c->get(Logger::class);
         $registry = new BuildProviderRegistry($logger);
-
-        // 始终注册已配置的 Provider（BUILD_MODE 仅影响展示/偏好，不再限制注册）
-        // 这样 UI 切换模式时无需重启即可生效
+		
         $jenkinsCfg = $config->getJenkinsConfig();
         if (!empty($jenkinsCfg['url'])) {
             $registry->register(AppConfig::PROVIDER_JENKINS, function () use ($c, $logger) {
@@ -353,7 +351,7 @@ return [
             }
         }
 
-        // Gitea Actions（自建 Gitea，base_url + token 齐备才注册）
+        // Gitea Actions
         if ($config->isPlatformConfigured('gitea')) {
             $giteaCfg = $config->getGiteaConfig();
             if (!empty($giteaCfg['base_url']) && !empty($giteaCfg['token'])) {
@@ -363,7 +361,7 @@ return [
             }
         }
 
-        // GitHub Actions（SaaS，base_url 固定 api.github.com，token 齐备才注册）
+        // GitHub Actions
         if ($config->isPlatformConfigured('github')) {
             $githubCfg = $config->getGithubConfig();
             if (!empty($githubCfg['base_url']) && !empty($githubCfg['token'])) {
@@ -373,9 +371,7 @@ return [
             }
         }
 
-        // ---- 自定义 Build Provider（custom_push 等）----
-        // 与 Git 自定义平台解耦：独立配置项 build.custom_providers。
-        // 构造签名统一为 (array $config, \PDO $pdo, ?GitService $git, ?Logger $logger)。
+        // ---- 自定义 Build Provider----
         foreach ($config->getCustomBuildProviders() as $provider) {
             $name  = $provider['name'] ?? '';
             $class = $provider['class'] ?? '';
@@ -483,11 +479,12 @@ return [
             $c->get(TokenService::class),
             $c->get(ApiTokenService::class),
             $c->get(HarborService::class),
-            $c->get(JenkinsService::class)
+            $c->get(JenkinsService::class),
+            $c->get('registryProvider')
         );
     },
 
-    // 集成服务启停控制器（integrated_services：读 ci.system，写仅 super_admin）
+    // 集成服务启停控制器
     IntegratedServiceController::class => function (\Psr\Container\ContainerInterface $c) {
         return new IntegratedServiceController(
             $c->get(I18nService::class),
@@ -498,21 +495,21 @@ return [
         );
     },
 
-    // 集成服务契约窄只读控制器（供 CD 等集成服务 HTTP 自检；API token + build.read scope）
+    // 集成服务契约窄只读控制器
     ServiceContractController::class => function (\Psr\Container\ContainerInterface $c) {
         return new ServiceContractController(
             $c->get(I18nService::class),
-            $c->get(IntegratedServiceRepository::class)
+            $c->get(IntegratedServiceRepository::class),
+            $c->get(Settings::class)
         );
     },
 
-    // RBAC 用户写控制器（CD 服务账号专用，仅 API token）
+    // RBAC 用户写控制器
     RbacController::class => function (\Psr\Container\ContainerInterface $c) {
         return new RbacController(
             $c->get(I18nService::class),
             $c->get(Settings::class),
             $c->get(AdminUserRepository::class),
-            // 角色到权限的读取复用 TokenService::loadPermissions（与登录、中间件用同一份实现，不另起 SQL）
             $c->get(TokenService::class)
         );
     },
@@ -528,8 +525,9 @@ return [
             $c->get(\PDO::class),
             $c->get(PipelineTagService::class),
             $c->get(PipelineArtifactService::class),
-            $c->get(HarborService::class),
-            $c->get(ProviderRegistry::class)
+            $c->get('registryProvider'),
+            $c->get(ProviderRegistry::class),
+            $c->get(RegistrySyncService::class)
         );
     },
 
@@ -541,7 +539,7 @@ return [
         );
     },
 
-    // ---------- GitLab HTTP 客户端（共享，供 AutoDiscover / GitRemoteResolver 复用）----------
+    // ---------- GitLab HTTP 客户端----------
 
     'gitlabHttpClient' => function (\Psr\Container\ContainerInterface $c) {
         $config = $c->get(Settings::class);
@@ -549,7 +547,7 @@ return [
         $base   = rtrim($glCfg['base_url'] ?? '', '/');
         $token  = $glCfg['token'] ?? '';
         if (empty($base) || empty($token)) {
-            return null; // GitLab 未配置时返回 null，消费者自行降级
+            return null;
         }
         return new Client([
             'headers'         => ['PRIVATE-TOKEN' => $token],
@@ -559,14 +557,14 @@ return [
         ]);
     },
 
-    // Gitea HTTP 客户端（共享，供 AutoDiscover 扫描 Gitea 项目复用）
+    // Gitea HTTP 客户端
     'giteaHttpClient' => function (\Psr\Container\ContainerInterface $c) {
         $config = $c->get(Settings::class);
         $giteaCfg = $config->getGiteaConfig();
         $base   = rtrim($giteaCfg['base_url'] ?? '', '/');
         $token  = $giteaCfg['token'] ?? '';
         if (empty($base) || empty($token)) {
-            return null; // Gitea 未配置时返回 null，消费者自行降级
+            return null;
         }
         return new Client([
             'headers'         => ['Authorization' => 'token ' . $token],
@@ -583,7 +581,7 @@ return [
         $base   = rtrim($githubCfg['base_url'] ?? 'https://api.github.com', '/');
         $token  = $githubCfg['token'] ?? '';
         if (empty($base) || empty($token)) {
-            return null; // GitHub 未配置时返回 null，消费者自行降级
+            return null;
         }
         return new Client([
             'headers'         => [
@@ -603,15 +601,20 @@ return [
     'harborClient' => function (\Psr\Container\ContainerInterface $c) {
         $config = $c->get(Settings::class);
         $harbor = $config->getHarborConfig();
+        // 连接地址可能不带 scheme（只填 host[:port]）。此处按 https 归一（Harbor 默认 https）。
+        $harborUrl = trim((string) ($harbor['url'] ?? ''));
+        if ($harborUrl !== '' && !preg_match('#^[a-zA-Z][a-zA-Z0-9+.-]*://#', $harborUrl)) {
+            $harborUrl = 'https://' . $harborUrl;
+        }
         return new Client([
-            'base_uri' => $harbor['url'] ?? '',
+            'base_uri' => $harborUrl,
             'auth'     => [
                 $harbor['username'] ?? 'admin',
                 $harbor['password'] ?? '',
             ],
             'headers'         => ['Accept' => 'application/json'],
-            'connect_timeout' => 5,   // TCP 握手超时，防止 hang
-            'timeout'         => 15,  // 整个请求超时
+            'connect_timeout' => 5,  
+            'timeout'         => 15,
         ]);
     },
 
@@ -624,8 +627,61 @@ return [
         return new HarborService($c->get('harborClient'), $c->get(\PDO::class), $logger);
     },
 
+    'registryClient' => function (\Psr\Container\ContainerInterface $c) {
+        $config = $c->get(Settings::class);
+        $registry = $config->getHarborConfig();
+        $url = rtrim((string) ($registry['url'] ?? ''), '/');
+        // 无 scheme 时按 http 归一
+        if ($url !== '' && !preg_match('#^[a-zA-Z][a-zA-Z0-9+.-]*://#', $url)) {
+            $url = 'http://' . $url;
+        }
+        return new Client([
+            'base_uri'        => $url === '' ? '' : $url . '/',
+            'headers'         => ['Accept' => 'application/json'],
+            'connect_timeout' => 5,
+            'timeout'         => 15,
+            'http_errors'     => false,
+        ]);
+    },
+
+    // 镜像仓库提供方：按 ci_app_settings.registry_type（全局键）单实例构造。
+    'registryProvider' => function (\Psr\Container\ContainerInterface $c): ?RegistryProviderInterface {
+        $config = $c->get(Settings::class);
+        $registry = $config->getHarborConfig();
+        if (trim((string) ($registry['url'] ?? '')) === '') {
+            return null;
+        }
+        if ($config->getRegistryType() === 'registry') {
+            $logger = null;
+            try {
+                $logger = $c->get(Logger::class);
+            } catch (\Throwable $e) {
+            }
+            return new DockerRegistryProvider(
+                $c->get('registryClient'),
+                (string) ($registry['username'] ?? ''),
+                (string) ($registry['password'] ?? ''),
+                $logger
+            );
+        }
+        return new HarborProvider($c->get(HarborService::class));
+    },
+
     PipelineTagService::class => function (\Psr\Container\ContainerInterface $c) {
-        return new PipelineTagService($c->get(\PDO::class), $c->get(HarborService::class));
+        return new PipelineTagService($c->get(\PDO::class), $c->get('registryProvider'));
+    },
+
+    RegistrySyncService::class => function (\Psr\Container\ContainerInterface $c) {
+        return new RegistrySyncService(
+            $c->get(I18nService::class),
+            $c->get(MappingManager::class),
+            $c->get(BuildProviderRegistry::class),
+            $c->get(PipelineArtifactService::class),
+            $c->has(ProviderRegistry::class) ? $c->get(ProviderRegistry::class) : null,
+            $c->get('registryProvider'),
+            $c->get(Settings::class),
+            $c->get(\PDO::class)
+        );
     },
 
     PipelineArtifactService::class => function (\Psr\Container\ContainerInterface $c) {
@@ -639,12 +695,19 @@ return [
         );
     },
 
-    // ---------- OAuth2 / OIDC Provider（Jenkins / Harbor / GitLab 用 Glue 账号登录）----------
+    // 镜像仓库通用列表
+    RegistryController::class => function (\Psr\Container\ContainerInterface $c) {
+        return new RegistryController(
+            $c->get(I18nService::class),
+            $c->get('registryProvider')
+        );
+    },
+
+    // ---------- OAuth2 / OIDC Provider（Jenkins / Harbor / GitLab ）----------
 
     OAuthService::class => function (\Psr\Container\ContainerInterface $c) {
         return new OAuthService(
             $c->get(\PDO::class),
-            // 客户端白名单唯一权威是 DB（ci_oauth_clients），彻底移除 env 兜底。
             $c->get(OAuthClientRepository::class)->resolveClients([])
         );
     },

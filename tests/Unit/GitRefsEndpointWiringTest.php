@@ -28,7 +28,7 @@ class GitRefsEndpointWiringTest extends TestCase
     {
         $routes = $this->read('config/routes.php');
 
-        // {path:.+} 是 CD 传 group/sub/repo 形式 job 名的前提，缺了就只能匹配单段路径
+        
         $this->assertStringContainsString("'/{path:.+}/branches', [GitController::class, 'branches']", $routes);
         $this->assertStringContainsString("'/{path:.+}/tags', [GitController::class, 'tags']", $routes);
         $this->assertStringContainsString("'/{path:.+}/refs', [GitController::class, 'refs']", $routes);
@@ -42,7 +42,7 @@ class GitRefsEndpointWiringTest extends TestCase
         $this->assertMatchesRegularExpression('/public function refs\(/', $ctrl);
         $this->assertStringContainsString('getTagsForJob', $ctrl);
         $this->assertStringContainsString('getRefsForJob', $ctrl);
-        // 三个只读动作复用同一权限点：新增端点不引入新权限键（否则要同步 RBAC 目录与文档）
+        
         $this->assertSame(
             3,
             substr_count($ctrl, 'AppConfig::PERM_CI_BUILD_RECORDS_PULL'),
@@ -82,12 +82,12 @@ class GitRefsEndpointWiringTest extends TestCase
             AppConfig::CD_SERVICE_TOKEN_SCOPES,
             'CD 服务凭据必须持有 git：否则 CD 调新端点会被 AuthMiddleware 判 403'
         );
-        // 原有三件套不得因本次调整被顶掉（数组字面量手改最容易漏）
+        
         $keep = [AppConfig::API_SCOPE_BUILD_READ, AppConfig::API_SCOPE_BUILD_WRITE, AppConfig::API_SCOPE_RBAC_USER_WRITE];
         foreach ($keep as $scope) {
             $this->assertContains($scope, AppConfig::CD_SERVICE_TOKEN_SCOPES, "CD 凭据仍应保留 {$scope}");
         }
-        // git 是只读 scope：不得顺势把写/扫描类 scope 塞进契约
+        
         $this->assertNotContains(AppConfig::API_SCOPE_BUILD_REPORT, AppConfig::CD_SERVICE_TOKEN_SCOPES);
         $this->assertNotContains(AppConfig::API_SCOPE_HARBOR_SCAN, AppConfig::CD_SERVICE_TOKEN_SCOPES);
     }
@@ -107,7 +107,7 @@ class GitRefsEndpointWiringTest extends TestCase
             '/api/git/{path}/refs' => 'object',
         ];
 
-        // 中英双份 OpenAPI 必须同步：漏一份 = 对应语言的对接方（含 CD）看不到端点
+        
         foreach (['templates/openapi.json', 'templates/openapi.en.json'] as $file) {
             $doc = json_decode($this->read($file), true);
             $this->assertIsArray($doc, "{$file} 必须是合法 JSON");
@@ -130,8 +130,8 @@ class GitRefsEndpointWiringTest extends TestCase
     {
         $db = $this->read('src/Service/Database.php');
 
-        // v2.9.0：自愈从 ensureTables 提升到 bootstrap 公共段（手动建库模式升级同样生效），
-        // migrateNow（后台"同步库结构"/cli/migrate.php）保持同一接线
+        
+        
         $this->assertSame(
             2,
             substr_count($db, 'self::healCdServiceTokenScopes(self::pdo())'),
@@ -147,7 +147,7 @@ class GitRefsEndpointWiringTest extends TestCase
 
     public function testGitQueryFailedMessageExistsInBothLocales(): void
     {
-        // 新端点复用既有错误键，不得引入只有单语种的新文案
+        
         foreach (['lang/zh_CN/messages.php', 'lang/en/messages.php'] as $file) {
             $this->assertStringContainsString("'git.query_failed'", $this->read($file), "{$file} 缺少 git.query_failed");
         }

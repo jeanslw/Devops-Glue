@@ -122,6 +122,15 @@ class Settings
     }
 
     /**
+     * 镜像仓库类型：harbor（默认）| registry（标准 OCI Distribution，如 registry:2）。
+     */
+    public function getRegistryType(): string
+    {
+        $type = (string) ($this->config['harbor']['registry_type'] ?? '');
+        return $type === 'registry' ? 'registry' : 'harbor';
+    }
+
+    /**
      * 判断当前配置的 Harbor 账号是否为机器人账户（用户名含 'robot$' 前缀）。
      * Harbor v2.2.0 之前机器人账户是 JWT，无法调用 REST API，仅 Docker/Helm CLI 可用。
      */
@@ -170,11 +179,13 @@ class Settings
      * 与 Git 自定义平台相互独立，配置项为 build.custom_providers。
      *
      * name 为注册名、class 为完整类名、config 为构造参数。
+     * 键均为可选：数据来自 settings.php / env 的用户可写配置，运行时无校验，
+     * 消费方须自行缺省处理（见 config/container.php 的注册逻辑）。
      *
      * @return list<array{
-     *     name: string,
-     *     class: string,
-     *     config: array<string,mixed>
+     *     name?: string,
+     *     class?: string,
+     *     config?: array<string,mixed>
      * }>
      */
     public function getCustomBuildProviders(): array
@@ -189,15 +200,15 @@ class Settings
         $gitConfig = $this->config['git'] ?? [];
         $versions  = $this->getPlatformApiVersions();
 
-        // 内置平台
+
         foreach (['gitlab', 'gitee', 'github', 'gitea'] as $name) {
             $cfg = $gitConfig[$name] ?? [];
-            // 有 base_url 或 api_base_url 任一非空即认为已配置
+
             if (!empty($cfg['base_url']) || !empty($cfg['api_base_url'])) {
                 $baseUrl = $cfg['api_base_url'] ?? $cfg['base_url'];
                 $version = $cfg['api_version'] ?? ($versions[$name] ?? $this->getDefaultApiVersion($name));
 
-                // 拼接 API 版本路径（GitHub 除外：版本通过 HTTP header 传递）
+
                 if ($name !== 'github') {
                     $expectedPath = '/api/' . $version;
                     if (strpos($baseUrl, $expectedPath) === false) {
@@ -213,7 +224,7 @@ class Settings
             }
         }
 
-        // 自定义平台
+
         foreach ($this->getCustomGitProviders() as $provider) {
             $class = $provider['class'] ?? '';
             $cfg   = $provider['config'] ?? [];
@@ -282,8 +293,8 @@ class Settings
      */
     public function getRootAdminUser(): string
     {
-        // 统一小写：与登录输入、建号、seedAdminFromEnv 的规范化保持一致，
-        // 否则根账号保护比对（===）在大小写不一致时会被绕过
+
+
         return strtolower($this->config['admin']['user'] ?? 'root');
     }
 
@@ -330,13 +341,13 @@ class Settings
             'enabled'         => true,
             'host'            => (string)($cfg['host'] ?? ''),
             'port'            => (int)($cfg['port'] ?? 389),
-            'use_tls'         => (bool)($cfg['use_tls'] ?? false),  // LDAP_CONNECT 之后 STARTTLS
-            'use_ldaps'       => (bool)($cfg['use_ldaps'] ?? false), // ldap_connect 时直接用 ldaps://
+            'use_tls'         => (bool)($cfg['use_tls'] ?? false),
+            'use_ldaps'       => (bool)($cfg['use_ldaps'] ?? false),
             'base_dn'         => (string)($cfg['base_dn'] ?? ''),
-            'bind_dn'         => (string)($cfg['bind_dn'] ?? ''),   // 先以管理员绑定搜索用户 DN，再切回用户密码校验
+            'bind_dn'         => (string)($cfg['bind_dn'] ?? ''),
             'bind_password'   => (string)($cfg['bind_password'] ?? ''),
-            'user_filter'     => (string)($cfg['user_filter'] ?? '(uid=%s)'), // %s → 用户名
-            'user_dn_pattern' => (string)($cfg['user_dn_pattern'] ?? ''),     // 若已固定 DN 模板（如 uid=%s,ou=users,dc=x），跳过管理员搜索
+            'user_filter'     => (string)($cfg['user_filter'] ?? '(uid=%s)'),
+            'user_dn_pattern' => (string)($cfg['user_dn_pattern'] ?? ''),
             'attrs'           => is_array($rawAttrs)
                 ? array_values(array_map('strval', $rawAttrs))
                 : ['uid', 'cn', 'mail', 'dn'],
@@ -375,7 +386,7 @@ class Settings
             ? $this->platformVersions->allWithSource()
             : $this->defaultVersionsWithSource();
 
-        // settings.php 显式配置优先级最高
+
         foreach (['gitlab', 'gitee', 'github', 'gitea'] as $name) {
             $cfg = $this->config['git'][$name] ?? [];
             if (!empty($cfg['api_version'])) {

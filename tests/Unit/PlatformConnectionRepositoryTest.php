@@ -32,7 +32,7 @@ class PlatformConnectionRepositoryTest extends TestCase
         $this->pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
         $this->pdo->setAttribute(\PDO::ATTR_DEFAULT_FETCH_MODE, \PDO::FETCH_ASSOC);
 
-        // 与 src/Service/Database.php::ensureTables() 的 SQLite 分支保持同构
+        
         $this->pdo->exec('CREATE TABLE ' . AppConfig::TABLE_PLATFORM_CONNECTIONS . ' (
             platform    TEXT PRIMARY KEY,
             url         TEXT,
@@ -101,7 +101,7 @@ class PlatformConnectionRepositoryTest extends TestCase
 
     public function testSaveUpdatePreservesCreatedAt(): void
     {
-        // 手工插入一行，created_at 固定在过去；save() 走 UPDATE 必须只刷新 updated_at。
+        
         $this->pdo->prepare(
             'INSERT INTO ' . AppConfig::TABLE_PLATFORM_CONNECTIONS
             . ' (platform, url, token, username, password, description, created_at, updated_at)'

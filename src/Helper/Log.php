@@ -61,11 +61,10 @@ class Log
                 }
                 return;
             }
-            // 若 Logger 初始化失败或未启用，回退到 error_log
+
             $suffix = empty($context) ? '' : ' ' . json_encode($context, JSON_UNESCAPED_UNICODE);
             error_log($message . $suffix);
         } catch (\Throwable $inner) {
-            // 任何失败都回退到 PHP 内置日志，避免阻塞原有流程
             error_log($message);
         }
     }
@@ -79,14 +78,13 @@ class Log
         try {
             $settings = require __DIR__ . '/../../config/settings.php';
             $logPath = $settings['app']['log_path'] ?? '';
-            // 日志级别由 APP_DEBUG 门控（与环境无关）：
-            //   APP_DEBUG=true  -> 'debug'：debug/info/warning/error 全记（开发联调用）
-            //   APP_DEBUG=false -> 'info'：保留 info/warning/error（生产诊断信息不丢，仅过滤 debug 噪声）
+
+
+
             $level = !empty($settings['app']['debug']) ? 'debug' : 'info';
             $retainDays = (int) ($settings['app']['log_retain_days'] ?? 30);
             self::$logger = new Logger($logPath, $level, $retainDays);
         } catch (\Throwable $e) {
-            // Logger 初始化失败，保持 null，后续调用走 error_log 分支
             self::$logger = null;
         }
     }

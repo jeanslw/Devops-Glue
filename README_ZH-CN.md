@@ -98,6 +98,7 @@ curl http://localhost:8080/api/health
 | GitHub | API v3 | SaaS |
 | Gitee | API v5 | SaaS |
 | Harbor | v1.10.1 / v2.x | 自建 |
+| Registry（OCI Distribution） | registry:2 |自建|
 
 > **Harbor 机器人账户：** 通过机器人账户调用 REST API 需 Harbor **v2.2.0+**（secret 制）。v1.x / v2.0.x / v2.1.x 的机器人令牌为 JWT（仅 Docker/Helm CLI），请改用普通账户。详见 [docs/管理员配置手册.md](docs/管理员配置手册.md#11-接入-harbor)。
 

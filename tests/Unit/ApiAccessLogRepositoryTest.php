@@ -27,7 +27,7 @@ class ApiAccessLogRepositoryTest extends TestCase
         $this->pdo = new \PDO('sqlite::memory:');
         $this->pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
         $this->pdo->setAttribute(\PDO::ATTR_DEFAULT_FETCH_MODE, \PDO::FETCH_ASSOC);
-        // 与 database/sqlite_init.sql 8.2 同构
+        
         $this->pdo->exec('CREATE TABLE ' . AppConfig::TABLE_API_ACCESS_LOGS . ' (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT DEFAULT "",
@@ -109,7 +109,7 @@ class ApiAccessLogRepositoryTest extends TestCase
     public function testRecordNeverThrowsEvenWhenTableMissing(): void
     {
         $this->pdo->exec('DROP TABLE ' . AppConfig::TABLE_API_ACCESS_LOGS);
-        // 不抛出即通过（静默降级）
+        
         $this->repo->record([
             'username' => 'u', 'token_name' => 't', 'scopes' => '', 'method' => 'GET',
             'route' => '/api/health', 'status_code' => 500, 'result' => 'failure',
@@ -144,12 +144,12 @@ class ApiAccessLogRepositoryTest extends TestCase
         $this->insertRow(['token_name' => 'recent']);
         $this->insertRow(['token_name' => 'old'], date('Y-m-d H:i:s', time() - 31 * 86400));
 
-        // 默认窗口：只看到近 30 天
+        
         $r = $this->repo->list([], 1, 20);
         $this->assertSame(1, $r['total']);
         $this->assertSame('recent', $r['items'][0]['token_name']);
 
-        // 显式宽日期范围：两条都在
+        
         $r = $this->repo->list(['date_from' => date('Y-m-d', time() - 60 * 86400)], 1, 20);
         $this->assertSame(2, $r['total']);
     }
@@ -163,7 +163,7 @@ class ApiAccessLogRepositoryTest extends TestCase
         $this->assertSame(5, $r['total']);
         $this->assertSame(3, $r['total_pages']);
         $this->assertCount(2, $r['items']);
-        // 倒序：最新插入在前
+        
         $this->assertSame('tok-4', $r['items'][0]['token_name']);
 
         $r2 = $this->repo->list([], 3, 2);
@@ -196,7 +196,7 @@ class ApiAccessLogRepositoryTest extends TestCase
     public function testPurgeClampsRetainDaysToAtLeastOne(): void
     {
         $this->insertRow(['token_name' => 'now']);
-        // 0 / 负数被钳为 1：今天的行仍保留，不会清空全表
+        
         $this->assertSame(0, $this->repo->purge(0));
         $this->assertSame(1, (int)$this->pdo->query('SELECT count(*) FROM ' . AppConfig::TABLE_API_ACCESS_LOGS)->fetchColumn());
     }
@@ -205,23 +205,23 @@ class ApiAccessLogRepositoryTest extends TestCase
 
     public function testShouldRecordLevelMatrix(): void
     {
-        // all：全记
+        
         $this->assertTrue(ApiAccessLogRepository::shouldRecord('success', 'all'));
         $this->assertTrue(ApiAccessLogRepository::shouldRecord('denied', 'all'));
         $this->assertTrue(ApiAccessLogRepository::shouldRecord('failure', 'all'));
-        // warning：跳过 success
+        
         $this->assertFalse(ApiAccessLogRepository::shouldRecord('success', 'warning'));
         $this->assertTrue(ApiAccessLogRepository::shouldRecord('denied', 'warning'));
         $this->assertTrue(ApiAccessLogRepository::shouldRecord('failure', 'warning'));
-        // error：只记 failure
+        
         $this->assertFalse(ApiAccessLogRepository::shouldRecord('success', 'error'));
         $this->assertFalse(ApiAccessLogRepository::shouldRecord('denied', 'error'));
         $this->assertTrue(ApiAccessLogRepository::shouldRecord('failure', 'error'));
-        // off：全不记
+        
         $this->assertFalse(ApiAccessLogRepository::shouldRecord('success', 'off'));
         $this->assertFalse(ApiAccessLogRepository::shouldRecord('denied', 'off'));
         $this->assertFalse(ApiAccessLogRepository::shouldRecord('failure', 'off'));
-        // 未知 result 按 failure 兜底（宁可多记）；未知 level 按 off 兜底（fail-closed）
+        
         $this->assertTrue(ApiAccessLogRepository::shouldRecord('weird', 'all'));
         $this->assertFalse(ApiAccessLogRepository::shouldRecord('success', 'bogus'));
     }
@@ -237,15 +237,15 @@ class ApiAccessLogRepositoryTest extends TestCase
         )');
         $settings = new \App\Service\AppSettingRepository($this->pdo);
 
-        // 未设置时默认 all
+        
         $this->assertSame('all', $settings->getApiAccessLogLevel());
-        // 存取往返 + 大小写归一
+        
         $settings->setApiAccessLogLevel('WARNING');
         $this->assertSame('warning', $settings->getApiAccessLogLevel());
-        // 非法存量值回退默认
+        
         $this->pdo->exec('UPDATE ' . AppConfig::TABLE_APP_SETTINGS . " SET value='bogus' WHERE setting_key='" . AppConfig::SETTING_API_ACCESS_LOG_LEVEL . "'");
         $this->assertSame('all', $settings->getApiAccessLogLevel());
-        // 非法写入抛异常
+        
         $this->expectException(\InvalidArgumentException::class);
         $settings->setApiAccessLogLevel('verbose');
     }
@@ -261,27 +261,27 @@ class ApiAccessLogRepositoryTest extends TestCase
         )');
         $settings = new \App\Service\AppSettingRepository($this->pdo);
 
-        // 未设置：默认 90 天、开关开启、has=false
+        
         $this->assertSame(90, $settings->getApiAccessLogRetainDays());
         $this->assertFalse($settings->hasApiAccessLogRetainDays());
         $this->assertTrue($settings->getApiAccessLogCleanupEnabled());
 
-        // 存取往返
+        
         $settings->setApiAccessLogRetainDays(30);
         $this->assertSame(30, $settings->getApiAccessLogRetainDays());
         $this->assertTrue($settings->hasApiAccessLogRetainDays());
 
-        // 非法存量值回退默认
+        
         $this->pdo->exec('UPDATE ' . AppConfig::TABLE_APP_SETTINGS . " SET value='0' WHERE setting_key='" . AppConfig::SETTING_API_ACCESS_LOG_RETAIN_DAYS . "'");
         $this->assertSame(90, $settings->getApiAccessLogRetainDays());
 
-        // 开关往返
+        
         $settings->setApiAccessLogCleanupEnabled(false);
         $this->assertFalse($settings->getApiAccessLogCleanupEnabled());
         $settings->setApiAccessLogCleanupEnabled(true);
         $this->assertTrue($settings->getApiAccessLogCleanupEnabled());
 
-        // 非法写入抛异常
+        
         $this->expectException(\InvalidArgumentException::class);
         $settings->setApiAccessLogRetainDays(0);
     }
@@ -304,7 +304,7 @@ class ApiAccessLogRepositoryTest extends TestCase
 
         $this->assertSame(1, $repo->purge(90));
         $this->assertSame(1, (int)$this->pdo->query('SELECT count(*) FROM ' . AppConfig::TABLE_OPERATION_LOGS)->fetchColumn());
-        // 表缺失时静默返回 0
+        
         $this->pdo->exec('DROP TABLE ' . AppConfig::TABLE_OPERATION_LOGS);
         $this->assertSame(0, $repo->purge(90));
     }

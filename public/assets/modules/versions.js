@@ -32,6 +32,7 @@ export async function loadVersions() {
         document.getElementById('ver-loading').style.display = 'none';
         document.getElementById('ver-table-wrap').style.display = 'block';
         const tbody = document.getElementById('ver-tbody');
+        const registryType = getRegistryType();
         tbody.innerHTML = Object.entries(VER_INFO).map(([key, info]) => {
             const entry = currentVersions[key] || {value: '', source: 'default'};
             const val = entry.value || '';
@@ -51,13 +52,17 @@ export async function loadVersions() {
                 ? 'width:120px;padding:6px 10px;background:#f9fafb;color:#9ca3af;cursor:not-allowed;'
                 : (isDefault ? 'width:120px;padding:6px 10px;' : 'width:120px;padding:6px 10px;border-color:#f59e0b;background:#fffbeb;');
 
+            const isPlainRegistry = key === 'harbor' && registryType === 'registry';
+            const label = isPlainRegistry ? __.t('platform.registry_label') : info.label;
+            const desc = isPlainRegistry ? __.t('platform.registry_desc') : info.desc();
+
             return `<tr>
-                <td><strong>${info.label}</strong> <span style="color:#9ca3af;font-size:11px;">(${key})</span></td>
+                <td><strong>${label}</strong> <span style="color:#9ca3af;font-size:11px;">(${key})</span></td>
                 <td><code style="font-size:12px;color:#6b7280;">${esc(defVer)}</code></td>
                 <td>${srcBadge}</td>
                 <td><input data-platform="${key}" value="${esc(displayVal)}" data-initial="${esc(displayVal)}" placeholder="${esc(ph)}"
                       style="${inputStyle}" ${readonly ? 'readonly title="' + esc(__.t('js.version_config_readonly_title')) + '"' : ''}></td>
-                <td style="font-size:12px;color:#6b7280;">${info.desc()}</td>
+                <td style="font-size:12px;color:#6b7280;">${desc}</td>
             </tr>`;
         }).join('');
         renderHarborCompat();
@@ -88,6 +93,8 @@ export async function loadVersions() {
 function renderHarborCompat() {
     const el = document.getElementById('harbor-compat');
     if (!el) return;
+    // registry:2 无 Harbor 版本与机器人账户概念，不展示兼容性提示条
+    if (getRegistryType() === 'registry') { el.style.display = 'none'; return; }
     const h = currentVersions.harbor || {};
     const ver = h.detected_version || null;
     const support = h.robot_support || 'unknown';
@@ -116,6 +123,10 @@ function renderJenkinsCompat() {
     el.style.display = 'block';
     el.innerHTML = '<strong>⚡ Jenkins</strong> · ' + __.t('js.jenkins_detected_version')
         + ': <code>' + esc(verText) + '</code>';
+}
+
+function getRegistryType() {
+    return (currentVersions.harbor && currentVersions.harbor.registry_type) || 'harbor';
 }
 
 function getDefaultVer(key) {

@@ -58,7 +58,7 @@ class EncryptorTest extends TestCase
         $enc = new Encryptor($this->key());
         $cipher = $enc->encrypt('secret');
         $raw = base64_decode(substr($cipher, strlen(Encryptor::PREFIX)), true);
-        $raw[0] = $raw[0] === "\x00" ? "\x01" : "\x00"; // 改 IV 首个字节，GCM 认证必失败
+        $raw[0] = $raw[0] === "\x00" ? "\x01" : "\x00"; 
         $tampered = Encryptor::PREFIX . base64_encode($raw);
 
         $this->expectException(\RuntimeException::class);
@@ -73,7 +73,7 @@ class EncryptorTest extends TestCase
 
     public function testMissingEnvKeyThrows(): void
     {
-        $enc = new Encryptor(); // null key，懒加载从 env 读
+        $enc = new Encryptor(); 
         unset($_ENV[Encryptor::ENV_KEY]);
         putenv(Encryptor::ENV_KEY);
 

@@ -4,29 +4,21 @@
  *
  * 用法：
  *   php cli/backfill-pipeline-tags.php
+  * 调度：用宿主 cron / 容器 crontab / Windows 计划任务定时调用即可，与 CD 完全解耦。
+*   例如每 30 分钟：0,30 * * * * php /path/to/cli/backfill-pipeline-tags.php >> /data/logs/tag-backfill.log 2>&1
  *
- * 说明：
- *   - 数据来源：ci_build_tag_cache（拉取式记录镜像 Tag 日志时生成的解析缓存，source='log'）。
- *   - 信任边界：仅当 Harbor 明确返回该 tag 存在时，才把日志推导的 tag 提升写入
- *     ci_pipeline_artifacts；且只补 (provider,project_id,pipeline_iid) 尚无 tag 的记录，
- *     不覆盖 scanSync 的结果。故回填数据与 scanSync 同信任级。
- *   - 安全约束：Harbor 未配置 / 不可达 / repository 或 tag 为空 / 已有 tag 时跳过，
- *     不写入任何记录；只写 Harbor 明确返回了 tag 列表且其中包含这条的记录。
- *   - 幂等：可重复跑、并发跑无害。只写 ci_pipeline_artifacts，不碰任何 cd_* 表。
- *   - 受后台开关 backfill_tag_enabled 控制：未开启时直接跳过（退出码 0）。
- *
- * 调度：用宿主 cron / 容器 crontab / Windows 计划任务定时调用即可，与 CD 完全解耦。
- *   例如每 30 分钟：0,30 * * * * php /path/to/cli/backfill-pipeline-tags.php >> /data/logs/tag-backfill.log 2>&1
- *
- * 退出码：0 = 完成（含开关未开启 / Harbor 未配置 / 不可达而安全跳过）；1 = 致命错误（库连不上、表缺失或异常）。
+ * 退出码：0 = 完成（含开关未开启 / 镜像仓库未配置 / 不可达而安全跳过）；1 = 致命错误（库连不上、表缺失或异常）。
  */
 require __DIR__ . '/bootstrap.php';
 
 use App\Config\AppConfig;
+use App\Service\AppSettingRepository;
 use App\Service\Database;
 use App\Service\HarborService;
 use App\Service\PipelineTagService;
 use App\Service\PlatformConnectionRepository;
+use App\Service\Registry\DockerRegistryProvider;
+use App\Service\Registry\HarborProvider;
 use GuzzleHttp\Client;
 
 // ── 1. 初始化数据库（Database::getPdo() 内部 createPdo()+bootstrap()，建表+种子+自检，只跑一次）──
@@ -49,27 +41,43 @@ if (!$backfillEnabled) {
     exit(0);
 }
 
-// ── 4. 构造 HarborService（未配置时传 null，服务会安全跳过；连接值从 DB 解析）──
-$harbor = null;
-$harborCfg = (new PlatformConnectionRepository($pdo))->resolveConnections()['harbor'] ?? [];
-$harborUrl = rtrim($harborCfg['url'] ?? '', '/');
-if ($harborUrl !== '') {
-    $harborClient = new Client([
-        'base_uri' => $harborUrl,
-        'auth'     => [
-            $harborCfg['username'] ?? 'admin',
-            $harborCfg['password'] ?? '',
-        ],
-        'headers'         => ['Accept' => 'application/json'],
-        'connect_timeout' => 5,   // TCP 握手超时，防止 hang
-        'timeout'         => 15,  // 整个请求超时
-    ]);
-    $harbor = new HarborService($harborClient, $pdo, null);
+// ── 4. 构造镜像仓库提供方（未配置时传 null，服务会安全跳过；连接值从 DB 解析）──
+$registry = null;
+$registryCfg = (new PlatformConnectionRepository($pdo))->resolveConnections()['harbor'] ?? [];
+$registryUrl = rtrim((string)($registryCfg['url'] ?? ''), '/');
+if ($registryUrl !== '') {
+    if ((new AppSettingRepository($pdo))->getRegistryType() === 'registry') {
+        $registryClient = new Client([
+            'base_uri'        => $registryUrl . '/',
+            'headers'         => ['Accept' => 'application/json'],
+            'connect_timeout' => 5,
+            'timeout'         => 15,
+            'http_errors'     => false,
+        ]);
+        $registry = new DockerRegistryProvider(
+            $registryClient,
+            (string)($registryCfg['username'] ?? ''),
+            (string)($registryCfg['password'] ?? ''),
+            null
+        );
+    } else {
+        $harborClient = new Client([
+            'base_uri' => $registryUrl,
+            'auth'     => [
+                $registryCfg['username'] ?? 'admin',
+                $registryCfg['password'] ?? '',
+            ],
+            'headers'         => ['Accept' => 'application/json'],
+            'connect_timeout' => 5,   // TCP 握手超时，防止 hang
+            'timeout'         => 15,  // 整个请求超时
+        ]);
+        $registry = new HarborProvider(new HarborService($harborClient, $pdo, null));
+    }
 }
 
 // ── 5. 执行回填 ──
-if ($harbor === null) {
-    echo "跳过：Harbor 未配置（平台连接 URL 为空），ci_pipeline_artifacts 未做回填。\n";
+if ($registry === null) {
+    echo "跳过：镜像仓库未配置（平台连接 URL 为空），ci_pipeline_artifacts 未做回填。\n";
     exit(0);
 }
 
@@ -87,10 +95,10 @@ if ($lockToken === null) {
 // 用标志位收集失败，finally 内统一释放，再在块外按结果退出。
 $failed = false;
 try {
-    $svc  = new PipelineTagService($pdo, $harbor);
+    $svc  = new PipelineTagService($pdo, $registry);
     $stat = $svc->backfillTagsFromBuildLog();
     echo "✓ 回填完成：提升 {$stat['promoted']} 条"
-        . "（核对 {$stat['checked']} / Harbor 不可达跳过 {$stat['unreachable']} / 无 repository 或 tag 跳过 {$stat['unverifiable']} / 已有 canonical tag 跳过 {$stat['skipped']}）\n";
+        . "（核对 {$stat['checked']} / 镜像仓库不可达跳过 {$stat['unreachable']} / 无 repository 或 tag 跳过 {$stat['unverifiable']} / 已有 canonical tag 跳过 {$stat['skipped']}）\n";
 } catch (\Throwable $e) {
     fwrite(STDERR, "错误：回填失败: {$e->getMessage()}\n");
     $failed = true;

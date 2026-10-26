@@ -39,7 +39,7 @@ class MappingManagerTest extends TestCase
             project_id TEXT,
             web_url TEXT,
             current_path TEXT,
-            harbor_repository TEXT,
+            registry_repository TEXT,
             api_version TEXT,
             status TEXT DEFAULT "active"
         )');
@@ -48,7 +48,7 @@ class MappingManagerTest extends TestCase
             value TEXT,
             updated_at TEXT
         )');
-        // both 模式 + custom_push 开启：activeMaps 保留 jenkins / gitlab_ci / custom_push 全部 provider
+        
         $this->pdo->exec("INSERT INTO " . AppConfig::TABLE_APP_SETTINGS . " (setting_key, value) VALUES ('build_mode', 'both'), ('custom_push_enabled', '1')");
     }
 
@@ -56,7 +56,7 @@ class MappingManagerTest extends TestCase
     {
         $stmt = $this->pdo->prepare(
             'INSERT INTO ' . AppConfig::TABLE_JOB_GIT_MAP . '
-             (job_name, git_platform, build_provider, git_remote, project_id, web_url, current_path, harbor_repository, status)
+             (job_name, git_platform, build_provider, git_remote, project_id, web_url, current_path, registry_repository, status)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
         );
         $stmt->execute([
@@ -67,7 +67,7 @@ class MappingManagerTest extends TestCase
             $row['project_id'] ?? null,
             $row['web_url'] ?? null,
             $row['current_path'] ?? null,
-            $row['harbor_repository'] ?? null,
+            $row['registry_repository'] ?? null,
             $row['status'] ?? AppConfig::STATUS_ACTIVE,
         ]);
     }
@@ -79,14 +79,14 @@ class MappingManagerTest extends TestCase
 
     public function testCustomPushByCurrentPathNormalizesToJobName(): void
     {
-        // Jenkins 命名差异：job_name=java/registry，current_path=tools/registry
+        
         $this->insertMap([
             'job_name'       => 'java/registry',
             'build_provider' => AppConfig::PROVIDER_CUSTOM_PUSH,
             'current_path'   => 'tools/registry',
         ]);
 
-        // 推 current_path：归一化到 job_name（映射主键，与 Jenkins 身份一致）
+        
         $r = $this->makeManager()->resolveProject('tools/registry');
         $this->assertSame(AppConfig::PROVIDER_CUSTOM_PUSH, $r['provider']);
         $this->assertSame('java/registry', $r['projectId']);
@@ -100,7 +100,7 @@ class MappingManagerTest extends TestCase
             'current_path'   => 'tools/registry',
         ]);
 
-        // 推 job_name：仍为 job_name（推 job_name / current_path 落到同一条记录）
+        
         $r = $this->makeManager()->resolveProject('java/registry');
         $this->assertSame(AppConfig::PROVIDER_CUSTOM_PUSH, $r['provider']);
         $this->assertSame('java/registry', $r['projectId']);
@@ -108,7 +108,7 @@ class MappingManagerTest extends TestCase
 
     public function testCustomPushFallsBackToCurrentPathWhenJobNameEmpty(): void
     {
-        // job_name 是主键，正常不会为空；此处锁定回退顺序：先 job_name，后 current_path
+        
         $this->insertMap([
             'job_name'       => '',
             'build_provider' => AppConfig::PROVIDER_CUSTOM_PUSH,
@@ -130,15 +130,15 @@ class MappingManagerTest extends TestCase
 
         $r = $this->makeManager()->resolveProject('java/registry');
         $this->assertSame(AppConfig::PROVIDER_JENKINS, $r['provider']);
-        // 推 job_name（本身就是 Jenkins Job 路径）：保持 job_name
+        
         $this->assertSame('java/registry', $r['projectId']);
     }
 
     public function testJenkinsByCurrentPathResolvesToJobName(): void
     {
-        // Jenkins Job 路径（job_name）与 git 路径（current_path）不同名：
-        // 按 git 路径解析时，必须归一化回 Jenkins Job 路径，不能把 git 路径当 Jenkins URL，
-        // 否则拼出 job/tools/... 直接返回 404（历史 bug：jeanslw/Devops_CD 被拼成 job/jeanslw/job/Devops_CD）。
+        
+        
+        
         $this->insertMap([
             'job_name'       => 'java/registry',
             'build_provider' => AppConfig::PROVIDER_JENKINS,
@@ -152,9 +152,9 @@ class MappingManagerTest extends TestCase
 
     public function testDisabledProviderJobNameNotHijackedByOtherProviderCurrentPath(): void
     {
-        // gitea_ci 未启用且映射 pending：其 job_name（owner/repo = jeanslw/Devops_CD）
-        // 不能被 active 的 jenkins current_path 别名匹配走，否则未启用也会落到别的 CI 头上，
-        // 拼出 job/jeanslw/job/Devops_CD 会返回 404。
+        
+        
+        
         $this->insertMap([
             'job_name'       => 'jeanslw/Devops_CD',
             'build_provider' => AppConfig::PROVIDER_GITEA_CI,
@@ -169,15 +169,15 @@ class MappingManagerTest extends TestCase
         ]);
 
         $r = $this->makeManager()->resolveProject('jeanslw/Devops_CD');
-        // 命中 gitea_ci（即便 pending），而不是落到 jenkins
+        
         $this->assertSame(AppConfig::PROVIDER_GITEA_CI, $r['provider']);
         $this->assertSame('jeanslw/Devops_CD', $r['projectId']);
     }
 
     public function testDashPathIsNotNormalizedToSlashJob(): void
     {
-        // dash 与 slash 是 Jenkins 中不同的 job 身份，不做归并：
-        // 顶层 job `java-registry` ≠ folder 下 job `java/registry`
+        
+        
         $this->insertMap([
             'job_name'       => 'java/registry',
             'build_provider' => AppConfig::PROVIDER_JENKINS,
@@ -185,7 +185,7 @@ class MappingManagerTest extends TestCase
         ]);
 
         $r = $this->makeManager()->resolveProject('java-registry');
-        // 精确匹配失败：保持原始 path，未命中 java/registry
+        
         $this->assertSame('java-registry', $r['projectId']);
     }
 
@@ -205,7 +205,7 @@ class MappingManagerTest extends TestCase
 
     public function testGiteaCiUsesJobNameAsProjectId(): void
     {
-        // 单独启用 gitea_ci（setUp 默认 both=jenkins+gitlab_ci，会过滤掉 gitea_ci 记录）
+        
         $this->pdo->exec("UPDATE " . AppConfig::TABLE_APP_SETTINGS . " SET value='gitea_ci' WHERE setting_key='build_mode'");
         $this->insertMap([
             'job_name'       => 'org/repo',
@@ -220,25 +220,25 @@ class MappingManagerTest extends TestCase
 
     public function testSaveMapOnlyTouchesOneRow(): void
     {
-        // 单行写入不动其他行：避免「读全表 → 改一条 → 全量回写」把并发的他人改动覆盖掉
+        
         $this->insertMap(['job_name' => 'job-a', 'current_path' => 'job-a']);
         $this->insertMap(['job_name' => 'job-b', 'current_path' => 'job-b']);
 
         $this->makeManager()->saveMap([
             'job_name'       => 'job-a',
             'current_path'   => 'job-a',
-            'harbor_repository' => 'lib/job-a',
+            'registry_repository' => 'lib/job-a',
         ]);
 
-        $rows = $this->pdo->query('SELECT job_name, harbor_repository FROM ' . AppConfig::TABLE_JOB_GIT_MAP . ' ORDER BY job_name')->fetchAll();
+        $rows = $this->pdo->query('SELECT job_name, registry_repository FROM ' . AppConfig::TABLE_JOB_GIT_MAP . ' ORDER BY job_name')->fetchAll();
         $this->assertCount(2, $rows);
-        $this->assertSame('lib/job-a', $rows[0]['harbor_repository']);
-        $this->assertNull($rows[1]['harbor_repository']);
+        $this->assertSame('lib/job-a', $rows[0]['registry_repository']);
+        $this->assertNull($rows[1]['registry_repository']);
     }
 
     public function testSaveMapsRejectsEmptyData(): void
     {
-        // 空输入必须拒绝，不能落到「删除全部映射」的分支
+        
         $this->insertMap(['job_name' => 'job-a', 'current_path' => 'job-a']);
 
         $this->expectException(\InvalidArgumentException::class);

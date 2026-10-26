@@ -46,7 +46,7 @@ class BuildTagExtractTest extends TestCase
 
     public function testKeywordGateStillFilters(): void
     {
-        $trace = "mycode/runner-ci:v20260827-130"; // 无 digest 关键字 → 视为非推送日志
+        $trace = "mycode/runner-ci:v20260827-130"; 
         $this->assertSame('', $this->extract($trace, 'mycode/runner-ci', 'digest', 130));
     }
 

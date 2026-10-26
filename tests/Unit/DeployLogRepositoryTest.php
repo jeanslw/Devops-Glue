@@ -27,7 +27,7 @@ class DeployLogRepositoryTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        // 降级路径会写一条 warning 日志，指向临时目录以免污染真实日志目录
+        
         $_ENV['LOG_PATH'] = sys_get_temp_dir() . DIRECTORY_SEPARATOR;
     }
 

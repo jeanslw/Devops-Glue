@@ -31,7 +31,7 @@ class JenkinsBuildProvider implements BuildProviderInterface
     public function getPipelines(string $projectId, int $perPage = 20): array
     {
         try {
-            $builds = $this->jenkins->getBuildTimestamps($projectId); // 一次 API：ID + 时间 + 状态
+            $builds = $this->jenkins->getBuildTimestamps($projectId);
             $ids = array_slice(array_keys($builds), 0, $perPage);
             $result = [];
             foreach ($ids as $bid) {
@@ -90,7 +90,7 @@ class JenkinsBuildProvider implements BuildProviderInterface
      */
     public function trigger(string $projectId, string $ref, array $variables = []): array
     {
-        // 1. 校验 Job 是否存在
+
         try {
             /** @var array<string, mixed>|null $resolved */
             $resolved = $this->jenkins->resolvePath($projectId);
@@ -99,36 +99,34 @@ class JenkinsBuildProvider implements BuildProviderInterface
             }
             $fullName = $resolved['fullName'];
         } catch (\RuntimeException $e) {
-            // 连接级失败（resolvePath 上抛的服务不可达）：继续上抛，由 AuthMiddleware 返回 502，
-            // 不得吞成 200 + success=false（否则 Jenkins 宕机被当成业务失败）
             throw $e;
         } catch (\Exception $e) {
             return ['success' => false, 'message' => "Jenkins 不可达: " . $e->getMessage()];
         }
 
-        // 2. 获取参数定义
+
         try {
             $allParams = $this->jenkins->getParameterDefinitions($fullName);
         } catch (\RuntimeException $e) {
-            throw $e; // 连接级失败：上抛 → 502
+            throw $e;
         } catch (\Exception $e) {
             return ['success' => false, 'message' => '获取构建参数失败: ' . $e->getMessage()];
         }
 
-        // 无参数时直接触发
+
         if (empty($allParams)) {
             try {
                 /** @var array<string, mixed> $result */
                 $result = $this->jenkins->triggerBuild($fullName, []);
                 return ['success' => true, 'queue_id' => $result['queue_id'] ?? '', 'queue_url' => $result['queue_url'] ?? '', 'message' => '构建已触发'];
             } catch (\RuntimeException $e) {
-                throw $e; // 连接级失败：上抛 → 502
+                throw $e;
             } catch (\Exception $e) {
                 return ['success' => false, 'message' => '触发失败: ' . $e->getMessage()];
             }
         }
 
-        // 3. 参数校验：缺失的参数自动用 defaultValue 填充
+
         foreach ($allParams as $name => $def) {
             if (!array_key_exists($name, $variables) && $def['defaultValue'] !== null) {
                 $variables[$name] = $def['defaultValue'];
@@ -146,7 +144,7 @@ class JenkinsBuildProvider implements BuildProviderInterface
             }
         }
 
-        // 4. 触发
+
         try {
             /** @var array<string, mixed> $result */
             $result = $this->jenkins->triggerBuild($fullName, $variables);
@@ -184,7 +182,7 @@ class JenkinsBuildProvider implements BuildProviderInterface
                 $class = $def['_class'];
                 $item = ['key' => $key];
 
-                // 类型映射
+
                 if (str_contains($class, 'GitParameterDefinition')) {
                     $item['type'] = 'git';
                 } elseif (str_contains($class, 'BooleanParameterDefinition')) {
@@ -202,14 +200,12 @@ class JenkinsBuildProvider implements BuildProviderInterface
                     }
                     $item['defaultValue'] = $def['defaultValue'] ?? null;
                 } elseif (str_contains($class, 'unochoice') || str_contains($class, 'CascadeChoiceParameter')) {
-                    // Active Choices / Cascade Choice：选项由 Groovy 脚本动态计算，API 拿不到 choices
                     $item['type'] = 'dynamic';
                     $item['defaultValue'] = $def['defaultValue'] ?? null;
                 } elseif (str_contains($class, 'StringParameterDefinition')) {
                     $item['type'] = 'string';
                     $item['defaultValue'] = $def['defaultValue'] ?? '';
                 } else {
-                    // 未知类型也返回 choices（如果有），CD 自行决定如何渲染
                     $item['type'] = 'string';
                     $item['defaultValue'] = $def['defaultValue'] ?? '';
                     if (!empty($def['choices'])) {
@@ -217,7 +213,7 @@ class JenkinsBuildProvider implements BuildProviderInterface
                     }
                 }
 
-                // 描述信息
+
                 if (!empty($def['description'])) {
                     $item['description'] = $def['description'];
                 }
@@ -248,7 +244,7 @@ class JenkinsBuildProvider implements BuildProviderInterface
     /** @return list<array<string, mixed>> */
     public function getRunners(string $projectId): array
     {
-        return []; // runner 状态暂仅 Gitea Actions 提供，Jenkins 降级为空
+        return [];
     }
 
     /** @return array<string, mixed> */
@@ -266,7 +262,7 @@ class JenkinsBuildProvider implements BuildProviderInterface
         if ($e instanceof ClientException && $e->getResponse()->getStatusCode() === 404) {
             throw new ApiException("Job 不存在: {$projectId}", 404);
         }
-        // 其余（连接失败/5xx → 502，其它 → 500）统一交给共享映射，避免两套语义漂移
+
         BuildProviderError::throwFor($e, 'Jenkins');
     }
 }

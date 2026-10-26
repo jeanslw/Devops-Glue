@@ -46,12 +46,10 @@ class PlatformVersionRepository
             )->fetchAll();
             foreach ($rows as $r) {
                 if (isset($result[$r['platform']])) {
-                    // source 沿用 'json'：前端 versions.js 据此渲染管理界面徽标
                     $result[$r['platform']] = ['value' => $r['version'], 'source' => 'json'];
                 }
             }
         } catch (\Exception $e) {
-            // DB 不可用时保持默认
         }
         return $result;
     }

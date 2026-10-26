@@ -42,7 +42,7 @@ class GitServiceRefsTest extends TestCase
     public function testGetRefsForJobResolvesMappingOnceAndReturnsBothLists(): void
     {
         $provider = new RecordingGitProvider(['main'], ['v1.0.0']);
-        // exactly(1)：合并端点必须只解析一次映射，否则它就失去了相对 branches+tags 两次调用的意义
+        
         $service = $this->makeService($this->map(), $provider, 1);
 
         $this->assertSame(
@@ -111,8 +111,8 @@ class GitServiceRefsTest extends TestCase
             $provider
         );
 
-        // 兜底识别出的平台连不上时，必须把「可能是 DEFAULT_GIT_PLATFORM 配错了」提示带上，
-        // 否则用户只看到一句超时，无从判断是平台选错还是网络问题。
+        
+        
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessageMatches('/DEFAULT_GIT_PLATFORM/');
         $service->getTagsForJob('group/proj');
@@ -123,7 +123,7 @@ class GitServiceRefsTest extends TestCase
         $provider = new RecordingGitProvider(['main'], [], $this->timeout());
         $service = $this->makeService($this->map(), $provider);
 
-        // 只回一半候选值会让用户误判；refs 先查 branches，故失败文案是「分支查询失败」
+        
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessageMatches('/分支查询失败/');
         $service->getRefsForJob('group/proj');

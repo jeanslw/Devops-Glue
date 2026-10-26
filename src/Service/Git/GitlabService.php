@@ -49,9 +49,9 @@ class GitlabService extends AbstractGitProvider
      */
     public function setCommitStatus(string $repository, string $sha, string $state, string $context, string $description, string $targetUrl = ''): array
     {
-        // 注意：本方法入参与 getBranches/getTags 不同，调用方（BuildController）在回退时传入
-        // 的是未编码的值（数字 project_id，或原始 owner/repo 路径），故需在此 urlencode。
-        // 纯数字 project_id 经 urlencode 无副作用；原始路径则被正确编码为 group%2Frepo。
+
+
+
         $encoded = urlencode($repository);
         $body = [
             'state'       => $state,

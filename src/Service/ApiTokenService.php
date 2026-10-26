@@ -28,7 +28,7 @@ class ApiTokenService
      */
     public function createToken(array $data): array
     {
-        // 以 dg_ 前缀标识，便于一眼识别为服务账号 token（与管理员登录 token 区分）
+
         $plain = 'dg_' . bin2hex(random_bytes(32));
         $hash  = hash('sha256', $plain);
 

@@ -1,8 +1,8 @@
 # Integrated Service Version Compatibility
 
-> This document lists the version support and key version boundaries for each service Devops-Glue integrates with (Jenkins / GitLab / Gitea / Harbor).
+> This document lists the version support and key version boundaries for each service Devops-Glue integrates with (Jenkins / GitLab / Gitea / Harbor / Registry).
 > All version boundaries come from each service's official documentation / release notes.
-> Document version: v2.9.0 (2026-10-15)
+> Document version: v2.11.0 (2026-10-24)
 
 ---
 
@@ -14,6 +14,7 @@
 | GitLab | v9.0+ | v4 (`/api/v4`) | `PRIVATE-TOKEN` (PAT) | No (v4 stable since 9.0) |
 | Gitea | 1.x series | v1 (`/api/v1`) | `Authorization: token` | No (v1 long-stable) |
 | Harbor | v1.10.1 / v2.x | v1 / v2.0 | Basic Auth (account/password or secret) | **Yes** |
+| Registry | registry:2 | v2 (`/v2/`) | Basic Auth, or Bearer token from the 401 challenge | No (v2 API is stable) |
 
 **Key takeaway**: Jenkins / GitLab / Gitea have long-stable API versions.
 
@@ -129,7 +130,17 @@ See the ADMIN_MANUAL "Connect Harbor" section.
 
 ---
 
-## 5. Compatibility strategy summary
+## 5. Registry (OCI Distribution)
+
+- **API version**: v2 (`/v2/`). Tags come from `/v2/{name}/tags/list` with `n` / `last` pagination and a `Link: rel="next"` header.
+- **Auth**: Basic Auth first; when the registry answers 401 with a `Bearer` challenge, Glue fetches a token from the realm named in the challenge and retries once.
+- **Minimum**: `registry:2` (the reference distribution). Docker Hub / GHCR are not covered in this release.
+- **No scanning**: this type exposes no vulnerability report API, so `scan_state` stays `unknown` and callers use `registry-sync` instead of `scan-sync`.
+- **Repository name**: at least two path segments (`project/repo`, `team/project/image`), without scheme, host or port.
+
+---
+
+## 6. Compatibility strategy summary
 
 | Service | Version detection needed? | Compatibility key points | Code status |
 |---|---|---|---|
@@ -137,6 +148,7 @@ See the ADMIN_MANUAL "Connect Harbor" section.
 | GitLab | No | PAT auth, project-path encoding | ✅ Handled (`PRIVATE-TOKEN` + urlencode) |
 | Gitea | No | `Authorization: token` auth | ✅ Handled |
 | Harbor | Yes | v1/v2 split, robot-account boundary | ✅ Handled (version detection + robot-account check) |
+| Registry | No | `n`/`last` + `Link` pagination, 401 Bearer challenge | ✅ Handled (`DockerRegistryProvider`) |
 
 ---
 

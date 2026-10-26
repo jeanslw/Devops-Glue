@@ -58,7 +58,7 @@ class GithubActionsBuildProviderTest extends TestCase
         $provider->getPipelines('owner/repo');
 
         $this->assertCount(1, $history);
-        /** @var \GuzzleHttp\Psr7\Request $request */
+        
         $request = $history[0]['request'];
         $this->assertStringContainsString('/repos/owner/repo/actions/runs', (string) $request->getUri());
         $this->assertStringNotContainsString('/api/v1', (string) $request->getUri());
@@ -66,7 +66,7 @@ class GithubActionsBuildProviderTest extends TestCase
 
     public function testGetPipelinesMapsCompletedConclusionToStatus(): void
     {
-        // GitHub 的 completed run 结论在 conclusion 字段；failure 应归一为 failed
+        
         $provider = $this->providerWith([
             self::json(json_encode([
                 'workflow_runs' => [[
@@ -93,7 +93,7 @@ class GithubActionsBuildProviderTest extends TestCase
 
     public function testGetPipelinesMapsInProgressWithoutConclusionToRunning(): void
     {
-        // GitHub 进行中 run 只有 status=in_progress（conclusion 为 null），应归一为 running
+        
         $provider = $this->providerWith([
             self::json(json_encode([
                 'workflow_runs' => [[
@@ -109,7 +109,7 @@ class GithubActionsBuildProviderTest extends TestCase
 
         $pipes = $provider->getPipelines('owner/repo');
         $this->assertSame('running', $pipes[0]['status']);
-        // html_url 缺失时回退到 github.com 的 actions/runs 地址（不能用 api.github.com）
+        
         $this->assertStringContainsString('https://github.com/owner/repo/actions/runs/42', $pipes[0]['web_url']);
     }
 
@@ -140,7 +140,7 @@ class GithubActionsBuildProviderTest extends TestCase
 
     public function testTriggerDispatchReturnsSuccessOn204NoContent(): void
     {
-        // GitHub workflow_dispatch 成功返回 204，无响应体
+        
         $provider = $this->providerWith([
             new Response(204),
         ]);
@@ -151,7 +151,7 @@ class GithubActionsBuildProviderTest extends TestCase
 
     public function testTriggerKeepsBareBranchAndTagNames(): void
     {
-        // workflow_dispatch 的 ref 必须是裸分支名/tag 名：裸分支保持原样，refs/tags 前缀剥成 tag 名
+        
         $history = [];
         $mock    = new MockHandler([new Response(204), new Response(204)]);
         $stack   = HandlerStack::create($mock);
@@ -169,7 +169,7 @@ class GithubActionsBuildProviderTest extends TestCase
         $this->assertCount(2, $history);
         $refs = [];
         foreach ($history as $entry) {
-            /** @var \GuzzleHttp\Psr7\Request $request */
+            
             $request = $entry['request'];
             $payload = json_decode((string) $request->getBody(), true);
             $refs[]  = $payload['ref'] ?? null;
@@ -179,7 +179,7 @@ class GithubActionsBuildProviderTest extends TestCase
 
     public function testGetJobsPaginatesBeyondFirstPage(): void
     {
-        // 首页恰好 100 条触发下一页，第二页 1 条（<100）即停，最终应合并 101 条
+        
         $makeJob = fn(int $id): array => [
             'id'           => $id,
             'name'         => 'job-' . $id,

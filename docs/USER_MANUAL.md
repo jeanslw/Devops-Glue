@@ -93,11 +93,11 @@ Steps:
 
 > Most fields are optional and auto-derived by the system. The only required field is **Job name**.
 
-### 2.3 Linking a Harbor repository
+### 2.3 Linking an image registry repository
 
-Fill in the **Harbor repo** field with a two-part `project/repository` path. Once linked, when the system displays image tags for this job, it checks the real tag list of that repository in Harbor.
+Fill in the **Registry repo** field with a repository path of at least two segments (e.g. `project/repository`, `team/project/image`). Once linked, when the system displays image tags for this job, it checks the real tag list of that repository in the image registry.
 
-> **Note**: The repository must actually exist in Harbor and use the two-part format (`project/repository`). Accurate linking is required for correct image-tag association and scan write-back later on.
+> **Note**: The repository must actually exist in the image registry, and the value must be at least two segments with no scheme, host or port. Accurate linking is required for correct image-tag association and write-back later on.
 
 ### 2.4 Disabling / Deleting a mapping
 
@@ -124,16 +124,23 @@ The three CI sources are controlled by the **Build Mode** multi-select: **Jenkin
 > - The selection takes effect immediately — the system runs auto-discovery and polls build status from the selected sources.
 > - Deselecting a source demotes its non-matching enabled mappings to **Pending** (they are not deleted and can be re-enabled later).
 
-### 3.2 Scan-sync and Harbor tag linking
+### 3.2 Image-tag write-back (scan-sync / registry-sync)
 
-When a build produces an image and pushes it to Harbor, the system can perform two automatic "write-back" actions:
+When a build produces an image and pushes it to an image registry (Harbor or a standard `registry:2`), the system can perform two automatic "write-back" actions:
 
-1. **Harbor image-tag linking**: the system links a build to the real Harbor tag of its repository, so the Monitor Overview / Build Records show which image tag this job's build produced.
-2. **Commit status write-back**: after scanning the image for vulnerabilities, the scan result (success / failed / not scanned) is written back as a status on the linked Git repository's commit, so your CI / git hosting platform shows the scan outcome directly.
+1. **Image-tag linking**: the system links a build to the real tag of its registry repository, so the Monitor Overview / Build Records show which image tag this job's build produced.
+2. **Commit status write-back**: the write-back result (success / pending / failed) is written as a commit status on the linked Git repository, so your CI / git hosting platform shows the outcome directly. For Harbor, the image vulnerability scan report is read as well, giving success / failed / not scanned.
+
+Pick the endpoint by registry type:
+
+| Endpoint | Registry type | Reads the scan report |
+|---|---|---|
+| `POST /api/build/{path}/scan-sync` | Harbor | Yes |
+| `POST /api/build/{path}/registry-sync` | Harbor, registry:2 | No |
 
 > **Key points**
-> - This depends on correct mappings (Ch. 2): only when a job is linked to both a Git repo and a Harbor repo does write-back have a target.
-> - Triggering scan/write-back requires the corresponding **API Token scopes** (see Ch. 6: `harbor.scan` / `build.report`).
+> - This depends on correct mappings (Ch. 2): only when a job is linked to both a Git repo and an image registry does write-back have a target; `registry_repository` is a name with at least two segments (e.g. `project/repo`, `team/project/image`).
+> - Both endpoints require the **API Token scope** `build.report`; `scan-sync` additionally needs scanning enabled on the registry side when reading the scan report.
 
 ### 3.3 Enabling Custom_Push
 
@@ -151,14 +158,15 @@ How to enable:
 
 ### 3.4 Cleaning up stale tags
 
-> **First, understand the two origins of image-tag records and their trust levels** — 3.4 / 3.5 / 3.6 are three stations on one pipeline:
+> **First, understand the origins of image-tag records and their trust levels** — 3.4 / 3.5 / 3.6 are three stations on one pipeline:
 >
 > | Origin | Description | Trust |
 > |---|---|---|
 > | **Scan write-back (scan-sync)** | Tags written explicitly by the Harbor image-scan callback (see 3.2) | **Authoritative** (canonical); consumed directly by the deployment layer |
+> | **Registry write-back (registry-sync)** | Tags written by the callback after the image is pushed (see 3.2; used when the registry has no scanning) | **Authoritative** (canonical); consumed directly by the deployment layer |
 > | **Log-derived** | Tags the system **guesses** from build logs using the "push-success keyword" while pulling build records (see 3.6) | **Candidate**; used for display and backfill only |
 >
-> The closed loop: **3.6 keyword** decides what counts as a successful push in a log and produces candidate tags → **3.5 backfill** verifies candidates against Harbor and promotes them to authoritative records (written only when Harbor explicitly confirms the tag exists; never overwrites scan-sync results) → **3.4 cleanup** removes authoritative records whose tags Harbor has already deleted, so the deployment layer never reads a dead tag. All three treat **Harbor as the single source of truth**; their switches are independent of one another.
+> The closed loop: **3.6 keyword** decides what counts as a successful push in a log and produces candidate tags → **3.5 backfill** verifies candidates against the registry and promotes them to authoritative records (written only when the registry explicitly confirms the tag exists; never overwrites write-back results) → **3.4 cleanup** removes authoritative records whose tags the registry has already deleted, so the deployment layer never reads a dead tag. All three treat the **image registry as the single source of truth**; their switches are independent of one another.
 
 The **Build Mode** page has a **🧹 Enable stale tag cleanup** switch.
 
@@ -297,7 +305,7 @@ Steps:
 |---|---|
 | `main` | Read-only: job list, mappings, git platforms, git discovery |
 | `git` | Read-only: git branches / tags (includes the combined `/api/git/{path}/refs`, used by CD's build page to pick a ref) |
-| `harbor.read` | Read-only: Harbor projects / repositories / tags |
+| `registry.read` | Read-only: Harbor projects / repositories / tags; also all `/api/registry/*` endpoints for **both** registry types (`harbor` / `registry:2`). Not included in the CD service credential |
 | `harbor.scan` | Trigger Harbor image scans |
 | `build.read` | Read-only: build pipelines / logs / branches |
 | `build.write` | Write: trigger / retry / cancel builds |

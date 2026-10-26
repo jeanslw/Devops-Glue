@@ -43,13 +43,13 @@ class GitRemoteResolver
         $this->logger = $logger;
         $this->gitlabClient = $gitlabClient;
 
-        // 索引化手动配置
+
         $this->manualMap = [];
         foreach ($manualConfig as $item) {
             $this->manualMap[$item['job_name']] = $item;
         }
 
-        // 初始化缓存数组
+
         $this->autoCache = [];
         if ($cacheFile && file_exists($cacheFile)) {
             $loaded = include $cacheFile;
@@ -83,8 +83,6 @@ class GitRemoteResolver
         try {
             $resolved = $this->jenkins->resolvePath($jobName);
         } catch (\RuntimeException $e) {
-            // Jenkins 连接级不可达（resolvePath 上抛）：这里不向外抛，分支查询继续走
-            // 手动映射（与 Job 不存在的分支相同），否则配置了 job_git_map 的项目会被误伤
             $this->logger?->warning('Jenkins 不可达，resolvePath 降级走手动映射兜底', [
                 'job'   => $jobName,
                 'error' => $e->getMessage(),
@@ -92,7 +90,6 @@ class GitRemoteResolver
             $resolved = null;
         }
         if (!$resolved || $resolved['type'] !== 'job') {
-            // Jenkins 找不到：改用手动映射（GitLab CI 项目）
             if (isset($this->manualMap[$jobName])) {
                 $m = $this->manualMap[$jobName];
                 $platform = $m['git_platform'] ?? $this->defaultPlatform;
@@ -108,7 +105,7 @@ class GitRemoteResolver
                     'project_id'       => $m['project_id'] ?? null,
                     'web_url'          => $m['web_url'] ?? '',
                     'current_path'     => $m['current_path'] ?? '',
-                    'harbor_repository' => $m['harbor_repository'] ?? '',
+                    'registry_repository' => $m['registry_repository'] ?? '',
                 ], $m);
             }
             return null;
@@ -120,12 +117,12 @@ class GitRemoteResolver
         $platform = $detection['platform'];
         $detectionMethod = $detection['method'];
 
-        // 基础自动数据（可以设置一些默认字段）
+
         $base = [
             'job_name'         => $jobName,
             'git_platform'     => $platform,
-            'platform_source'  => 'auto',          // auto | manual（是否由 job_git_map 手动指定）
-            'detection_method' => $detectionMethod, // exact | fallback（URL 匹配结果，仅 auto 时有意义）
+            'platform_source'  => 'auto',
+            'detection_method' => $detectionMethod,
             'git_remote'   => $remote,
             'status'       => 'synced',
             'message'      => '',
@@ -133,29 +130,29 @@ class GitRemoteResolver
                 'step1_try_jobname' => $jobName,
                 'step1_result'      => 'SUCCESS',
             ],
-            // 常用字段给个默认值，让外面知道有这个键
+
             'project_id'   => null,
             'web_url'      => '',
             'current_path' => '',
-            'harbor_repository' => '',
+            'registry_repository' => '',
         ];
 
-        // 动态合并：把手动配置的所有字段（除 job_name）都覆盖进来
+
         if (isset($this->manualMap[$jobName])) {
             foreach ($this->manualMap[$jobName] as $key => $value) {
                 if ($key !== 'job_name' && $value !== null && $value !== '') {
                     $base[$key] = $value;
                 }
             }
-            // 如果手动指定了 git_platform，标记为手动选择（不再兜底）
+
             if (!empty($this->manualMap[$jobName]['git_platform'])) {
                 $base['platform_source']  = 'manual';
                 $base['detection_method'] = 'manual';
             }
         }
 
-        // GitLab API v4 需要 project_id（数字），其他平台用 owner/repo 路径即可
-        // 如果手动未填写且是 GitLab，则自动通过 API 查询
+
+
         if (empty($base['project_id']) && $platform === 'gitlab') {
             $base['project_id'] = $this->getGitlabIdWithCache($jobName, $remote);
         }

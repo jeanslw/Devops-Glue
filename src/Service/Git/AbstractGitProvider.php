@@ -131,8 +131,8 @@ abstract class AbstractGitProvider implements GitProviderInterface
             $this->logger?->warning($this->getName() . ' commit status 回写失败', [
                 'url' => $url, 'error' => $e->getMessage(),
             ]);
-            // 响应里不回显原始异常：Guzzle 的消息含完整请求 URL，内网地址会随 API 响应外泄。
-            // 只回传可安全展示的摘要 + HTTP 状态码，明细留在日志里供排查。
+
+
             $code = $e instanceof BadResponseException ? $e->getResponse()->getStatusCode() : 0;
             return ['success' => false, 'message' => '回写失败: ' . $this->getName()
                 . ' 服务不可达或拒绝请求' . ($code > 0 ? '（HTTP ' . $code . '）' : '')];

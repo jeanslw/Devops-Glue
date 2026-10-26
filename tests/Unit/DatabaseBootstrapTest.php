@@ -23,7 +23,7 @@ class DatabaseBootstrapTest extends TestCase
         parent::setUp();
         $_ENV['ADMIN_USER'] = 'admin';
         $_ENV['ADMIN_PASSWORD'] = 'secret';
-        // 避免 ensureTables() 里 ALTER 失败触发的日志写到 /data/logs 污染环境
+        
         $_ENV['LOG_PATH'] = sys_get_temp_dir() . DIRECTORY_SEPARATOR;
         Database::reset();
     }
@@ -42,21 +42,21 @@ class DatabaseBootstrapTest extends TestCase
         $pdo = $this->createMemoryPdo();
         Database::bootstrap($pdo);
 
-        // 系统角色
+        
         $stmt = $pdo->prepare('SELECT name FROM ' . AppConfig::TABLE_ROLES . ' WHERE name = ?');
         $stmt->execute([AppConfig::ROLE_SUPER_ADMIN]);
         $this->assertNotFalse($stmt->fetch(), 'super_admin 角色应被种子写入');
 
-        // super_admin 描述被种子写入
+        
         $descStmt = $pdo->prepare('SELECT description FROM ' . AppConfig::TABLE_ROLES . ' WHERE name = ?');
         $descStmt->execute([AppConfig::ROLE_SUPER_ADMIN]);
         $this->assertSame(AppConfig::DEFAULT_ROLE_DESCRIPTIONS[AppConfig::ROLE_SUPER_ADMIN], $descStmt->fetchColumn(), 'super_admin 描述应被种子写入');
 
-        // 权限定义非空
+        
         $permCount = (int)$pdo->query('SELECT count(*) FROM ' . AppConfig::TABLE_PERMISSIONS)->fetchColumn();
         $this->assertGreaterThan(0, $permCount, 'permissions 应被种子写入');
 
-        // super_admin 映射了全部权限（role_permissions）
+        
         $rpCount = (int)$pdo->query(
             'SELECT count(*) FROM ' . AppConfig::TABLE_ROLE_PERMISSIONS . ' rp'
             . ' JOIN ' . AppConfig::TABLE_ROLES . ' r ON r.id = rp.role_id'
@@ -64,7 +64,7 @@ class DatabaseBootstrapTest extends TestCase
         )->fetchColumn();
         $this->assertEquals(count(AppConfig::DEFAULT_PERMISSIONS), $rpCount, 'super_admin 应映射全部权限');
 
-        // 根管理员账号（角色 super_admin）
+        
         $stmt = $pdo->prepare('SELECT role FROM ' . AppConfig::TABLE_ADMIN_USERS . ' WHERE username = ?');
         $stmt->execute(['admin']);
         $admin = $stmt->fetch();
@@ -78,19 +78,19 @@ class DatabaseBootstrapTest extends TestCase
         $pdo = $this->createMemoryPdo();
         Database::bootstrap($pdo);
 
-        // viewer 被种子写入且是系统内置角色（不可删）
+        
         $stmt = $pdo->prepare('SELECT is_system FROM ' . AppConfig::TABLE_ROLES . ' WHERE name = ?');
         $stmt->execute([AppConfig::ROLE_VIEWER]);
         $row = $stmt->fetch();
         $this->assertNotFalse($row, 'viewer 角色应被种子写入');
         $this->assertEquals(1, (int)$row['is_system'], 'viewer 应为系统内置角色（不可删）');
 
-        // viewer 描述被种子写入
+        
         $descStmt = $pdo->prepare('SELECT description FROM ' . AppConfig::TABLE_ROLES . ' WHERE name = ?');
         $descStmt->execute([AppConfig::ROLE_VIEWER]);
         $this->assertSame(AppConfig::DEFAULT_ROLE_DESCRIPTIONS[AppConfig::ROLE_VIEWER], $descStmt->fetchColumn(), 'viewer 描述应被种子写入');
 
-        // 只读 = 恰好 15 个纯读视图 key（6 CD + 9 CI），无任何写 key，尤其不含 cd.image-registry 与 ci.manage
+        
         $keys = $pdo->query(
             'SELECT rp.perm_key FROM ' . AppConfig::TABLE_ROLE_PERMISSIONS . ' rp'
             . ' JOIN ' . AppConfig::TABLE_ROLES . ' r ON r.id = rp.role_id'
@@ -123,7 +123,7 @@ class DatabaseBootstrapTest extends TestCase
 
         $before = (int)$pdo->query('SELECT count(*) FROM ' . AppConfig::TABLE_PERMISSIONS)->fetchColumn();
 
-        // 模拟运行时删掉一条权限：同版本再次 bootstrap 不应把它写回来（种子被跳过）
+        
         $firstKey = array_key_first(AppConfig::DEFAULT_PERMISSIONS);
         $pdo->exec('DELETE FROM ' . AppConfig::TABLE_PERMISSIONS . ' WHERE perm_key = ' . $pdo->quote($firstKey));
 
@@ -135,7 +135,7 @@ class DatabaseBootstrapTest extends TestCase
 
     public function testBootstrapThrowsWhenRbacSeedMissing(): void
     {
-        // 模拟手动建库脚本模式：只建了 admin_users，roles/permissions 等表缺失
+        
         Database::init(['driver' => 'sqlite', 'auto_migrate' => false]);
 
         $pdo = $this->createMemoryPdo();
@@ -180,7 +180,7 @@ class DatabaseBootstrapTest extends TestCase
         $pdo = $this->createManualModePdo();
         $before = (int)$pdo->query('SELECT count(*) FROM ' . AppConfig::TABLE_PERMISSIONS)->fetchColumn();
 
-        // 删一条权限后再次引导：命中 seed_version 短路，不应把它写回来
+        
         $firstKey = array_key_first(AppConfig::DEFAULT_PERMISSIONS);
         $pdo->exec('DELETE FROM ' . AppConfig::TABLE_PERMISSIONS . ' WHERE perm_key = ' . $pdo->quote($firstKey));
         $this->bootstrapManualMode($pdo);
@@ -217,11 +217,11 @@ class DatabaseBootstrapTest extends TestCase
         ));
         $this->assertSame('ddl_denied', Database::classifyMigrationError('CREATE command denied', '', 1044));
         $this->assertSame('ddl_denied', Database::classifyMigrationError('Access denied', '', 1227));
-        // 无驱动码时按 SQLSTATE 42000 兜底，但还须消息含 denied（PDO 标准前缀 "syntax error or access
-        // violation" 里的 access violation 不能作为权限信号，否则 1064 语法错误会被连带误判）
+        
+        
         $this->assertSame('ddl_denied', Database::classifyMigrationError('CREATE command denied for user', '42000'));
         $this->assertSame('ddl_denied', Database::classifyMigrationError('access denied; you need the SUPER privilege', '42000'));
-        // SQLite 只读库/只读文件与缺 DDL 权限同类处置
+        
         $this->assertSame('ddl_denied', Database::classifyMigrationError('SQLite: attempt to write a readonly database'));
     }
 
@@ -237,7 +237,7 @@ class DatabaseBootstrapTest extends TestCase
         $this->assertSame('unreachable', Database::classifyMigrationError('SQLSTATE[HY000] [2002] Connection refused', 'HY000', 2002));
         $this->assertSame('unreachable', Database::classifyMigrationError('SQLSTATE[HY000] [28000] login failed', '28000'));
         $this->assertSame('unreachable', Database::classifyMigrationError('SQLite: unable to open database file'));
-        // PHP open_basedir 限制导致 SQLite 打不开库文件（线上出现过），同样属于库不可达
+        
         $this->assertSame('unreachable', Database::classifyMigrationError('SQLSTATE[HY000]: General error: 14 open_basedir prohibits opening C:\\data\\x.db', 'HY000', 14));
     }
 
@@ -248,19 +248,19 @@ class DatabaseBootstrapTest extends TestCase
     public function testClassifyMigrationErrorFallsBackToOther(): void
     {
         $this->assertSame('other', Database::classifyMigrationError('Duplicate entry for key ci_roles.name', '23000', 1062));
-        // MySQL 1064 语法错误：SQLSTATE 也是 42000、驱动码 1064，且标准前缀含 "access violation"，仍须归 other
+        
         $this->assertSame('other', Database::classifyMigrationError(
             "SQLSTATE[42000]: Syntax error or access violation: 1064 You have an error in your SQL syntax near 'FOO'",
             '42000',
             1064
         ));
-        // 1060 重复列（迁移中途失败后重跑的常见情形）归 other，而非 ddl_denied
+        
         $this->assertSame('other', Database::classifyMigrationError(
             'SQLSTATE[42S21]: Column already exists: 1060 Duplicate column name',
             '42S21',
             1060
         ));
-        // 无驱动码、仅 SQLSTATE 42000 但消息不含 denied：不按权限拒绝处理
+        
         $this->assertSame('other', Database::classifyMigrationError('some syntactic problem', '42000'));
         $this->assertSame('other', Database::classifyMigrationError(''));
     }
@@ -341,13 +341,13 @@ class DatabaseBootstrapTest extends TestCase
         $pdo = $this->createMemoryPdo();
         Database::bootstrap($pdo);
 
-        // 恒高于代码版本的字面量（99.0.0），避免随 APP_VERSION 演进失效
+        
         $pdo->exec('UPDATE ' . AppConfig::TABLE_APP_SETTINGS . " SET value = '99.0.0' WHERE setting_key = 'schema_version'");
         $state = Database::schemaState($pdo);
         $this->assertFalse($state['schema_current'], '版本不一致 → 未对齐');
         $this->assertTrue($state['schema_ahead'], '库版本高于代码 → 疑似降级回滚（须用 version_compare，非字典序）');
 
-        // 反向：版本低于代码，属于没跑结构迁移，不是代码回滚
+        
         $pdo->exec('UPDATE ' . AppConfig::TABLE_APP_SETTINGS . " SET value = '0.0.0' WHERE setting_key = 'schema_version'");
         $this->assertFalse(Database::schemaState($pdo)['schema_ahead'], '库版本低于代码不算 ahead');
     }
@@ -407,8 +407,8 @@ class DatabaseBootstrapTest extends TestCase
      */
     public function testSchemaProbeListCoversEveryAppOwnedTable(): void
     {
-        // 空内存库：missingTables() 返回的即 schemaTables() 的全量清单（顺序与定义一致），
-        // 也是 /healthz 与后台表清单真正遍历的那份清单（不复制一份来断言，避免自我印证）
+        
+        
         $probed = Database::missingTables($this->createMemoryPdo());
         $drift  = Database::schemaListDrift($probed);
 
@@ -485,7 +485,7 @@ class DatabaseBootstrapTest extends TestCase
         $this->assertContains(AppConfig::TABLE_APP_SETTINGS, $pending['missing_tables']);
         $this->assertSame([], $pending['missing_columns'], '整表缺失时不逐列报告（避免与「缺失表」重复）');
 
-        // 只读证明：预检后 ci_app_settings 依然不存在
+        
         $this->expectException(\PDOException::class);
         $pdo->query('SELECT 1 FROM ' . AppConfig::TABLE_APP_SETTINGS . ' LIMIT 1');
     }
@@ -510,7 +510,7 @@ class DatabaseBootstrapTest extends TestCase
     {
         Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
         $pdo = $this->createMemoryPdo();
-        // 手工造一张旧版表：存在，但没有 status 列（status 在 columnMigrations 映射里）
+        
         $pdo->exec('CREATE TABLE ' . AppConfig::TABLE_JOB_GIT_MAP . ' (job_name TEXT PRIMARY KEY, git_platform TEXT)');
 
         $pending = Database::pendingChanges($pdo);
@@ -533,8 +533,8 @@ class DatabaseBootstrapTest extends TestCase
         Database::reset();
         Database::init(['driver' => 'sqlite', 'path' => $dbPath, 'auto_migrate' => true]);
 
-        $pdo = Database::connect(); // 只建连：起一个真实库文件并注入 self::$pdo
-        // 手工造一张旧版表：存在，但缺 status 列
+        $pdo = Database::connect(); 
+        
         $pdo->exec('CREATE TABLE ' . AppConfig::TABLE_JOB_GIT_MAP . ' (job_name TEXT PRIMARY KEY, git_platform TEXT)');
 
         $before = Database::pendingChanges($pdo);
@@ -576,14 +576,14 @@ class DatabaseBootstrapTest extends TestCase
         $pdo = $this->createMemoryPdo();
         Database::bootstrap($pdo);
 
-        // 模拟新版本：给系统角色 viewer 多授一个权限
+        
         $extra = $this->firstPermissionNotGrantedToViewer();
         $this->grantRolePermission($pdo, AppConfig::ROLE_VIEWER, $extra);
 
-        // 模拟代码被降级：记录版本高于当前代码版本
+        
         $this->setVersion($pdo, 'schema_version', '99.0.0');
 
-        $this->reBootstrap($pdo, true); // 降级后的首个请求（自动建库模式）
+        $this->reBootstrap($pdo, true); 
 
         $this->assertTrue(
             $this->roleHasPermission($pdo, AppConfig::ROLE_VIEWER, $extra),
@@ -626,7 +626,7 @@ class DatabaseBootstrapTest extends TestCase
         $extra = $this->firstPermissionNotGrantedToViewer();
         $this->grantRolePermission($pdo, AppConfig::ROLE_VIEWER, $extra);
 
-        $this->setVersion($pdo, 'schema_version', '0.0.0'); // 老版本标记 → 升级方向
+        $this->setVersion($pdo, 'schema_version', '0.0.0'); 
         $this->reBootstrap($pdo, true);
 
         $this->assertFalse(
@@ -646,7 +646,7 @@ class DatabaseBootstrapTest extends TestCase
         $this->grantRolePermission($pdo, AppConfig::ROLE_VIEWER, $extra);
         $this->setVersion($pdo, 'schema_version', '99.0.0');
 
-        Database::migrateNow(); // 显式动作 = 权威种子
+        Database::migrateNow(); 
 
         $this->assertFalse(
             $this->roleHasPermission($pdo, AppConfig::ROLE_VIEWER, $extra),
@@ -664,7 +664,7 @@ class DatabaseBootstrapTest extends TestCase
 
         $extra = $this->firstPermissionNotGrantedToViewer();
         $this->grantRolePermission($pdo, AppConfig::ROLE_VIEWER, $extra);
-        $this->setVersion($pdo, 'seed_version', '99.0.0'); // 手动模式以 seed_version 判定
+        $this->setVersion($pdo, 'seed_version', '99.0.0'); 
 
         $this->reBootstrap($pdo, false);
 
@@ -709,11 +709,11 @@ class DatabaseBootstrapTest extends TestCase
 
         $this->setVersion($pdo, 'schema_version', '99.0.0');
         $this->reBootstrap($pdo, true);
-        $this->setVersion($pdo, 'schema_version', '99.0.0'); // 同一降级事件被再次检测
+        $this->setVersion($pdo, 'schema_version', '99.0.0'); 
         $this->reBootstrap($pdo, true);
         $this->assertCount(1, $this->operationLogRows($pdo, 'schema_downgrade'), '同一 previous 版本不重复记录');
 
-        $this->setVersion($pdo, 'schema_version', '98.0.0'); // 另一版本 = 另一事件
+        $this->setVersion($pdo, 'schema_version', '98.0.0'); 
         $this->reBootstrap($pdo, true);
         $this->assertCount(2, $this->operationLogRows($pdo, 'schema_downgrade'), '不同 previous 版本各记一条');
     }
@@ -725,7 +725,7 @@ class DatabaseBootstrapTest extends TestCase
         $pdo = $this->createMemoryPdo();
         Database::bootstrap($pdo);
 
-        $this->setVersion($pdo, 'schema_version', '0.0.0'); // 老版本标记 → 升级方向
+        $this->setVersion($pdo, 'schema_version', '0.0.0'); 
         $this->reBootstrap($pdo, true);
 
         $this->assertCount(0, $this->operationLogRows($pdo, 'schema_downgrade'), '升级不应记为降级');
@@ -738,7 +738,7 @@ class DatabaseBootstrapTest extends TestCase
     {
         Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
         $pdo = $this->createMemoryPdo();
-        Database::bootstrap($pdo); // 空库首启
+        Database::bootstrap($pdo); 
 
         $rows = $this->operationLogRows($pdo, 'schema_init');
         $this->assertCount(1, $rows, '首次建库应记一条 schema_init');
@@ -760,7 +760,7 @@ class DatabaseBootstrapTest extends TestCase
         $pdo = $this->createMemoryPdo();
         Database::bootstrap($pdo);
 
-        $this->setVersion($pdo, 'schema_version', '0.0.0'); // 老版本标记 = 升级方向
+        $this->setVersion($pdo, 'schema_version', '0.0.0'); 
         $this->reBootstrap($pdo, true);
 
         $rows = $this->operationLogRows($pdo, 'schema_upgrade');
@@ -781,7 +781,7 @@ class DatabaseBootstrapTest extends TestCase
         Database::bootstrap($pdo);
 
         $this->setVersion($pdo, 'seed_version', '0.0.0');
-        $this->reBootstrap($pdo, false); // 手动建库模式
+        $this->reBootstrap($pdo, false); 
 
         $rows = $this->operationLogRows($pdo, 'schema_upgrade');
         $this->assertCount(1, $rows);
@@ -801,7 +801,7 @@ class DatabaseBootstrapTest extends TestCase
         Database::bootstrap($pdo);
 
         $this->setVersion($pdo, 'schema_version', '0.0.0');
-        Database::migrateNow(); // 显式动作
+        Database::migrateNow(); 
 
         $this->assertCount(0, $this->operationLogRows($pdo, 'schema_upgrade'), '显式迁移不该再记跃迁');
         $this->assertCount(0, $this->operationLogRows($pdo, 'schema_downgrade'));
@@ -818,8 +818,8 @@ class DatabaseBootstrapTest extends TestCase
         $pdo = $this->createMemoryPdo();
         Database::bootstrap($pdo);
 
-        $this->setVersion($pdo, 'schema_version', '99.0.0'); // 模拟回滚：库标记高于当前代码
-        Database::migrateNow(); // 显式迁移（旧代码对齐标记）
+        $this->setVersion($pdo, 'schema_version', '99.0.0'); 
+        Database::migrateNow(); 
 
         $this->assertSame(AppConfig::APP_VERSION, $this->version($pdo, 'schema_version'), '标记被改写回当前代码版本');
         $rows = $this->operationLogRows($pdo, 'schema_downgrade');
@@ -832,7 +832,7 @@ class DatabaseBootstrapTest extends TestCase
         $this->assertSame('prune', $detail['seed_mode'] ?? null, '显式迁移始终按当前代码定义收敛');
         $this->assertSame('explicit_migrate', $detail['channel'] ?? null, 'channel 区分显式路径与自动引导');
 
-        Database::migrateNow(); // 再跑一次：标记已是当前版本 → 无降级可记
+        Database::migrateNow(); 
         $this->assertCount(1, $this->operationLogRows($pdo, 'schema_downgrade'), '正向/平级迁移不产生降级审计');
     }
 
@@ -847,10 +847,10 @@ class DatabaseBootstrapTest extends TestCase
         Database::bootstrap($pdo);
 
         $this->setVersion($pdo, 'schema_version', '99.0.0');
-        $this->reBootstrap($pdo, true); // 自动引导降级（merge）→ 记 channel=bootstrap 行
+        $this->reBootstrap($pdo, true); 
 
         $this->setVersion($pdo, 'schema_version', '99.0.0');
-        Database::migrateNow(); // 同一版本的显式迁移降级（prune）→ 必须有自己的一行
+        Database::migrateNow(); 
 
         $rows = $this->operationLogRows($pdo, 'schema_downgrade');
         $this->assertCount(2, $rows, '自动引导与显式迁移的降级审计互不去重（同一 target、后果不同）');
@@ -877,12 +877,12 @@ class DatabaseBootstrapTest extends TestCase
         $pdo = $this->createMemoryPdo();
         Database::bootstrap($pdo);
 
-        // 让 role_permissions 的任何删除都失败，使 prune 阶段产生部分失败（模拟"种子只播了一半"）
+        
         $pdo->exec(
             'CREATE TRIGGER fail_rp_delete BEFORE DELETE ON ' . AppConfig::TABLE_ROLE_PERMISSIONS
             . " BEGIN SELECT RAISE(ABORT, 'forced seed failure'); END"
         );
-        $this->setVersion($pdo, 'schema_version', '0.0.0'); // 制造"需要重新播种"
+        $this->setVersion($pdo, 'schema_version', '0.0.0'); 
 
         $caught = null;
         try {
@@ -903,11 +903,11 @@ class DatabaseBootstrapTest extends TestCase
         $this->assertGreaterThanOrEqual(1, (int)($detail['count'] ?? 0), 'detail.count 记录失败项数');
         $this->assertStringContainsString('forced', (string)($detail['sample'][0]['error'] ?? ''), 'sample 带真实错误便于排障');
 
-        // 去重：失败持续存在时（每个请求都会重试）审计表不能被刷爆
+        
         try {
             $this->reBootstrap($pdo, true);
         } catch (\RuntimeException $e) {
-            // 预期再次失败
+            
         }
         $this->assertCount(1, $this->operationLogRows($pdo, 'rbac_seed_failed'), '去重窗口内同一次失败只记一条');
     }
@@ -1018,10 +1018,10 @@ class DatabaseBootstrapTest extends TestCase
     {
         Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
         $pdo = $this->createMemoryPdo();
-        Database::bootstrap($pdo); // 首启：ci_cache 表尚不存在 → 无从互斥直接硬跑（与主干一致）
+        Database::bootstrap($pdo); 
 
         $this->setVersion($pdo, 'schema_version', '0.0.0');
-        $this->reBootstrap($pdo, true); // 此刻 ci_cache 已存在 → 走持有者路径
+        $this->reBootstrap($pdo, true); 
 
         $this->assertSame(AppConfig::APP_VERSION, $this->version($pdo, 'schema_version'), '迁移完成、标记对齐');
         $this->assertSame(0, $this->cacheRowCount($pdo, 'lock:schema_migration'), '完成后必须释放锁（不留残余租约）');
@@ -1035,8 +1035,8 @@ class DatabaseBootstrapTest extends TestCase
         Database::bootstrap($pdo);
         $this->setVersion($pdo, 'schema_version', '0.0.0');
 
-        // 模拟另一节点持锁后崩溃：租约过期后可被接管。注意 expires_at 用秒级 time()：
-        // TTL=2s 的实际寿命是 1~2s（秒边界效应），故下方断言下界取 0.8s、留足余量。
+        
+        
         $holder = Database::tryAcquireLock('schema_migration', 2);
         if ($holder === null) {
             self::fail('测试前置失败：无法抢到模拟锁');
@@ -1044,7 +1044,7 @@ class DatabaseBootstrapTest extends TestCase
 
         Database::reset();
         Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
-        Database::setMigrationWaitForTest(5, 0.2); // 缩短等待窗口，真实默认 30s/0.5s
+        Database::setMigrationWaitForTest(5, 0.2); 
         try {
             $start   = microtime(true);
             Database::bootstrap($pdo);
@@ -1067,7 +1067,7 @@ class DatabaseBootstrapTest extends TestCase
         Database::bootstrap($pdo);
         $this->setVersion($pdo, 'schema_version', '0.0.0');
 
-        $holder = Database::tryAcquireLock('schema_migration', 300); // 模拟健在的持有者：租约不过期
+        $holder = Database::tryAcquireLock('schema_migration', 300); 
         if ($holder === null) {
             self::fail('测试前置失败：无法抢到模拟锁');
         }
@@ -1076,7 +1076,7 @@ class DatabaseBootstrapTest extends TestCase
         Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
         Database::setMigrationWaitForTest(1, 0.1);
         try {
-            Database::bootstrap($pdo); // 竞争者：轮询 1s 超时 → 降级硬跑
+            Database::bootstrap($pdo); 
         } finally {
             Database::setMigrationWaitForTest(null, null);
         }
@@ -1093,7 +1093,7 @@ class DatabaseBootstrapTest extends TestCase
     {
         $stmt = $pdo->prepare('SELECT cache_key, value FROM ' . AppConfig::TABLE_CACHE . ' WHERE cache_key = ?');
         $stmt->execute([$key]);
-        /** @var list<array<string,mixed>> $rows */
+        
         $rows = $stmt->fetchAll();
         return $rows;
     }
@@ -1119,15 +1119,15 @@ class DatabaseBootstrapTest extends TestCase
     {
         Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
         $pdo = $this->createMemoryPdo();
-        Database::bootstrap($pdo); // 新名建表 + 种子 + 标记
+        Database::bootstrap($pdo); 
 
-        // 模拟 v2.9.0 之前的存量库：把新名表改回旧名，并清掉版本标记
+        
         foreach (AppConfig::LEGACY_TABLE_NAMES as $old => $new) {
             $pdo->exec("ALTER TABLE {$new} RENAME TO {$old}");
         }
         $pdo->exec('DELETE FROM ' . AppConfig::TABLE_APP_SETTINGS . " WHERE setting_key IN ('schema_version','seed_version')");
 
-        // bootstrap 的幂等标记是进程内的，跨"升级"场景须 reset 后重新引导
+        
         Database::reset();
         Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
         Database::bootstrap($pdo);
@@ -1137,12 +1137,12 @@ class DatabaseBootstrapTest extends TestCase
             $this->assertTrue($this->sqliteTableExists($pdo, $new), "{$new} 应存在");
         }
 
-        // 改名前的种子数据原样保留（未重新播种也应存在；prune 重播只会归位不会清空）
+        
         $roleCount = (int)$pdo->query('SELECT count(*) FROM ' . AppConfig::TABLE_ROLES)->fetchColumn();
         $this->assertGreaterThan(0, $roleCount, '角色数据应在改名后保留');
 
-        // 外键引用随 RENAME 跟随：删 token 后 ci_integrated_services.api_token_id 置 NULL。
-        // createMemoryPdo 是裸 PDO，须与生产 createPdo 一致显式开启外键强制
+        
+        
         $pdo->exec('PRAGMA foreign_keys=ON');
         $pdo->exec('INSERT INTO ' . AppConfig::TABLE_API_TOKENS . ' (name, token_hash, scopes) VALUES (\'svc\', \'ab\'\'cd\', \'cd.build\')');
         $tokenId = (int)$pdo->lastInsertId();
@@ -1159,6 +1159,121 @@ class DatabaseBootstrapTest extends TestCase
         return (int)$stmt->fetchColumn() > 0;
     }
 
+    /** 指定表的列名清单（PRAGMA table_info，按定义顺序）。 */
+    private function sqliteColumns(\PDO $pdo, string $table): array
+    {
+        $cols = [];
+        foreach ($pdo->query("PRAGMA table_info({$table})")->fetchAll() as $row) {
+            $cols[] = (string)$row['name'];
+        }
+        return $cols;
+    }
+
+    /** 取映射行的 registry_repository；行不存在直接断言失败（用错 job 名时不静默通过）。 */
+    private function registryRepositoryOf(\PDO $pdo, string $jobName): ?string
+    {
+        $stmt = $pdo->prepare('SELECT registry_repository FROM ' . AppConfig::TABLE_JOB_GIT_MAP . ' WHERE job_name = ?');
+        $stmt->execute([$jobName]);
+        $value = $stmt->fetchColumn();
+        $this->assertNotFalse($value, "映射行 {$jobName} 应存在");
+        return $value === null ? null : (string)$value;
+    }
+
+    // ────────────── v2.11.0 列改名（harbor_repository → registry_repository） ──────────────
+
+    /**
+     * 存量库（只有旧列 harbor_repository）bootstrap 应先回填到新列、再 DROP 旧列：
+     * 映射表只留 registry_repository 单一仓库字段，与全局 registry_type 构成排它。
+     * 同时锁住两个方向：新列已有值时不被旧列覆盖、旧列为空时不回填出空串；
+     * 回填+删列后再次引导幂等（旧列已回收，DROP 分支跳过）。
+     */
+    public function testLegacyHarborRepositoryColumnIsBackfilledThenDropped(): void
+    {
+        Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
+        $pdo = $this->createMemoryPdo();
+        Database::bootstrap($pdo); 
+
+        
+        $pdo->exec('ALTER TABLE ' . AppConfig::TABLE_JOB_GIT_MAP . ' ADD COLUMN harbor_repository TEXT');
+        $stmt = $pdo->prepare(
+            'INSERT INTO ' . AppConfig::TABLE_JOB_GIT_MAP
+            . ' (job_name, current_path, registry_repository, harbor_repository) VALUES (?, ?, ?, ?)'
+        );
+        $stmt->execute(['team/app', 'team/app', null, 'team/project/image']); 
+        $stmt->execute(['team/keep', 'team/keep', 'new/repo', 'old/repo']);   
+        $stmt->execute(['team/empty', 'team/empty', null, '']);               
+        $pdo->exec(
+            'DELETE FROM ' . AppConfig::TABLE_APP_SETTINGS
+            . " WHERE setting_key = '" . Database::SCHEMA_VERSION_KEY . "'"
+        );
+
+        $this->reBootstrap($pdo, true);
+
+        $cols = $this->sqliteColumns($pdo, AppConfig::TABLE_JOB_GIT_MAP);
+        $this->assertContains('registry_repository', $cols, '改名后新列应在');
+        $this->assertNotContains('harbor_repository', $cols, '回填完成后旧列应被 DROP');
+        $this->assertSame('team/project/image', $this->registryRepositoryOf($pdo, 'team/app'), '旧列数据应搬到新列');
+        $this->assertSame('new/repo', $this->registryRepositoryOf($pdo, 'team/keep'), '新列已有值不得被旧列覆盖');
+        $this->assertNull($this->registryRepositoryOf($pdo, 'team/empty'), '旧列为空不得回填成空串');
+
+        
+        $this->reBootstrap($pdo, true);
+        $this->assertNotContains('harbor_repository', $this->sqliteColumns($pdo, AppConfig::TABLE_JOB_GIT_MAP));
+        $this->assertSame('team/project/image', $this->registryRepositoryOf($pdo, 'team/app'));
+    }
+
+    /**
+     * DROP COLUMN 失败不得阻断 bootstrap：旧版 SQLite（< 3.35）整体不支持 DROP COLUMN，
+     * 被索引/约束引用的列同样删不掉，两种环境在生产上都会抛 PDOException。
+     * 旧列删不掉无害（读写只用 registry_repository），故只降级为告警：
+     * 升级照常完成、回填结果保留、旧列留存（日后在支持的库上引导时再回收）。
+     */
+    public function testLegacyColumnDropFailureDoesNotAbortBootstrap(): void
+    {
+        Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
+        $pdo = $this->createMemoryPdo();
+        Database::bootstrap($pdo); 
+
+        
+        $pdo->exec('ALTER TABLE ' . AppConfig::TABLE_JOB_GIT_MAP . ' ADD COLUMN harbor_repository TEXT');
+        $pdo->exec(
+            'CREATE INDEX idx_legacy_harbor_repository ON ' . AppConfig::TABLE_JOB_GIT_MAP . ' (harbor_repository)'
+        );
+        $stmt = $pdo->prepare(
+            'INSERT INTO ' . AppConfig::TABLE_JOB_GIT_MAP
+            . ' (job_name, current_path, registry_repository, harbor_repository) VALUES (?, ?, ?, ?)'
+        );
+        $stmt->execute(['team/app', 'team/app', null, 'team/project/image']);
+        $pdo->exec(
+            'DELETE FROM ' . AppConfig::TABLE_APP_SETTINGS
+            . " WHERE setting_key = '" . Database::SCHEMA_VERSION_KEY . "'"
+        );
+
+        $this->reBootstrap($pdo, true); 
+
+        $cols = $this->sqliteColumns($pdo, AppConfig::TABLE_JOB_GIT_MAP);
+        $this->assertContains('harbor_repository', $cols, 'DROP 失败时旧列保留（无害，不得因此让升级失败）');
+        $this->assertSame(
+            'team/project/image',
+            $this->registryRepositoryOf($pdo, 'team/app'),
+            '回填发生在 DROP 之前，数据不受 DROP 失败影响'
+        );
+        $this->assertTrue($this->sqliteTableExists($pdo, AppConfig::TABLE_JOB_GIT_MAP), '表结构应保持可用');
+    }
+
+    /**
+     * 两个方言的建表脚本都只应出现 registry_repository：旧列名一旦回流到 DDL，
+     * 新装库又会生出「一半 harbor 一半 registry」的两列结构。
+     */
+    public function testInitScriptsUseOnlyRegistryRepositoryColumn(): void
+    {
+        foreach (['mysql_init.sql', 'sqlite_init.sql'] as $file) {
+            $sql = (string)file_get_contents(__DIR__ . '/../../database/' . $file);
+            $this->assertStringContainsString('registry_repository', $sql, "{$file} 应含 registry_repository");
+            $this->assertStringNotContainsString('harbor_repository', $sql, "{$file} 不应再出现 harbor_repository");
+        }
+    }
+
     // ────────────── v2.9.0 列结构对账（columnSpecs / columnDrift / reconcileColumns） ──────────────
 
     /**
@@ -1173,7 +1288,7 @@ class DatabaseBootstrapTest extends TestCase
 
         $this->assertSame([], Database::columnDrift($pdo), 'SQLite 不对账列宽');
         $this->assertSame([], Database::reconcileColumns($pdo, false), '无漂移时无修复项');
-        // bootstrap 已调度过一次（置位去重标记），再次调用直接返回而不重复对账
+        
         $this->assertSame([], Database::reconcileColumns($pdo, true));
     }
 
@@ -1251,12 +1366,12 @@ class DatabaseBootstrapTest extends TestCase
 
             Database::reset();
             Database::init(['driver' => 'mysql', 'auto_migrate' => true]);
-            // 全量 ensureTables（MySQL 分支）+ RBAC/管理员种子；任何保留字/类型/语法错误在此抛 PDOException。
+            
             Database::bootstrap($pdo);
 
-            // 全部应用表都应在 MySQL 上建成（缺表说明建表被短路或部分失败）
+            
             $this->assertSame([], Database::missingTables($pdo));
-            // 版本标记对齐，证明迁移完整跑通而非中途静默跳过
+            
             $version = $pdo->query(
                 'SELECT value FROM ' . AppConfig::TABLE_APP_SETTINGS . " WHERE setting_key = 'schema_version'"
             )->fetchColumn();
@@ -1305,14 +1420,14 @@ class DatabaseBootstrapTest extends TestCase
             $this->assertSame('varchar(255)', $this->mysqlColumnType($pdo, AppConfig::TABLE_ADMIN_USERS, 'systems'));
             $this->assertSame([], Database::columnDrift($pdo), '对齐后对账清零');
 
-            // 反向：实际比期望宽（缩容方向），只告警不动库
+            
             $pdo->exec('ALTER TABLE ' . AppConfig::TABLE_ADMIN_USERS . ' MODIFY COLUMN role VARCHAR(512)');
             Database::reset();
             Database::init(['driver' => 'mysql', 'auto_migrate' => true]);
             $drift = Database::columnDrift($pdo);
             $this->assertCount(1, $drift);
             $this->assertFalse($drift[0]['safe'], '512→255 是缩容，必须 safe=false');
-            Database::reconcileColumns($pdo, true); // strict 也不得对 unsafe 项执行 DDL
+            Database::reconcileColumns($pdo, true); 
             $this->assertSame(
                 'varchar(512)',
                 $this->mysqlColumnType($pdo, AppConfig::TABLE_ADMIN_USERS, 'role'),

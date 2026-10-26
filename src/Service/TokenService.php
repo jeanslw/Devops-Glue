@@ -45,19 +45,18 @@ class TokenService
             $stmt->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . self::hashAdminToken($token), time()]);
             $cache = $stmt->fetch(\PDO::FETCH_ASSOC);
             if ($cache) {
-                // role 取最后一段，用户名即使含 '|' 也不会被解析成 role（防注入提权）
                 $parts = explode('|', $cache['value']);
                 if (count($parts) < 2) {
-                    return null; // 缓存格式异常
+                    return null;
                 }
                 $role = array_pop($parts);
                 $user = implode('|', $parts);
-                // 回查账号当前状态与角色：停用 / 删除 / 降权对未过期的旧 token 同样生效
+
                 $state = $this->accountState($user);
                 if (!$state['active']) {
                     return null;
                 }
-                // 回查不到角色（DB 异常 / 旧库无 role 列）时沿用登录时冻结的角色
+
                 $currentRole = $state['role'] ?? '';
                 if ($currentRole === '') {
                     $currentRole = $role;
@@ -89,7 +88,7 @@ class TokenService
             $stmt->execute([$username]);
             $row = $stmt->fetch(\PDO::FETCH_ASSOC);
             if ($row === false) {
-                return ['active' => false, 'role' => null]; // 无此行 = 账号已删除
+                return ['active' => false, 'role' => null];
             }
             $status = $row['status'] ?? null;
             $active = $status === null ? true : (int)$status !== 0;
@@ -119,8 +118,8 @@ class TokenService
                 return null;
             }
             return [
-                // user/token_name 都是 token 的展示名（api_tokens.name，非登录账号），
-                // 供调用方归因与审计；token 原文/hash 绝不进入返回值。
+
+
                 'user'       => $resolved['name'],
                 'token_name' => $resolved['name'],
                 'token_id'   => $resolved['id'],

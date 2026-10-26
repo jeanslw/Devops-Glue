@@ -29,7 +29,7 @@ class CdServiceTokenScopeHealTest extends TestCase
         parent::setUp();
         $_ENV['ADMIN_USER'] = 'admin';
         $_ENV['ADMIN_PASSWORD'] = 'secret';
-        // 避免 ensureTables() 里 ALTER 失败触发的日志写到 /data/logs 污染环境
+        
         $_ENV['LOG_PATH'] = sys_get_temp_dir() . DIRECTORY_SEPARATOR;
         Database::reset();
     }
@@ -46,7 +46,7 @@ class CdServiceTokenScopeHealTest extends TestCase
         $pdo    = $this->bootFreshDatabase();
         $tokens = new ApiTokenService($pdo);
 
-        // 2.8.x 现场：cd-service 凭据只有三件套，没有 git
+        
         $legacy = $tokens->createToken(['name' => 'cd-service', 'scopes' => $this->legacyScopes()]);
         $this->bindCdContract($pdo, $legacy['id']);
 
@@ -66,7 +66,7 @@ class CdServiceTokenScopeHealTest extends TestCase
         $pdo    = $this->bootFreshDatabase();
         $tokens = new ApiTokenService($pdo);
 
-        // 管理员手工扩过权（main）的凭据：自愈只做并集，不得悄悄降权
+        
         $token = $tokens->createToken(['name' => 'cd-service', 'scopes' => ['main']]);
         $this->bindCdContract($pdo, $token['id']);
 

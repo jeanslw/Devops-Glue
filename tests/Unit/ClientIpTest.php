@@ -38,7 +38,7 @@ class ClientIpTest extends TestCase
     {
         $server = [
             'REMOTE_ADDR' => '127.0.0.1',
-            // 左端是攻击者可伪造的内容，真实客户端由反代追加在链尾
+            
             'HTTP_X_FORWARDED_FOR' => '1.2.3.4, 198.51.100.9',
         ];
         $this->assertSame('198.51.100.9', ClientIp::resolve($server, 1));

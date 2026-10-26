@@ -162,7 +162,7 @@ class ApiAccessLogRepository
             'all'     => 0,
             'warning' => 1,
             'error'   => 2,
-            default   => 99, // off 及任何非法值：不写（fail-closed 由调用方保证 level 已白名单化）
+            default   => 99,
         };
         return $rank >= $threshold;
     }

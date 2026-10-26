@@ -41,8 +41,6 @@ final class BuildProviderError
                 throw new ApiException("{$label} 资源不存在: " . $e->getMessage(), 404);
             }
             if ($status === 401 || $status === 403) {
-                // 凭证/权限问题跟 404 同属配置错误，透传上游状态码，不报成「服务不可用」。
-                // 也不拼接 $e->getMessage()：凭证类异常消息可能带请求 URL。
                 throw new ApiException(
                     "{$label} 凭证无效或权限不足（HTTP {$status}），请检查后台平台连接里的凭据",
                     $status

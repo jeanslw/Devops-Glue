@@ -86,20 +86,20 @@ class RbacController extends BaseController
         if (!AdminUserRepository::isValidUsername($username)) {
             return $this->jsonError($response, 'user.invalid_username', 400);
         }
-        // 服务账号不得占用根账号名：root 未落库时抢先注册会让该账号登录响应带上 is_root
+
         if ($username === $this->config->getRootAdminUser()) {
             return $this->jsonError($response, 'user.cannot_edit_root', 403);
         }
         if ($role === '') {
             return $this->jsonError($response, 'user.invalid_role', 400);
         }
-        // 角色以 roles 表存储的规范名为准：MySQL 大小写不敏感匹配会放过 'SUPER_ADMIN'
-        // 这类变体，必须回写规范名后再做 === 守卫与落库
+
+
         $canonicalRole = $this->adminUserRepository->canonicalRole($role);
         if ($canonicalRole === null) {
             return $this->jsonError($response, 'user.role_not_found', 400);
         }
-        // 服务账号不得创建 super_admin（防提权）
+
         if ($canonicalRole === AppConfig::ROLE_SUPER_ADMIN) {
             return $this->jsonError($response, 'user.cannot_create_super_admin', 403);
         }
@@ -140,8 +140,8 @@ class RbacController extends BaseController
         if ($role === '') {
             return $this->jsonError($response, 'user.invalid_role', 400);
         }
-        // 角色规范名：MySQL 大小写不敏感匹配会放过 super_admin 的大小写变体，
-        // 守卫与落库统一用 roles 表存储值
+
+
         $canonicalRole = null;
         if ($role !== null) {
             $canonicalRole = $this->adminUserRepository->canonicalRole($role);
@@ -170,14 +170,14 @@ class RbacController extends BaseController
             if (!$target) {
                 return $this->jsonError($response, 'user.not_found', 404);
             }
-            // 内置根账号 / 既有 super_admin 均不可被服务账号改动
+
             if (
                 $targetUser === $this->config->getRootAdminUser()
                 || $target['role'] === AppConfig::ROLE_SUPER_ADMIN
             ) {
                 return $this->jsonError($response, 'user.cannot_edit_root', 403);
             }
-            // 跨系统边界：只允许改归属 CD 的账号，CI-only 用户不由这个服务账号管理
+
             if (!$this->belongsToCd($target)) {
                 return $this->jsonError($response, 'user.cannot_manage_non_cd', 403);
             }
@@ -217,7 +217,7 @@ class RbacController extends BaseController
             ) {
                 return $this->jsonError($response, 'user.cannot_delete_root', 403);
             }
-            // 跨系统边界：只允许删归属 CD 的账号，CI-only 用户不由这个服务账号管理
+
             if (!$this->belongsToCd($target)) {
                 return $this->jsonError($response, 'user.cannot_manage_non_cd', 403);
             }
@@ -313,7 +313,6 @@ class RbacController extends BaseController
             return $this->jsonError($response, 'user.invalid_role', 400);
         }
         try {
-            // 回写规范名：大小写变体（如 'SUPER_ADMIN'）应按 roles 表存储值判定与返回
             $canonicalRole = $this->adminUserRepository->canonicalRole($role);
             if ($canonicalRole === null) {
                 return $this->jsonError($response, 'user.role_not_found', 404);

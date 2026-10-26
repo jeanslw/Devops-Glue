@@ -23,7 +23,7 @@ final class PasswordHasher
         $algo = strtolower(trim((string)($_ENV['PASSWORD_HASH_ALGO'] ?? '')));
         if ($algo === 'argon2id' && defined('PASSWORD_ARGON2ID')) {
             return password_hash($plain, PASSWORD_ARGON2ID, [
-                'memory_cost' => 65536, // 64 MiB
+                'memory_cost' => 65536,
                 'time_cost'   => 4,
                 'threads'     => 1,
             ]);

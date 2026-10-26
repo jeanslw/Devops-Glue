@@ -78,7 +78,7 @@ class IntegratedServiceRepositoryTest extends TestCase
         $this->assertFalse($state['token_enabled']);
         $this->assertFalse($state['token_expired']);
         $this->assertFalse($state['token_active']);
-        // 读取不得偷偷建行
+        
         $this->assertSame(0, (int) $this->pdo->query('SELECT COUNT(*) FROM ' . AppConfig::TABLE_INTEGRATED_SERVICES)->fetchColumn());
     }
 
@@ -98,7 +98,7 @@ class IntegratedServiceRepositoryTest extends TestCase
         $this->assertTrue($state['token_active'], '新签发 token 应处于有效态');
         $this->assertSame('root', $state['updated_by']);
 
-        // 配套 token 的 scope 必须恰好是 CD 三件套
+        
         $resolved = $this->tokens->resolve(hash('sha256', $created['token']));
         $this->assertNotNull($resolved);
         $this->assertSame(AppConfig::CD_SERVICE_TOKEN_SCOPES, $resolved['scopes']);
@@ -119,7 +119,7 @@ class IntegratedServiceRepositoryTest extends TestCase
         $this->pdo->commit();
         $this->assertNotNull($this->tokens->resolve(hash('sha256', $first['token'])), '启用后原明文应可用');
 
-        // 禁用（模拟控制器：仓储冻结 + 服务停用 token）
+        
         $this->pdo->beginTransaction();
         $oldTokenId = $this->repo->disable(AppConfig::SERVICE_CD, 'root');
         $this->assertSame($first['id'], $oldTokenId);
@@ -136,7 +136,7 @@ class IntegratedServiceRepositoryTest extends TestCase
         $this->assertNotNull($this->repo->find(AppConfig::SERVICE_CD), '禁用不得删除契约行');
         $this->assertNull($this->tokens->resolve(hash('sha256', $first['token'])), '冻结期间该凭据必须对调用方失效');
 
-        // 再次启用 = 恢复同一枚（按控制器顺序：restore + 同事务回写契约行，不签发新凭据）
+        
         $this->pdo->beginTransaction();
         $this->tokens->restore($first['id']);
         $this->repo->enable(AppConfig::SERVICE_CD, AppConfig::SERVICE_PROVISION_MANUAL, $first['id'], 'root');
@@ -192,7 +192,7 @@ class IntegratedServiceRepositoryTest extends TestCase
         $this->repo->enable(AppConfig::SERVICE_CD, AppConfig::SERVICE_PROVISION_AUTO, $first['id'], 'root');
         $this->pdo->commit();
 
-        // 运营在 API 管理页的 Token 列表里撤销了 cd-service：契约行不动，服务进入已启用但无凭据的故障态
+        
         $this->tokens->revoke($first['id']);
         $broken = $this->repo->getState(AppConfig::SERVICE_CD);
         $this->assertTrue($broken['enabled'], '单独撤销凭据不改契约行');
@@ -200,9 +200,9 @@ class IntegratedServiceRepositoryTest extends TestCase
         $this->assertNotNull($broken['token_id'], '撤销是停用行、不是删除：外键引用仍在');
         $this->assertTrue($broken['token_exists']);
         $this->assertFalse($broken['token_enabled']);
-        // 契约行仍是已启用，控制器不会把这种凭据当冻结状态来恢复（恢复只认行未启用 + 凭据只是被停用）
+        
 
-        // 再勾一次 = 补发：按控制器顺序（作废旧凭据 + 签发新凭据 + 同事务重绑）
+        
         $second = $this->issueCdToken();
         $this->pdo->beginTransaction();
         $this->tokens->revoke($first['id']);
@@ -274,7 +274,7 @@ class IntegratedServiceRepositoryTest extends TestCase
 
     public function testRollbackWipesTokenAndRowTogether(): void
     {
-        // 按控制器真实顺序：createToken 与 enable 在同一个事务里；回滚后两者都不得残留
+        
         $this->pdo->beginTransaction();
         $created = $this->issueCdToken();
         $this->assertSame(1, (int) $this->pdo->query('SELECT COUNT(*) FROM ' . AppConfig::TABLE_API_TOKENS)->fetchColumn());

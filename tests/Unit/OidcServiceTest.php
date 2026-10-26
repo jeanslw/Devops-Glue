@@ -58,7 +58,7 @@ class OidcServiceTest extends TestCase
             'groups' => ['admin'],
         ], 'harbor', null);
 
-        // 完全模拟标准 OIDC 客户端：只靠 jwks.json 拿公钥验签
+        
         $keySet = JWK::parseKeySet($svc->jwks());
         $this->assertArrayHasKey($svc->keyId(), $keySet);
 
@@ -80,7 +80,7 @@ class OidcServiceTest extends TestCase
         $this->assertSame($svc->keyId(), $key['kid']);
         $this->assertNotEmpty($key['n']);
         $this->assertNotEmpty($key['e']);
-        $this->assertArrayNotHasKey('d', $key); // 绝不含私钥参数
+        $this->assertArrayNotHasKey('d', $key); 
     }
 
     public function testKeyIsStableAcrossInstancesWithSameKeyFile(): void

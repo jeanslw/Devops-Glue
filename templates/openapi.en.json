@@ -2,18 +2,12 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Devops-Glue API",
-    "version": "2.10.0",
+    "version": "2.11.0",
     "description": "DevOps toolchain integration API: CI, Git platforms, Harbor, auth and admin.",
     "contact": {
       "email": "jeanslw@qq.com"
     }
   },
-  "servers": [
-    {
-      "url": "",
-      "description": "Current Environment"
-    }
-  ],
   "tags": [
     {
       "name": "Health",
@@ -34,6 +28,10 @@
     {
       "name": "Harbor",
       "description": "Image Registry & Security Scan"
+    },
+    {
+      "name": "Registry",
+      "description": "Registry-agnostic listings (works for Harbor and registry:2, dispatched by the global registry_type)"
     },
     {
       "name": "Integration",
@@ -75,6 +73,29 @@
           "default": "raw"
         },
         "description": "Response format"
+      },
+      "page": {
+        "name": "page",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1
+        },
+        "description": "Page number (returns the paged envelope when either page or page_size is provided, otherwise the full array)"
+      },
+      "page_size": {
+        "name": "page_size",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200,
+          "default": 50
+        },
+        "description": "Page size (1..200, default 50, out-of-range falls back to 50)"
       }
     },
     "responses": {
@@ -130,6 +151,79 @@
       }
     },
     "schemas": {
+      "TagDetails": {
+        "type": "object",
+        "description": "Tag detail object (Harbor v2 / Glue resolving registry:2 manifests; registry:2 leaves push_time / pull_time / scan fields empty)",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "digest": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "type": "integer"
+          },
+          "push_time": {
+            "type": "string"
+          },
+          "pull_time": {
+            "type": "string"
+          },
+          "scan_status": {
+            "type": "string"
+          },
+          "scan_severity": {
+            "type": "string"
+          },
+          "vuln_critical": {
+            "type": "integer"
+          },
+          "vuln_high": {
+            "type": "integer"
+          },
+          "vuln_medium": {
+            "type": "integer"
+          },
+          "vuln_low": {
+            "type": "integer"
+          },
+          "vuln_fixable": {
+            "type": "integer"
+          }
+        }
+      },
+      "PagedTags": {
+        "type": "object",
+        "description": "Paged envelope returned when page / page_size query params are present; without them the full array is returned",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "$ref": "#/components/schemas/TagDetails"
+                }
+              ]
+            }
+          },
+          "total": {
+            "type": "integer"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "page_size": {
+            "type": "integer"
+          },
+          "total_pages": {
+            "type": "integer"
+          }
+        }
+      },
       "Error": {
         "type": "object",
         "properties": {
@@ -195,12 +289,13 @@
               "harbor_version": {
                 "type": "string",
                 "nullable": true,
-                "example": "v2"
+                "example": "v2",
+                "description": "Harbor mode returns the actual version (e.g. v2); registry:2 mode always returns \"registry\""
               },
               "harbor_components": {
                 "type": "object",
                 "nullable": true,
-                "description": "Harbor sub-component health (core/jobservice/registry; any false makes overall harbor false)",
+                "description": "Harbor mode: core/jobservice/registry (any false makes overall harbor false); registry:2 mode: only the registry component (probes /v2/)",
                 "properties": {
                   "core": {
                     "type": "boolean",
@@ -348,9 +443,9 @@
             "description": "Project path (URL slug)",
             "example": "tools/registry"
           },
-          "harbor_repository": {
+          "registry_repository": {
             "type": "string",
-            "description": "Associated Harbor repository",
+            "description": "Associated image registry repository",
             "example": "mycode/myapp"
           },
           "api_version": {
@@ -391,7 +486,7 @@
             "web_url": {
               "type": "string"
             },
-            "harbor_repository": {
+            "registry_repository": {
               "type": "string"
             },
             "platform_source": {
@@ -451,6 +546,43 @@
           }
         }
       },
+      "RegistrySyncRequest": {
+        "type": "object",
+        "required": [
+          "ci_status"
+        ],
+        "properties": {
+          "ci_status": {
+            "type": "string",
+            "enum": [
+              "success",
+              "failed",
+              "running"
+            ],
+            "description": "CI pipeline status; only success writes ci_pipeline_artifacts"
+          },
+          "tag": {
+            "type": "string",
+            "example": "v3.0.0",
+            "description": "Image tag; omitted takes the first tag in the registry list (most recently pushed for Harbor; order not guaranteed for registry:2)"
+          },
+          "sha": {
+            "type": "string",
+            "example": "abc123def",
+            "description": "Commit SHA; must be paired with pipeline_iid; if both omitted, falls back to the latest pipeline"
+          },
+          "pipeline_iid": {
+            "type": "integer",
+            "example": 123,
+            "description": "Pipeline number; must be paired with sha"
+          },
+          "source_updated_at": {
+            "type": "string",
+            "example": "2026-10-23T10:00:00+08:00",
+            "description": "Source-side update time; defaults to the Glue write time"
+          }
+        }
+      },
       "ScanSyncResult": {
         "type": "object",
         "properties": {
@@ -466,7 +598,7 @@
             "type": "string",
             "example": "v3.0.0"
           },
-          "harbor_repository": {
+          "registry_repository": {
             "type": "string",
             "example": "mycode/myapp"
           },
@@ -617,7 +749,7 @@
             "type": "string",
             "example": "success"
           },
-          "harbor_repository": {
+          "registry_repository": {
             "type": "string",
             "example": "mycode/myapp"
           },
@@ -1815,7 +1947,7 @@
                       "current_path": {
                         "type": "string"
                       },
-                      "harbor_repository": {
+                      "registry_repository": {
                         "type": "string"
                       },
                       "git_platform": {
@@ -1869,7 +2001,7 @@
                       "current_path": {
                         "type": "string"
                       },
-                      "harbor_repository": {
+                      "registry_repository": {
                         "type": "string"
                       },
                       "git_platform": {
@@ -1916,7 +2048,7 @@
                       "current_path": {
                         "type": "string"
                       },
-                      "harbor_repository": {
+                      "registry_repository": {
                         "type": "string"
                       },
                       "git_platform": {
@@ -1973,7 +2105,7 @@
                       "current_path": {
                         "type": "string"
                       },
-                      "harbor_repository": {
+                      "registry_repository": {
                         "type": "string"
                       },
                       "git_platform": {
@@ -2255,7 +2387,7 @@
           "Build"
         ],
         "summary": "Resolve image tag from build logs",
-        "description": "Resolve the image tag from build logs: with a non-empty sha and force=false the cache is checked first; on a miss every job trace is pulled and matched by push keyword plus Harbor repository path, then cached.",
+        "description": "Resolve the image tag from build logs: with a non-empty sha and force=false the cache is checked first; on a miss every job trace is pulled and matched by push keyword plus registry repository path, then cached.",
         "operationId": "buildResolveTag",
         "security": [
           {
@@ -2802,8 +2934,8 @@
         "tags": [
           "Build"
         ],
-        "summary": "Harbor image scan → Commit Status write-back",
-        "description": "Post-build callback: fetches the Harbor vulnerability report and writes it back to the Git platform commit status (harbor-scan context); tag omitted = latest from Harbor",
+        "summary": "Registry scan → Commit Status write-back (legacy Harbor entry)",
+        "description": "Post-build callback: writes the scan conclusion (types without scanning skip it) and the Git commit status (harbor-scan context); tag omitted = the first tag in the registry's tag list (most recently pushed for Harbor; order not defined for registry:2, so supply tag explicitly). New integrations should use registry-sync",
         "operationId": "buildScanSync",
         "security": [
           {
@@ -2822,17 +2954,11 @@
           }
         ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "properties": {
-                  "tag": {
-                    "type": "string",
-                    "example": "v3.0.0",
-                    "description": "Image tag; omits to use latest from Harbor"
-                  }
-                }
+                "$ref": "#/components/schemas/RegistrySyncRequest"
               }
             }
           }
@@ -2840,6 +2966,57 @@
         "responses": {
           "200": {
             "description": "Scan sync result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanSyncResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          }
+        }
+      }
+    },
+    "/api/build/{path}/registry-sync": {
+      "post": {
+        "tags": [
+          "Build"
+        ],
+        "summary": "Image artifact write-back (no scanning dependency)",
+        "description": "Base write-back endpoint: verifies the tag, writes ci_pipeline_artifacts, records the audit row and writes the Git commit status (registry-sync context). ci_pipeline_artifacts is written only when ci_status=success (failed/running must not produce a deployable artifact, so a pushed-but-failed pipeline can never be projected as a successful push); the audit row (ci_security_checks) is written for every ci_status - writeback_status=success (push fact) / skipped (failed, running: audit only); the Git commit status write-back is unaffected. Registries without scanning produce no scan conclusion and report scan_state=unknown",
+        "operationId": "buildRegistrySync",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "php/myapp"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistrySyncRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Write-back result",
             "content": {
               "application/json": {
                 "schema": {
@@ -2947,12 +3124,12 @@
                   "tag": {
                     "type": "string",
                     "example": "v1.0.0",
-                    "description": "Image tag (required when status=success; must exist in Harbor, otherwise 400)"
+                    "description": "Image tag (required when status=success; must exist in the registry, otherwise 400)"
                   },
-                  "harbor_repository": {
+                  "registry_repository": {
                     "type": "string",
                     "example": "team/myapp",
-                    "description": "Harbor repository path (two-segment project/repo, resolved from job_git_map; body value ignored)"
+                    "description": "Image registry repository path (at least two segments, e.g. team/app or team/project/image; resolved from job_git_map; body value ignored)"
                   },
                   "env": {
                     "type": "string",
@@ -3852,19 +4029,39 @@
             "allowReserved": true
           },
           {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/page_size"
+          },
+          {
             "$ref": "#/components/parameters/format"
           }
         ],
         "responses": {
           "200": {
-            "description": "Tag name array",
+            "description": "Tag list: full array by default (Harbor v2 detail objects, v1 plain names); paged envelope {items,total,page,page_size,total_pages} when page / page_size is provided",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
+                  "oneOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "oneOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "$ref": "#/components/schemas/TagDetails"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "$ref": "#/components/schemas/PagedTags"
+                    }
+                  ]
                 }
               }
             }
@@ -3904,19 +4101,39 @@
             "allowReserved": true
           },
           {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/page_size"
+          },
+          {
             "$ref": "#/components/parameters/format"
           }
         ],
         "responses": {
           "200": {
-            "description": "Tag name array",
+            "description": "Tag list: full array by default (Harbor v2 detail objects, v1 plain names); paged envelope {items,total,page,page_size,total_pages} when page / page_size is provided",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
+                  "oneOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "oneOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "$ref": "#/components/schemas/TagDetails"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "$ref": "#/components/schemas/PagedTags"
+                    }
+                  ]
                 }
               }
             }
@@ -4036,6 +4253,342 @@
           },
           "503": {
             "description": "Scanning not enabled"
+          }
+        }
+      }
+    },
+    "/api/registry/projects": {
+      "get": {
+        "tags": [
+          "Registry"
+        ],
+        "summary": "Projects of the configured image registry",
+        "description": "Dispatched by the global registry type: Harbor returns Harbor projects; registry:2 has no project concept, so projects are aggregated from the first path segment of every name in /v2/_catalog (single-segment root repositories are ignored). Returns 409 when the registry url is not configured.",
+        "operationId": "registryProjects",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of project names",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Image registry is not configured (missing url)"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Registry"
+        ],
+        "summary": "Projects of the configured image registry",
+        "description": "Same behaviour as GET, parameters go in the Query String.",
+        "operationId": "registryProjectsPost",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of project names",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Image registry is not configured (missing url)"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        }
+      }
+    },
+    "/api/registry/{project}/repositories": {
+      "get": {
+        "tags": [
+          "Registry"
+        ],
+        "summary": "Repositories of a project (project prefix stripped)",
+        "description": "Harbor uses its project repositories API; registry:2 filters /v2/_catalog by the \"project/\" prefix and strips it (that protocol has no project concept). A missing project (or a project without repositories) returns 500 + message; a registry with /v2/_catalog disabled reports an explicit error instead of an empty array.",
+        "operationId": "registryRepositories",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "mycode"
+          },
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of repository names (project prefix stripped)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Image registry is not configured (missing url)"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Registry"
+        ],
+        "summary": "Repositories of a project (project prefix stripped)",
+        "description": "Same behaviour as GET, parameters go in the Query String.",
+        "operationId": "registryRepositoriesPost",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "mycode"
+          },
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of repository names (project prefix stripped)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Image registry is not configured (missing url)"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        }
+      }
+    },
+    "/api/registry/{project}/repositories/{repository}/tags": {
+      "get": {
+        "tags": [
+          "Registry"
+        ],
+        "summary": "Tags of a repository (auto pagination, up to 2000)",
+        "description": "Dispatches by the global registry type: Harbor uses its tags API (most recently pushed first); registry:2 reads /v2/{name}/tags/list and follows the Link header (order decided by the registry). repository is the short name with the project prefix stripped; when it contains / (e.g. a/b for mycode/a/b) it must be double-encoded as %252F. A missing repository returns 500 + message. A registry without url configured returns 409.",
+        "operationId": "registryTags",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "mycode"
+          },
+          {
+            "name": "repository",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "devops-glue",
+            "allowReserved": true
+          },
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/page_size"
+          },
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tag list: full detail-object array by default (registry:2 digest / size_bytes resolved by Glue from the manifest; push_time / pull_time / scan fields empty; Harbor v2 full fields, Harbor v1 plain names); paged envelope {items,total,page,page_size,total_pages} when page / page_size is provided",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "oneOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "$ref": "#/components/schemas/TagDetails"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "$ref": "#/components/schemas/PagedTags"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Image registry is not configured (missing url)"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Registry"
+        ],
+        "summary": "Tags of a repository (auto pagination, up to 2000)",
+        "description": "Same behaviour as GET, parameters go in the Query String.",
+        "operationId": "registryTagsPost",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "mycode"
+          },
+          {
+            "name": "repository",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "devops-glue",
+            "allowReserved": true
+          },
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/page_size"
+          },
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tag list: full detail-object array by default (registry:2 digest / size_bytes resolved by Glue from the manifest; push_time / pull_time / scan fields empty; Harbor v2 full fields, Harbor v1 plain names); paged envelope {items,total,page,page_size,total_pages} when page / page_size is provided",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "oneOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "$ref": "#/components/schemas/TagDetails"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "$ref": "#/components/schemas/PagedTags"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Image registry is not configured (missing url)"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
           }
         }
       }
@@ -7067,6 +7620,18 @@
                         "null"
                       ],
                       "description": "Last update of the contract row; null when not enabled"
+                    },
+                    "registry_type": {
+                      "type": "string",
+                      "enum": [
+                        "harbor",
+                        "registry"
+                      ],
+                      "description": "Registry type (Glue is the source of truth): harbor = Harbor API, registry = standard OCI Distribution (registry:2). Returned only when the calling credential holds the Image repository query scope (registry.read, which governs both Harbor and registry:2 queries); otherwise an empty string. Consumers must prefer the delivered value; local env is only a fallback when the endpoint is unavailable"
+                    },
+                    "registry_url": {
+                      "type": "string",
+                      "description": "Registry base URL (mirrors harbor.url of Glue platform connections); empty string when not configured or when the calling credential lacks the Image repository query scope (registry.read)"
                     }
                   }
                 }

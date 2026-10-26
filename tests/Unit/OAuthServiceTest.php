@@ -28,7 +28,7 @@ class OAuthServiceTest extends TestCase
             'gitlab' => ['secret' => '', 'redirect_uri' => 'https://gitlab.example.com/users/auth/openid_connect/callback'],
         ]);
 
-        // 空 secret 客户端被剔除：authorize 与 token 两端都拒绝
+        
         $this->assertFalse($svc->validateClient('gitlab', 'https://gitlab.example.com/users/auth/openid_connect/callback'));
         $this->assertFalse($svc->validateClientSecret('gitlab', ''));
     }
@@ -49,7 +49,7 @@ class OAuthServiceTest extends TestCase
         ]);
 
         $this->assertTrue($svc->validateClient('gitlab', 'https://gitlab.example.com/users/auth/openid_connect/callback'));
-        $this->assertFalse($svc->validateClient('gitlab', 'http://evil/redirect')); // redirect 不匹配
+        $this->assertFalse($svc->validateClient('gitlab', 'http://evil/redirect')); 
         $this->assertTrue($svc->validateClientSecret('gitlab', 's3cret'));
         $this->assertFalse($svc->validateClientSecret('gitlab', 'wrong'));
     }
@@ -149,7 +149,7 @@ class OAuthServiceTest extends TestCase
             value TEXT NOT NULL,
             expires_at INTEGER NOT NULL
         )');
-        // validateAccessToken 会回查账号状态与角色：给出在用账号以走通正常路径
+        
         $pdo->exec('CREATE TABLE ' . AppConfig::TABLE_ADMIN_USERS . ' (
             username TEXT PRIMARY KEY,
             status INTEGER NOT NULL DEFAULT 1,

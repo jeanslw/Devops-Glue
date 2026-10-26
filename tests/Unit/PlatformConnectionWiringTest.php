@@ -55,7 +55,7 @@ class PlatformConnectionWiringTest extends TestCase
         $pdo = new \PDO('sqlite::memory:');
         $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
         $pdo->setAttribute(\PDO::ATTR_DEFAULT_FETCH_MODE, \PDO::FETCH_ASSOC);
-        // 只建连接表即可：Settings 构造不立即查询 PlatformVersionRepository（惰性）。
+        
         $pdo->exec('CREATE TABLE ' . AppConfig::TABLE_PLATFORM_CONNECTIONS . ' (
             platform    TEXT PRIMARY KEY,
             url         TEXT,
@@ -73,7 +73,7 @@ class PlatformConnectionWiringTest extends TestCase
     {
         $builder = new ContainerBuilder();
         $builder->addDefinitions(self::ROOT . '/config/container.php');
-        // 容器默认 \PDO 定义走 Database::getPdo()（会碰真实库文件），测试换内存库
+        
         $builder->addDefinitions([\PDO::class => fn() => $pdo]);
         return $builder->build();
     }
@@ -92,7 +92,7 @@ class PlatformConnectionWiringTest extends TestCase
 
     public function testSettingsHasNoEnvFallbackForConnections(): void
     {
-        // env 提供值、DB 无行：彻底移除 env 后，连接值必须仍是空/代码默认，不得回退 env。
+        
         $_ENV['GITLAB_BASE_URL']  = 'https://gitlab.from-env';
         $_ENV['GITLAB_TOKEN']     = 'glpat-env';
         $_ENV['HARBOR_BASE_URL']  = 'https://harbor.from-env';
@@ -105,7 +105,7 @@ class PlatformConnectionWiringTest extends TestCase
         $this->assertSame('', $settings->getGitlabConfig()['base_url'], '连接值不再从 env 兜底');
         $this->assertSame('', $settings->getHarborConfig()['url']);
         $this->assertSame('', $settings->getJenkinsConfig()['url']);
-        // 代码级默认仍保留（非 env）
+        
         $this->assertSame('https://api.github.com', $settings->getGithubConfig()['base_url']);
         $this->assertSame('admin', $settings->getHarborConfig()['username']);
         $this->assertSame('admin', $settings->getJenkinsConfig()['user']);

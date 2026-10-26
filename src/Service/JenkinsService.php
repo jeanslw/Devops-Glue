@@ -23,7 +23,7 @@ class JenkinsService
         $this->client = new Client([
             'auth'    => [$config['user'], $config['token']],
             'headers' => ['Content-Type' => 'application/json'],
-            'cookies' => true,   // 启用 Cookie 存储（用于 CSRF crumb）
+            'cookies' => true,
             'timeout' => 30, 'connect_timeout' => 10,
         ]);
         $this->logger = $logger;
@@ -92,10 +92,6 @@ class JenkinsService
                 return ['type' => 'folder', 'fullName' => $path];
             }
         } catch (ConnectException | ServerException $e) {
-            // 连接级失败（拒绝/DNS/超时）与 5xx 必须上抛，由上层返回 502 服务不可达；
-            // 不能与路径不存在混为一谈，否则触发方会收到 Job 不存在的误报
-            // 不拼接原始异常消息：Guzzle 消息含完整请求 URL（内网 Jenkins 地址会随 API 响应外泄）。
-            // 明细仍挂在异常链（previous）里，由日志排查，不进响应。
             throw new \RuntimeException('Jenkins 服务不可达（连接失败或 5xx）', 0, $e);
         } catch (\Exception $e) {
             $this->logger?->debug('Jenkins resolvePath: 直接路径解析失败', [
@@ -118,8 +114,6 @@ class JenkinsService
                     }
                 }
             } catch (ConnectException | ServerException $e) {
-                // 同上：连接级失败上抛，不与 Folder 内无该 Job 混淆
-                // 同上：不回显原始异常（含内网 URL），明细留给日志
                 throw new \RuntimeException('Jenkins 服务不可达（连接失败或 5xx）', 0, $e);
             } catch (\Exception $e) {
                 $this->logger?->debug('Jenkins resolvePath: Folder 内查找失败', [
@@ -304,7 +298,6 @@ class JenkinsService
                         );
                     }
                 } else {
-                    // 无法获取 CSRF crumb — 可能是 Jenkins 未启用 CSRF 保护但真的权限不足
                     $body = $e->getResponse()->getBody()->getContents();
                     $this->logger?->error('触发构建失败(无法获取 CSRF crumb)', [
                         'job'  => $jobPath,

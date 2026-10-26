@@ -89,7 +89,7 @@ function backupLoadEnv(): void
  */
 function backupConnect(): array
 {
-    Database::init(); // 读取完整 DB 配置（driver 非法时 defaultConfig 会抛异常）
+    Database::init(); 
     try {
         $pdo = Database::createPdo();
     } catch (\Throwable $e) {
@@ -202,10 +202,10 @@ function backupWriteFile(\PDO $pdo, string $driver, string $targetFile, array $o
     try {
         $tables = $onlyTables ?: backupListTables($pdo, $driver);
         foreach ($tables as $t) {
-            // 排除表无条件跳过：cache（会话 token 是易失凭证，落盘等于多出一份）与
-            // ci_platform_versions（派生缓存，恢复后自动重拉）不得进备份文件。
-            // 这里不能加 !$onlyTables 条件：双模式改造后调用方总是传入 onlyTables，
-            // 该条件会让排除失效（历史事故：cache 的 40 行 token 漏进备份文件）。
+            
+            
+            
+            
             if (in_array($t, $excluded, true)) {
                 continue;
             }
@@ -216,7 +216,7 @@ function backupWriteFile(\PDO $pdo, string $driver, string $targetFile, array $o
             $rows = $pdo->query('SELECT * FROM ' . $t)->fetchAll(\PDO::FETCH_NUM);
             $counts[$t] = count($rows);
             if (empty($rows)) {
-                continue; // 空表不写 INSERT（恢复方按 META 里的 0 行校验）
+                continue; 
             }
             $head   = 'INSERT INTO ' . $t . ' (' . implode(', ', $cols) . ') VALUES';
             $values = [];
@@ -232,7 +232,7 @@ function backupWriteFile(\PDO $pdo, string $driver, string $targetFile, array $o
             }
         }
     } finally {
-        // 读事务尽快提交，不占用锁
+        
         $pdo->commit();
     }
 
@@ -247,8 +247,8 @@ function backupWriteFile(\PDO $pdo, string $driver, string $targetFile, array $o
         . "-- META: mode={$mode}\n"
         . '-- META: tables=' . implode(',', $metaTables) . "\n"
         . '-- META: excluded=' . implode(',', $excluded) . "\n"
-        // mysqldump 同款版本注释：MySQL 服务端执行（关闭反斜杠转义 + 外键检查），
-        // SQLite 视为普通注释无副作用 —— 本文件也能用 mysql 原生 CLI 安全恢复。
+        
+        
         . "/*!40101 SET SQL_MODE='NO_BACKSLASH_ESCAPES' */;\n"
         . "/*!40014 SET FOREIGN_KEY_CHECKS=0 */;\n\n";
 

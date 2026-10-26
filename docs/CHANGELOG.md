@@ -1,5 +1,34 @@
 # Changelog
 
+## v2.11.0 (2026-10-24)
+
+- **Added**
+  - The image registry type is selectable: Harbor (default) or a standard OCI registry (`registry:2` and the like), one of the two per instance, never both. A standard registry offers no vulnerability scanning, so the related pages hide the matching columns and actions.
+  - A new write-back endpoint `POST /api/build/{path}/registry-sync`: CI reports a pushed image back to Glue, no scanning capability required, so a standard registry records the push result and writes the Git commit status as well.
+  - The integration-service contract endpoint delivers the image registry type and address: consumers such as CD no longer maintain a local copy, only the username and password, and fall back to the local configuration when the endpoint is unavailable.
+  - Tag queries return tag details instead of names only, together with the scan conclusion.
+  - The tag endpoints return paginated responses; with neither pagination parameter passed the previous array response stays unchanged, so existing consumers such as CD's registry sync need no change.
+- **Changed**
+  - The image-registry field on mappings, build and deploy payloads, and the admin pages is renamed from `harbor_repository` to `registry_repository`; the automatic migration moves the old values to the new field and then drops the old one.
+  - `scan-sync` and `registry-sync` share one write-back implementation and differ only in whether scan results are read; `scan-sync` remains the entry point for existing Harbor setups.
+  - A write-back audit record is no longer limited to pipelines that succeeded: when CI reported the image but the pipeline failed or never finished, the record is kept, while the image artifact is recorded only for successful pipelines and only those count as a push.
+  - The registry type and address from the contract are delivered only to credentials holding the "Harbor read" permission.
+  - The health check for a standard registry probes `/v2/`; both registry types share one connection entry, and switching the type only changes the access protocol.
+  - Audit records of the two write-back endpoints are tagged `harbor-scan` / `registry-sync`; the audit page recognises both, so earlier records stay visible.
+  - The image-registry query scope is renamed from `harbor.read` to `registry.read`; existing tokens are migrated automatically at startup and need no reissue.
+- **Fixed**
+  - A registry path with more than two segments is accepted; the earlier limit of two segments is gone.
+  - The registry query endpoints reject an invalid project or repository name with `400` and a message.
+  - Commit-status write-back sends the state each platform accepts: failures are normalized to `failure`, and without a scan conclusion the state is derived from the pipeline result.
+  - A standard registry with an empty password is treated as anonymous and sends no credentials, so the default username no longer breaks anonymous pulls.
+  - The project list always returns project names as text: a purely numeric first segment is no longer converted to a number, matching the documented structure.
+  - Dropping the renamed-away field is best-effort on older SQLite versions that cannot drop a column: a warning is logged instead of aborting the startup migration, and the leftover field is harmless.
+  - Two missing UI texts no longer show the raw translation key (the login-token failure message and the implied-permission dropdown).
+  - Messages with parameters render correctly: the placeholder braces used to stay in the text, and same-named words elsewhere in the sentence were replaced by mistake.
+  - Harbor version detection no longer falls back to the v1 endpoint on a network error: a single timeout used to be cached as "v1" for a full hour.
+  - A platform address may be entered as `host[:port]` without a scheme: Harbor is normalized to `https` and a standard registry to `http`, so the request no longer fails on a schemeless address.
+  - The Jenkins health check now judges connectivity by the response status code: only a status code below `500` counts as reachable.
+
 ## v2.10.0 (2026-10-17)
 
 - **Added**

@@ -282,7 +282,10 @@
                         <h4><span class="dot dot-load" id="dot-harbor"></span> <span data-i18n="monitor.container_registry">Container Registry</span></h4>
                         <div class="svc-row parent">
                             <span class="svc-icon" id="icon-harbor">⏳</span>
-                            <span class="svc-name" id="name-harbor" data-base="Harbor">Harbor</span>
+                            <!-- 探测返回前显示通用名（与 h4 的 monitor.container_registry 同文案）；
+                                 不加 data-i18n：语言切换时由 monitor.js 的 dataset.base 机制接管，
+                                 否则 i18n 引擎会把已判定的 Harbor 版本名覆盖回通用名 -->
+                            <span class="svc-name" id="name-harbor">Container Registry</span>
                             <span class="svc-stat" id="stat-harbor" data-i18n="common.detecting">检测中…</span>
                         </div>
                     </div>
@@ -418,8 +421,8 @@
                                     <input id="f-current_path" data-i18n-placeholder="form.placeholder_project_path" placeholder="例: group/project">
                                 </div>
                                 <div>
-                                    <label data-i18n="form.harbor_repository">Harbor 仓库</label>
-                                    <input id="f-harbor_repository" data-i18n-placeholder="form.placeholder_harbor" placeholder="例: project/repo">
+                                    <label data-i18n="form.registry_repository">镜像仓库名</label>
+                                    <input id="f-registry_repository" data-i18n-placeholder="form.placeholder_registry" placeholder="例: project/repo 或 team/project/image">
                                 </div>
                             </div>
                             <div class="form-actions">

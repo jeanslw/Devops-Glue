@@ -59,7 +59,10 @@ class HarborController extends BaseController
 
         $project    = $args['project'] ?? '';
         $repository = $args['repository'] ?? '';
-        $result = $this->harbor->getTags($project, $repository);
+        $result = $this->harbor->getTagDetails($project, $repository);
+        if (!isset($result['error'])) {
+            $result = $this->paginateList($request, $result);
+        }
         return $this->handleResult($response, $result, $request);
     }
 
