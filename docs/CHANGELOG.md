@@ -3,31 +3,31 @@
 ## v2.11.0 (2026-10-24)
 
 - **Added**
-  - The image registry is selectable per deployment: Harbor (default) or a standard OCI registry (`registry:2` and alike), configured on the admin platform-connection card; one deployment picks one, the two types never coexist. A standard registry has no vulnerability scanning, and the related pages hide the matching columns and actions.
-  - `POST /api/build/{path}/registry-sync` lets CI report a pushed image back to Glue. It does not require the registry to support scanning, so a standard registry also gets its push result recorded and the Git commit status written.
-  - The integration-service contract endpoint delivers the registry type and address, so consumers such as CD no longer keep a manually synchronized local copy; local environment variables remain as a fallback when the endpoint is unavailable.
-  - Querying a repository's tags returns tag details instead of bare names: each entry carries `digest`, `size_bytes`, `push_time` and `pull_time`, and Harbor adds the scan conclusion (`scan_status`, `scan_severity` and the per-severity counts). Only what the registry can supply is filled — Harbor v1 and `registry:2` leave the rest empty or null, and for `registry:2` Glue resolves the digest and size from the image manifest (config plus layers; a manifest list or index is resolved to a linux/amd64 entry first). `/api/harbor/*/tags` and `/api/registry/*/tags` share the implementation through the provider interface's new `getTagDetails()`.
-  - The tag endpoints accept pagination: `page` and `page_size` (1–200, default 50) return `{items,total,page,page_size,total_pages}`, while omitting both keeps the previous array response unchanged, so existing consumers such as CD's registry sync need no change.
+  - The image registry type is selectable: Harbor (default) or a standard OCI registry (`registry:2` and the like), one of the two per instance, never both. A standard registry offers no vulnerability scanning, so the related pages hide the matching columns and actions.
+  - A new write-back endpoint `POST /api/build/{path}/registry-sync`: CI reports a pushed image back to Glue, no scanning capability required, so a standard registry records the push result and writes the Git commit status as well.
+  - The integration-service contract endpoint delivers the image registry type and address: consumers such as CD no longer maintain a local copy, only the username and password, and fall back to the local configuration when the endpoint is unavailable.
+  - Tag queries return tag details instead of names only, together with the scan conclusion.
+  - The tag endpoints return paginated responses; with neither pagination parameter passed the previous array response stays unchanged, so existing consumers such as CD's registry sync need no change.
 - **Changed**
-  - The registry field on mappings, build and deploy payloads, and the admin pages is renamed from `harbor_repository` to `registry_repository`; the automatic migration copies the old values into the new column and then drops the old one.
-  - `scan-sync` and `registry-sync` share one write-back implementation and differ only in whether scan results are read; `scan-sync` remains the Harbor-specific entry point.
-  - The audit row of a write-back is no longer limited to pipelines that ended successfully: when CI reported the image but the pipeline failed or did not finish, the audit stays (marked as "not written back"), while the artifact is still recorded only for successful pipelines and only those count as a push fact.
-  - The registry type and address from the contract are delivered only to credentials holding the "Harbor read" permission (which governs both Harbor and standard-registry queries): consumers connect to the registry directly once they have the address and never pass through Glue again, so the gate sits at delivery. The CD service credential does not carry that permission by default — grant "Harbor read" to the credential in "API Management" when CD needs the image registry.
-  - Health checks probe `/v2/` for a standard registry instead of the Harbor components; the saved username and password survive a registry-type switch, because both types share one connection entry and the switch only changes the access protocol (Harbor v2 API versus the OCI distribution API) — clearing the credentials used to make every switch back return 401.
-  - Security-check records from the two write-back endpoints are marked `harbor-scan` / `registry-sync`; the audit page accepts both, so earlier records stay visible.
-  - `config/settings.example.php` no longer carries a `harbor.registry_type` entry: the registry type is configured only on the admin platform-connection card, and the file value never took effect.
-  - The image-registry query scope is renamed from `harbor.read` to `registry.read` (it governs both Harbor and standard OCI registry queries); existing tokens are migrated automatically at startup and need no reissue. `harbor.scan` is unchanged.
+  - The image-registry field on mappings, build and deploy payloads, and the admin pages is renamed from `harbor_repository` to `registry_repository`; the automatic migration moves the old values to the new field and then drops the old one.
+  - `scan-sync` and `registry-sync` share one write-back implementation and differ only in whether scan results are read; `scan-sync` remains the entry point for existing Harbor setups.
+  - A write-back audit record is no longer limited to pipelines that succeeded: when CI reported the image but the pipeline failed or never finished, the record is kept, while the image artifact is recorded only for successful pipelines and only those count as a push.
+  - The registry type and address from the contract are delivered only to credentials holding the "Harbor read" permission.
+  - The health check for a standard registry probes `/v2/`; both registry types share one connection entry, and switching the type only changes the access protocol.
+  - Audit records of the two write-back endpoints are tagged `harbor-scan` / `registry-sync`; the audit page recognises both, so earlier records stay visible.
+  - The image-registry query scope is renamed from `harbor.read` to `registry.read`; existing tokens are migrated automatically at startup and need no reissue.
 - **Fixed**
-  - A registry path with more than two segments is accepted; the earlier two-segment limit is gone.
-  - The registry query endpoints reject an invalid project or repository name (`..`, an empty segment, characters other than `A-Za-z0-9._-`, a `/` in the project) with `400` and a message instead of passing it into the registry URL; multi-segment names such as `a/b` are still accepted, and `/api/harbor/*` keeps its existing contract without validation.
-  - Commit-status write-back sends the state each platform accepts: failures are normalized to `failure`, and without a scan conclusion the state is derived from the pipeline result instead of sending `unknown`, which the platforms reject.
-  - A standard registry with an empty password is treated as anonymous and sends no authentication header, so the default `admin` username no longer breaks anonymous pulls.
-  - `GET /api/registry/projects` always returns project names as strings: a purely numeric first segment (for example `123/app`) is no longer turned into a JSON number.
-  - Dropping the renamed-away column is best-effort on old SQLite versions that lack `DROP COLUMN`: a warning is logged instead of aborting the startup migration, and the leftover column is harmless.
-  - Two missing UI texts no longer surface as raw translation keys (the failed login-token message and the implied-permission dropdown).
-  - Messages built from translations render their placeholders correctly: the braces used to stay in the text and the substitution also replaced matching words anywhere in it.
-  - Harbor version detection no longer falls back to probing the v1 endpoint when the v2 probe fails with a network error, where a single timeout used to be cached as "v1" for a full hour. An unconfirmed probe is treated as v2 and cached for 120 seconds only, so the next request re-probes immediately; a v2 path that answers `404` is still taken as v1 and cached the same short way.
-  - A platform address may be entered as `host[:port]` without a scheme: Harbor is normalised to `https` and a standard registry to `http`, instead of the request failing on a schemeless base URL.
+  - A registry path with more than two segments is accepted; the earlier limit of two segments is gone.
+  - The registry query endpoints reject an invalid project or repository name with `400` and a message.
+  - Commit-status write-back sends the state each platform accepts: failures are normalized to `failure`, and without a scan conclusion the state is derived from the pipeline result.
+  - A standard registry with an empty password is treated as anonymous and sends no credentials, so the default username no longer breaks anonymous pulls.
+  - The project list always returns project names as text: a purely numeric first segment is no longer converted to a number, matching the documented structure.
+  - Dropping the renamed-away field is best-effort on older SQLite versions that cannot drop a column: a warning is logged instead of aborting the startup migration, and the leftover field is harmless.
+  - Two missing UI texts no longer show the raw translation key (the login-token failure message and the implied-permission dropdown).
+  - Messages with parameters render correctly: the placeholder braces used to stay in the text, and same-named words elsewhere in the sentence were replaced by mistake.
+  - Harbor version detection no longer falls back to the v1 endpoint on a network error: a single timeout used to be cached as "v1" for a full hour.
+  - A platform address may be entered as `host[:port]` without a scheme: Harbor is normalized to `https` and a standard registry to `http`, so the request no longer fails on a schemeless address.
+  - The Jenkins health check now judges connectivity by the response status code: only a status code below `500` counts as reachable.
 
 ## v2.10.0 (2026-10-17)
 
