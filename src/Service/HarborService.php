@@ -223,41 +223,52 @@ class HarborService
         }
 
 
+        $version = 'v2';
+        // v2 探测失败时用的缓存时长：稳定结论（v2）用正常 TTL，不稳定结论用短 TTL 以便自愈。
+        $ttl = \App\Config\AppConfig::TTL_CACHE;
+
         try {
             $this->client->get('/api/v2.0/projects', [
                 'http_errors' => true,
                 'query'       => ['page_size' => 1],
             ]);
-            $this->apiVersion = 'v2';
+            $version = 'v2';
             $this->logger?->info('Harbor 版本探测: v2.0');
         } catch (ClientException $e) {
             $code = $e->getResponse()->getStatusCode();
 
-            $this->apiVersion = ($code === 404) ? 'v1' : 'v2';
-            $this->logger?->debug('Harbor v2 探测响应', [
-                'http_code' => $code,
-                'detected'  => $this->apiVersion,
-            ]);
-        } catch (\Throwable $e) {
-            $this->logger?->debug('Harbor v2 探测网络异常，回退尝试 v1', [
-                'error' => $e->getMessage(),
-            ]);
-            try {
-                $this->client->get('/api/projects', ['http_errors' => false]);
-                $this->apiVersion = 'v1';
-                $this->logger?->info('Harbor 版本探测: v1 (v2 不可达后回退)');
-            } catch (\Throwable $e2) {
-                $this->apiVersion = 'v2';
-                $this->logger?->warning('Harbor 版本探测: v1/v2 均不可达，默认 v2', [
-                    'error' => $e2->getMessage(),
+            if ($code === 404) {
+                // v2 路径返回 404：可能是 v1 Harbor，也可能是地址瞬时不可达 / 被反代挡掉。
+                // 按 v1 处理，但只用短 TTL 缓存，避免一次误判把整张 Harbor 集成长期降级成 v1。
+                $version = 'v1';
+                $ttl = \App\Config\AppConfig::TTL_CACHE_SHORT;
+                $this->logger?->warning('Harbor v2 探测返回 404，暂按 v1（短 TTL，待自愈）', [
+                    'http_code' => $code,
+                ]);
+            } else {
+                // 401/403 等说明 v2 端点存在且可达，直接判 v2（稳定结论，正常 TTL）。
+                $version = 'v2';
+                $this->logger?->debug('Harbor v2 探测响应', [
+                    'http_code' => $code,
+                    'detected'  => 'v2',
                 ]);
             }
+        } catch (\Throwable $e) {
+            // 网络异常 / 超时等：v2 不可达不代表它是 v1，不要据此误判 v1。
+            // 默认 v2，并用短 TTL 缓存，下次请求立即重探，而非长期锁定错误结论。
+            $version = 'v2';
+            $ttl = \App\Config\AppConfig::TTL_CACHE_SHORT;
+            $this->logger?->warning('Harbor v2 探测网络异常，默认 v2（短 TTL，待重探）', [
+                'error' => $e->getMessage(),
+            ]);
         }
+
+        $this->apiVersion = $version;
 
         try {
             $pdo = $this->pdo;
             $sql = \App\Service\Database::sqlUpsert(\App\Config\AppConfig::TABLE_CACHE, 'cache_key, value, expires_at', '?, ?, ?');
-            $pdo->prepare($sql)->execute([\App\Config\AppConfig::CACHE_KEY_HARBOR_VERSION, $this->apiVersion, time() + \App\Config\AppConfig::TTL_CACHE]);
+            $pdo->prepare($sql)->execute([\App\Config\AppConfig::CACHE_KEY_HARBOR_VERSION, $version, time() + $ttl]);
         } catch (\Exception $e) {
         }
         return $this->apiVersion;
@@ -356,9 +367,10 @@ class HarborService
      * @param int $maxPages 最大页数（安全阀）
      * @param callable(array<int|string,mixed>): array<int|string,mixed> $extract 提取回调：返回该页的业务数据
      * @param array<string,mixed> $extraQuery 额外的 query 参数（如 with_tag, project_id）
+     * @param bool $unique 返回前是否对元素去重（仅适用标量元素；元素为数组时传 false）
      * @return array<int|string,mixed>
      */
-    private function paginatedGet(string $path, int $pageSize, int $maxPages, callable $extract, array $extraQuery = []): array
+    private function paginatedGet(string $path, int $pageSize, int $maxPages, callable $extract, array $extraQuery = [], bool $unique = true): array
     {
         $all = [];
         $page = 1;
@@ -393,7 +405,7 @@ class HarborService
             }
         }
 
-        return array_values(array_unique($all));
+        return $unique ? array_values(array_unique($all)) : array_values($all);
     }
 
     /**
@@ -456,11 +468,39 @@ class HarborService
     }
 
     /**
-     * 获取指定仓库的 tag 列表（自动翻页，上限 2000 个 tag）
+     * 获取指定仓库的 tag 名称列表（自动翻页，上限 2000 个 tag）
      *
      * @return array<int|string,mixed>
      */
     public function getTags(string $project, string $repository): array
+    {
+        $details = $this->getTagDetails($project, $repository);
+        if (isset($details['error'])) {
+            return $details;
+        }
+        $names = [];
+        foreach ($details as $d) {
+            if (is_array($d)) {
+                if (!empty($d['name'])) {
+                    $names[] = $d['name'];
+                }
+            } elseif (is_string($d) && $d !== '') {
+                $names[] = $d;
+            }
+        }
+        return $names;
+    }
+
+    /**
+     * 获取指定仓库的 tag 详情列表（自动翻页，上限 2000 个 tag）
+     *
+     * v2 每个元素为 {name, digest, size_bytes, push_time, pull_time, scan_status,
+     * scan_severity, vuln_critical, vuln_high, vuln_medium, vuln_low, vuln_fixable}；
+     * v1 tags 端点不提供详情字段，返回纯名称列表。
+     *
+     * @return array<int|string,mixed>
+     */
+    public function getTagDetails(string $project, string $repository): array
     {
         $version = $this->detectApiVersion();
         $pageSize = 100;
@@ -470,18 +510,52 @@ class HarborService
             $encodedProject = rawurlencode($project);
             $encodedRepo = rawurlencode(rawurlencode($repository));
             $path = "/api/v2.0/projects/{$encodedProject}/repositories/{$encodedRepo}/artifacts";
-            $extraQuery = ['with_tag' => 'true'];
-            return $this->paginatedGet($path, $pageSize, $maxPages, function ($page) {
+            $extraQuery = ['with_tag' => 'true', 'with_scan_overview' => 'true'];
+            $details = $this->paginatedGet($path, $pageSize, $maxPages, function ($page) {
                 $tags = [];
                 foreach ($page as $artifact) {
+                    if (!is_array($artifact)) {
+                        continue;
+                    }
+                    $scan = $this->scanOverviewFields($artifact);
+                    $digest = (string) ($artifact['digest'] ?? '');
+                    $sizeBytes = (int) ($artifact['size'] ?? 0);
+                    $artPush = (string) ($artifact['push_time'] ?? '');
+                    $artPull = (string) ($artifact['pull_time'] ?? '');
                     foreach ($artifact['tags'] ?? [] as $tag) {
-                        if (!empty($tag['name'])) {
-                            $tags[] = $tag['name'];
+                        $name = is_array($tag) ? (string) ($tag['name'] ?? '') : '';
+                        if ($name === '') {
+                            continue;
                         }
+                        $tags[] = [
+                            'name'          => $name,
+                            'digest'        => $digest,
+                            'size_bytes'    => $sizeBytes,
+                            'push_time'     => (string) ($tag['push_time'] ?? '') ?: $artPush,
+                            'pull_time'     => (string) ($tag['pull_time'] ?? '') ?: $artPull,
+                            'scan_status'   => $scan['scan_status'],
+                            'scan_severity' => $scan['scan_severity'],
+                            'vuln_critical' => $scan['vuln_critical'],
+                            'vuln_high'     => $scan['vuln_high'],
+                            'vuln_medium'   => $scan['vuln_medium'],
+                            'vuln_low'      => $scan['vuln_low'],
+                            'vuln_fixable'  => $scan['vuln_fixable'],
+                        ];
                     }
                 }
-                return array_unique($tags);
-            }, $extraQuery);
+                return $tags;
+            }, $extraQuery, false);
+
+            if (isset($details['error'])) {
+                return $details;
+            }
+            $byName = [];
+            foreach ($details as $d) {
+                if (is_array($d) && isset($d['name']) && !isset($byName[$d['name']])) {
+                    $byName[$d['name']] = $d;
+                }
+            }
+            return array_values($byName);
         }
 
         // v1
@@ -491,6 +565,41 @@ class HarborService
         return $this->paginatedGet($path, $pageSize, $maxPages, function ($page) {
             return array_column($page, 'name');
         });
+    }
+
+    /**
+     * 提取 artifact 的扫描概览：状态 / 严重度 / 各级漏洞数与可修复数；未扫描时全部留空
+     *
+     * @param array<string,mixed> $artifact
+     * @return array{scan_status:string,scan_severity:string,vuln_critical:int,vuln_high:int,vuln_medium:int,vuln_low:int,vuln_fixable:int}
+     */
+    private function scanOverviewFields(array $artifact): array
+    {
+        $empty = [
+            'scan_status' => '', 'scan_severity' => '',
+            'vuln_critical' => 0, 'vuln_high' => 0, 'vuln_medium' => 0, 'vuln_low' => 0, 'vuln_fixable' => 0,
+        ];
+        $overview = $artifact['scan_overview'] ?? null;
+        if (!is_array($overview)) {
+            return $empty;
+        }
+        foreach ($overview as $report) {
+            if (!is_array($report)) {
+                continue;
+            }
+            $summary = is_array($report['summary'] ?? null) ? $report['summary'] : [];
+            $levels = is_array($summary['summary'] ?? null) ? $summary['summary'] : [];
+            return [
+                'scan_status'   => (string) ($report['scan_status'] ?? ''),
+                'scan_severity' => (string) ($report['severity'] ?? ''),
+                'vuln_critical' => (int) ($levels['Critical'] ?? 0),
+                'vuln_high'     => (int) ($levels['High'] ?? 0),
+                'vuln_medium'   => (int) ($levels['Medium'] ?? 0),
+                'vuln_low'      => (int) ($levels['Low'] ?? 0),
+                'vuln_fixable'  => (int) ($summary['fixable'] ?? 0),
+            ];
+        }
+        return $empty;
     }
 
     /**

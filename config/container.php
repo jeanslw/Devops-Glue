@@ -601,8 +601,13 @@ return [
     'harborClient' => function (\Psr\Container\ContainerInterface $c) {
         $config = $c->get(Settings::class);
         $harbor = $config->getHarborConfig();
+        // 连接地址可能不带 scheme（只填 host[:port]）。此处按 https 归一（Harbor 默认 https）。
+        $harborUrl = trim((string) ($harbor['url'] ?? ''));
+        if ($harborUrl !== '' && !preg_match('#^[a-zA-Z][a-zA-Z0-9+.-]*://#', $harborUrl)) {
+            $harborUrl = 'https://' . $harborUrl;
+        }
         return new Client([
-            'base_uri' => $harbor['url'] ?? '',
+            'base_uri' => $harborUrl,
             'auth'     => [
                 $harbor['username'] ?? 'admin',
                 $harbor['password'] ?? '',
@@ -626,6 +631,10 @@ return [
         $config = $c->get(Settings::class);
         $registry = $config->getHarborConfig();
         $url = rtrim((string) ($registry['url'] ?? ''), '/');
+        // 无 scheme 时按 http 归一
+        if ($url !== '' && !preg_match('#^[a-zA-Z][a-zA-Z0-9+.-]*://#', $url)) {
+            $url = 'http://' . $url;
+        }
         return new Client([
             'base_uri'        => $url === '' ? '' : $url . '/',
             'headers'         => ['Accept' => 'application/json'],

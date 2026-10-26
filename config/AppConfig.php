@@ -302,6 +302,8 @@ final class AppConfig
     // ── TTL 常量（秒）──
     public const TTL_TOKEN = 86400;
     public const TTL_CACHE = 3600;
+    // 不稳定结论（如“疑似 v1 Harbor”）用的短 TTL：让瞬时故障快速自愈，避免长时降级。
+    public const TTL_CACHE_SHORT = 120;
 
     // ── 登录失败限流──
     public const CACHE_KEY_LOGIN_FAIL_PREFIX = 'login_fail_';

@@ -69,6 +69,51 @@ class BaseController
         }
         return null;
     }
+
+    /**
+     * 内存列表分页（tag 详情列表等一次拉全量、再按页返回的场景）。
+     *
+     * 口径与 /api/build/{path}/artifacts 一致：page 默认 1；page_size 默认 50、
+     * 钳制 1..200；page 越界钳到最后一页；total_pages 至少为 1。
+     *
+     * query 中不带 page / page_size 时原样返回（保持既有「裸数组」契约，
+     * 同步类调用方一次性拿全量，不受影响）；任一带上即返回
+     * {items, total, page, page_size, total_pages} 分页信封。
+     *
+     * @param array<int|string,mixed> $items
+     * @return array<int|string,mixed>
+     */
+    protected function paginateList(Request $request, array $items): array
+    {
+        $params  = $request->getQueryParams();
+        $hasPage = isset($params['page']);
+        $hasSize = isset($params['page_size']);
+        if (!$hasPage && !$hasSize) {
+            return $items;
+        }
+
+        $page     = max(1, (int) ($params['page'] ?? 1));
+        $pageSize = (int) ($params['page_size'] ?? 50);
+        if ($pageSize < 1 || $pageSize > 200) {
+            $pageSize = 50;
+        }
+
+        $items      = array_values($items);
+        $total      = count($items);
+        $totalPages = $total > 0 ? max(1, (int) ceil($total / $pageSize)) : 1;
+        if ($page > $totalPages) {
+            $page = $totalPages;
+        }
+
+        return [
+            'items'       => array_slice($items, ($page - 1) * $pageSize, $pageSize),
+            'total'       => $total,
+            'page'        => $page,
+            'page_size'   => $pageSize,
+            'total_pages' => $totalPages,
+        ];
+    }
+
     /**
      * 统一输出处理
      * @param Response $response

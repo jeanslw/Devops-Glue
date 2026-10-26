@@ -32,6 +32,13 @@ interface RegistryProviderInterface
     public function getTags(string $repository): array;
 
     /**
+     * 仓库 tag 详情列表（含 digest / size_bytes 等；registry 类型不提供 push_time / 漏洞）。
+     *
+     * @return array<int|string,mixed>
+     */
+    public function getTagDetails(string $repository): array;
+
+    /**
      * 仓库是否存在于镜像仓库。
      *
      * 连接级失败抛 RuntimeException；业务层 404/空列表返回 false。

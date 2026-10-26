@@ -73,6 +73,29 @@
           "default": "raw"
         },
         "description": "Response format"
+      },
+      "page": {
+        "name": "page",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1
+        },
+        "description": "Page number (returns the paged envelope when either page or page_size is provided, otherwise the full array)"
+      },
+      "page_size": {
+        "name": "page_size",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200,
+          "default": 50
+        },
+        "description": "Page size (1..200, default 50, out-of-range falls back to 50)"
       }
     },
     "responses": {
@@ -128,6 +151,79 @@
       }
     },
     "schemas": {
+      "TagDetails": {
+        "type": "object",
+        "description": "Tag detail object (Harbor v2 / Glue resolving registry:2 manifests; registry:2 leaves push_time / pull_time / scan fields empty)",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "digest": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "type": "integer"
+          },
+          "push_time": {
+            "type": "string"
+          },
+          "pull_time": {
+            "type": "string"
+          },
+          "scan_status": {
+            "type": "string"
+          },
+          "scan_severity": {
+            "type": "string"
+          },
+          "vuln_critical": {
+            "type": "integer"
+          },
+          "vuln_high": {
+            "type": "integer"
+          },
+          "vuln_medium": {
+            "type": "integer"
+          },
+          "vuln_low": {
+            "type": "integer"
+          },
+          "vuln_fixable": {
+            "type": "integer"
+          }
+        }
+      },
+      "PagedTags": {
+        "type": "object",
+        "description": "Paged envelope returned when page / page_size query params are present; without them the full array is returned",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "$ref": "#/components/schemas/TagDetails"
+                }
+              ]
+            }
+          },
+          "total": {
+            "type": "integer"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "page_size": {
+            "type": "integer"
+          },
+          "total_pages": {
+            "type": "integer"
+          }
+        }
+      },
       "Error": {
         "type": "object",
         "properties": {
@@ -3933,19 +4029,39 @@
             "allowReserved": true
           },
           {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/page_size"
+          },
+          {
             "$ref": "#/components/parameters/format"
           }
         ],
         "responses": {
           "200": {
-            "description": "Tag name array",
+            "description": "Tag list: full array by default (Harbor v2 detail objects, v1 plain names); paged envelope {items,total,page,page_size,total_pages} when page / page_size is provided",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
+                  "oneOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "oneOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "$ref": "#/components/schemas/TagDetails"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "$ref": "#/components/schemas/PagedTags"
+                    }
+                  ]
                 }
               }
             }
@@ -3985,19 +4101,39 @@
             "allowReserved": true
           },
           {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/page_size"
+          },
+          {
             "$ref": "#/components/parameters/format"
           }
         ],
         "responses": {
           "200": {
-            "description": "Tag name array",
+            "description": "Tag list: full array by default (Harbor v2 detail objects, v1 plain names); paged envelope {items,total,page,page_size,total_pages} when page / page_size is provided",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
+                  "oneOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "oneOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "$ref": "#/components/schemas/TagDetails"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "$ref": "#/components/schemas/PagedTags"
+                    }
+                  ]
                 }
               }
             }
@@ -4333,19 +4469,39 @@
             "allowReserved": true
           },
           {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/page_size"
+          },
+          {
             "$ref": "#/components/parameters/format"
           }
         ],
         "responses": {
           "200": {
-            "description": "Array of tag names",
+            "description": "Tag list: full detail-object array by default (registry:2 digest / size_bytes resolved by Glue from the manifest; push_time / pull_time / scan fields empty; Harbor v2 full fields, Harbor v1 plain names); paged envelope {items,total,page,page_size,total_pages} when page / page_size is provided",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
+                  "oneOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "oneOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "$ref": "#/components/schemas/TagDetails"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "$ref": "#/components/schemas/PagedTags"
+                    }
+                  ]
                 }
               }
             }
@@ -4391,19 +4547,39 @@
             "allowReserved": true
           },
           {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/page_size"
+          },
+          {
             "$ref": "#/components/parameters/format"
           }
         ],
         "responses": {
           "200": {
-            "description": "Array of tag names",
+            "description": "Tag list: full detail-object array by default (registry:2 digest / size_bytes resolved by Glue from the manifest; push_time / pull_time / scan fields empty; Harbor v2 full fields, Harbor v1 plain names); paged envelope {items,total,page,page_size,total_pages} when page / page_size is provided",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
+                  "oneOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "oneOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "$ref": "#/components/schemas/TagDetails"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "$ref": "#/components/schemas/PagedTags"
+                    }
+                  ]
                 }
               }
             }

@@ -131,6 +131,59 @@ class DockerRegistryProviderTest extends TestCase
         $this->provider($mock)->getTags('team/app');
     }
 
+    public function testGetTagDetailsParsesDigestAndSize(): void
+    {
+        $manifest = [
+            'schemaVersion' => 2,
+            'mediaType'     => 'application/vnd.docker.distribution.manifest.v2+json',
+            'config'        => ['mediaType' => 'application/vnd.docker.container.image.v1+json', 'size' => 1234, 'digest' => 'sha256:cfg'],
+            'layers'        => [
+                ['mediaType' => 'application/vnd.docker.image.rootfs.diff.tar.gzip', 'size' => 2000, 'digest' => 'sha256:l1'],
+                ['mediaType' => 'application/vnd.docker.image.rootfs.diff.tar.gzip', 'size' => 3000, 'digest' => 'sha256:l2'],
+            ],
+        ];
+        $mock = new MockHandler([
+            new Response(200, [], (string) json_encode(['name' => 'team/app', 'tags' => ['v1']])),
+            new Response(200, ['Docker-Content-Digest' => 'sha256:manifestdigest'], (string) json_encode($manifest)),
+        ]);
+        $details = $this->provider($mock)->getTagDetails('team/app');
+
+        $this->assertCount(1, $details);
+        $this->assertSame('v1', $details[0]['name']);
+        $this->assertSame('sha256:manifestdigest', $details[0]['digest']);
+        // config(1234) + layers(2000 + 3000) = 6234
+        $this->assertSame(6234, $details[0]['size_bytes']);
+        $this->assertNull($details[0]['push_time']);
+        $this->assertNull($details[0]['scan_status']);
+    }
+
+    public function testGetTagDetailsResolvesManifestListToPlatformSize(): void
+    {
+        $list = [
+            'schemaVersion' => 2,
+            'mediaType'     => 'application/vnd.docker.distribution.manifest.list.v2+json',
+            'manifests'     => [
+                ['mediaType' => 'application/vnd.docker.distribution.manifest.v2+json', 'digest' => 'sha256:amd64', 'platform' => ['architecture' => 'amd64', 'os' => 'linux']],
+                ['mediaType' => 'application/vnd.docker.distribution.manifest.v2+json', 'digest' => 'sha256:arm64', 'platform' => ['architecture' => 'arm64', 'os' => 'linux']],
+            ],
+        ];
+        $amd64Manifest = [
+            'schemaVersion' => 2,
+            'mediaType'     => 'application/vnd.docker.distribution.manifest.v2+json',
+            'config'        => ['size' => 100, 'digest' => 'sha256:c'],
+            'layers'        => [['size' => 900, 'digest' => 'sha256:l']],
+        ];
+        $mock = new MockHandler([
+            new Response(200, [], (string) json_encode(['name' => 'team/app', 'tags' => ['v1']])),
+            new Response(200, ['Docker-Content-Digest' => 'sha256:listdigest'], (string) json_encode($list)),
+            new Response(200, ['Docker-Content-Digest' => 'sha256:amd64resolved'], (string) json_encode($amd64Manifest)),
+        ]);
+        $details = $this->provider($mock)->getTagDetails('team/app');
+
+        $this->assertSame('sha256:amd64resolved', $details[0]['digest']);
+        $this->assertSame(1000, $details[0]['size_bytes']); // 100 + 900
+    }
+
     public function testHttpsRegistryRefusesHttpRealm(): void
     {
         

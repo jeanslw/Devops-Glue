@@ -120,6 +120,11 @@ class RegistrySyncServiceTest extends TestCase
                 return $this->tags;
             }
 
+            public function getTagDetails(string $repository): array
+            {
+                return $this->tags;
+            }
+
             public function repositoryExists(string $repository): bool
             {
                 return true;

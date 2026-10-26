@@ -109,7 +109,11 @@ class RegistryController extends BaseController
             return $this->jsonError($response, $this->__('build.registry_name_invalid', ['name' => $repository]), 400);
         }
 
-        return $this->handleResult($response, $this->registryProvider->getTags($project . '/' . $repository), $request);
+        $result = $this->registryProvider->getTagDetails($project . '/' . $repository);
+        if (!isset($result['error'])) {
+            $result = $this->paginateList($request, $result);
+        }
+        return $this->handleResult($response, $result, $request);
     }
 
     // ---------- 入参校验 ----------

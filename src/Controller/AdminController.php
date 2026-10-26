@@ -2111,11 +2111,10 @@ class AdminController extends BaseController
                         }
                     }
 
-                    if ($switchedToRegistry && !array_key_exists('password', $p)) {
-                        $username = '';
-                        $password = '';
-                    }
-
+                    // 注意：不再因切换 registry_type 而清空凭据。
+                    // 镜像仓库连接（harbor 行）在 harbor / registry 两种模式下复用同一个连接，
+                    // 切换类型只改变访问协议（Harbor v2 API 或 registry:2），不应丢弃凭据，
+                    // 否则每次切回都会因凭据丢失而 401。
                     if ($url === '' && $token === '' && $password === '') {
                         $this->platformConnections->delete($platform);
                         continue;

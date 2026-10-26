@@ -75,6 +75,11 @@ class RegistryEndpointWiringTest extends TestCase
                 return [];
             }
 
+            public function getTagDetails(string $repository): array
+            {
+                return [];
+            }
+
             public function repositoryExists(string $repository): bool
             {
                 return false;
@@ -123,14 +128,16 @@ class RegistryEndpointWiringTest extends TestCase
         string $project,
         string $repository,
         ?array $perms,
-        ?RegistryProviderInterface $provider
+        ?RegistryProviderInterface $provider,
+        array $query = []
     ): array {
         $perms ??= [AppConfig::PERM_CI_BUILD_RECORDS_PULL];
 
         $request = (new ServerRequestFactory())
             ->createServerRequest('GET', '/api/registry/mycode/repositories/runner-ci/tags')
             ->withAttribute('currentRole', AppConfig::ROLE_API_TOKEN)
-            ->withAttribute('userPermissions', $perms);
+            ->withAttribute('userPermissions', $perms)
+            ->withQueryParams($query);
         $response = (new ResponseFactory())->createResponse();
 
         $result = $this->controller($provider)->getTagsList($request, $response, [
@@ -316,6 +323,11 @@ class RegistryEndpointWiringTest extends TestCase
                 return [];
             }
 
+            public function getTagDetails(string $repository): array
+            {
+                return [];
+            }
+
             public function repositoryExists(string $repository): bool
             {
                 return false;
@@ -366,6 +378,12 @@ class RegistryEndpointWiringTest extends TestCase
                 return ['2.8.4-132', 'main-136'];
             }
 
+            public function getTagDetails(string $repository): array
+            {
+                $this->received = $repository;
+                return ['2.8.4-132', 'main-136'];
+            }
+
             public function repositoryExists(string $repository): bool
             {
                 return false;
@@ -403,6 +421,139 @@ class RegistryEndpointWiringTest extends TestCase
         $res = $this->callTags('mycode', 'devops-glue', null, null);
 
         $this->assertSame(409, $res['status'], '与 projects/repositories 同口径：未配置 url 是配置问题');
+    }
+
+    public function testTagsEndpointPaginatesWhenPageParamsPresent(): void
+    {
+        $tags = [];
+        for ($i = 1; $i <= 5; $i++) {
+            $tags[] = ['name' => "v1.0.{$i}", 'digest' => "sha256:{$i}", 'size_bytes' => $i];
+        }
+        $provider = new class ($tags) implements RegistryProviderInterface {
+            public function __construct(private array $tags)
+            {
+            }
+
+            public function type(): string
+            {
+                return 'registry';
+            }
+
+            public function supportsScanning(): bool
+            {
+                return false;
+            }
+
+            public function getTags(string $repository): array
+            {
+                return array_column($this->tags, 'name');
+            }
+
+            public function getTagDetails(string $repository): array
+            {
+                return $this->tags;
+            }
+
+            public function repositoryExists(string $repository): bool
+            {
+                return true;
+            }
+
+            public function getProjects(): array
+            {
+                return [];
+            }
+
+            public function getRepositories(string $project): array
+            {
+                return [];
+            }
+
+            public function getScanReport(string $repository, string $tag): array
+            {
+                return ['error' => '当前镜像仓库类型（registry）不提供漏洞扫描接口'];
+            }
+        };
+
+        // 不带分页参数：保持既有「裸数组」契约（CD 同步等一次性拉全量的调用方不受影响）
+        $res = $this->callTags('mycode', 'devops-glue', null, $provider);
+        $this->assertSame(200, $res['status']);
+        $this->assertSame($tags, $res['body'], '不带 page / page_size 必须原样返回全量详情数组');
+
+        // 带分页参数：返回 {items, total, page, page_size, total_pages} 信封
+        $res = $this->callTags('mycode', 'devops-glue', null, $provider, ['page' => '2', 'page_size' => '2']);
+        $this->assertSame(200, $res['status']);
+        $this->assertSame(
+            [
+                'items'       => [$tags[2], $tags[3]],
+                'total'       => 5,
+                'page'        => 2,
+                'page_size'   => 2,
+                'total_pages' => 3,
+            ],
+            $res['body'],
+            '带 page / page_size 时必须按 /api/build/{path}/artifacts 的分页口径切片'
+        );
+
+        // page 越界钳到最后一页
+        $res = $this->callTags('mycode', 'devops-glue', null, $provider, ['page' => '99', 'page_size' => '2']);
+        $this->assertSame(3, $res['body']['page'], 'page 越界必须钳到 total_pages');
+        $this->assertSame([$tags[4]], $res['body']['items']);
+
+        // 只带 page_size（page 缺省 1）；page_size 超范围（>200）回落 50
+        $res = $this->callTags('mycode', 'devops-glue', null, $provider, ['page_size' => '999']);
+        $this->assertSame(1, $res['body']['page']);
+        $this->assertSame(50, $res['body']['page_size'], 'page_size 超范围必须回落默认 50');
+        $this->assertSame($tags, $res['body']['items']);
+
+        // 空列表：total_pages 至少为 1
+        $empty = new class implements RegistryProviderInterface {
+            public function type(): string
+            {
+                return 'registry';
+            }
+
+            public function supportsScanning(): bool
+            {
+                return false;
+            }
+
+            public function getTags(string $repository): array
+            {
+                return [];
+            }
+
+            public function getTagDetails(string $repository): array
+            {
+                return [];
+            }
+
+            public function repositoryExists(string $repository): bool
+            {
+                return false;
+            }
+
+            public function getProjects(): array
+            {
+                return [];
+            }
+
+            public function getRepositories(string $project): array
+            {
+                return [];
+            }
+
+            public function getScanReport(string $repository, string $tag): array
+            {
+                return ['error' => '当前镜像仓库类型（registry）不提供漏洞扫描接口'];
+            }
+        };
+        $res = $this->callTags('mycode', 'devops-glue', null, $empty, ['page' => '1']);
+        $this->assertSame(
+            ['items' => [], 'total' => 0, 'page' => 1, 'page_size' => 50, 'total_pages' => 1],
+            $res['body'],
+            '空仓库的分页信封 total_pages 必须为 1（与 get_artifacts 的 max(1, ...) 口径一致）'
+        );
     }
 
     public function testMissingCiReadPermissionIsRejected(): void
@@ -454,6 +605,11 @@ class RegistryEndpointWiringTest extends TestCase
             }
 
             public function getTags(string $repository): array
+            {
+                return [];
+            }
+
+            public function getTagDetails(string $repository): array
             {
                 return [];
             }
@@ -564,7 +720,6 @@ class RegistryEndpointWiringTest extends TestCase
                 [
                     '/api/registry/projects',
                     '/api/registry/{project}/repositories',
-                    '/api/registry/{project}/repositories/{repository}/tags',
                 ] as $path
             ) {
                 $this->assertArrayHasKey($path, $doc['paths'], "{$file} 缺少 {$path}");
@@ -578,10 +733,33 @@ class RegistryEndpointWiringTest extends TestCase
                 );
             }
 
+            $tagsPath = '/api/registry/{project}/repositories/{repository}/tags';
+            $this->assertArrayHasKey($tagsPath, $doc['paths'], "{$file} 缺少 {$tagsPath}");
+            $tagsGet = $doc['paths'][$tagsPath]['get'];
+            $this->assertSame(['Registry'], $tagsGet['tags'], "{$file} {$tagsPath} 应归入 Registry 标签");
+            $this->assertArrayHasKey('bearerAuth', $tagsGet['security'][0], "{$file} {$tagsPath} 必须声明 bearer 鉴权");
+            $tagsSchema = $tagsGet['responses']['200']['content']['application/json']['schema'];
+            $this->assertIsArray($tagsSchema['oneOf'] ?? null, "{$file} {$tagsPath} 的 200 响应必须覆盖「全量数组 / 分页信封」两种形态");
+            $this->assertSame(
+                'array',
+                $tagsSchema['oneOf'][0]['type'] ?? null,
+                "{$file} {$tagsPath} 默认形态必须是全量数组"
+            );
+            $this->assertSame(
+                '#/components/schemas/TagDetails',
+                $tagsSchema['oneOf'][0]['items']['oneOf'][1]['$ref'] ?? null,
+                "{$file} {$tagsPath} 数组元素须引用 TagDetails（详情对象）"
+            );
+            $this->assertSame(
+                '#/components/schemas/PagedTags',
+                $tagsSchema['oneOf'][1]['$ref'] ?? null,
+                "{$file} {$tagsPath} 分页形态须引用 PagedTags（分页信封）"
+            );
+
             $params = $doc['paths']['/api/registry/{project}/repositories']['get']['parameters'];
             $this->assertSame('project', $params[0]['name'] ?? '', "{$file} 仓库列表必须声明 project 路径参数");
 
-            $tagParams = $doc['paths']['/api/registry/{project}/repositories/{repository}/tags']['get']['parameters'];
+            $tagParams = $doc['paths'][$tagsPath]['get']['parameters'];
             $this->assertSame(
                 ['project', 'repository'],
                 array_column($tagParams, 'name'),
@@ -591,6 +769,9 @@ class RegistryEndpointWiringTest extends TestCase
                 $tagParams[1]['allowReserved'] ?? false,
                 "{$file} repository 短名可含 `/`（须双重编码），不声明 allowReserved 时 Swagger UI 会二次转义"
             );
+            $paramRefs = array_column($tagParams, '$ref');
+            $this->assertContains('#/components/parameters/page', $paramRefs, "{$file} {$tagsPath} 必须声明 page 分页参数");
+            $this->assertContains('#/components/parameters/page_size', $paramRefs, "{$file} {$tagsPath} 必须声明 page_size 分页参数");
         }
     }
 }

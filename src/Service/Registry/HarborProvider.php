@@ -32,6 +32,15 @@ class HarborProvider implements RegistryProviderInterface
         return $this->harbor->getTags($project, $repoName);
     }
 
+    /**
+     * @return array<int|string,mixed>
+     */
+    public function getTagDetails(string $repository): array
+    {
+        [$project, $repoName] = $this->split($repository);
+        return $this->harbor->getTagDetails($project, $repoName);
+    }
+
     public function repositoryExists(string $repository): bool
     {
         [$project, $repoName] = $this->split($repository);

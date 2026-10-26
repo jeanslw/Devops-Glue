@@ -96,6 +96,130 @@ class DockerRegistryProvider implements RegistryProviderInterface
         return array_values(array_unique($all));
     }
 
+    /**
+     * 指定仓库的 tag 详情列表（含 digest / size_bytes；registry:2 协议不提供 push_time / 漏洞信息）。
+     *
+     * 先取 tag 名列表，再逐个拉取 manifest 解析 digest（Docker-Content-Digest 响应头）
+     * 与 size（config + layers 的 size 之和；manifest list/index 先解析到具体平台再算）。
+     *
+     * @return array<int|string,mixed>
+     */
+    public function getTagDetails(string $repository): array
+    {
+        $tags = $this->getTags($repository);
+        if (isset($tags['error'])) {
+            return $tags;
+        }
+
+        $details = [];
+        foreach ($tags as $name) {
+            if (!is_string($name) || $name === '') {
+                continue;
+            }
+            $details[] = $this->describeTag($repository, $name);
+        }
+        return $details;
+    }
+
+    /**
+     * 单个 tag 的 manifest 详情：digest + size_bytes（registry:2 无 push_time / 扫描）。
+     *
+     * @return array<string,mixed>
+     */
+    private function describeTag(string $repository, string $tag): array
+    {
+        $encoded = implode('/', array_map('rawurlencode', explode('/', $repository)));
+        $path    = 'v2/' . $encoded . '/manifests/' . rawurlencode($tag);
+        $accept  = implode(', ', [
+            'application/vnd.docker.distribution.manifest.v2+json',
+            'application/vnd.docker.distribution.manifest.list.v2+json',
+            'application/vnd.oci.image.manifest.v1+json',
+            'application/vnd.oci.image.index.v1+json',
+        ]);
+
+        $base = [
+            'name'           => $tag,
+            'digest'         => '',
+            'size_bytes'     => 0,
+            'push_time'      => null,
+            'pull_time'      => null,
+            'scan_status'    => null,
+            'scan_severity'  => null,
+            'vuln_critical'  => 0,
+            'vuln_high'      => 0,
+            'vuln_medium'    => 0,
+            'vuln_low'       => 0,
+            'vuln_fixable'   => 0,
+        ];
+
+        try {
+            $res = $this->request('GET', $path, [], ['Accept' => $accept]);
+        } catch (\Throwable $e) {
+            $this->logger?->warning('registry 获取 manifest 失败', ['repository' => $repository, 'tag' => $tag, 'error' => $e->getMessage()]);
+            return $base;
+        }
+
+        $code = $res->getStatusCode();
+        if ($code < 200 || $code >= 300) {
+            return $base;
+        }
+
+        $digest   = $res->getHeaderLine('Docker-Content-Digest');
+        $manifest = json_decode((string) $res->getBody(), true);
+        if (!is_array($manifest)) {
+            return array_merge($base, ['digest' => $digest]);
+        }
+
+        $mediaType = (string) ($manifest['mediaType'] ?? '');
+        $size      = $this->manifestSize($manifest);
+
+        // manifest list / index：解析到具体平台（优先 linux/amd64）再取 size
+        if (stripos($mediaType, 'manifest.list') !== false || stripos($mediaType, 'image.index') !== false) {
+            $target = null;
+            foreach ($manifest['manifests'] ?? [] as $m) {
+                $plat = $m['platform'] ?? [];
+                if (($plat['os'] ?? '') === 'linux' && ($plat['architecture'] ?? '') === 'amd64') {
+                    $target = (string) ($m['digest'] ?? '');
+                    break;
+                }
+            }
+            $target = $target ?? (string) ($manifest['manifests'][0]['digest'] ?? '');
+            if ($target !== '') {
+                try {
+                    $sub = $this->request('GET', 'v2/' . $encoded . '/manifests/' . rawurlencode($target), [], ['Accept' => $accept]);
+                    if ($sub->getStatusCode() >= 200 && $sub->getStatusCode() < 300) {
+                        $digest = $sub->getHeaderLine('Docker-Content-Digest') ?: $target;
+                        $subManifest = json_decode((string) $sub->getBody(), true);
+                        if (is_array($subManifest)) {
+                            $size = $this->manifestSize($subManifest);
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    $this->logger?->warning('registry 获取子 manifest 失败', ['digest' => $target, 'error' => $e->getMessage()]);
+                }
+            }
+        }
+
+        return array_merge($base, ['digest' => $digest, 'size_bytes' => $size]);
+    }
+
+    /**
+     * 单架构 manifest 的 size：config.size + 各 layer.size 之和。
+     *
+     * @param array<string,mixed> $manifest
+     */
+    private function manifestSize(array $manifest): int
+    {
+        $size = 0;
+        if (isset($manifest['config']['size'])) {
+            $size += (int) $manifest['config']['size'];
+        }
+        foreach ($manifest['layers'] ?? [] as $layer) {
+            $size += (int) ($layer['size'] ?? 0);
+        }
+        return $size;
+    }
+
     public function repositoryExists(string $repository): bool
     {
         $res  = $this->request('GET', $this->tagsPath($repository), ['n' => 1]);
@@ -192,12 +316,17 @@ class DockerRegistryProvider implements RegistryProviderInterface
     /**
      * @param array<string,int|string> $query
      */
-    private function request(string $method, string $uri, array $query = []): ResponseInterface
+    /**
+     * @param array<string,int|string>           $query
+     * @param array<string,string|string[]>      $extraHeaders 额外请求头（如 manifest 请求的 Accept）
+     */
+    private function request(string $method, string $uri, array $query = [], array $extraHeaders = []): ResponseInterface
     {
+        $headers = array_merge($this->authHeaders(), $extraHeaders);
         try {
             $res = $this->client->request($method, $uri, [
                 'query'       => $query,
-                'headers'     => $this->authHeaders(),
+                'headers'     => $headers,
                 'http_errors' => false,
             ]);
         } catch (\Throwable $e) {
@@ -208,10 +337,12 @@ class DockerRegistryProvider implements RegistryProviderInterface
         if ($res->getStatusCode() === 401) {
             $challenge = $res->getHeaderLine('WWW-Authenticate');
             if (stripos($challenge, 'bearer') !== false && $this->fetchToken($challenge)) {
+                // 重新计算请求头：fetchToken 已写入 Bearer token，必须用新头重试
+                $headers = array_merge($this->authHeaders(), $extraHeaders);
                 try {
                     $res = $this->client->request($method, $uri, [
                         'query'       => $query,
-                        'headers'     => $this->authHeaders(),
+                        'headers'     => $headers,
                         'http_errors' => false,
                     ]);
                 } catch (\Throwable $e) {
