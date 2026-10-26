@@ -449,7 +449,7 @@ Unauthenticated external probe for Uptime Kuma / cloud LB / container orchestrat
 
 ```
 1. Jenkins check (only when build_mode includes jenkins; pure-CI modes return null and skip)
-   ├─ Short-timeout client GET /api/json to verify connectivity (retried once after 0.5s on failure)
+   ├─ Short-timeout client GET /api/json to verify connectivity (HTTP status < 500 counts as reachable; 5xx counts as unreachable; retried once after 0.5s on failure)
    └─ Calls getVersion() to get version number
 
 2. Git platform check
@@ -1066,7 +1066,7 @@ Next API call:
 
 | Symptom | Possible Cause | Diagnosis |
 |---|---|---|
-| Jenkins health check returns false | Jenkins connection URL not reachable ("Platform Connections" page) | `curl <jenkins-url>/api/json` |
+| Jenkins health check returns false | Jenkins connection URL not reachable ("Platform Connections" page), or Jenkins itself answers 5xx (internal failure) | `curl -i <jenkins-url>/api/json` and read the status code: 5xx counts as unreachable, 4xx (e.g. missing permission) still counts as reachable |
 | Git platform reachable=false | Wrong platform URL or network issue | `curl -I <git-platform-url>` |
 | Harbor check failed | Harbor service not running or wrong URL | Test `/api/v2.0/projects` etc. individually |
 | Harbor scan HTTP 503 | Harbor scanner not configured | Check scanner in Harbor admin panel |

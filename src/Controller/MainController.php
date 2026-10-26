@@ -256,7 +256,12 @@ class MainController extends BaseController
                     'http_errors'     => false,
                 ]);
                 $this->probeWithRetry(function () use ($probe, $jenkinsUrl) {
-                    $probe->get($jenkinsUrl . '/api/json');
+                    $resp = $probe->get($jenkinsUrl . '/api/json');
+                    $httpCode = $resp->getStatusCode();
+                    $reachable = $httpCode > 0 && $httpCode < 500;
+                    if (!$reachable) {
+                        throw new \RuntimeException("HTTP {$httpCode}");
+                    }
                 });
                 $checks['jenkins'] = true;
                 $checks['jenkins_version'] = $this->jenkins->getVersion();
