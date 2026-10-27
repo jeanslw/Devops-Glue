@@ -515,6 +515,17 @@ return [
         );
     },
 
+    // 后台：API Token 管理
+    \App\Controller\Admin\ApiTokenController::class => function (\Psr\Container\ContainerInterface $c) {
+        return new \App\Controller\Admin\ApiTokenController(
+            $c->get(I18nService::class),
+            $c->get(Settings::class),
+            $c->get(\PDO::class),
+            $c->get(AppSettingRepository::class),
+            $c->get(ApiTokenService::class)
+        );
+    },
+
     // Admin 控制器
     AdminController::class => function (\Psr\Container\ContainerInterface $c) {
         return new AdminController(
@@ -527,7 +538,6 @@ return [
             $c->get(OAuthClientRepository::class),
             $c->get(PlatformConnectionRepository::class),
             $c->get(AutoDiscover::class),
-            $c->get(ApiTokenService::class),
             $c->get(HarborService::class),
             $c->get(JenkinsService::class),
             $c->get('registryProvider')

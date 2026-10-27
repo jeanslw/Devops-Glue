@@ -37,7 +37,7 @@ class ApiTokenScopeEditWiringTest extends TestCase
         $routes = $this->read(self::ROOT . '/config/routes.php');
 
         $this->assertMatchesRegularExpression(
-            "/\\\$auth->map\(\\['PUT'\\], '\\/api_tokens\\/\\{id\\}\\/scopes', \\[AdminController::class, 'apiTokenUpdateScopes'\\]\)/",
+            "/\\\$auth->map\(\\['PUT'\\], '\\/api_tokens\\/\\{id\\}\\/scopes', \\[ApiTokenController::class, 'apiTokenUpdateScopes'\\]\)/",
             $routes,
             'PUT /api/admin/api_tokens/{id}/scopes 必须注册（并走 AuthMiddleware 那一组）'
         );
@@ -45,7 +45,7 @@ class ApiTokenScopeEditWiringTest extends TestCase
 
     public function testControllerDelegatesToServiceAndAudits(): void
     {
-        $controller = $this->read(self::ROOT . '/src/Controller/AdminController.php');
+        $controller = $this->read(self::ROOT . '/src/Controller/Admin/ApiTokenController.php');
 
         $this->assertStringContainsString('public function apiTokenUpdateScopes(', $controller);
         $this->assertStringContainsString('->updateScopes($id, $payload)', $controller, '控制器应把 scopes 交给服务层校验+落库');

@@ -12,6 +12,7 @@ use App\Controller\Admin\AuthController;
 use App\Controller\Admin\UserController;
 use App\Controller\Admin\RoleController;
 use App\Controller\Admin\PermissionController;
+use App\Controller\Admin\ApiTokenController;
 use App\Controller\ServiceContractController;
 use App\Controller\IntegratedServiceController;
 use App\Controller\RbacController;
@@ -107,12 +108,12 @@ $app->group('/api', function (RouteCollectorProxy $api) {
             $auth->map(['POST'], '/migrate', [AdminController::class, 'migrateSchema']);
             $auth->map(['POST'], '/backup', [AdminController::class, 'backupDatabase']);
             $auth->map(['GET'], '/backups', [AdminController::class, 'listBackups']);
-            $auth->map(['GET'], '/api_tokens/scopes', [AdminController::class, 'apiTokenScopes']);
-            $auth->map(['GET'], '/api_tokens', [AdminController::class, 'apiTokenList']);
-            $auth->map(['POST'], '/api_tokens', [AdminController::class, 'apiTokenCreate']);
-            $auth->map(['PUT'], '/api_tokens/{id}/scopes', [AdminController::class, 'apiTokenUpdateScopes']);
-            $auth->map(['POST'], '/api_tokens/{id}/revoke', [AdminController::class, 'apiTokenRevoke']);
-            $auth->map(['DELETE'], '/api_tokens/{id}', [AdminController::class, 'apiTokenDelete']);
+            $auth->map(['GET'], '/api_tokens/scopes', [ApiTokenController::class, 'apiTokenScopes']);
+            $auth->map(['GET'], '/api_tokens', [ApiTokenController::class, 'apiTokenList']);
+            $auth->map(['POST'], '/api_tokens', [ApiTokenController::class, 'apiTokenCreate']);
+            $auth->map(['PUT'], '/api_tokens/{id}/scopes', [ApiTokenController::class, 'apiTokenUpdateScopes']);
+            $auth->map(['POST'], '/api_tokens/{id}/revoke', [ApiTokenController::class, 'apiTokenRevoke']);
+            $auth->map(['DELETE'], '/api_tokens/{id}', [ApiTokenController::class, 'apiTokenDelete']);
             
             $auth->map(['GET'], '/integrated_services/{service}', [IntegratedServiceController::class, 'status']);
             $auth->map(['POST'], '/integrated_services/{service}/enable', [IntegratedServiceController::class, 'enable']);
