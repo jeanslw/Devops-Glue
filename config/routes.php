@@ -15,6 +15,8 @@ use App\Controller\Admin\PermissionController;
 use App\Controller\Admin\ApiTokenController;
 use App\Controller\Admin\ConfigController;
 use App\Controller\Admin\VersionController;
+use App\Controller\Admin\ConnectionController;
+use App\Controller\Admin\OidcController;
 use App\Controller\ServiceContractController;
 use App\Controller\IntegratedServiceController;
 use App\Controller\RbacController;
@@ -99,10 +101,10 @@ $app->group('/api', function (RouteCollectorProxy $api) {
             $auth->map(['GET'], '/api_access_logs', [AdminController::class, 'apiAccessLogList']);
             $auth->map(['GET'], '/platform_config', [ConfigController::class, 'platformConfig']);
             $auth->map(['PUT'], '/platform_config', [ConfigController::class, 'updatePlatformConfig']);
-            $auth->map(['GET'], '/oidc_config', [AdminController::class, 'oidcConfig']);
-            $auth->map(['PUT'], '/oidc_config', [AdminController::class, 'updateOidcConfig']);
-            $auth->map(['GET'], '/platform_connections', [AdminController::class, 'platformConnections']);
-            $auth->map(['PUT'], '/platform_connections', [AdminController::class, 'updatePlatformConnections']);
+            $auth->map(['GET'], '/oidc_config', [OidcController::class, 'oidcConfig']);
+            $auth->map(['PUT'], '/oidc_config', [OidcController::class, 'updateOidcConfig']);
+            $auth->map(['GET'], '/platform_connections', [ConnectionController::class, 'platformConnections']);
+            $auth->map(['PUT'], '/platform_connections', [ConnectionController::class, 'updatePlatformConnections']);
             
             $auth->map(['POST'], '/tag_cleanup', [AdminController::class, 'runTagCleanup']);
             $auth->map(['POST'], '/tag_backfill', [AdminController::class, 'runTagBackfill']);

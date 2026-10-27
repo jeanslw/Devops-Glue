@@ -550,6 +550,29 @@ return [
         );
     },
 
+    // 后台：各平台连接配置
+    \App\Controller\Admin\ConnectionController::class => function (\Psr\Container\ContainerInterface $c) {
+        return new \App\Controller\Admin\ConnectionController(
+            $c->get(I18nService::class),
+            $c->get(Settings::class),
+            $c->get(\PDO::class),
+            $c->get(AppSettingRepository::class),
+            $c->get(PlatformConnectionRepository::class),
+            $c->get(MappingManager::class)
+        );
+    },
+
+    // 后台：OIDC / OAuth 配置
+    \App\Controller\Admin\OidcController::class => function (\Psr\Container\ContainerInterface $c) {
+        return new \App\Controller\Admin\OidcController(
+            $c->get(I18nService::class),
+            $c->get(Settings::class),
+            $c->get(\PDO::class),
+            $c->get(AppSettingRepository::class),
+            $c->get(OAuthClientRepository::class)
+        );
+    },
+
     // Admin 控制器
     AdminController::class => function (\Psr\Container\ContainerInterface $c) {
         return new AdminController(
@@ -558,8 +581,6 @@ return [
             $c->get(\PDO::class),
             $c->get(AppSettingRepository::class),
             $c->get(MappingManager::class),
-            $c->get(OAuthClientRepository::class),
-            $c->get(PlatformConnectionRepository::class),
             $c->get(AutoDiscover::class),
             $c->get('registryProvider')
         );
