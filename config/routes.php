@@ -8,6 +8,7 @@ use App\Controller\MainController;
 use App\Controller\HarborController;
 use App\Controller\RegistryController;
 use App\Controller\AdminController;
+use App\Controller\Admin\AuthController;
 use App\Controller\ServiceContractController;
 use App\Controller\IntegratedServiceController;
 use App\Controller\RbacController;
@@ -52,12 +53,12 @@ $app->group('/api', function (RouteCollectorProxy $api) {
     })->add(AuthMiddleware::class);
 
     $api->group('/admin', function (RouteCollectorProxy $admin) {
-        $admin->map(['POST'], '/login', [AdminController::class, 'login']);
-        $admin->map(['POST'], '/logout', [AdminController::class, 'logout']);
+        $admin->map(['POST'], '/login', [AuthController::class, 'login']);
+        $admin->map(['POST'], '/logout', [AuthController::class, 'logout']);
 
         
         $admin->group('', function (RouteCollectorProxy $auth) {
-            $auth->map(['PUT'], '/password', [AdminController::class, 'changePassword']);
+            $auth->map(['PUT'], '/password', [AuthController::class, 'changePassword']);
             $auth->map(['GET'], '/job_git_map', [AdminController::class, 'jobGitMapList']);
             $auth->map(['POST'], '/job_git_map', [AdminController::class, 'jobGitMapSave']);
             $auth->map(['PUT'], '/job_git_map', [AdminController::class, 'jobGitMapUpdate']);
@@ -76,7 +77,7 @@ $app->group('/api', function (RouteCollectorProxy $api) {
             $auth->map(['PUT'], '/users/{username}/password', [AdminController::class, 'userModifyPassword']);
             $auth->map(['PUT'], '/users/{username}/status', [AdminController::class, 'userSetStatus']);
             $auth->map(['DELETE'], '/users/{username}', [AdminController::class, 'userDelete']);
-            $auth->map(['POST'], '/login_locks/clear', [AdminController::class, 'clearLoginLocks']);
+            $auth->map(['POST'], '/login_locks/clear', [AuthController::class, 'clearLoginLocks']);
             $auth->map(['GET'], '/roles', [AdminController::class, 'roleList']);
             $auth->map(['POST'], '/roles', [AdminController::class, 'roleCreate']);
             $auth->map(['PUT'], '/roles/{id}', [AdminController::class, 'roleUpdate']);
@@ -86,7 +87,7 @@ $app->group('/api', function (RouteCollectorProxy $api) {
             $auth->map(['DELETE'], '/permissions/{perm_key}', [AdminController::class, 'permissionDelete']);
             $auth->map(['POST'], '/implied_rules', [AdminController::class, 'impliedRuleCreate']);
             $auth->map(['DELETE'], '/implied_rules', [AdminController::class, 'impliedRuleDelete']);
-            $auth->map(['GET'], '/me/permissions', [AdminController::class, 'mePermissions']);
+            $auth->map(['GET'], '/me/permissions', [AuthController::class, 'mePermissions']);
             $auth->map(['GET'], '/operation_logs', [AdminController::class, 'operationLogList']);
             $auth->map(['GET'], '/deploy_logs', [AdminController::class, 'deployLogList']);
             $auth->map(['GET'], '/api_access_logs', [AdminController::class, 'apiAccessLogList']);

@@ -468,6 +468,19 @@ return [
         return new AdminRbacService($c->get(\PDO::class));
     },
 
+    // 后台：认证
+    \App\Controller\Admin\AuthController::class => function (\Psr\Container\ContainerInterface $c) {
+        return new \App\Controller\Admin\AuthController(
+            $c->get(I18nService::class),
+            $c->get(Settings::class),
+            $c->get(\PDO::class),
+            $c->get(AppSettingRepository::class),
+            $c->get(TokenService::class),
+            $c->get(AdminAuthService::class),
+            $c->get(AdminUserRepository::class)
+        );
+    },
+
     // Admin 控制器
     AdminController::class => function (\Psr\Container\ContainerInterface $c) {
         return new AdminController(
@@ -479,11 +492,9 @@ return [
             $c->get(PlatformVersionRepository::class),
             $c->get(OAuthClientRepository::class),
             $c->get(PlatformConnectionRepository::class),
-            $c->get(AdminAuthService::class),
             $c->get(AdminUserRepository::class),
             $c->get(AdminRbacService::class),
             $c->get(AutoDiscover::class),
-            $c->get(TokenService::class),
             $c->get(ApiTokenService::class),
             $c->get(HarborService::class),
             $c->get(JenkinsService::class),
