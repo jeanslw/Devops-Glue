@@ -504,6 +504,17 @@ return [
         );
     },
 
+    // 后台：权限与隐含规则
+    \App\Controller\Admin\PermissionController::class => function (\Psr\Container\ContainerInterface $c) {
+        return new \App\Controller\Admin\PermissionController(
+            $c->get(I18nService::class),
+            $c->get(Settings::class),
+            $c->get(\PDO::class),
+            $c->get(AppSettingRepository::class),
+            $c->get(AdminRbacService::class)
+        );
+    },
+
     // Admin 控制器
     AdminController::class => function (\Psr\Container\ContainerInterface $c) {
         return new AdminController(
@@ -515,7 +526,6 @@ return [
             $c->get(PlatformVersionRepository::class),
             $c->get(OAuthClientRepository::class),
             $c->get(PlatformConnectionRepository::class),
-            $c->get(AdminRbacService::class),
             $c->get(AutoDiscover::class),
             $c->get(ApiTokenService::class),
             $c->get(HarborService::class),
