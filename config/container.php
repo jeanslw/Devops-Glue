@@ -39,7 +39,6 @@ use App\Controller\MainController;
 use App\Controller\GitController;
 use App\Controller\HarborController;
 use App\Controller\RegistryController;
-use App\Controller\AdminController;
 use App\Controller\ServiceContractController;
 use App\Controller\IntegratedServiceController;
 use App\Controller\RbacController;
@@ -606,16 +605,6 @@ return [
             $c->get(DataBackupService::class),
             $c->get(PipelineTagService::class),
             $c->get('registryProvider')
-        );
-    },
-
-    // Admin 控制器
-    AdminController::class => function (\Psr\Container\ContainerInterface $c) {
-        return new AdminController(
-            $c->get(I18nService::class),
-            $c->get(Settings::class),
-            $c->get(\PDO::class),
-            $c->get(AppSettingRepository::class)
         );
     },
 

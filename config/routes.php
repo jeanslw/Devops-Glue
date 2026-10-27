@@ -7,7 +7,6 @@ use App\Controller\HealthzController;
 use App\Controller\MainController;
 use App\Controller\HarborController;
 use App\Controller\RegistryController;
-use App\Controller\AdminController;
 use App\Controller\Admin\AuthController;
 use App\Controller\Admin\UserController;
 use App\Controller\Admin\RoleController;
