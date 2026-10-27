@@ -481,6 +481,17 @@ return [
         );
     },
 
+    // 后台：用户管理
+    \App\Controller\Admin\UserController::class => function (\Psr\Container\ContainerInterface $c) {
+        return new \App\Controller\Admin\UserController(
+            $c->get(I18nService::class),
+            $c->get(Settings::class),
+            $c->get(\PDO::class),
+            $c->get(AppSettingRepository::class),
+            $c->get(AdminUserRepository::class)
+        );
+    },
+
     // Admin 控制器
     AdminController::class => function (\Psr\Container\ContainerInterface $c) {
         return new AdminController(
