@@ -1,30 +1,24 @@
 <?php
 /**
- * CLI 共享引导：autoload + dotenv 加载 + envVal()。
- * cli/*.php 统一 require 本文件，避免 dotenv 加载顺序与 env 读取逻辑在多处重复。
+ * CLI 共享引导：autoload + 环境变量加载 + envVal()。
  */
 
 require __DIR__ . '/../vendor/autoload.php';
 
-/**
- * 读取配置：优先 $_ENV（phpdotenv 填充），其次真实环境变量 getenv()。
- * 避免 variables_order 不含 E 时 shell 传入的环境变量丢失。
- */
+/** 读取配置：优先 $_ENV（phpdotenv 填充），其次 getenv()。 */
 function envVal(string $key, string $default = ''): string
 {
     return App\Support\EnvFileLoader::envVal($key, $default);
 }
 
-// 加载环境变量（三层覆盖，与 Bootstrap 同一实现）
 App\Support\EnvFileLoader::load(__DIR__ . '/../config');
 
 /**
  * 加密一张表的存量明文敏感列（幂等：非空、无 enc:v1: 前缀才加密）。
  * 表名 / 列名 / 主键须为代码内白名单常量，不接用户输入。
  *
- * 返回加密的字段数。未配置 DATA_ENC_KEY 时抛异常（fail-closed），由调用方决定退出。
- *
  * @param string[] $cols 需要加密的列名
+ * @return int 加密的字段数；未配置 DATA_ENC_KEY 时抛异常
  */
 function encryptSensitiveColumns(\PDO $pdo, string $table, string $pk, array $cols): int
 {

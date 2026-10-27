@@ -2,24 +2,14 @@
 /**
  * 备份/恢复 CLI 共用库（供 cli/backup-db.php、bin/backup.php、bin/restore.php require_once）
  *
- * 随镜像发布（cli/ 在镜像内）；bin/ 下的离线工具是本地补丁，require 本文件。
- * 约定：
- *   - 备份 = 纯数据 .sql（INSERT，不含 DDL）。DDL 由恢复方按目标驱动
- *     Database::bootstrap() 生成，这样 MySQL 备份可以恢复进 SQLite，反之也一样。
- *   - 转义采用 SQL 标准写法（'' 加倍，反斜杠保持字面量），配合文件头
- *     mysqldump 同款 /*!40101 SET SQL_MODE='NO_BACKSLASH_ESCAPES' *​/ 注释，
- *     MySQL 服务端解析时关闭反斜杠转义，SQLite 视其为普通注释——同一份文件两种引擎都能吃。
- *   - 排除 cache（会话 token 是易失凭证，不应在备份里多出一份）与
- *     ci_platform_versions（Git API 派生缓存，恢复后自动重拉）。
+ * 随镜像发布（cli/ 在镜像内）；bin/ 下的离线工具是本地补丁，require 本文件
+ *
  */
 require_once __DIR__ . '/../vendor/autoload.php';
 
 use App\Config\AppConfig;
 use App\Service\Database;
 
-// 必须先加载环境再读 BACKUP_DIR：常量在 include 时只求值一次，
-// 若等到调用方 require 之后再 backupLoadEnv()，config/app.env 里配的 BACKUP_DIR 不会被读取
-// （只有 Docker ENV / shell export 这类真实环境变量才生效），裸机部署改了 app.env 却不生效。
 backupLoadEnv();
 
 define('BACKUP_DIR', rtrim((string) envVal('BACKUP_DIR', ''), '/') ?: __DIR__ . '/../backups');
@@ -35,7 +25,7 @@ function backupExcludedTables(): array
 }
 
 /**
- * 应用自有表清单（AppConfig 全部 TABLE_ 常量，反射读取，未来加表自动跟随）。
+ * 应用自有表清单
  * 恢复只动这些表；清单之外的表一律不碰。
  *
  * @return list<string>
@@ -68,14 +58,13 @@ function backupIsForeignTable(string $table): bool
 
 /**
  * 读取配置：优先 $_ENV（phpdotenv 填充），其次 getenv()。
- * 避免 variables_order 不含 E 时 shell 传入的环境变量丢失。
  */
 function envVal(string $key, string $default = ''): string
 {
     return \App\Support\EnvFileLoader::envVal($key, $default);
 }
 
-/** 三层 app.env 加载（优先级 app.env.local > 真实环境变量 > app.env.{APP_ENV} > app.env） */
+/** 三层 app.env 加载 */
 function backupLoadEnv(): void
 {
     \App\Support\EnvFileLoader::load(__DIR__ . '/../config');
@@ -83,7 +72,7 @@ function backupLoadEnv(): void
 
 /**
  * 连接数据库，返回 [driver, pdo]。
- * 共用 Database::createPdo()：统一 DSN 构造与 PDO 属性，消除手写 DSN 漂移。
+ * 共用 Database::createPdo()：统一 DSN 构造与 PDO 属性
  *
  * @return array{0:string, 1:\PDO}
  */
@@ -101,13 +90,11 @@ function backupConnect(): array
 
 /**
  * 枚举全部用户表。
- * 表名只接受 [a-zA-Z0-9_]，防止异常表名拼进 SQL。
  *
  * MySQL 走 information_schema 且限定 table_type='BASE TABLE'：
  *   - 只取基础表，视图不会被当成表导出（SHOW TABLES 会带上视图，
  *     导出视图会生成一条对视图执行 SELECT * 的假 INSERT，恢复时必然失败）
- *   - 顺带能看到共享库里 cd 系统的表，与是否启用 CD 无关
- * SQLite 的 type='table' 本就排除视图。
+ * SQLite 的 type='table'
  *
  * @return list<string>
  */
@@ -185,7 +172,7 @@ function backupEscapeValue($value): string
  *
  * @param list<string> $onlyTables 只导出这些表；空数组 = 全部表。
  *                          排除表（cache/ci_platform_versions）无论是否传入都会被跳过——
- *                          调用方传进来的清单里若含排除表，是调用方的疏漏，这里兜底拦截。
+ *                          调用方传进来的清单里若含排除表。
  * @param string $mode      app|cd|full，写入 META，恢复时按模式校验（防止两种备份互相误用）
  * @return array{0: string, 1: array<string,int>} [文件路径, 各表行数]
  */
@@ -202,10 +189,6 @@ function backupWriteFile(\PDO $pdo, string $driver, string $targetFile, array $o
     try {
         $tables = $onlyTables ?: backupListTables($pdo, $driver);
         foreach ($tables as $t) {
-            
-            
-            
-            
             if (in_array($t, $excluded, true)) {
                 continue;
             }
@@ -232,7 +215,6 @@ function backupWriteFile(\PDO $pdo, string $driver, string $targetFile, array $o
             }
         }
     } finally {
-        
         $pdo->commit();
     }
 
@@ -247,8 +229,6 @@ function backupWriteFile(\PDO $pdo, string $driver, string $targetFile, array $o
         . "-- META: mode={$mode}\n"
         . '-- META: tables=' . implode(',', $metaTables) . "\n"
         . '-- META: excluded=' . implode(',', $excluded) . "\n"
-        
-        
         . "/*!40101 SET SQL_MODE='NO_BACKSLASH_ESCAPES' */;\n"
         . "/*!40014 SET FOREIGN_KEY_CHECKS=0 */;\n\n";
 

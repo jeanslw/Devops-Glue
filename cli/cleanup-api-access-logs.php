@@ -1,27 +1,18 @@
 <?php
 /**
- * 离线清理过期审计日志 CLI（运维工具，不随 Web 运行）
+ * 离线清理过期审计日志 CLI
  *
  * 统一清理策略（后台系统设置页平台管理的日志设置控制）：
  *   - ci_api_access_logs（API 调用日志）与 ci_operation_logs（操作日志）
  *     共用同一保留天数与清理开关。
- *   - 部署日志（数据归 CD 系统所有，CI 经 CD 只读端点拉取、不落本地库）不由本脚本清理。
+ *   - 部署日志（数据归 CD 系统所有，CI 经 CD 只读端点拉取、不落本地库）不由本脚本清理
  *
  * 用法：
  *   php cli/cleanup-api-access-logs.php [保留天数]
- *
- * 行为：
- *   - 开关关闭时打印跳过并以 0 退出，不做任何删除（与 tag-cleanup 行为一致）。
- *   - 保留天数优先级：argv[1]（手动覆盖）> 后台 DB 设置 > 环境变量
- *     API_ACCESS_LOG_RETAIN_DAYS > 默认 90 天。
- *   - 只删除 created_at 早于保留期的行，幂等、可重复跑；不触碰任何其他表。
- *   - 表缺失或 DB 不可达等异常由仓储忽略（返回 0），本脚本仍以 0 退出，
- *     避免 cron 在首次部署建表期间反复打印错误告警。
- *
- * 调度：宿主 cron / 容器 crontab / Windows 计划任务，建议每天一次，例如：
+ *例：
  *   30 3 * * * php /path/to/cli/cleanup-api-access-logs.php >> /data/logs/api-log-cleanup.log 2>&1
  *
- * 退出码：0 = 完成（含开关关闭跳过、没有可删的行）；1 = 数据库初始化失败。
+ * 退出码：0 = 完成；1 = 数据库初始化失败。
  */
 require __DIR__ . '/bootstrap.php';
 
@@ -56,9 +47,6 @@ if ($retainDays < 1) {
     exit(1);
 }
 
-// 分布式锁：多实例（多 worker 容器）部署时保证同一时刻只有一个实例执行清理。
-// 未抢到锁说明他者正在清理，直接跳过；任务结束（成功或失败）后精确释放，
-// 仅进程被 kill 等硬退出时靠 ttl 自动过期兜底。
 $lockName  = 'api-log-cleanup';
 $lockToken = Database::tryAcquireLock($lockName, 600);
 if ($lockToken === null) {
@@ -66,8 +54,6 @@ if ($lockToken === null) {
     exit(0);
 }
 
-// 注意：不能在 try/catch 内 exit——PHP 的 exit 会跳过 finally，导致锁不释放。
-// 用标志位收集失败，finally 内统一释放，再在块外按结果退出。
 $failed = false;
 try {
     $deletedApi = (new ApiAccessLogRepository($pdo))->purge($retainDays);
