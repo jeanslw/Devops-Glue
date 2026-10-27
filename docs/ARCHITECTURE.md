@@ -7,15 +7,10 @@
 ## Component Relationships
 ```
 ┌────────────────────────────────────────────────────────────┐
-│Shared Database (SQLite/MySQL/MariaDB)                      │
+│     Shared/Independent Database (SQLite/MySQL/MariaDB)     │
 │                                                            │
-│  ci_job_git_map   ← CI read-only                           │
-│  ci_pipeline_artifacts ← canonical CI artifact facts       │
-│  ci_custom_builds ← Custom_Push write                      │
-│  cd_servers       ← CD maintains                           │
-│  cd_deploy_logs   ← CD writes                              │
-│  cd_bots          ← CD maintains                           │
-│  ci_admin_users      ← CI writes /CD read (Shared)         │
+│  ci_*             ← CI read/write                          │
+│  cd_*             ← CD read/write                          │
 └────────────────────────────┬───────────────────────────────┘
 			                 │
 		              ┌──────┴──────┐
