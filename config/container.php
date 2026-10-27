@@ -585,6 +585,16 @@ return [
         );
     },
 
+    // 后台：审计与构建日志
+    \App\Controller\Admin\LogController::class => function (\Psr\Container\ContainerInterface $c) {
+        return new \App\Controller\Admin\LogController(
+            $c->get(I18nService::class),
+            $c->get(Settings::class),
+            $c->get(\PDO::class),
+            $c->get(AppSettingRepository::class)
+        );
+    },
+
     // Admin 控制器
     AdminController::class => function (\Psr\Container\ContainerInterface $c) {
         return new AdminController(
