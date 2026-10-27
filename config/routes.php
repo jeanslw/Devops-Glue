@@ -16,6 +16,7 @@ use App\Controller\Admin\ApiTokenController;
 use App\Controller\Admin\ConfigController;
 use App\Controller\Admin\VersionController;
 use App\Controller\Admin\ConnectionController;
+use App\Controller\Admin\MappingController;
 use App\Controller\Admin\OidcController;
 use App\Controller\ServiceContractController;
 use App\Controller\IntegratedServiceController;
@@ -67,14 +68,14 @@ $app->group('/api', function (RouteCollectorProxy $api) {
         
         $admin->group('', function (RouteCollectorProxy $auth) {
             $auth->map(['PUT'], '/password', [AuthController::class, 'changePassword']);
-            $auth->map(['GET'], '/job_git_map', [AdminController::class, 'jobGitMapList']);
-            $auth->map(['POST'], '/job_git_map', [AdminController::class, 'jobGitMapSave']);
-            $auth->map(['PUT'], '/job_git_map', [AdminController::class, 'jobGitMapUpdate']);
-            $auth->map(['DELETE'], '/job_git_map', [AdminController::class, 'jobGitMapDelete']);
+            $auth->map(['GET'], '/job_git_map', [MappingController::class, 'jobGitMapList']);
+            $auth->map(['POST'], '/job_git_map', [MappingController::class, 'jobGitMapSave']);
+            $auth->map(['PUT'], '/job_git_map', [MappingController::class, 'jobGitMapUpdate']);
+            $auth->map(['DELETE'], '/job_git_map', [MappingController::class, 'jobGitMapDelete']);
             $auth->map(['GET'], '/platform_versions', [VersionController::class, 'platformVersionsList']);
             $auth->map(['GET'], '/platform_versions/probe', [VersionController::class, 'platformVersionsProbe']);
             $auth->map(['PUT'], '/platform_versions', [VersionController::class, 'platformVersionsUpdate']);
-            $auth->map(['POST'], '/discover', [AdminController::class, 'discover']);
+            $auth->map(['POST'], '/discover', [MappingController::class, 'discover']);
             $auth->map(['GET'], '/security_checks', [AdminController::class, 'securityChecksList']);
             $auth->map(['GET'], '/build_mode', [ConfigController::class, 'getBuildMode']);
             $auth->map(['PUT'], '/build_mode', [ConfigController::class, 'updateBuildMode']);

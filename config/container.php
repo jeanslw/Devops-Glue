@@ -573,6 +573,18 @@ return [
         );
     },
 
+    // 后台：CI/镜像映射与自动发现
+    \App\Controller\Admin\MappingController::class => function (\Psr\Container\ContainerInterface $c) {
+        return new \App\Controller\Admin\MappingController(
+            $c->get(I18nService::class),
+            $c->get(Settings::class),
+            $c->get(\PDO::class),
+            $c->get(AppSettingRepository::class),
+            $c->get(MappingManager::class),
+            $c->get(AutoDiscover::class)
+        );
+    },
+
     // Admin 控制器
     AdminController::class => function (\Psr\Container\ContainerInterface $c) {
         return new AdminController(
@@ -580,8 +592,6 @@ return [
             $c->get(Settings::class),
             $c->get(\PDO::class),
             $c->get(AppSettingRepository::class),
-            $c->get(MappingManager::class),
-            $c->get(AutoDiscover::class),
             $c->get('registryProvider')
         );
     },
