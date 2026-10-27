@@ -61,7 +61,7 @@
 │  Controller Layer                                                   │
 │  ├─ MainController   — Health check / map list / platform discovery │
 │  ├─ BuildController  — Build trigger / Pipeline / Scan / CS         │
-│  ├─ AdminController  — Admin CRUD / Auth / mode switch              │
+│  ├─ Admin sub-controllers  — backend admin (12 controllers)         │
 │  ├─ GitController    — Branch query                                 │
 │  └─ HarborController — Registry query / Scan                        │
 └─────────────────────────────┬───────────────────────────────────────┘
@@ -505,7 +505,7 @@ Performs no external probing; returns the stats cards + system info + Custom_Pus
 **Authenticated endpoint:** `/api/main/map/list` (grouped by Git repository, requires Token)
 
 #### 5.3.1 Data Writing
-- **Manual add/edit:** Admin UI → AdminController CRUD
+- **Manual add/edit:** Admin UI → MappingController CRUD
 - **Auto-discovery:** `POST /api/admin/discover` → `AutoDiscover::discover()` scans every enabled and configured source (Jenkins / GitLab CI / Gitea Actions / GitHub Actions, plus the connected Git platforms), extracts Git URLs → `saveDiscovered()` writes to `ci_job_git_map` as pending; a mapping takes effect only after being enabled manually
 
 #### 5.3.2 Data Reading & Grouping
@@ -675,7 +675,7 @@ If only `ref` is present without other parameters, auto-convert to `{branches: r
 
 ### 5.7 Security Scan Audit
 **Route:** `GET /api/admin/security_checks?project=&check_type=&state=&writeback=&page=1&per_page=20`  
-**Method:** `AdminController::securityChecksList()`
+**Method:** `LogController::securityChecksList()`
 
 **Data source:** `ci_security_checks` table (written by commit-status and scan-sync)
 
@@ -709,7 +709,7 @@ If only `ref` is present without other parameters, auto-convert to `{branches: r
 
 ### 5.8 Platform Version Management
 **Route:** `GET/PUT /api/admin/platform_versions`  
-**Method:** `AdminController::platformVersionsList()` / `platformVersionsUpdate()`
+**Method:** `VersionController::platformVersionsList()` / `platformVersionsUpdate()`
 
 **Read Priority (three-tier fallback):**
 1. `ci_platform_versions` table (user-customized)
@@ -722,7 +722,7 @@ If only `ref` is present without other parameters, auto-convert to `{branches: r
 
 ### 5.9 Build Mode Switching
 **Route:** `GET /api/admin/build_mode` + `PUT /api/admin/build_mode`  
-**Method:** `AdminController::getBuildMode()` / `updateBuildMode()`
+**Method:** `ConfigController::getBuildMode()` / `updateBuildMode()`
 
 **Storage:** `ci_app_settings` table
 - key=`build_mode`, value = comma-separated set of {jenkins, gitlab_ci, gitea_ci} (controls pull-based CI)
@@ -756,7 +756,7 @@ If only `ref` is present without other parameters, auto-convert to `{branches: r
 ### 5.10 Authentication & Authorization
 #### 5.10.1 Login
 **Route:** `POST /api/admin/login`  
-**Method:** `AdminController::login()`
+**Method:** `AuthController::login()`
 
 **Verification Priority:**
 1. Query `ci_admin_users` table, `password_verify()` to check bcrypt hash
@@ -1018,7 +1018,7 @@ CI Pipeline Triggered
 ```
 Admin panel edits mapping
     │
-    └── AdminController CRUD
+    └── MappingController CRUD
         └── AppConfig::saveJobGitMap()
             └── ci_job_git_map table full write
 
@@ -1036,7 +1036,7 @@ API call (e.g., /api/build/project/tag)
 ```
 Admin panel: PUT /api/admin/build_mode {mode: "jenkins"}
     │
-    └── AdminController::updateBuildMode()
+    └── ConfigController::updateBuildMode()
         ├─ Validate Provider availability
         └── AppConfig::setBuildMode("jenkins")
             └── ci_app_settings UPSERT {key:"build_mode", value:"jenkins"}

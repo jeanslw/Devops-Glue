@@ -167,6 +167,15 @@ class RegistrySyncService
             }
         }
 
+        // 审计记录的 state 归一到合法集合：未扫描时按 ci_status 映射，与 commit status 一致。
+        $auditState = $scanState !== 'unknown'
+            ? $scanState
+            : match ($ciStatus) {
+                'success' => 'success',
+                'failed'  => 'failed',
+                default   => 'pending',
+            };
+
         $canWriteBack = $sha !== '' && $gitPlatform !== '' && $this->gitRegistry !== null
             && $this->gitRegistry->isRegistered($gitPlatform);
 
@@ -175,13 +184,7 @@ class RegistrySyncService
             $gitRepo = $gitProjectId ? (string) $gitProjectId
                 : ($gitCurrentPath !== '' ? $gitCurrentPath : $path);
 
-            $gitState = $scanState !== 'unknown'
-                ? $scanState
-                : match ($ciStatus) {
-                    'success' => 'success',
-                    'failed'  => 'failed',
-                    default   => 'pending',
-                };
+            $gitState = $auditState;
             try {
                 $result = $this->gitRegistry->create($gitPlatform)
                     ->setCommitStatus($gitRepo, $sha, $gitState, $checkType, $desc, $this->registryUrl());
@@ -217,7 +220,7 @@ class RegistrySyncService
         $this->recordSecurityCheck(
             $path,
             $sha,
-            $scanState,
+            $auditState,
             $checkType,
             $desc,
             $tag,

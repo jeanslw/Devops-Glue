@@ -3,11 +3,11 @@ declare(strict_types=1);
 
 namespace App\Test\Unit;
 
-use App\Controller\BuildController;
+use App\Controller\Build\PipelineTagController;
 use PHPUnit\Framework\TestCase;
 
 /**
- * BuildController::extractTagFromTrace / pickTag 回归测试
+ * PipelineTagController::extractTagFromTrace / pickTag 回归测试
  *
  * 当日志里先出现上一条构建的 tag（v20260827-129）、后出现当前构建的 tag（v20260827-130）时，
  * 必须优先返回与当前 pipelineId 尾号一致的那条，避免镜像 Tag 列显示上一条构建的 tag。
@@ -17,10 +17,10 @@ class BuildTagExtractTest extends TestCase
     /** 反射调用私有方法 extractTagFromTrace（纯函数，无需构造依赖） */
     private function extract(string $trace, string $harborRepo, string $keyword, int $pipelineId): string
     {
-        $m = new \ReflectionMethod(BuildController::class, 'extractTagFromTrace');
+        $m = new \ReflectionMethod(PipelineTagController::class, 'extractTagFromTrace');
         $m->setAccessible(true);
         return (string) $m->invokeArgs(
-            (new \ReflectionClass(BuildController::class))->newInstanceWithoutConstructor(),
+            (new \ReflectionClass(PipelineTagController::class))->newInstanceWithoutConstructor(),
             [$trace, $harborRepo, $keyword, $pipelineId]
         );
     }

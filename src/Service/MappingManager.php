@@ -353,4 +353,71 @@ class MappingManager
         $resolved = $this->resolveProject($projectPath);
         return new PipelineIdentity($resolved['provider'], $resolved['projectId'], $pipelineIid);
     }
+
+    /**
+     * 读拓扑缓存；命中返回数组，未命中/异常返回 null。
+     *
+     * @return array<mixed>|null
+     */
+    public function getCachedMapList(string $cacheKey): ?array
+    {
+        try {
+            $stmt = $this->pdo->prepare("SELECT value FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key = ? AND expires_at > ?");
+            $stmt->execute([$cacheKey, time()]);
+            $row = $stmt->fetch();
+            if ($row) {
+                $data = json_decode($row['value'], true);
+                if (is_array($data)) {
+                    return $data;
+                }
+            }
+        } catch (\Exception $e) {
+            \App\Helper\Log::exception($e);
+        }
+        return null;
+    }
+
+    /**
+     * 写拓扑缓存（upsert）。
+     *
+     * @param array<mixed> $data
+     */
+    public function cacheMapList(string $cacheKey, array $data, int $ttlSeconds = 30): void
+    {
+        try {
+            $sql = Database::sqlUpsert(AppConfig::TABLE_CACHE, 'cache_key, value, expires_at', '?, ?, ?');
+            $this->pdo->prepare($sql)->execute([$cacheKey, json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), time() + $ttlSeconds]);
+        } catch (\Exception $e) {
+        }
+    }
+
+    /** 清除拓扑缓存（映射变更后调用）。 */
+    public function invalidateMapListCache(): void
+    {
+        try {
+            $this->pdo->prepare("DELETE FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key LIKE ?")
+                ->execute([AppConfig::CACHE_KEY_MAP_LIST_PREFIX . '%']);
+        } catch (\Exception $e) {
+        }
+    }
+
+    /**
+     * 健康静态数据的映射统计卡片。
+     *
+     * @return array{total_maps:int, active_maps:int, git_platforms:int, harbor_repos:int}
+     */
+    public function healthStats(): array
+    {
+        $stats = ['total_maps' => 0, 'active_maps' => 0, 'git_platforms' => 0, 'harbor_repos' => 0];
+        try {
+            $stats['total_maps'] = (int)$this->pdo->query("SELECT count(*) FROM " . AppConfig::TABLE_JOB_GIT_MAP)->fetchColumn();
+            $stmt = $this->pdo->prepare("SELECT count(*) FROM " . AppConfig::TABLE_JOB_GIT_MAP . " WHERE status = ?");
+            $stmt->execute([AppConfig::STATUS_ACTIVE]);
+            $stats['active_maps'] = (int)$stmt->fetchColumn();
+            $stats['git_platforms'] = (int)$this->pdo->query("SELECT count(DISTINCT git_platform) FROM " . AppConfig::TABLE_JOB_GIT_MAP . " WHERE git_platform IS NOT NULL AND git_platform != ''")->fetchColumn();
+            $stats['harbor_repos'] = (int)$this->pdo->query("SELECT count(DISTINCT registry_repository) FROM " . AppConfig::TABLE_JOB_GIT_MAP . " WHERE registry_repository IS NOT NULL AND registry_repository != ''")->fetchColumn();
+        } catch (\Exception $e) {
+        }
+        return $stats;
+    }
 }

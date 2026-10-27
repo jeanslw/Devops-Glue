@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace App\Test\Unit;
 
-use App\Controller\AdminController;
+use App\Controller\Admin\SystemController;
 use App\Service\I18nService;
 use PHPUnit\Framework\TestCase;
 
@@ -65,15 +65,15 @@ class AdminTagJobTriggerTest extends TestCase
 
         foreach (self::ROUTES as $path => $action) {
             $pattern = "/->map\\(\\['POST'\\], '" . preg_quote($path, '/')
-                . "', \\[AdminController::class, '" . $action . "'\\]\\)/";
+                . "', \\[SystemController::class, '" . $action . "'\\]\\)/";
             $this->assertMatchesRegularExpression(
                 $pattern,
                 $routes,
-                "config/routes.php 必须注册 POST /api/admin{$path} → AdminController::{$action}"
+                "config/routes.php 必须注册 POST /api/admin{$path} → SystemController::{$action}"
             );
             $this->assertTrue(
-                method_exists(AdminController::class, $action),
-                "AdminController::{$action} 必须存在且为公开动作方法"
+                method_exists(SystemController::class, $action),
+                "SystemController::{$action} 必须存在且为公开动作方法"
             );
         }
     }

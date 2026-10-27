@@ -450,13 +450,9 @@ class Database
             \App\Config\AppConfig::TABLE_API_TOKENS,
             \App\Config\AppConfig::TABLE_USER_IDENTITIES,
             \App\Config\AppConfig::TABLE_OPERATION_LOGS,
-
             \App\Config\AppConfig::TABLE_API_ACCESS_LOGS,
-
             \App\Config\AppConfig::TABLE_INTEGRATED_SERVICES,
-
             \App\Config\AppConfig::TABLE_OAUTH_CLIENTS,
-
             \App\Config\AppConfig::TABLE_PLATFORM_CONNECTIONS,
         ];
     }
@@ -596,11 +592,8 @@ class Database
     }
 
     /**
-     * 读取 schema / 种子版本并判定是否与当前代码对齐（供 /healthz 探针一次查询拿到全部版本语义）。
-     *
-     * 不建连、不 bootstrap（PDO 由调用方传入）；ci_app_settings 缺失时抛异常，由调用方判定库不可用。
-     *
-     * schema_current 只反映表结构：有 schema_version 时与 APP_VERSION 等值比较，无记录时为 null（未知）。
+     * 读取 schema / 种子版本并判定是否与当前代码对齐（供 /healthz 探针一次查询拿到全部版本语义）
+     * schema_current 只反映表结构：有 schema_version 时与 APP_VERSION 等值比较，无记录时为 null
      * 手动建库模式下 seed_version 仅证明种子数据已写入，不能代表新增列已就绪，故不作为依据。
      *
      * schema_ahead 是方向位，与 schema_current 组合可区分两种未对齐：
@@ -777,13 +770,6 @@ class Database
      * 建表定义」——典型场景：未发布版本内多轮 DDL，schema_version 已与代码相等，bootstrap 短路，
      * 存量库的列定义停留在旧宽度（varchar(32) vs 建表脚本 varchar(255)）。
      *
-     * 维护约定：
-     *  - 改 mysql_init.sql 中既有列的类型/宽度时，在此同步登记；SQLite 无长度语义，不登记；
-     *  - 只登记可安全放宽的变更（如 VARCHAR 扩容）。缩容、跨类型族即使登记也只在面板告警，
-     *    不会自动执行（safe=false），杜绝数据截断；
-     *  - 登记的期望类型必须与 mysql_init.sql 的 CREATE TABLE 一致，由
-     *    DatabaseBootstrapTest 守护（清单与脚本漂移则测试失败）。
-     *
      * @return array<string, array<string, string>>
      */
     private static function columnSpecs(): array
@@ -844,14 +830,12 @@ class Database
         return $drift;
     }
 
-    /** 取列定义子句的首个 token（类型），如 "VARCHAR(255) NOT NULL DEFAULT 'x'" → "VARCHAR(255)"。 */
     private static function firstTypeToken(string $definition): string
     {
         $parts = explode(' ', trim($definition), 2);
         return $parts[0];
     }
 
-    /** 归一化类型 token：小写、去空白（varchar(255) 各部分间可能有空格）。 */
     private static function normalizeColumnType(string $type): string
     {
         return strtolower(preg_replace('/\s+/', '', $type) ?? $type);
@@ -874,7 +858,6 @@ class Database
 
     /**
      * 列结构自愈：对 columnDrift() 中 safe=true 的漂移执行 MODIFY COLUMN。
-     *
      * 每进程只执行一次（$columnReconcileDone）；表/列名来自代码常量与白名单清单，不接受外部输入。
      * strict=true（ensureTables / 显式迁移链路）：任一 MODIFY 失败抛出，与 ADD COLUMN 循环同为
      * fail-fast，尚未 markSchemaCurrent，下次启动重试。
@@ -929,8 +912,7 @@ class Database
     /**
      * 手动触发迁移：建缺失表 + 补列 + 安全扩容列对齐 + RBAC/管理员种子 + 自检 + 标记 schema 当前。
      *
-     * 入口：后台同步库结构按钮（super_admin 专用）、cli/migrate.php（发布流水线，无视
-     * DB_AUTO_MIGRATE）。自带连接，空库或手动建库模式漏跑脚本时也能一次建全。
+     * 入口：后台同步库结构按钮（super_admin 专用）、cli/migrate.php自带连接，空库或手动建库模式漏跑脚本时也能一次建全。
      * 返回值同 schemaStatus()（含迁移后重新对账的 column_drift，正常应为零项）。
      *
      * @return array{
@@ -1168,8 +1150,7 @@ class Database
 
     /**
      * 互斥执行自动迁移（bootstrap 自动分支）：多实例同时发现版本标记过期时，保证同一时刻只有一个
-     * 实例跑 DDL / 种子，其余实例等待其完成——消除「补列 check-then-act 撞 1060」「并发 REPLACE
-     * 死锁 1213 触发 rbac_seed_failed 误报」这类启动期竞争噪声。
+     * 实例跑 DDL / 种子，其余实例等待其完成
      *
      * 三种路径：
      *  - 抢到锁（持有者）：执行 $critical，finally 释放（TTL 兜底，崩租自动过期）；
@@ -1302,10 +1283,6 @@ class Database
 
     /**
      * 执行单张表的建表 DDL 并记录结果到 tableBuildLog（供迁移过程逐表展示）。
-     *
-     * 失败时先记录「该表失败」再原样抛出，保持 ensureTables 的 fail-fast 语义；
-     * 调用方（migrateNow / CLI / 后台）经 lastTableBuildLog() 拿到完整过程列表，
-     * 据此渲染「表1 成功 / 表2 失败」而不是一句笼统的 500。
      */
     private static function buildTable(\PDO $pdo, string $table, string $ddl): void
     {
@@ -1337,7 +1314,6 @@ class Database
             : "INSERT OR IGNORE INTO {$table} ({$columns}) VALUES ({$values})";
     }
 
-    /** 列是否已存在（MySQL / SQLite）；PDO 显式传入，便于只读预检复用。 */
     private static function columnExists(\PDO $pdo, string $table, string $column): bool
     {
         if (self::$driver === 'mysql') {
@@ -1356,7 +1332,6 @@ class Database
         return false;
     }
 
-    /** 表是否已存在（MySQL / SQLite）。供仓储在自动迁移关闭、表尚未创建时安全降级。 */
     public static function tableExists(\PDO $pdo, string $table): bool
     {
         try {
@@ -1367,7 +1342,6 @@ class Database
         }
     }
 
-    /** 删除遗留表（不存在则跳过）；失败仅记录，下次启动重试。 */
     private static function dropTableIfExists(\PDO $pdo, string $table): void
     {
         try {
@@ -1376,8 +1350,6 @@ class Database
             \App\Helper\Log::exception($e);
         }
     }
-
-    // ── 建表 ──
 
     private static function ensureTables(string $seedMode = self::SEED_MODE_PRUNE): void
     {
@@ -1769,10 +1741,7 @@ class Database
         }
 
         self::reconcileColumns($pdo, true);
-
         self::seedRbac($seedMode);
-
-
         self::createIndex('idx_pipeline_artifacts_project_key', \App\Config\AppConfig::TABLE_PIPELINE_ARTIFACTS, 'project_key');
         self::createIndex('idx_pipeline_artifacts_created', \App\Config\AppConfig::TABLE_PIPELINE_ARTIFACTS, 'created_at');
         self::createIndex('idx_job_git_map_current_path', \App\Config\AppConfig::TABLE_JOB_GIT_MAP, $isMySQL ? 'current_path(255)' : 'current_path');
@@ -1846,11 +1815,6 @@ class Database
 
     /**
      * 把 CD 契约行绑定的服务凭据 scope 补齐到 AppConfig::CD_SERVICE_TOKEN_SCOPES。
-     *
-     * 为什么必须自愈：v2.9.0 给 CD 服务凭据新增了 git scope（CD 构建页改走 /api/git/{path}/refs
-     * 取 ref 候选值）。2.8.x 签发的存量凭据不含 git，若只改常量，旧部署升级后 CD 调 git 端点会被
-     * AuthMiddleware 挡成 403，而管理员并不知道需要手动去「集成服务」页禁用再启用一次。
-     *
      * 补齐只增不删（ApiTokenService::addScopes：并集、已是超集则不写库），token 摘要与明文都不动，
      * 因此 CD 侧无需更换 CI_API_TOKEN。未启用过 CD 时没有契约行，直接跳过（不种子、不建凭据）。
      */
@@ -1926,8 +1890,6 @@ class Database
             \App\Helper\Log::exception($e);
         }
     }
-
-    // ── RBAC 种子 ──
 
     private static function seedRbac(string $seedMode = self::SEED_MODE_PRUNE): void
     {
@@ -2043,7 +2005,6 @@ class Database
     }
 
     // ── 管理员种子 ──
-
     private static function seedAdmin(): void
     {
         AdminUserRepository::seedAdminFromEnv(self::pdo());
@@ -2095,7 +2056,6 @@ class Database
     }
 
     // ── JSON 迁移（仅 SQLite 一次性）──
-
     private static function migrateJobGitMap(string $path, \PDO $pdo): void
     {
         if (!file_exists($path)) {

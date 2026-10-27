@@ -792,7 +792,7 @@ class DatabaseBootstrapTest extends TestCase
 
     /**
      * 显式迁移（`cli/migrate.php` / 后台按钮）不写版本跃迁记录，它记录的是"操作"本身
-     * （`migrate_schema`，按钮路径在 AdminController、CLI 路径在 cli/migrate.php），避免一次操作两行日志。
+     * （`migrate_schema`，按钮路径在 SystemController、CLI 路径在 cli/migrate.php），避免一次操作两行日志。
      */
     public function testExplicitMigrateDoesNotRecordTransition(): void
     {

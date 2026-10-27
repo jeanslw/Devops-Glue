@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.11.1 (2026-10-27)
+
+- **Refactor**
+  - `AdminController` is split into 12 controllers under the `Admin\` namespace (auth / user / role / permission / API token / config / connection / OIDC / version / mapping / log / system), sharing the `BaseAdminController` base; URLs, HTTP methods, permission checks, and response structures are unchanged — an internal structure refactor only.
+  - `BuildController` is split into six controllers under the `Build\` namespace (overview / pipeline query / action / report / registry-sync / tag) sharing the `BaseBuildController` base; URLs, HTTP methods, permission checks, and response structures are unchanged — an internal structure refactor only.
+  - Controllers no longer hold a direct `PDO` connection: build, admin and OAuth SQL moves into dedicated repositories and services, and multi-write transactions run through one shared `TransactionManager`; behaviour and responses are unchanged.
+
+- **Fixed**
+  - When the image registry has no scanning (e.g. `registry:2`), `registry-sync` / `scan-sync` no longer write `unknown` into the audit record's `state`; it is normalized from `ci_status` to success / failed / pending, matching the commit status — even when `scan-sync` is called by mistake.
+
 ## v2.11.0 (2026-10-24)
 
 - **Added**

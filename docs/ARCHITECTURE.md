@@ -25,6 +25,30 @@
 > - **SQLite**: Zero-configuration, suitable for single-host development/testing. For container deployments, mount the `config/data/` directory as a shared volume so both processes can access the same `.db` file.
 > - **MySQL 8.0+ / MariaDB 10.4+**: Recommended for production. Supports concurrent reads and writes, no shared volume required.
 
+## Controller Modules
+
+`src/Controller/` is split by functional domain. The original `AdminController` (a single god class carrying all admin capabilities) is now split into 12 controllers under the `Admin\` namespace, sharing the `BaseAdminController` base (operation logging / client IP / topology-cache invalidation / super-admin check) while each depending only on the services its domain needs:
+
+| Controller | Responsibility |
+|---|---|
+| `MainController` | Health check / mapping list / platform discovery |
+| `BuildController` | Build trigger / pipeline / scan / commit-status |
+| `GitController` | Branch query |
+| `HarborController` | Harbor registry query / scan |
+| `RegistryController` | Generic registry listing (Harbor / registry:2) |
+| `Admin\AuthController` | Login / logout / change password / login locks / my permissions |
+| `Admin\UserController` | User CRUD / status / change password |
+| `Admin\RoleController` | Role CRUD |
+| `Admin\PermissionController` | Permission register / delete / implied rules |
+| `Admin\ApiTokenController` | API token management |
+| `Admin\ConfigController` | Build mode / platform-level config |
+| `Admin\ConnectionController` | Platform connection config |
+| `Admin\OidcController` | OIDC config |
+| `Admin\VersionController` | Platform API version management |
+| `Admin\MappingController` | CI/image mapping & auto discovery |
+| `Admin\LogController` | Audit & build logs |
+| `Admin\SystemController` | System info / migrate / backup / tag jobs |
+
 ## Deployment Topology (Container Split)
 
 The CI web layer is **stateless** — token auth (no `$_SESSION`), all state in the shared DB — so it can scale out horizontally. The only single-instance part is the scheduled timer jobs, moved into a dedicated worker container. Containers are split three ways:

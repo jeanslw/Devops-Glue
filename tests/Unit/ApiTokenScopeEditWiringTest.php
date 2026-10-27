@@ -10,7 +10,7 @@ use PHPUnit\Framework\TestCase;
 /**
  * API 管理页编辑 Scope 功能的接线测试（v2.9.0 新增）。
  *
- * 该功能横跨 4 层：路由（config/routes.php）、控制器（AdminController）、
+ * 该功能横跨 4 层：路由（config/routes.php）、控制器（Admin\ApiTokenController）、
  * 服务（ApiTokenService）、前端（admin.html 表单 + apiTokens.js 调用 + admin.js 挂 window）。
  * 任一层漏做都会导致接线不完整：最常见的是接口做好了但页面按钮调不到
  * （inline onclick 依赖 admin.js 的 Object.assign(window, …)），或双语翻译只补了一半。
@@ -37,7 +37,7 @@ class ApiTokenScopeEditWiringTest extends TestCase
         $routes = $this->read(self::ROOT . '/config/routes.php');
 
         $this->assertMatchesRegularExpression(
-            "/\\\$auth->map\(\\['PUT'\\], '\\/api_tokens\\/\\{id\\}\\/scopes', \\[AdminController::class, 'apiTokenUpdateScopes'\\]\)/",
+            "/\\\$auth->map\(\\['PUT'\\], '\\/api_tokens\\/\\{id\\}\\/scopes', \\[ApiTokenController::class, 'apiTokenUpdateScopes'\\]\)/",
             $routes,
             'PUT /api/admin/api_tokens/{id}/scopes 必须注册（并走 AuthMiddleware 那一组）'
         );
@@ -45,7 +45,7 @@ class ApiTokenScopeEditWiringTest extends TestCase
 
     public function testControllerDelegatesToServiceAndAudits(): void
     {
-        $controller = $this->read(self::ROOT . '/src/Controller/AdminController.php');
+        $controller = $this->read(self::ROOT . '/src/Controller/Admin/ApiTokenController.php');
 
         $this->assertStringContainsString('public function apiTokenUpdateScopes(', $controller);
         $this->assertStringContainsString('->updateScopes($id, $payload)', $controller, '控制器应把 scopes 交给服务层校验+落库');

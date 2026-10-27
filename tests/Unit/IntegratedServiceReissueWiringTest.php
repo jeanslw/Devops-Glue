@@ -69,9 +69,9 @@ class IntegratedServiceReissueWiringTest extends TestCase
 
         
         
-        $begin  = strpos($enable, 'beginTransaction()');
+        $begin  = strpos($enable, '$this->tx->begin()');
         $revoke = strpos($enable, '$this->apiTokens->revoke($previousTokenId);');
-        $commit = strpos($enable, '$this->pdo->commit();');
+        $commit = strpos($enable, '$this->tx->commit()');
         $this->assertIsInt($begin);
         $this->assertIsInt($revoke);
         $this->assertIsInt($commit);
@@ -104,9 +104,9 @@ class IntegratedServiceReissueWiringTest extends TestCase
         $this->assertStringContainsString("!\$state['token_expired']", $enable, '恢复一枚过期凭据毫无意义，必须排除');
 
         
-        $begin   = strpos($enable, 'beginTransaction()');
+        $begin   = strpos($enable, '$this->tx->begin()');
         $restore = strpos($enable, '$this->apiTokens->restore($reuseTokenId);');
-        $commit  = strpos($enable, '$this->pdo->commit();');
+        $commit  = strpos($enable, '$this->tx->commit()');
         $this->assertIsInt($begin);
         $this->assertIsInt($restore);
         $this->assertIsInt($commit);

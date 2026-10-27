@@ -20,17 +20,15 @@ class MainController extends BaseController
     private MappingManager $mapping;
     private AppSettingRepository $appSettings;
     private ?HarborService $harbor;
-    private \PDO $pdo;
     private ?TokenService $tokenService = null;
 
-    public function __construct(I18nService $i18n, JenkinsService $jenkins, Settings $config, MappingManager $mapping, AppSettingRepository $appSettings, \PDO $pdo, ?HarborService $harbor = null, ?TokenService $tokenService = null)
+    public function __construct(I18nService $i18n, JenkinsService $jenkins, Settings $config, MappingManager $mapping, AppSettingRepository $appSettings, ?HarborService $harbor = null, ?TokenService $tokenService = null)
     {
         parent::__construct($i18n);
         $this->jenkins = $jenkins;
         $this->config = $config;
         $this->mapping = $mapping;
         $this->appSettings = $appSettings;
-        $this->pdo = $pdo;
         $this->harbor = $harbor;
         $this->tokenService = $tokenService;
     }
@@ -80,15 +78,9 @@ class MainController extends BaseController
         $cacheKey = AppConfig::CACHE_KEY_MAP_LIST_PREFIX . implode(',', $buildModes);
 
         try {
-            $pdo = $this->pdo;
-            $cached = $pdo->prepare("SELECT value FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key = ? AND expires_at > ?");
-            $cached->execute([$cacheKey, time()]);
-            $row = $cached->fetch();
-            if ($row) {
-                $data = json_decode($row['value'], true);
-                if (is_array($data)) {
-                    return $this->output($response, $data, $request);
-                }
+            $data = $this->mapping->getCachedMapList($cacheKey);
+            if ($data !== null) {
+                return $this->output($response, $data, $request);
             }
         } catch (\Exception $e) {
             \App\Helper\Log::exception($e);
@@ -138,10 +130,7 @@ class MainController extends BaseController
         ];
 
         try {
-            $pdo = $this->pdo;
-            $sql = \App\Service\Database::sqlUpsert(AppConfig::TABLE_CACHE, 'cache_key, value, expires_at', '?, ?, ?');
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute([$cacheKey, json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), time() + 30]);
+            $this->mapping->cacheMapList($cacheKey, $result, 30);
         } catch (\Exception $e) {
         }
 
@@ -444,13 +433,7 @@ class MainController extends BaseController
     {
         $stats = ['total_maps' => 0, 'active_maps' => 0, 'git_platforms' => 0, 'harbor_repos' => 0];
         try {
-            $pdo = $this->pdo;
-            $stats['total_maps'] = (int)$pdo->query("SELECT count(*) FROM " . AppConfig::TABLE_JOB_GIT_MAP)->fetchColumn();
-            $stmt = $pdo->prepare("SELECT count(*) FROM " . AppConfig::TABLE_JOB_GIT_MAP . " WHERE status = ?");
-            $stmt->execute([AppConfig::STATUS_ACTIVE]);
-            $stats['active_maps'] = (int)$stmt->fetchColumn();
-            $stats['git_platforms'] = (int)$pdo->query("SELECT count(DISTINCT git_platform) FROM " . AppConfig::TABLE_JOB_GIT_MAP . " WHERE git_platform IS NOT NULL AND git_platform != ''")->fetchColumn();
-            $stats['harbor_repos'] = (int)$pdo->query("SELECT count(DISTINCT registry_repository) FROM " . AppConfig::TABLE_JOB_GIT_MAP . " WHERE registry_repository IS NOT NULL AND registry_repository != ''")->fetchColumn();
+            $stats = $this->mapping->healthStats();
         } catch (\Exception $e) {
         }
 

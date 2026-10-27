@@ -16,15 +16,24 @@ use App\Service\RegistrySyncService;
 use App\Service\MappingManager;
 use App\Service\PipelineTagService;
 use App\Service\PipelineArtifactService;
+use App\Service\DataBackupService;
 use App\Service\I18nService;
 use App\Service\TokenService;
 use App\Service\ApiTokenService;
 use App\Service\IntegratedServiceRepository;
 use App\Service\AdminAuthService;
+use App\Service\AdminRbacService;
 use App\Service\AdminUserRepository;
 use App\Service\ApiAccessLogRepository;
 use App\Service\LdapService;
 use App\Service\UserIdentityRepository;
+use App\Service\OperationLogRepository;
+use App\Service\RoleRepository;
+use App\Service\PermissionRepository;
+use App\Service\SecurityCheckRepository;
+use App\Service\BuildTagCacheRepository;
+use App\Service\CustomBuildRepository;
+use App\Service\TransactionManager;
 
 use App\Service\Git\ProviderRegistry;
 use App\Service\Git\GitProviderFactory;
@@ -37,11 +46,15 @@ use App\Controller\MainController;
 use App\Controller\GitController;
 use App\Controller\HarborController;
 use App\Controller\RegistryController;
-use App\Controller\AdminController;
 use App\Controller\ServiceContractController;
 use App\Controller\IntegratedServiceController;
 use App\Controller\RbacController;
-use App\Controller\BuildController;
+use App\Controller\Build\BuildOverviewController;
+use App\Controller\Build\PipelineQueryController;
+use App\Controller\Build\BuildActionController;
+use App\Controller\Build\BuildReportController;
+use App\Controller\Build\RegistrySyncController;
+use App\Controller\Build\PipelineTagController;
 use App\Controller\OAuthController;
 use App\Service\OAuthService;
 use App\Service\OidcService;
@@ -180,6 +193,38 @@ return [
         return new AdminUserRepository(
             $c->get(\PDO::class)
         );
+    },
+
+    // 操作审计日志仓储
+    OperationLogRepository::class => function (\Psr\Container\ContainerInterface $c) {
+        return new OperationLogRepository($c->get(\PDO::class));
+    },
+
+    // 角色 / 权限仓储
+    RoleRepository::class => function (\Psr\Container\ContainerInterface $c) {
+        return new RoleRepository($c->get(\PDO::class));
+    },
+
+    PermissionRepository::class => function (\Psr\Container\ContainerInterface $c) {
+        return new PermissionRepository($c->get(\PDO::class));
+    },
+
+    // 安全扫描 / tag 缓存 / 自定义构建仓储
+    SecurityCheckRepository::class => function (\Psr\Container\ContainerInterface $c) {
+        return new SecurityCheckRepository($c->get(\PDO::class));
+    },
+
+    BuildTagCacheRepository::class => function (\Psr\Container\ContainerInterface $c) {
+        return new BuildTagCacheRepository($c->get(\PDO::class));
+    },
+
+    CustomBuildRepository::class => function (\Psr\Container\ContainerInterface $c) {
+        return new CustomBuildRepository($c->get(\PDO::class));
+    },
+
+    // 跨仓储共享 PDO 连接的事务边界
+    TransactionManager::class => function (\Psr\Container\ContainerInterface $c) {
+        return new TransactionManager($c->get(\PDO::class));
     },
 
     // 用户身份源（user_identities）仓储
@@ -456,30 +501,159 @@ return [
             $c->get(Settings::class),
             $c->get(MappingManager::class),
             $c->get(AppSettingRepository::class),
-            $c->get(\PDO::class),
             $c->get(HarborService::class),
             $c->get(TokenService::class)
         );
     },
 
-    // Admin 控制器
-    AdminController::class => function (\Psr\Container\ContainerInterface $c) {
-        return new AdminController(
+    // 后台 RBAC 共享服务
+    AdminRbacService::class => function (\Psr\Container\ContainerInterface $c) {
+        return new AdminRbacService($c->get(\PDO::class));
+    },
+
+    // 后台：认证
+    \App\Controller\Admin\AuthController::class => function (\Psr\Container\ContainerInterface $c) {
+        return new \App\Controller\Admin\AuthController(
             $c->get(I18nService::class),
             $c->get(Settings::class),
-            $c->get(MappingManager::class),
             $c->get(AppSettingRepository::class),
-            $c->get(PlatformVersionRepository::class),
-            $c->get(OAuthClientRepository::class),
-            $c->get(PlatformConnectionRepository::class),
-            $c->get(\PDO::class),
-            $c->get(AdminAuthService::class),
-            $c->get(AdminUserRepository::class),
-            $c->get(AutoDiscover::class),
+            $c->get(OperationLogRepository::class),
             $c->get(TokenService::class),
-            $c->get(ApiTokenService::class),
+            $c->get(AdminAuthService::class),
+            $c->get(AdminUserRepository::class)
+        );
+    },
+
+    // 后台：用户管理
+    \App\Controller\Admin\UserController::class => function (\Psr\Container\ContainerInterface $c) {
+        return new \App\Controller\Admin\UserController(
+            $c->get(I18nService::class),
+            $c->get(Settings::class),
+            $c->get(AppSettingRepository::class),
+            $c->get(OperationLogRepository::class),
+            $c->get(AdminUserRepository::class)
+        );
+    },
+
+    // 后台：角色管理
+    \App\Controller\Admin\RoleController::class => function (\Psr\Container\ContainerInterface $c) {
+        return new \App\Controller\Admin\RoleController(
+            $c->get(I18nService::class),
+            $c->get(Settings::class),
+            $c->get(AppSettingRepository::class),
+            $c->get(OperationLogRepository::class),
+            $c->get(AdminRbacService::class),
+            $c->get(AdminUserRepository::class),
+            $c->get(RoleRepository::class)
+        );
+    },
+
+    // 后台：权限与隐含规则
+    \App\Controller\Admin\PermissionController::class => function (\Psr\Container\ContainerInterface $c) {
+        return new \App\Controller\Admin\PermissionController(
+            $c->get(I18nService::class),
+            $c->get(Settings::class),
+            $c->get(AppSettingRepository::class),
+            $c->get(OperationLogRepository::class),
+            $c->get(AdminRbacService::class),
+            $c->get(PermissionRepository::class)
+        );
+    },
+
+    // 后台：API Token 管理
+    \App\Controller\Admin\ApiTokenController::class => function (\Psr\Container\ContainerInterface $c) {
+        return new \App\Controller\Admin\ApiTokenController(
+            $c->get(I18nService::class),
+            $c->get(Settings::class),
+            $c->get(AppSettingRepository::class),
+            $c->get(OperationLogRepository::class),
+            $c->get(ApiTokenService::class)
+        );
+    },
+
+    // 后台：构建模式与平台级配置
+    \App\Controller\Admin\ConfigController::class => function (\Psr\Container\ContainerInterface $c) {
+        return new \App\Controller\Admin\ConfigController(
+            $c->get(I18nService::class),
+            $c->get(Settings::class),
+            $c->get(AppSettingRepository::class),
+            $c->get(OperationLogRepository::class),
+            $c->get(MappingManager::class)
+        );
+    },
+
+    // 后台：平台 API 版本
+    \App\Controller\Admin\VersionController::class => function (\Psr\Container\ContainerInterface $c) {
+        return new \App\Controller\Admin\VersionController(
+            $c->get(I18nService::class),
+            $c->get(Settings::class),
+            $c->get(AppSettingRepository::class),
+            $c->get(OperationLogRepository::class),
+            $c->get(PlatformVersionRepository::class),
             $c->get(HarborService::class),
-            $c->get(JenkinsService::class),
+            $c->get(JenkinsService::class)
+        );
+    },
+
+    // 后台：各平台连接配置
+    \App\Controller\Admin\ConnectionController::class => function (\Psr\Container\ContainerInterface $c) {
+        return new \App\Controller\Admin\ConnectionController(
+            $c->get(I18nService::class),
+            $c->get(Settings::class),
+            $c->get(AppSettingRepository::class),
+            $c->get(OperationLogRepository::class),
+            $c->get(PlatformConnectionRepository::class),
+            $c->get(MappingManager::class),
+            $c->get(TransactionManager::class)
+        );
+    },
+
+    // 后台：OIDC / OAuth 配置
+    \App\Controller\Admin\OidcController::class => function (\Psr\Container\ContainerInterface $c) {
+        return new \App\Controller\Admin\OidcController(
+            $c->get(I18nService::class),
+            $c->get(Settings::class),
+            $c->get(AppSettingRepository::class),
+            $c->get(OperationLogRepository::class),
+            $c->get(OAuthClientRepository::class),
+            $c->get(TransactionManager::class)
+        );
+    },
+
+    // 后台：CI/镜像映射与自动发现
+    \App\Controller\Admin\MappingController::class => function (\Psr\Container\ContainerInterface $c) {
+        return new \App\Controller\Admin\MappingController(
+            $c->get(I18nService::class),
+            $c->get(Settings::class),
+            $c->get(AppSettingRepository::class),
+            $c->get(OperationLogRepository::class),
+            $c->get(MappingManager::class),
+            $c->get(AutoDiscover::class)
+        );
+    },
+
+    // 后台：审计与构建日志
+    \App\Controller\Admin\LogController::class => function (\Psr\Container\ContainerInterface $c) {
+        return new \App\Controller\Admin\LogController(
+            $c->get(I18nService::class),
+            $c->get(Settings::class),
+            $c->get(AppSettingRepository::class),
+            $c->get(OperationLogRepository::class),
+            $c->get(ApiAccessLogRepository::class),
+            $c->get(SecurityCheckRepository::class),
+            $c->get(CustomBuildRepository::class)
+        );
+    },
+
+    // 后台：系统运维（系统信息 / 迁移 / 备份 / tag 任务）
+    \App\Controller\Admin\SystemController::class => function (\Psr\Container\ContainerInterface $c) {
+        return new \App\Controller\Admin\SystemController(
+            $c->get(I18nService::class),
+            $c->get(Settings::class),
+            $c->get(AppSettingRepository::class),
+            $c->get(OperationLogRepository::class),
+            $c->get(DataBackupService::class),
+            $c->get(PipelineTagService::class),
             $c->get('registryProvider')
         );
     },
@@ -488,10 +662,11 @@ return [
     IntegratedServiceController::class => function (\Psr\Container\ContainerInterface $c) {
         return new IntegratedServiceController(
             $c->get(I18nService::class),
-            $c->get(\PDO::class),
+            $c->get(OperationLogRepository::class),
             $c->get(IntegratedServiceRepository::class),
             $c->get(ApiTokenService::class),
-            $c->get(Settings::class)
+            $c->get(Settings::class),
+            $c->get(TransactionManager::class)
         );
     },
 
@@ -514,20 +689,82 @@ return [
         );
     },
 
-    // Build 控制器
-    BuildController::class => function (\Psr\Container\ContainerInterface $c) {
-        return new BuildController(
+    // Build 概览（项目 / tag 列表 / 构建模式）
+    BuildOverviewController::class => function (\Psr\Container\ContainerInterface $c) {
+        return new BuildOverviewController(
             $c->get(I18nService::class),
-            $c->get(BuildProviderRegistry::class),
             $c->get(Settings::class),
             $c->get(MappingManager::class),
+            $c->get(OperationLogRepository::class),
+            $c->get(BuildProviderRegistry::class),
             $c->get(AppSettingRepository::class),
-            $c->get(\PDO::class),
+            $c->get(PipelineArtifactService::class)
+        );
+    },
+
+    // Build 查询（流水线 / 日志 / 变量 / 分支）
+    PipelineQueryController::class => function (\Psr\Container\ContainerInterface $c) {
+        return new PipelineQueryController(
+            $c->get(I18nService::class),
+            $c->get(Settings::class),
+            $c->get(MappingManager::class),
+            $c->get(OperationLogRepository::class),
+            $c->get(BuildProviderRegistry::class),
+            $c->get(SecurityCheckRepository::class),
+            $c->get(BuildTagCacheRepository::class)
+        );
+    },
+
+    // Build 操作（触发 / 重试 / 取消）
+    BuildActionController::class => function (\Psr\Container\ContainerInterface $c) {
+        return new BuildActionController(
+            $c->get(I18nService::class),
+            $c->get(Settings::class),
+            $c->get(MappingManager::class),
+            $c->get(OperationLogRepository::class),
+            $c->get(BuildProviderRegistry::class)
+        );
+    },
+
+    // Build 结果上报（commit status / custom_push 终态）
+    BuildReportController::class => function (\Psr\Container\ContainerInterface $c) {
+        return new BuildReportController(
+            $c->get(I18nService::class),
+            $c->get(Settings::class),
+            $c->get(MappingManager::class),
+            $c->get(OperationLogRepository::class),
+            $c->get(BuildProviderRegistry::class),
+            $c->get(ProviderRegistry::class),
+            $c->get('registryProvider'),
+            $c->get(PipelineArtifactService::class),
+            $c->get(SecurityCheckRepository::class),
+            $c->get(TransactionManager::class)
+        );
+    },
+
+    // Build 镜像仓库同步（registry-sync / harbor-scan）
+    RegistrySyncController::class => function (\Psr\Container\ContainerInterface $c) {
+        return new RegistrySyncController(
+            $c->get(I18nService::class),
+            $c->get(Settings::class),
+            $c->get(MappingManager::class),
+            $c->get(OperationLogRepository::class),
+            $c->get(RegistrySyncService::class)
+        );
+    },
+
+    // Build tag 查询与日志兜底懒解析
+    PipelineTagController::class => function (\Psr\Container\ContainerInterface $c) {
+        return new PipelineTagController(
+            $c->get(I18nService::class),
+            $c->get(Settings::class),
+            $c->get(MappingManager::class),
+            $c->get(OperationLogRepository::class),
+            $c->get(BuildProviderRegistry::class),
+            $c->get(AppSettingRepository::class),
             $c->get(PipelineTagService::class),
             $c->get(PipelineArtifactService::class),
-            $c->get('registryProvider'),
-            $c->get(ProviderRegistry::class),
-            $c->get(RegistrySyncService::class)
+            $c->get(BuildTagCacheRepository::class)
         );
     },
 
@@ -671,6 +908,10 @@ return [
         return new PipelineTagService($c->get(\PDO::class), $c->get('registryProvider'));
     },
 
+    DataBackupService::class => function (\Psr\Container\ContainerInterface $c) {
+        return new DataBackupService($c->get(\PDO::class));
+    },
+
     RegistrySyncService::class => function (\Psr\Container\ContainerInterface $c) {
         return new RegistrySyncService(
             $c->get(I18nService::class),
@@ -729,7 +970,7 @@ return [
     OAuthController::class => function (\Psr\Container\ContainerInterface $c) {
         return new OAuthController(
             $c->get(I18nService::class),
-            $c->get(\PDO::class),
+            $c->get(OperationLogRepository::class),
             $c->get(OAuthService::class),
             $c->get(AdminAuthService::class),
             $c->get(AdminUserRepository::class),

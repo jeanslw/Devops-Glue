@@ -237,7 +237,7 @@ class DockerRegistryProvider implements RegistryProviderInterface
      * 项目列表：由 /v2/_catalog 的仓库名首段聚合（registry:2 自身没有 project 概念）。
      *
      * 单段（根级）仓库不计入：平台侧 registry_repository 强制“至少两段 OCI 仓库名”
-     * （见 BuildController::isValidRegistryRepo），这类仓库进不了映射表，
+     * （见 BuildReportController::isValidRegistryRepo），这类仓库进不了映射表，
      * 若当成项目暴露，调用方会拿到一个查不到任何仓库的伪项目。
      *
      * @return array<int|string,mixed>
