@@ -13,7 +13,7 @@ namespace App\Config;
  */
 final class AppConfig
 {
-    public const APP_VERSION = '2.11.0';
+    public const APP_VERSION = '2.11.1';
 
 
     // ── 表名常量 ──
