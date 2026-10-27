@@ -21,6 +21,7 @@ use App\Service\TokenService;
 use App\Service\ApiTokenService;
 use App\Service\IntegratedServiceRepository;
 use App\Service\AdminAuthService;
+use App\Service\AdminRbacService;
 use App\Service\AdminUserRepository;
 use App\Service\ApiAccessLogRepository;
 use App\Service\LdapService;
@@ -462,6 +463,11 @@ return [
         );
     },
 
+    // 后台 RBAC 共享服务
+    AdminRbacService::class => function (\Psr\Container\ContainerInterface $c) {
+        return new AdminRbacService($c->get(\PDO::class));
+    },
+
     // Admin 控制器
     AdminController::class => function (\Psr\Container\ContainerInterface $c) {
         return new AdminController(
@@ -475,6 +481,7 @@ return [
             $c->get(PlatformConnectionRepository::class),
             $c->get(AdminAuthService::class),
             $c->get(AdminUserRepository::class),
+            $c->get(AdminRbacService::class),
             $c->get(AutoDiscover::class),
             $c->get(TokenService::class),
             $c->get(ApiTokenService::class),
