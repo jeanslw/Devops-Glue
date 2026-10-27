@@ -2,6 +2,7 @@
 
 namespace App\Controller;
 
+use App\Controller\Admin\BaseAdminController;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Config\AppConfig;
@@ -11,32 +12,24 @@ use App\Service\AdminAuthService;
 use App\Service\AdminUserRepository;
 use App\Service\ApiAccessLogRepository;
 use App\Service\ApiTokenService;
-use App\Service\AppSettingRepository;
 use App\Service\AutoDiscover;
 use App\Service\HarborService;
 use App\Service\Registry\RegistryProviderInterface;
-use App\Service\I18nService;
 use App\Service\JenkinsService;
 use App\Service\DeployLogRepository;
 use App\Service\MappingManager;
 use App\Service\OAuthClientRepository;
-use App\Service\OperationLogRepository;
 use App\Service\PlatformConnectionRepository;
 use App\Service\PasswordHasher;
 use App\Service\PlatformVersionRepository;
-use App\Service\Settings;
 use App\Service\TokenService;
-use App\Helper\ClientIp;
 
-class AdminController extends BaseController
+class AdminController extends BaseAdminController
 {
-    private Settings $config;
     private MappingManager $mapping;
-    private AppSettingRepository $appSettings;
     private PlatformVersionRepository $platformVersions;
     private OAuthClientRepository $oauthClients;
     private PlatformConnectionRepository $platformConnections;
-    private \PDO $pdo;
     private ?AutoDiscover $autoDiscover;
     private ?TokenService $tokenService = null;
     private ?ApiTokenService $apiTokenService = null;
@@ -45,19 +38,18 @@ class AdminController extends BaseController
     private ?HarborService $harbor;
     private ?RegistryProviderInterface $registryProvider;
     private ?JenkinsService $jenkins = null;
-    private ?OperationLogRepository $operationLog = null;
     private ?DeployLogRepository $deployLog = null;
     private ?ApiAccessLogRepository $apiAccessLog = null;
 
     public function __construct(
-        I18nService $i18n,
-        Settings $config,
+        \App\Service\I18nService $i18n,
+        \App\Service\Settings $config,
+        \PDO $pdo,
+        \App\Service\AppSettingRepository $appSettings,
         MappingManager $mapping,
-        AppSettingRepository $appSettings,
         PlatformVersionRepository $platformVersions,
         OAuthClientRepository $oauthClients,
         PlatformConnectionRepository $platformConnections,
-        \PDO $pdo,
         AdminAuthService $adminAuthService,
         AdminUserRepository $adminUserRepository,
         ?AutoDiscover $autoDiscover = null,
@@ -67,14 +59,11 @@ class AdminController extends BaseController
         ?JenkinsService $jenkins = null,
         ?RegistryProviderInterface $registryProvider = null
     ) {
-        parent::__construct($i18n);
-        $this->config             = $config;
+        parent::__construct($i18n, $config, $pdo, $appSettings);
         $this->mapping            = $mapping;
-        $this->appSettings        = $appSettings;
         $this->platformVersions   = $platformVersions;
         $this->oauthClients       = $oauthClients;
         $this->platformConnections = $platformConnections;
-        $this->pdo                = $pdo;
         $this->autoDiscover       = $autoDiscover;
         $this->tokenService       = $tokenService;
         $this->apiTokenService    = $apiTokenService;
@@ -83,15 +72,6 @@ class AdminController extends BaseController
         $this->harbor             = $harbor;
         $this->jenkins            = $jenkins;
         $this->registryProvider   = $registryProvider;
-    }
-
-    /** 操作日志仓储（懒加载，写路径不阻塞主流程） */
-    private function opLog(): OperationLogRepository
-    {
-        if ($this->operationLog === null) {
-            $this->operationLog = new OperationLogRepository($this->pdo);
-        }
-        return $this->operationLog;
     }
 
     /** 部署日志仓储（懒加载，经 CD 只读端点拉取部署记录） */
@@ -295,16 +275,6 @@ class AdminController extends BaseController
             'permissions' => $perms,
             'must_change_password' => !empty($result['must_change_password']),
         ], $request);
-    }
-
-    /**
-     * 客户端 IP。
-     * 默认只信 REMOTE_ADDR；仅在配置 TRUSTED_PROXY_HOPS>0 且对端为内网反代时，
-     * 才从 X-Forwarded-For 右端取真实 IP，防止伪造 XFF 绕过登录失败锁定。
-     */
-    private function clientIp(Request $request): string
-    {
-        return ClientIp::resolve($request->getServerParams(), $this->config->getTrustedProxyHops());
     }
 
     /**
@@ -2553,17 +2523,6 @@ class AdminController extends BaseController
     // ────────────────────────── helpers ──────────────────────────
 
     /**
-     * 仅 super_admin 可访问（API Token 管理专属，独立于 RBAC 权限体系）
-     */
-    private function requireSuperAdmin(Response $response): ?Response
-    {
-        if ($this->currentRole !== AppConfig::ROLE_SUPER_ADMIN) {
-            return $this->jsonError($response, 'api_token.super_admin_only', 403);
-        }
-        return null;
-    }
-
-    /**
      * 展开权限列表：根据 implied_rules 表自动添加隐含权限
      *
      * @param array<array-key, string> $perms
@@ -2686,62 +2645,5 @@ class AdminController extends BaseController
     private function isTargetAdmin(string $role): bool
     {
         return $role === AppConfig::ROLE_ADMIN || $role === AppConfig::ROLE_SUPER_ADMIN;
-    }
-
-
-    /**
-     * @param array<string,mixed> $body
-     *
-     * @return array<string,mixed>
-     */
-    private function buildEntry(array $body): array
-    {
-        $entry = [];
-        $fields = ['job_name', 'git_platform', 'build_provider', 'git_remote', 'project_id', 'web_url', 'current_path', 'registry_repository', 'api_version', 'status'];
-        foreach ($fields as $f) {
-            if (array_key_exists($f, $body)) {
-                $val = $body[$f];
-                if ($f === 'build_provider' && trim((string) $val) === '') {
-                    throw new ApiException('build_provider（构建源）不能为空，请指定该映射使用的 CI', 400);
-                }
-                if ($f === 'project_id' && ($val === '' || $val === null)) {
-                    $entry[$f] = null;
-                } elseif ($f === 'project_id' && is_numeric($val)) {
-                    $entry[$f] = (int) $val;
-                } else {
-                    $entry[$f] = $val;
-                }
-            }
-        }
-        if (!isset($entry['job_name'])) {
-            $entry['job_name'] = '';
-        }
-
-        foreach (['job_name', 'current_path', 'git_remote', 'registry_repository', 'web_url'] as $trimKey) {
-            if (isset($entry[$trimKey]) && is_string($entry[$trimKey])) {
-                $entry[$trimKey] = trim($entry[$trimKey]);
-            }
-        }
-
-        if (
-            ($entry['build_provider'] ?? '') === AppConfig::PROVIDER_CUSTOM_PUSH
-            && !$this->appSettings->getCustomPushEnabled()
-            && ($entry['status'] ?? AppConfig::STATUS_ACTIVE) === AppConfig::STATUS_ACTIVE
-        ) {
-            $entry['status'] = AppConfig::STATUS_PENDING;
-        }
-        return $entry;
-    }
-
-    /**
-     * 清除拓扑图缓存，确保 mapList 返回最新数据
-     */
-    private function invalidateTopologyCache(): void
-    {
-        try {
-            $pdo = $this->pdo;
-            $pdo->prepare("DELETE FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key LIKE ?")->execute([AppConfig::CACHE_KEY_MAP_LIST_PREFIX . '%']);
-        } catch (\Exception $e) {
-        }
     }
 }
