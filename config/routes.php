@@ -19,6 +19,7 @@ use App\Controller\Admin\ConnectionController;
 use App\Controller\Admin\MappingController;
 use App\Controller\Admin\LogController;
 use App\Controller\Admin\OidcController;
+use App\Controller\Admin\SystemController;
 use App\Controller\ServiceContractController;
 use App\Controller\IntegratedServiceController;
 use App\Controller\RbacController;
@@ -108,12 +109,12 @@ $app->group('/api', function (RouteCollectorProxy $api) {
             $auth->map(['GET'], '/platform_connections', [ConnectionController::class, 'platformConnections']);
             $auth->map(['PUT'], '/platform_connections', [ConnectionController::class, 'updatePlatformConnections']);
             
-            $auth->map(['POST'], '/tag_cleanup', [AdminController::class, 'runTagCleanup']);
-            $auth->map(['POST'], '/tag_backfill', [AdminController::class, 'runTagBackfill']);
-            $auth->map(['GET'], '/system_info', [AdminController::class, 'systemInfo']);
-            $auth->map(['POST'], '/migrate', [AdminController::class, 'migrateSchema']);
-            $auth->map(['POST'], '/backup', [AdminController::class, 'backupDatabase']);
-            $auth->map(['GET'], '/backups', [AdminController::class, 'listBackups']);
+            $auth->map(['POST'], '/tag_cleanup', [SystemController::class, 'runTagCleanup']);
+            $auth->map(['POST'], '/tag_backfill', [SystemController::class, 'runTagBackfill']);
+            $auth->map(['GET'], '/system_info', [SystemController::class, 'systemInfo']);
+            $auth->map(['POST'], '/migrate', [SystemController::class, 'migrateSchema']);
+            $auth->map(['POST'], '/backup', [SystemController::class, 'backupDatabase']);
+            $auth->map(['GET'], '/backups', [SystemController::class, 'listBackups']);
             $auth->map(['GET'], '/api_tokens/scopes', [ApiTokenController::class, 'apiTokenScopes']);
             $auth->map(['GET'], '/api_tokens', [ApiTokenController::class, 'apiTokenList']);
             $auth->map(['POST'], '/api_tokens', [ApiTokenController::class, 'apiTokenCreate']);

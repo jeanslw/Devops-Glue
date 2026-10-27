@@ -16,6 +16,7 @@ use App\Service\RegistrySyncService;
 use App\Service\MappingManager;
 use App\Service\PipelineTagService;
 use App\Service\PipelineArtifactService;
+use App\Service\DataBackupService;
 use App\Service\I18nService;
 use App\Service\TokenService;
 use App\Service\ApiTokenService;
@@ -595,14 +596,26 @@ return [
         );
     },
 
+    // 后台：系统运维（系统信息 / 迁移 / 备份 / tag 任务）
+    \App\Controller\Admin\SystemController::class => function (\Psr\Container\ContainerInterface $c) {
+        return new \App\Controller\Admin\SystemController(
+            $c->get(I18nService::class),
+            $c->get(Settings::class),
+            $c->get(\PDO::class),
+            $c->get(AppSettingRepository::class),
+            $c->get(DataBackupService::class),
+            $c->get(PipelineTagService::class),
+            $c->get('registryProvider')
+        );
+    },
+
     // Admin 控制器
     AdminController::class => function (\Psr\Container\ContainerInterface $c) {
         return new AdminController(
             $c->get(I18nService::class),
             $c->get(Settings::class),
             $c->get(\PDO::class),
-            $c->get(AppSettingRepository::class),
-            $c->get('registryProvider')
+            $c->get(AppSettingRepository::class)
         );
     },
 
@@ -791,6 +804,10 @@ return [
 
     PipelineTagService::class => function (\Psr\Container\ContainerInterface $c) {
         return new PipelineTagService($c->get(\PDO::class), $c->get('registryProvider'));
+    },
+
+    DataBackupService::class => function (\Psr\Container\ContainerInterface $c) {
+        return new DataBackupService($c->get(\PDO::class));
     },
 
     RegistrySyncService::class => function (\Psr\Container\ContainerInterface $c) {
