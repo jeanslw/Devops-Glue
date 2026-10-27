@@ -133,14 +133,15 @@ When a build produces an image and pushes it to an image registry (Harbor or a s
 
 Pick the endpoint by registry type:
 
-| Endpoint | Registry type | Reads the scan report |
-|---|---|---|
-| `POST /api/build/{path}/scan-sync` | Harbor | Yes |
-| `POST /api/build/{path}/registry-sync` | Harbor, registry:2 | No |
+| Endpoint | Registry type | Reads the scan report | Audit check_type |
+|---|---|---|---|
+| `POST /api/build/{path}/scan-sync` | Harbor | Yes | `harbor-scan` |
+| `POST /api/build/{path}/registry-sync` | Harbor, registry:2 | No | `registry-sync` |
 
 > **Key points**
 > - This depends on correct mappings (Ch. 2): only when a job is linked to both a Git repo and an image registry does write-back have a target; `registry_repository` is a name with at least two segments (e.g. `project/repo`, `team/project/image`).
 > - Both endpoints require the **API Token scope** `build.report`; `scan-sync` additionally needs scanning enabled on the registry side when reading the scan report.
+> - The two endpoints share one write-back implementation and differ only in whether the scan report is read; the audit record's `check_type` is set by the endpoint you call (`scan-sync` → `harbor-scan`, `registry-sync` → `registry-sync`). Use `registry-sync` for `registry:2` — calling `scan-sync` still writes back, but the audit record is then labelled `harbor-scan`.
 
 ### 3.3 Enabling Custom_Push
 
