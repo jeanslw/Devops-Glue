@@ -2,29 +2,16 @@
 /**
  * 全库数据备份 CLI（随镜像发布，由 supervisord 的 db-backup 循环调度）
  *
- * 复用 Web 侧 DataBackupService，与后台手动备份走同一套逻辑：
- *   - 启用 CD（共享库存在 cd_* 表）时产出两份 zip：
- *       devops-glue_<driver>_<stamp>.zip = CI 应用表（mode=app）
- *       devops-cd_<driver>_<stamp>.zip  = CD 系统表（mode=cd）
- *   - 未启用 CD 时只产出一份（devops-glue_*.zip）。
- *   两份各自独立、可独立恢复，恢复 Glue 不会误把 cd 数据写入应用表。
+ * 启用 CD（共享库存在 cd_* 表）时产出 app / cd 两份 zip，未启用 CD 时只产出一份。
  *
  * 用法：
- *   php cli/backup-db.php           受 DB_BACKUP_ENABLED 门控（默认关：打印跳过并退出 0）
- *   php cli/backup-db.php --force   忽略门控强制执行一次（手工备份用）
+ *   php cli/backup-db.php           受 DB_BACKUP_ENABLED 门控（默认跳过并退出 0）
+ *   php cli/backup-db.php --force   忽略门控强制执行一次
  *
- * 行为：
- *   - 应用表 = AppConfig 全部 TABLE_* 常量；cd 表 = cd_ 前缀。
- *   - 仍无条件排除 cache（会话 token 是易失凭证，落盘等于多出一份）与
- *     ci_platform_versions（Git API 派生缓存，恢复后自动重拉）。
- *   - 各自滚动保留最新 10 份。
- *   - 退出码：0 = 完成或按开关跳过；1 = 致命错误（库连不上 / 写盘失败）。
- *
- * 恢复（bin/restore.php 已支持 zip 与 .sql 两种输入）：
- *   php bin/restore.php <devops-glue_*.zip> --yes         恢复应用表
- *   php bin/restore.php <devops-cd_*.zip> --yes --cd      恢复 cd 表
+ * 各自滚动保留最新 10 份。
+ * 退出码：0 = 完成或按开关跳过；1 = 致命错误（库连不上 / 写盘失败）。
  */
-require_once __DIR__ . '/backup-lib.php'; // 内含 backupLoadEnv()，保证 $_ENV['BACKUP_DIR'] 就绪
+require_once __DIR__ . '/backup-lib.php';
 
 use App\Service\DataBackupService;
 use App\Service\OperationLogRepository;
@@ -47,7 +34,6 @@ try {
 
     if ($warning !== '') {
         echo date('Y-m-d H:i:s') . " ⚠ 备份权限告警: {$warning}\n";
-        // cron 无前端，写操作日志是 Web 上可见的唯一途径（后台操作日志面板可查）
         (new OperationLogRepository($pdo))->record(
             'system',
             'backup_database',

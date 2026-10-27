@@ -1,29 +1,11 @@
 <?php
 /**
  * 数据库迁移 CLI（建缺失表 + 存量库幂等补列 + 索引 + RBAC/管理员种子 + 自检 + 标记 schema 当前）。
- *
- * 与 Web 后台系统信息页数据库卡片里的同步库结构按钮等价（都走 Database::migrateNow()），区别在于：
- *   - 不看 DB_AUTO_MIGRATE：即使设为 false（手动建库模式）也照常执行 DDL；
- *   - 供发布流水线调用（K8s Job / initContainer、Helm pre-upgrade hook、Compose 一次性服务），
- *     可用有 DDL 权限的账号执行，应用运行账号保持只读 DML（最小权限）。
- *
- * 需要它的原因：DB_AUTO_MIGRATE=false 时应用不跑 DDL，而 database/*.sql 只有
- * CREATE TABLE IF NOT EXISTS（对存量表是空操作），因此存量库的新增列只能靠本命令或后台
- * 按钮的 ensureTables() 补齐。生产上应用账号没有 DDL 权限时，Web 按钮会因权限不足失败，
- * 本命令用高权限账号执行即可。
- *
  * 用法：
- *   php cli/migrate.php              执行迁移（写库）
+ *   php cli/migrate.php              执行迁移
  *   php cli/migrate.php --dry-run    只读预检：列出将补的表与列以及版本状态，不建表、不写数据
  *                                    （SQLite 下若库文件不存在，连接会创建一个空文件，但不会建表或写数据）
  *   php cli/migrate.php -h|--help    显示本帮助
- *
- * 审计：每次执行（成功与失败）都会写一条操作日志（`action=migrate_schema`、操作人 `system`，
- * 含 `from` 与 `to` 两个版本），后台日志中心的操作日志可查；CLI 无前端，这是它在 Web 上可见的唯一途径。
- *
- * 自检：每次执行前先做一次代码自检（纯反射，与库无关）：`AppConfig` 的表常量与
- * `Database::schemaTables()` 探测清单不一致时打印警告（STDERR），列出后台数据表清单与探针会漏报的表。
- * 它不影响退出码：这是代码内的表清单问题，不代表库需要迁移。
  *
  * 退出码：
  *   0 = 迁移完成；或 --dry-run 判定无需迁移
@@ -54,10 +36,6 @@ foreach (array_slice($_SERVER['argv'] ?? [], 1) as $arg) {
     }
 }
 
-// ── 代码自检（纯反射，与库无关）：探测清单漂移时警告，但不改退出码 ──
-// 漂移意味着后台数据表清单与 /healthz 的 tables_missing 会漏报表（v2.8.9 的 ci_api_access_logs 即此例）。
-// 让流水线因一个表清单笔误失败，会把一次小修复拖成一次发布事故；这类检查由 CI 单测把关
-// （DatabaseBootstrapTest::testSchemaProbeListCoversEveryAppOwnedTable）。
 $drift = Database::schemaListDrift();
 if (!$drift['ok']) {
     fwrite(
@@ -68,12 +46,11 @@ if (!$drift['ok']) {
     );
 }
 
-// ── dry-run：只读预检（connect() 只建连，不 bootstrap、不建表、不补种子）──
 if ($dryRun) {
     try {
         $pdo     = Database::connect();
-        $status  = Database::schemaStatus();       // 只读：驱动 / 版本标记 / 各核心表存在性
-        $pending = Database::pendingChanges($pdo); // 只读：将补的表与列（与 ensureTables() 同源）
+        $status  = Database::schemaStatus();      
+        $pending = Database::pendingChanges($pdo); 
     } catch (\Throwable $e) {
         fwrite(STDERR, "错误：预检失败（无法连接或读取库结构）: {$e->getMessage()}\n");
         exit(1);
@@ -131,8 +108,6 @@ if ($dryRun) {
     exit(2);
 }
 
-// ── 正式迁移 ──
-// 迁移前先读迁移前的版本号，供操作日志记录 from 与 to；connect() 只建连，不建表、不补种子。
 try {
     $pdo    = Database::connect();
     $before = Database::schemaStatus()['schema_version'];
@@ -141,8 +116,6 @@ try {
     exit(1);
 }
 
-// 写操作日志（action=migrate_schema，操作人 system）：CLI 没有前端，这是后台日志中心的操作日志
-// 中唯一能看到迁移何时被谁执行、从哪个版本到哪个版本的途径；仓储自身吞异常，不影响迁移结果。
 $recordMigration = static function (string $result, array $detail) use ($pdo, $before): void {
     (new OperationLogRepository($pdo))->record(
         'system',
@@ -155,7 +128,6 @@ $recordMigration = static function (string $result, array $detail) use ($pdo, $b
     );
 };
 
-// 逐表建表结果：让操作者一眼看到哪张表建成功、哪张表失败。
 $printTableLog = static function (array $log): void {
     if ($log === []) {
         echo "建表过程：无（表均已存在，无需 CREATE）\n";
@@ -171,9 +143,7 @@ $printTableLog = static function (array $log): void {
 };
 
 try {
-    // 直接迁移：migrateNow() 自带连接（不依赖 bootstrap），因此空库 / 漏跑建表脚本
-    // 也能一次建全，不会在补种子阶段先抛异常。
-    $status = Database::migrateNow(); // 建表 + 补列 + 种子 + 自检 + 标记 schema 当前
+    $status = Database::migrateNow(); 
 } catch (\Throwable $e) {
     fwrite(STDERR, "错误：数据库迁移失败: {$e->getMessage()}\n");
     $printTableLog(Database::lastTableBuildLog());
