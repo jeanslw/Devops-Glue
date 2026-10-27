@@ -56,7 +56,7 @@ class BuildController extends BaseController
         return $this->operationLog;
     }
 
-    /** 客户端 IP（与 AdminController 一致：TRUSTED_PROXY_HOPS 门控） */
+    /** 客户端 IP（与 BaseAdminController::clientIp 一致：TRUSTED_PROXY_HOPS 门控） */
     private function clientIp(Request $request): string
     {
         return ClientIp::resolve($request->getServerParams(), $this->config->getTrustedProxyHops());

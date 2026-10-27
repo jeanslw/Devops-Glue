@@ -381,7 +381,7 @@ class OAuthController extends BaseController
     }
 
     /**
-     * 客户端 IP（与 AdminController::clientIp 共用 App\Helper\ClientIp）。
+     * 客户端 IP（与 BaseAdminController::clientIp 共用 App\Helper\ClientIp）。
      * 默认只信 REMOTE_ADDR；TRUSTED_PROXY_HOPS>0 且对端为内网反代时才从 XFF 右端取数，
      * 避免伪造 XFF 绕过登录限流。
      */
