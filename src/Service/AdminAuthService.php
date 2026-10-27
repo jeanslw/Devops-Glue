@@ -234,4 +234,12 @@ class AdminAuthService
             return false;
         }
     }
+
+    /** 清除所有登录失败限流计数（super_admin），返回清除行数。 */
+    public function clearAllLoginLocks(): int
+    {
+        $stmt = $this->pdo->prepare("DELETE FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key LIKE ?");
+        $stmt->execute([AppConfig::CACHE_KEY_LOGIN_FAIL_PREFIX . '%']);
+        return $stmt->rowCount();
+    }
 }

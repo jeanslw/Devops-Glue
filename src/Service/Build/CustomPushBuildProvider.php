@@ -299,7 +299,7 @@ class CustomPushBuildProvider implements BuildProviderInterface
     /**
      * 一次性上报构建终态结果（success/failed/aborted），没有 pending/running 中间态。
      *
-     * $body 由 BuildController::report 透传，包含：
+     * $body 由 BuildReportController::report 透传，包含：
      *   pipeline_iid（必填）、status（必填，终态）、finished_at（必填）、
      *   started_at / ref / sha / exit_code / log_url / web_url（可选），
      *   以及用户自定义构建参数（排除 REPORT_FIELDS 后写入 variables_json）。

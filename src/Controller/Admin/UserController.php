@@ -22,11 +22,11 @@ class UserController extends BaseAdminController
     public function __construct(
         \App\Service\I18nService $i18n,
         \App\Service\Settings $config,
-        \PDO $pdo,
         \App\Service\AppSettingRepository $appSettings,
+        \App\Service\OperationLogRepository $operationLog,
         AdminUserRepository $adminUserRepository
     ) {
-        parent::__construct($i18n, $config, $pdo, $appSettings);
+        parent::__construct($i18n, $config, $appSettings, $operationLog);
         $this->adminUserRepository = $adminUserRepository;
     }
 

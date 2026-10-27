@@ -20,11 +20,11 @@ class ConfigController extends BaseAdminController
     public function __construct(
         \App\Service\I18nService $i18n,
         \App\Service\Settings $config,
-        \PDO $pdo,
         \App\Service\AppSettingRepository $appSettings,
+        \App\Service\OperationLogRepository $operationLog,
         MappingManager $mapping
     ) {
-        parent::__construct($i18n, $config, $pdo, $appSettings);
+        parent::__construct($i18n, $config, $appSettings, $operationLog);
         $this->mapping = $mapping;
     }
 
@@ -135,7 +135,7 @@ class ConfigController extends BaseAdminController
                 }
                 if ($changed) {
                     $this->mapping->saveMaps($maps);
-                    $this->invalidateTopologyCache();
+                    $this->mapping->invalidateMapListCache();
                 }
             }
 
@@ -153,7 +153,7 @@ class ConfigController extends BaseAdminController
                 }
                 if ($changed) {
                     $this->mapping->saveMaps($maps);
-                    $this->invalidateTopologyCache();
+                    $this->mapping->invalidateMapListCache();
                 }
             }
 

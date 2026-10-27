@@ -18,42 +18,31 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 /**
  * 所有 Admin 子控制器的共同骨架。
  *
- * 提供跨控制器复用的 5 个私有辅助方法（见 AdminController 原实现），
- * 以及 4 个构造依赖（I18nService 继承自 BaseController，Settings / PDO / AppSettingRepository
- * 由本类注入，子类构造时按需声明额外依赖）。
- *
- * 构造参数语义（子类必须从构造函数传入，不在 container.php 直接 new）：
- *   - I18nService         继承自 BaseController
- *   - Settings            所有 Admin 控制器都可能读 trusted_proxy_hops / build_mode 等
- *   - PDO                 opLog 懒加载 + invalidateTopologyCache
- *   - AppSettingRepository buildEntry 读 getCustomPushEnabled
+ * 提供跨控制器复用的辅助方法，以及 4 个构造依赖（I18nService 继承自 BaseController，
+ * Settings / AppSettingRepository / OperationLogRepository 由本类注入）。
  */
 abstract class BaseAdminController extends BaseController
 {
     protected Settings $config;
-    protected \PDO $pdo;
     protected AppSettingRepository $appSettings;
+    protected OperationLogRepository $operationLog;
 
     public function __construct(
         I18nService $i18n,
         Settings $config,
-        \PDO $pdo,
-        AppSettingRepository $appSettings
+        AppSettingRepository $appSettings,
+        OperationLogRepository $operationLog
     ) {
         parent::__construct($i18n);
         $this->config      = $config;
-        $this->pdo         = $pdo;
         $this->appSettings = $appSettings;
+        $this->operationLog = $operationLog;
     }
 
-    /** 操作日志仓储（懒加载，写路径不阻塞主流程） */
+    /** 操作日志仓储 */
     protected function opLog(): OperationLogRepository
     {
-        static $repo = null;
-        if ($repo === null) {
-            $repo = new OperationLogRepository($this->pdo);
-        }
-        return $repo;
+        return $this->operationLog;
     }
 
     /** 取客户端真实 IP：REMOTE_ADDR 或 X-Forwarded-For 右端 */
@@ -114,15 +103,5 @@ abstract class BaseAdminController extends BaseController
             $entry['status'] = AppConfig::STATUS_PENDING;
         }
         return $entry;
-    }
-
-    /** 清除拓扑图缓存 */
-    protected function invalidateTopologyCache(): void
-    {
-        try {
-            $this->pdo->prepare("DELETE FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key LIKE ?")
-                ->execute([AppConfig::CACHE_KEY_MAP_LIST_PREFIX . '%']);
-        } catch (\Exception $e) {
-        }
     }
 }

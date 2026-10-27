@@ -204,4 +204,32 @@ class TokenService
         } catch (\Exception $e) {
         }
     }
+
+    /** 登录成功后写 cache token（先清过期同前缀，再 upsert）。失败向上抛出。 */
+    public function storeAdminToken(string $token, string $user, string $role): void
+    {
+        $this->pdo->prepare("DELETE FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key LIKE ? AND expires_at <= ?")
+            ->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . '%', time()]);
+        $sql = Database::sqlUpsert(AppConfig::TABLE_CACHE, 'cache_key, value, expires_at', '?, ?, ?');
+        $this->pdo->prepare($sql)->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . self::hashAdminToken($token), $user . '|' . $role, time() + AppConfig::TTL_TOKEN]);
+    }
+
+    /** 由明文 token 反查用户名（不含角色），无则空串。 */
+    public function userFromCacheToken(string $token): string
+    {
+        try {
+            $stmt = $this->pdo->prepare("SELECT value FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key = ?");
+            $stmt->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . self::hashAdminToken($token)]);
+            $value = $stmt->fetchColumn();
+            if ($value !== false && $value !== '') {
+                $parts = explode('|', (string)$value);
+                if (count($parts) >= 2) {
+                    array_pop($parts);
+                    return implode('|', $parts);
+                }
+            }
+        } catch (\Throwable $e) {
+        }
+        return '';
+    }
 }

@@ -10,6 +10,7 @@ use App\Service\I18nService;
 use App\Service\IntegratedServiceRepository;
 use App\Service\OperationLogRepository;
 use App\Service\Settings;
+use App\Service\TransactionManager;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -33,14 +34,13 @@ final class IntegratedServiceController extends BaseController
         AppConfig::SERVICE_CD,
     ];
 
-    private ?OperationLogRepository $operationLog = null;
-
     public function __construct(
         I18nService $i18n,
-        private \PDO $pdo,
+        private OperationLogRepository $operationLog,
         private IntegratedServiceRepository $services,
         private ApiTokenService $apiTokens,
-        private Settings $config
+        private Settings $config,
+        private TransactionManager $tx
     ) {
         parent::__construct($i18n);
     }
@@ -135,7 +135,7 @@ final class IntegratedServiceController extends BaseController
         }
 
         try {
-            $this->pdo->beginTransaction();
+            $this->tx->begin();
             if ($reuseTokenId !== null) {
                 $this->apiTokens->restore($reuseTokenId);
                 $this->apiTokens->addScopes($reuseTokenId, AppConfig::CD_SERVICE_TOKEN_SCOPES);
@@ -157,15 +157,15 @@ final class IntegratedServiceController extends BaseController
                 $tokenId = $created['id'];
                 $plain   = $created['token'];
             }
-            $this->pdo->commit();
+            $this->tx->commit();
         } catch (\Exception $e) {
-            if ($this->pdo->inTransaction()) {
-                $this->pdo->rollBack();
+            if ($this->tx->inTransaction()) {
+                $this->tx->rollBack();
             }
             return $this->jsonError($response, $this->__('build.save_failed') . ': ' . $e->getMessage(), 500);
         }
 
-        $this->opLog()->record(
+        $this->operationLog->record(
             $this->currentUser,
             'enable_integrated_service',
             $service,
@@ -213,21 +213,21 @@ final class IntegratedServiceController extends BaseController
         }
 
         try {
-            $this->pdo->beginTransaction();
+            $this->tx->begin();
 
             $oldTokenId = $this->services->disable($service, $this->currentUser);
             if ($oldTokenId !== null) {
                 $this->apiTokens->revoke($oldTokenId);
             }
-            $this->pdo->commit();
+            $this->tx->commit();
         } catch (\Exception $e) {
-            if ($this->pdo->inTransaction()) {
-                $this->pdo->rollBack();
+            if ($this->tx->inTransaction()) {
+                $this->tx->rollBack();
             }
             return $this->jsonError($response, $this->__('build.modify_failed') . ': ' . $e->getMessage(), 500);
         }
 
-        $this->opLog()->record(
+        $this->operationLog->record(
             $this->currentUser,
             'disable_integrated_service',
             $service,
@@ -258,14 +258,6 @@ final class IntegratedServiceController extends BaseController
             return $this->jsonError($response, 'api_token.super_admin_only', 403);
         }
         return null;
-    }
-
-    private function opLog(): OperationLogRepository
-    {
-        if ($this->operationLog === null) {
-            $this->operationLog = new OperationLogRepository($this->pdo);
-        }
-        return $this->operationLog;
     }
 
     private function clientIp(Request $request): string

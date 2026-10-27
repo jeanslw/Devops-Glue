@@ -693,12 +693,12 @@ class RegistryEndpointWiringTest extends TestCase
 
     public function testProjectionOnlyTrustsSuccessWritebackStatus(): void
     {
-        
-        
-        $buildController = $this->read('src/Controller/BuildController.php');
+
+
+        $securityChecks = $this->read('src/Service/SecurityCheckRepository.php');
         $this->assertStringContainsString(
             "writeback_status = 'success'",
-            $buildController,
+            $securityChecks,
             '投影必须只认 writeback_status=success'
         );
         $this->assertStringContainsString(

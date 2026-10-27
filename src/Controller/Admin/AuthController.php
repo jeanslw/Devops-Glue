@@ -8,31 +8,34 @@ use App\Config\AppConfig;
 use App\Service\PasswordHasher;
 use App\Service\AdminAuthService;
 use App\Service\AdminUserRepository;
+use App\Service\AppSettingRepository;
+use App\Service\I18nService;
+use App\Service\OperationLogRepository;
+use App\Service\Settings;
 use App\Service\TokenService;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
 /**
  * 后台认证：登录 / 登出 / 改密 / 解锁 / 我的权限。
- * 方法体从 AdminController 原样搬迁，仅 changePassword 的内联
- * `new AdminUserRepository` 改为构造注入（消灭可测性缺陷）。
+ * token 读写复用 TokenService，登录限流复用 AdminAuthService。
  */
 class AuthController extends BaseAdminController
 {
-    private ?TokenService $tokenService = null;
+    private TokenService $tokenService;
     private AdminAuthService $adminAuthService;
     private AdminUserRepository $adminUserRepository;
 
     public function __construct(
-        \App\Service\I18nService $i18n,
-        \App\Service\Settings $config,
-        \PDO $pdo,
-        \App\Service\AppSettingRepository $appSettings,
-        ?TokenService $tokenService,
+        I18nService $i18n,
+        Settings $config,
+        AppSettingRepository $appSettings,
+        OperationLogRepository $operationLog,
+        TokenService $tokenService,
         AdminAuthService $adminAuthService,
         AdminUserRepository $adminUserRepository
     ) {
-        parent::__construct($i18n, $config, $pdo, $appSettings);
+        parent::__construct($i18n, $config, $appSettings, $operationLog);
         $this->tokenService        = $tokenService;
         $this->adminAuthService    = $adminAuthService;
         $this->adminUserRepository = $adminUserRepository;
@@ -74,14 +77,11 @@ class AuthController extends BaseAdminController
 
         $token = bin2hex($randomBytes);
         try {
-            $this->pdo->prepare("DELETE FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key LIKE ? AND expires_at <= ?")
-                ->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . '%', time()]);
-            $sql = \App\Service\Database::sqlUpsert(AppConfig::TABLE_CACHE, 'cache_key, value, expires_at', '?, ?, ?');
-            $this->pdo->prepare($sql)->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . TokenService::hashAdminToken($token), $user . '|' . $loginRole, time() + AppConfig::TTL_TOKEN]);
+            $this->tokenService->storeAdminToken($token, $user, $loginRole);
         } catch (\Exception $e) {
             return $this->jsonError($response, 'auth.token_store_failed', 500);
         }
-        $perms = $this->tokenService?->loadPermissions($loginRole) ?? [];
+        $perms = $this->tokenService->loadPermissions($loginRole);
 
         $this->opLog()->record($user, 'login', '', [], $clientIp, 'success');
 
@@ -104,31 +104,13 @@ class AuthController extends BaseAdminController
         $username = '';
         if (preg_match('/^Bearer\s+(.+)$/i', $header, $m)) {
             $token = $m[1];
-            $username = $this->tokenUserFromCache($token);
-            $this->tokenService?->revoke($token);
+            $username = $this->tokenService->userFromCacheToken($token);
+            $this->tokenService->revoke($token);
         }
         if ($username !== '') {
             $this->opLog()->record($username, 'logout', '', [], $this->clientIp($request), 'success');
         }
         return $this->output($response, ['message' => 'logged_out'], $request);
-    }
-
-    private function tokenUserFromCache(string $token): string
-    {
-        try {
-            $stmt = $this->pdo->prepare("SELECT value FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key = ?");
-            $stmt->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . TokenService::hashAdminToken($token)]);
-            $value = $stmt->fetchColumn();
-            if ($value !== false && $value !== '') {
-                $parts = explode('|', (string)$value);
-                if (count($parts) >= 2) {
-                    array_pop($parts);
-                    return implode('|', $parts);
-                }
-            }
-        } catch (\Throwable $e) {
-        }
-        return '';
     }
 
     public function changePassword(Request $request, Response $response): Response
@@ -158,13 +140,12 @@ class AuthController extends BaseAdminController
             }
 
             $hash = PasswordHasher::hash($newPass);
-            $repository = $this->adminUserRepository;
-            $repository->updatePassword($username, $hash);
+            $this->adminUserRepository->updatePassword($username, $hash);
 
             try {
                 $header = $request->getHeaderLine('Authorization');
                 if (preg_match('/^Bearer\s+(.+)$/i', $header, $m)) {
-                    $this->tokenService?->revoke($m[1]);
+                    $this->tokenService->revoke($m[1]);
                 }
             } catch (\Exception $e) {
                 \App\Helper\Log::exception($e);
@@ -184,9 +165,7 @@ class AuthController extends BaseAdminController
             return $this->jsonError($response, 'user.unlock_forbidden', 403);
         }
         try {
-            $stmt = $this->pdo->prepare("DELETE FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key LIKE ?");
-            $stmt->execute([AppConfig::CACHE_KEY_LOGIN_FAIL_PREFIX . '%']);
-            $cleared = $stmt->rowCount();
+            $cleared = $this->adminAuthService->clearAllLoginLocks();
             $this->opLog()->record($this->currentUser, 'clear_login_locks', '', ['cleared' => $cleared], $this->clientIp($request), 'success');
             return $this->output($response, ['success' => true, 'cleared' => $cleared], $request);
         } catch (\Exception $e) {

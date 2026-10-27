@@ -5,32 +5,40 @@ declare(strict_types=1);
 namespace App\Controller\Admin;
 
 use App\Config\AppConfig;
+use App\Service\AppSettingRepository;
 use App\Service\Git\HostingType;
+use App\Service\I18nService;
 use App\Service\MappingManager;
+use App\Service\OperationLogRepository;
 use App\Service\PlatformConnectionRepository;
+use App\Service\Settings;
+use App\Service\TransactionManager;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
 /**
  * 后台各平台连接配置（CI 平台连接 / OIDC 客户端）。
- * 方法体从 AdminController 原样搬迁。
+ * 事务边界复用 TransactionManager，连接读写复用 PlatformConnectionRepository。
  */
 class ConnectionController extends BaseAdminController
 {
     private PlatformConnectionRepository $platformConnections;
     private MappingManager $mapping;
+    private TransactionManager $tx;
 
     public function __construct(
-        \App\Service\I18nService $i18n,
-        \App\Service\Settings $config,
-        \PDO $pdo,
-        \App\Service\AppSettingRepository $appSettings,
+        I18nService $i18n,
+        Settings $config,
+        AppSettingRepository $appSettings,
+        OperationLogRepository $operationLog,
         PlatformConnectionRepository $platformConnections,
-        MappingManager $mapping
+        MappingManager $mapping,
+        TransactionManager $tx
     ) {
-        parent::__construct($i18n, $config, $pdo, $appSettings);
+        parent::__construct($i18n, $config, $appSettings, $operationLog);
         $this->platformConnections = $platformConnections;
-        $this->mapping = $mapping;
+        $this->mapping             = $mapping;
+        $this->tx                  = $tx;
     }
 
     /**
@@ -132,7 +140,7 @@ class ConnectionController extends BaseAdminController
         $jenkinsEnabled = $this->appSettings->getJenkinsEnabled();
         $jenkinsTouched = false;
         $removedProviders = [];
-        $this->pdo->beginTransaction();
+        $this->tx->begin();
         try {
             if (isset($body['platforms']) && is_array($body['platforms'])) {
                 foreach ($body['platforms'] as $p) {
@@ -214,10 +222,8 @@ class ConnectionController extends BaseAdminController
                         }
                     }
 
-                    // 注意：不再因切换 registry_type 而清空凭据。
-                    // 镜像仓库连接（harbor 行）在 harbor / registry 两种模式下复用同一个连接，
-                    // 切换类型只改变访问协议（Harbor v2 API 或 registry:2），不应丢弃凭据，
-                    // 否则每次切回都会因凭据丢失而 401。
+                    // 不再因切换 registry_type 而清空凭据：harbor 行在两种模式下复用同一连接，
+                    // 切换类型只改变访问协议，不应丢弃凭据，否则切回时会因凭据丢失而 401。
                     if ($url === '' && $token === '' && $password === '') {
                         $this->platformConnections->delete($platform);
                         continue;
@@ -262,19 +268,19 @@ class ConnectionController extends BaseAdminController
                 }
                 if ($changed) {
                     $this->mapping->saveMaps($maps);
-                    $this->invalidateTopologyCache();
+                    $this->mapping->invalidateMapListCache();
                 }
             }
             $this->opLog()->record($this->currentUser, 'platform_connections_update', '', [], $this->clientIp($request), 'success');
-            $this->pdo->commit();
+            $this->tx->commit();
         } catch (\InvalidArgumentException $e) {
-            if ($this->pdo->inTransaction()) {
-                $this->pdo->rollBack();
+            if ($this->tx->inTransaction()) {
+                $this->tx->rollBack();
             }
             return $this->jsonError($response, $e->getMessage(), 400);
         } catch (\Exception $e) {
-            if ($this->pdo->inTransaction()) {
-                $this->pdo->rollBack();
+            if ($this->tx->inTransaction()) {
+                $this->tx->rollBack();
             }
             return $this->jsonError($response, $this->__('build.query_failed') . ': ' . $e->getMessage(), 500);
         }

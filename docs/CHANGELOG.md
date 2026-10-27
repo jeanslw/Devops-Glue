@@ -4,6 +4,8 @@
 
 - **Refactor**
   - `AdminController` is split into 12 controllers under the `Admin\` namespace (auth / user / role / permission / API token / config / connection / OIDC / version / mapping / log / system), sharing the `BaseAdminController` base; URLs, HTTP methods, permission checks, and response structures are unchanged — an internal structure refactor only.
+  - `BuildController` is split into six controllers under the `Build\` namespace (overview / pipeline query / action / report / registry-sync / tag) sharing the `BaseBuildController` base; URLs, HTTP methods, permission checks, and response structures are unchanged — an internal structure refactor only.
+  - Controllers no longer hold a direct `PDO` connection: build, admin and OAuth SQL moves into dedicated repositories and services, and multi-write transactions run through one shared `TransactionManager`; behaviour and responses are unchanged.
 
 ## v2.11.0 (2026-10-24)
 

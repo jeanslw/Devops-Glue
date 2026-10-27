@@ -105,4 +105,88 @@ final class PipelineArtifactService
         }
         return strcmp($a, $b);
     }
+
+    /**
+     * 每 project_key 最新一条 artifact（按 created_at 取最大）。
+     *
+     * @return array<string, array{tag:string, pipeline_iid:mixed, created_at:mixed}>
+     */
+    public function latestTagsByProject(): array
+    {
+        $rows = $this->pdo->query(
+            'SELECT t.project_key AS project, t.pipeline_iid, t.tag, t.created_at'
+            . ' FROM ' . AppConfig::TABLE_PIPELINE_ARTIFACTS . ' t'
+            . ' INNER JOIN (SELECT project_key, MAX(created_at) AS max_created_at'
+            . ' FROM ' . AppConfig::TABLE_PIPELINE_ARTIFACTS . ' GROUP BY project_key) m'
+            . ' ON t.project_key = m.project_key AND t.created_at = m.max_created_at'
+            . ' ORDER BY t.created_at DESC, t.pipeline_iid DESC'
+        )->fetchAll();
+        $latest = [];
+        foreach ($rows as $r) {
+            if (!isset($latest[$r['project']])) {
+                $latest[$r['project']] = [
+                    'tag'          => $r['tag'] ?? '',
+                    'pipeline_iid' => $r['pipeline_iid'] ?? '',
+                    'created_at'   => $r['created_at'] ?? '',
+                ];
+            }
+        }
+        return $latest;
+    }
+
+    /** @param list<string> $keys 命中 project_key 的 artifact 行数 */
+    public function countByProjectKeys(array $keys): int
+    {
+        $ph = implode(',', array_fill(0, count($keys), '?'));
+        $stmt = $this->pdo->prepare('SELECT COUNT(*) AS c FROM ' . AppConfig::TABLE_PIPELINE_ARTIFACTS . ' WHERE project_key IN (' . $ph . ')');
+        $stmt->execute($keys);
+        return (int) $stmt->fetch()['c'];
+    }
+
+    /**
+     * 按 project_key 集合分页取 artifact 列表。
+     *
+     * @param list<string> $keys
+     * @return list<array{tag:string, pipeline_iid:mixed, created_at:mixed}>
+     */
+    public function listByProjectKeys(array $keys, int $pageSize, int $offset): array
+    {
+        $ph = implode(',', array_fill(0, count($keys), '?'));
+        $stmt = $this->pdo->prepare(
+            'SELECT tag, pipeline_iid, created_at FROM ' . AppConfig::TABLE_PIPELINE_ARTIFACTS .
+            ' WHERE project_key IN (' . $ph . ') ORDER BY created_at DESC LIMIT ? OFFSET ?'
+        );
+        foreach ($keys as $i => $k) {
+            $stmt->bindValue($i + 1, $k, \PDO::PARAM_STR);
+        }
+        $stmt->bindValue(count($keys) + 1, $pageSize, \PDO::PARAM_INT);
+        $stmt->bindValue(count($keys) + 2, $offset, \PDO::PARAM_INT);
+        $stmt->execute();
+        return array_values(array_map(fn($r) => [
+            'tag'          => (string)($r['tag'] ?? ''),
+            'pipeline_iid' => $r['pipeline_iid'] ?? '',
+            'created_at'   => $r['created_at'] ?? '',
+        ], $stmt->fetchAll()));
+    }
+
+    /**
+     * 全表 tag 索引：project → pipeline_iid → {tag, registry, status}。
+     *
+     * @return array<string, array<string, array<string,mixed>>>
+     */
+    public function tagIndex(): array
+    {
+        $rows = $this->pdo->query(
+            "SELECT project_key AS project, pipeline_iid, tag, repository AS registry_repository, status, created_at FROM " . AppConfig::TABLE_PIPELINE_ARTIFACTS . " ORDER BY created_at DESC"
+        )->fetchAll();
+        $result = [];
+        foreach ($rows as $r) {
+            $result[$r['project']][(string) $r['pipeline_iid']] = [
+                'tag'      => $r['tag'],
+                'registry' => $r['registry_repository'] ?? '',
+                'status'   => $r['status'] ?? '',
+            ];
+        }
+        return $result;
+    }
 }

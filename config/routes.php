@@ -22,7 +22,12 @@ use App\Controller\Admin\SystemController;
 use App\Controller\ServiceContractController;
 use App\Controller\IntegratedServiceController;
 use App\Controller\RbacController;
-use App\Controller\BuildController;
+use App\Controller\Build\BuildOverviewController;
+use App\Controller\Build\PipelineQueryController;
+use App\Controller\Build\BuildActionController;
+use App\Controller\Build\BuildReportController;
+use App\Controller\Build\RegistrySyncController;
+use App\Controller\Build\PipelineTagController;
 use App\Controller\OAuthController;
 use App\Middleware\AuthMiddleware;
 
@@ -147,25 +152,25 @@ $app->group('/api', function (RouteCollectorProxy $api) {
     })->add(AuthMiddleware::class);
 
     $api->group('/build', function (RouteCollectorProxy $build) {
-        $build->map(['GET', 'POST'], '/jobs/list', [BuildController::class, 'jobsList']);
-        $build->map(['GET'], '/config-mode', [BuildController::class, 'configMode']);
-        $build->map(['GET', 'POST'], '/projects', [BuildController::class, 'projectsList']);
-        $build->map(['GET', 'POST'], '/{path:.+}/pipelines', [BuildController::class, 'pipelines']);
-        $build->map(['GET', 'POST'], '/{path:.+}/pipelines/{id:\d+}', [BuildController::class, 'pipelineDetail']);
-        $build->map(['POST'], '/{path:.+}/pipelines/{id:\d+}/resolve-tag', [BuildController::class, 'resolveTag']);
-        $build->map(['GET', 'POST'], '/{path:.+}/pipelines/{id:\d+}/logs', [BuildController::class, 'pipelineLogs']);
-        $build->map(['POST'], '/{path:.+}/pipelines/{id:\d+}/retry', [BuildController::class, 'retry']);
-        $build->map(['POST'], '/{path:.+}/pipelines/{id:\d+}/cancel', [BuildController::class, 'cancel']);
-        $build->map(['GET', 'POST'], '/{path:.+}/logs/{id:\d+}', [BuildController::class, 'logs']);
-        $build->map(['GET', 'POST'], '/{path:.+}/trigger', [BuildController::class, 'trigger']);
-        $build->map(['GET', 'POST'], '/{path:.+}/variables', [BuildController::class, 'variables']);
-        $build->map(['GET', 'POST'], '/{path:.+}/branches', [BuildController::class, 'branches']);
-        $build->map(['POST'], '/{path:.+}/scan-sync', [BuildController::class, 'scanSync']);
-        $build->map(['POST'], '/{path:.+}/registry-sync', [BuildController::class, 'registrySync']);
-        $build->map(['POST'], '/{path:.+}/commit-status', [BuildController::class, 'commitStatus']);
-        $build->map(['POST'], '/{path:.+}/report', [BuildController::class, 'report']);
-        $build->map(['GET', 'POST'], '/{path:.+}/tag', [BuildController::class, 'tagQuery']);
-        $build->map(['GET', 'POST'], '/{path:.+}/tags', [BuildController::class, 'tagsList']);
+        $build->map(['GET', 'POST'], '/jobs/list', [BuildOverviewController::class, 'jobsList']);
+        $build->map(['GET'], '/config-mode', [BuildOverviewController::class, 'configMode']);
+        $build->map(['GET', 'POST'], '/projects', [BuildOverviewController::class, 'projectsList']);
+        $build->map(['GET', 'POST'], '/{path:.+}/pipelines', [PipelineQueryController::class, 'pipelines']);
+        $build->map(['GET', 'POST'], '/{path:.+}/pipelines/{id:\d+}', [PipelineQueryController::class, 'pipelineDetail']);
+        $build->map(['POST'], '/{path:.+}/pipelines/{id:\d+}/resolve-tag', [PipelineTagController::class, 'resolveTag']);
+        $build->map(['GET', 'POST'], '/{path:.+}/pipelines/{id:\d+}/logs', [PipelineQueryController::class, 'pipelineLogs']);
+        $build->map(['POST'], '/{path:.+}/pipelines/{id:\d+}/retry', [BuildActionController::class, 'retry']);
+        $build->map(['POST'], '/{path:.+}/pipelines/{id:\d+}/cancel', [BuildActionController::class, 'cancel']);
+        $build->map(['GET', 'POST'], '/{path:.+}/logs/{id:\d+}', [PipelineQueryController::class, 'logs']);
+        $build->map(['GET', 'POST'], '/{path:.+}/trigger', [BuildActionController::class, 'trigger']);
+        $build->map(['GET', 'POST'], '/{path:.+}/variables', [PipelineQueryController::class, 'variables']);
+        $build->map(['GET', 'POST'], '/{path:.+}/branches', [PipelineQueryController::class, 'branches']);
+        $build->map(['POST'], '/{path:.+}/scan-sync', [RegistrySyncController::class, 'scanSync']);
+        $build->map(['POST'], '/{path:.+}/registry-sync', [RegistrySyncController::class, 'registrySync']);
+        $build->map(['POST'], '/{path:.+}/commit-status', [BuildReportController::class, 'commitStatus']);
+        $build->map(['POST'], '/{path:.+}/report', [BuildReportController::class, 'report']);
+        $build->map(['GET', 'POST'], '/{path:.+}/tag', [PipelineTagController::class, 'tagQuery']);
+        $build->map(['GET', 'POST'], '/{path:.+}/tags', [BuildOverviewController::class, 'tagsList']);
     })->add(AuthMiddleware::class);
 
     $api->group('/git', function (RouteCollectorProxy $git) {

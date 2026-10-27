@@ -29,11 +29,9 @@ use App\Helper\ClientIp;
  */
 class OAuthController extends BaseController
 {
-    private ?OperationLogRepository $operationLog = null;
-
     public function __construct(
         I18nService $i18n,
-        private \PDO $pdo,
+        private OperationLogRepository $operationLog,
         private OAuthService $oauth,
         private AdminAuthService $auth,
         private AdminUserRepository $users,
@@ -41,15 +39,6 @@ class OAuthController extends BaseController
         private Settings $config
     ) {
         parent::__construct($i18n);
-    }
-
-    /** 操作日志仓储（懒加载，写路径不阻塞主流程） */
-    private function opLog(): OperationLogRepository
-    {
-        if ($this->operationLog === null) {
-            $this->operationLog = new OperationLogRepository($this->pdo);
-        }
-        return $this->operationLog;
     }
 
     /**
@@ -95,7 +84,7 @@ class OAuthController extends BaseController
 
         $clientIp = $this->clientIp($request);
         if ($this->auth->isLoginLocked($clientIp, $username)) {
-            $this->opLog()->record($username, 'login_locked', '', [], $clientIp, 'failure');
+            $this->operationLog->record($username, 'login_locked', '', [], $clientIp, 'failure');
             $response->getBody()->write($this->renderLoginForm(
                 $clientId,
                 $redirectUri,
@@ -113,7 +102,7 @@ class OAuthController extends BaseController
         $result = $this->auth->authenticate($username, $password, $systemType);
         if (empty($result['success'])) {
             $this->auth->recordLoginFailure($clientIp, $username);
-            $this->opLog()->record($username, 'login_failed', '', [], $clientIp, 'failure');
+            $this->operationLog->record($username, 'login_failed', '', [], $clientIp, 'failure');
             $response->getBody()->write($this->renderLoginForm(
                 $clientId,
                 $redirectUri,
@@ -125,7 +114,7 @@ class OAuthController extends BaseController
             return $response->withStatus(401)->withHeader('Content-Type', 'text/html; charset=utf-8');
         }
         $this->auth->clearLoginFailure($clientIp, $username);
-        $this->opLog()->record((string)$result['user'], 'login', '', [], $clientIp, 'success');
+        $this->operationLog->record((string)$result['user'], 'login', '', [], $clientIp, 'success');
 
         $code = $this->oauth->issueCode(
             $clientId,

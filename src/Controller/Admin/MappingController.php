@@ -22,12 +22,12 @@ class MappingController extends BaseAdminController
     public function __construct(
         \App\Service\I18nService $i18n,
         \App\Service\Settings $config,
-        \PDO $pdo,
         \App\Service\AppSettingRepository $appSettings,
+        \App\Service\OperationLogRepository $operationLog,
         MappingManager $mapping,
         ?AutoDiscover $autoDiscover = null
     ) {
-        parent::__construct($i18n, $config, $pdo, $appSettings);
+        parent::__construct($i18n, $config, $appSettings, $operationLog);
         $this->mapping       = $mapping;
         $this->autoDiscover  = $autoDiscover;
     }
@@ -49,7 +49,7 @@ class MappingController extends BaseAdminController
             $sources = $result['sources'];
             $saved = $this->autoDiscover->saveDiscovered($found);
             if ($saved > 0) {
-                $this->invalidateTopologyCache();
+                $this->mapping->invalidateMapListCache();
             }
             $this->opLog()->record($this->currentUser, 'auto_discover', '', ['found' => count($found), 'saved' => $saved], $this->clientIp($request), 'success');
             return $this->output($response, [
@@ -157,7 +157,7 @@ class MappingController extends BaseAdminController
 
         $entry = $this->buildEntry($body);
         $this->mapping->saveMap($entry);
-        $this->invalidateTopologyCache();
+        $this->mapping->invalidateMapListCache();
 
         $this->opLog()->record($this->currentUser, 'create_mapping', $jobName, [], $this->clientIp($request), 'success');
         return $this->output($response, ['success' => true, 'entry' => $entry], $request);
@@ -204,7 +204,7 @@ class MappingController extends BaseAdminController
         if ($newName !== $oldName) {
             $this->mapping->deleteMap($oldName);
         }
-        $this->invalidateTopologyCache();
+        $this->mapping->invalidateMapListCache();
         $this->opLog()->record($this->currentUser, 'update_mapping', $oldName, ['job_name' => $merged['job_name'] ?? $oldName], $this->clientIp($request), 'success');
         return $this->output($response, ['success' => true, 'entry' => $merged], $request);
     }
@@ -238,7 +238,7 @@ class MappingController extends BaseAdminController
         }
 
         $this->mapping->deleteMap($jobName);
-        $this->invalidateTopologyCache();
+        $this->mapping->invalidateMapListCache();
         $this->opLog()->record($this->currentUser, 'delete_mapping', $jobName, [], $this->clientIp($request), 'success');
         return $this->output($response, ['success' => true], $request);
     }

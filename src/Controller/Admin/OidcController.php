@@ -5,27 +5,35 @@ declare(strict_types=1);
 namespace App\Controller\Admin;
 
 use App\Config\AppConfig;
+use App\Service\AppSettingRepository;
+use App\Service\I18nService;
 use App\Service\OAuthClientRepository;
+use App\Service\OperationLogRepository;
+use App\Service\Settings;
+use App\Service\TransactionManager;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
 /**
  * 后台 OIDC / OAuth 配置（issuer + id_token_ttl + 客户端白名单）。
- * 方法体从 AdminController 原样搬迁。
+ * 事务边界复用 TransactionManager，客户端读写复用 OAuthClientRepository。
  */
 class OidcController extends BaseAdminController
 {
     private OAuthClientRepository $oauthClients;
+    private TransactionManager $tx;
 
     public function __construct(
-        \App\Service\I18nService $i18n,
-        \App\Service\Settings $config,
-        \PDO $pdo,
-        \App\Service\AppSettingRepository $appSettings,
-        OAuthClientRepository $oauthClients
+        I18nService $i18n,
+        Settings $config,
+        AppSettingRepository $appSettings,
+        OperationLogRepository $operationLog,
+        OAuthClientRepository $oauthClients,
+        TransactionManager $tx
     ) {
-        parent::__construct($i18n, $config, $pdo, $appSettings);
+        parent::__construct($i18n, $config, $appSettings, $operationLog);
         $this->oauthClients = $oauthClients;
+        $this->tx           = $tx;
     }
 
     /**
@@ -102,7 +110,7 @@ class OidcController extends BaseAdminController
         }
         $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
 
-        $this->pdo->beginTransaction();
+        $this->tx->begin();
         try {
             if (array_key_exists('issuer', $body)) {
                 $this->appSettings->setOidcIssuer((string)($body['issuer'] ?? ''));
@@ -158,15 +166,15 @@ class OidcController extends BaseAdminController
                 }
             }
             $this->opLog()->record($this->currentUser, 'oidc_config_update', '', [], $this->clientIp($request), 'success');
-            $this->pdo->commit();
+            $this->tx->commit();
         } catch (\InvalidArgumentException $e) {
-            if ($this->pdo->inTransaction()) {
-                $this->pdo->rollBack();
+            if ($this->tx->inTransaction()) {
+                $this->tx->rollBack();
             }
             return $this->jsonError($response, $e->getMessage(), 400);
         } catch (\Exception $e) {
-            if ($this->pdo->inTransaction()) {
-                $this->pdo->rollBack();
+            if ($this->tx->inTransaction()) {
+                $this->tx->rollBack();
             }
             return $this->jsonError($response, $this->__('build.query_failed') . ': ' . $e->getMessage(), 500);
         }

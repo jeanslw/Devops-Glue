@@ -6,26 +6,34 @@ namespace App\Controller\Admin;
 
 use App\Config\AppConfig;
 use App\Service\AdminRbacService;
+use App\Service\AppSettingRepository;
+use App\Service\I18nService;
+use App\Service\OperationLogRepository;
+use App\Service\PermissionRepository;
+use App\Service\Settings;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
 /**
  * 后台权限与隐含规则：权限列表 / 注册 / 删除，隐含规则注册 / 删除。
- * 方法体从 AdminController 原样搬迁；隐含规则变更后复用 AdminRbacService 重算角色权限。
+ * 权限读写复用 PermissionRepository；隐含规则变更后复用 AdminRbacService 重算角色权限。
  */
 class PermissionController extends BaseAdminController
 {
     private AdminRbacService $rbacService;
+    private PermissionRepository $permissions;
 
     public function __construct(
-        \App\Service\I18nService $i18n,
-        \App\Service\Settings $config,
-        \PDO $pdo,
-        \App\Service\AppSettingRepository $appSettings,
-        AdminRbacService $rbacService
+        I18nService $i18n,
+        Settings $config,
+        AppSettingRepository $appSettings,
+        OperationLogRepository $operationLog,
+        AdminRbacService $rbacService,
+        PermissionRepository $permissions
     ) {
-        parent::__construct($i18n, $config, $pdo, $appSettings);
+        parent::__construct($i18n, $config, $appSettings, $operationLog);
         $this->rbacService = $rbacService;
+        $this->permissions = $permissions;
     }
 
     public function permissionList(Request $request, Response $response): Response
@@ -35,24 +43,9 @@ class PermissionController extends BaseAdminController
             return $this->jsonError($response, 'auth.forbidden', 403);
         }
         try {
-            $pdo = $this->pdo;
-            $rows = $pdo->query("SELECT perm_key, description, parent_key, created_at FROM " . AppConfig::TABLE_PERMISSIONS . " ORDER BY perm_key")->fetchAll();
-            foreach ($rows as &$row) {
-                $row['is_builtin'] = array_key_exists($row['perm_key'], AppConfig::DEFAULT_PERMISSIONS);
-            }
-            unset($row);
-            $implied = [];
-            try {
-                $ruleRows = $pdo->query("SELECT source_key, target_key FROM " . AppConfig::TABLE_IMPLIED_RULES)->fetchAll();
-                foreach ($ruleRows as $r) {
-                    $implied[$r['source_key']][] = $r['target_key'];
-                }
-            } catch (\Exception $e) {
-                \App\Helper\Log::exception($e);
-            }
             return $this->output($response, [
-                'permissions'      => $rows,
-                'implied'          => $implied,
+                'permissions'      => $this->permissions->listAll(),
+                'implied'          => $this->permissions->listImpliedRules(),
                 'builtin_implied'  => AppConfig::IMPLIED_PERMISSIONS,
             ], $request);
         } catch (\Exception $e) {
@@ -85,14 +78,7 @@ class PermissionController extends BaseAdminController
             return $this->jsonError($response, 'permission.builtin_immutable', 400);
         }
         try {
-            $pdo = $this->pdo;
-            $exists = $pdo->prepare("SELECT COUNT(*) FROM " . AppConfig::TABLE_PERMISSIONS . " WHERE perm_key = ?");
-            $exists->execute([$permKey]);
-            if ((int)$exists->fetchColumn() > 0) {
-                $pdo->prepare("UPDATE " . AppConfig::TABLE_PERMISSIONS . " SET description = ?, parent_key = ? WHERE perm_key = ?")->execute([$desc, $parent, $permKey]);
-            } else {
-                $pdo->prepare("INSERT INTO " . AppConfig::TABLE_PERMISSIONS . " (perm_key, description, parent_key, created_at) VALUES (?, ?, ?, " . \App\Service\Database::sqlNow() . ")")->execute([$permKey, $desc, $parent]);
-            }
+            $this->permissions->upsert($permKey, $desc, $parent);
             $this->opLog()->record($this->currentUser, 'register_permission', $permKey, ['description' => $desc, 'parent_key' => $parent], $this->clientIp($request), 'success');
             return $this->output($response, ['perm_key' => $permKey, 'description' => $desc, 'parent_key' => $parent], $request);
         } catch (\Exception $e) {
@@ -120,10 +106,7 @@ class PermissionController extends BaseAdminController
             return $this->jsonError($response, 'permission.builtin_protected', 400);
         }
         try {
-            $pdo = $this->pdo;
-            $pdo->prepare("DELETE FROM " . AppConfig::TABLE_PERMISSIONS . " WHERE perm_key = ?")->execute([$permKey]);
-            $pdo->prepare("DELETE FROM " . AppConfig::TABLE_ROLE_PERMISSIONS . " WHERE perm_key = ?")->execute([$permKey]);
-            $pdo->prepare("DELETE FROM " . AppConfig::TABLE_IMPLIED_RULES . " WHERE source_key = ? OR target_key = ?")->execute([$permKey, $permKey]);
+            $this->permissions->delete($permKey);
             $this->opLog()->record($this->currentUser, 'delete_permission', $permKey, [], $this->clientIp($request), 'success');
             return $this->output($response, ['deleted' => $permKey], $request);
         } catch (\Exception $e) {
@@ -149,14 +132,10 @@ class PermissionController extends BaseAdminController
             return $this->jsonError($response, 'validation.required', 400);
         }
         try {
-            $pdo = $this->pdo;
-            $check = $pdo->prepare("SELECT COUNT(*) FROM " . AppConfig::TABLE_PERMISSIONS . " WHERE perm_key IN (?, ?)");
-            $check->execute([$src, $tgt]);
-            if ((int)$check->fetchColumn() < 2) {
+            if ($this->permissions->countByKeys([$src, $tgt]) < 2) {
                 return $this->jsonError($response, 'validation.perm_not_found', 400);
             }
-            $sql = \App\Service\Database::sqlUpsert(AppConfig::TABLE_IMPLIED_RULES, 'source_key, target_key', '?, ?');
-            $pdo->prepare($sql)->execute([$src, $tgt]);
+            $this->permissions->upsertImpliedRule($src, $tgt);
             $resynced = 0;
             try {
                 $resynced = $this->rbacService->resyncImpliedPermissions();
@@ -190,8 +169,7 @@ class PermissionController extends BaseAdminController
             return $this->jsonError($response, 'implied.builtin_protected', 400);
         }
         try {
-            $pdo = $this->pdo;
-            $pdo->prepare("DELETE FROM " . AppConfig::TABLE_IMPLIED_RULES . " WHERE source_key = ? AND target_key = ?")->execute([$src, $tgt]);
+            $this->permissions->deleteImpliedRule($src, $tgt);
             $this->opLog()->record($this->currentUser, 'delete_implied_rule', $src . ' → ' . $tgt, [], $this->clientIp($request), 'success');
             return $this->output($response, ['deleted' => ['source' => $src, 'target' => $tgt]], $request);
         } catch (\Exception $e) {
