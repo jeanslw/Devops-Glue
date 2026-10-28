@@ -3,21 +3,16 @@
 ## v2.11.1 (2026-10-27)
 
 - **Refactor**
-  - `AdminController` is split into 12 controllers under the `Admin\` namespace (auth / user / role / permission / API token / config / connection / OIDC / version / mapping / log / system), sharing the `BaseAdminController` base; URLs, HTTP methods, permission checks, and response structures are unchanged — an internal structure refactor only.
-  - `BuildController` is split into six controllers under the `Build\` namespace (overview / pipeline query / action / report / registry-sync / tag) sharing the `BaseBuildController` base; URLs, HTTP methods, permission checks, and response structures are unchanged — an internal structure refactor only.
-  - Controllers no longer hold a direct `PDO` connection: build, admin and OAuth SQL moves into dedicated repositories and services, and multi-write transactions run through one shared `TransactionManager`; behaviour and responses are unchanged.
+  - `AdminController` and `BuildController` are split apart; this is an internal structure refactor only — URLs, HTTP methods, permission checks, and response structures are unchanged.
+  - The build / admin / OAuth SQL moves into dedicated repositories and services, and multi-write transactions all run through one shared `TransactionManager`; behaviour and responses are unchanged.
 
 - **Fixed**
-  - When the image registry has no scanning (e.g. `registry:2`), `registry-sync` / `scan-sync` no longer write `unknown` into the audit record's `state`; it is normalized from `ci_status` to success / failed / pending, matching the commit status — even when `scan-sync` is called by mistake.
-
-- **Changed**
-  - `config/settings.php` drops the harbor / jenkins connection config, the `oidc` `issuer` and `id_token_ttl`, and `job_git_map` — all already migrated to the database — and removes all comments; `config/settings.example.php` is deleted as it was never loaded and had diverged from `settings.php`.
-  - `config/app.env.example` defaults the database driver from sqlite to mysql; the CD endpoint `CD_BASE_URL` moves to the end of the file.
-  - The nginx upload limit is tightened from 50M to 8M.
+  - When the image registry does not support scanning, the audit record's state is no longer written as `unknown`; it is normalized from the build status to success / failed / pending, matching the commit status.
 
 - **Improved**
-  - nginx resolves the php-fpm upstream through Docker's built-in DNS, so scaling web replicas no longer requires restarting nginx.
-  - docker-compose centralizes log rotation; nginx is upgraded to 1.28 and its container capabilities are reduced (cap_drop ALL + no-new-privileges); a health endpoint and gzip are added.
+  - nginx enables `resolve` on the php-fpm upstream with Docker's built-in DNS: the IP refreshes automatically when php-fpm replicas scale up or down or a container is recreated, and with multiple replicas passive failover takes over once failed requests reach the threshold.
+  - docker-compose centralizes log rotation; nginx is upgraded to 1.28 with its container capabilities reduced; a health endpoint and gzip are added.
+  - Connection configuration already migrated to the database is removed, along with the configuration template (`settings.example.php`).
 
 ## v2.11.0 (2026-10-24)
 
