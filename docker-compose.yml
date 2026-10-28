@@ -158,12 +158,12 @@ services:
         fi
         if [ "$$fail" = "1" ]; then
           echo "------------------------------------------------------------------------"
-          echo "请补全根目录 .env 后重新执行 / Fill in the root .env, then run again: docker compose up -d --build"
-          echo "提示 / Note: 升级存量 mysql-data 数据卷无需重建卷，手动迁移模式请启用mysql服务的创建SQL脚本"
-          echo "       Existing mysql-data volumes do not need rebuilding; For manual migration mode, please enable the SQL creation script for MySQL service"
+          echo "Fill in the root .env, then run again: docker compose up -d --build"
+          echo "提示 / Note: 升级存量 mysql-data 数据卷无需重建卷，手动迁移模式请启用mysql服务的SQL创建脚本"
+          echo "Existing mysql-data volumes do not need rebuilding; For manual migration mode, please enable the SQL creation script of the MySQL service"
           exit 1
         fi
-        echo "[预检通过 / PASS] 数据库必填环境变量已配置 / Required database environment variables are set"
+        echo "[预检通过 / PASS] 数据库环境变量已配置 / Database environment variables have been configured"
 
   mysql:
     image: mysql:8.4
