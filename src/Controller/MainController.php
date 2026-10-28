@@ -309,6 +309,14 @@ class MainController extends BaseController
         $harbor = $this->harbor;
         if ($harbor !== null && trim((string) ($this->config->getHarborConfig()['url'] ?? '')) !== '') {
             $harborUrl = rtrim((string)($this->config->getHarborConfig()['url'] ?? ''), '/');
+            $harborCfg = $this->config->getHarborConfig();
+            $configuredType = $this->config->getRegistryType();
+            $checks['registry_type'] = $configuredType;
+            $probe = new \App\Service\RegistryProbe(
+                $harborUrl,
+                (string)($harborCfg['username'] ?? 'admin'),
+                (string)($harborCfg['password'] ?? '')
+            );
             $probeLogged = false;
             try {
                 $qClient = new \GuzzleHttp\Client([
@@ -319,7 +327,7 @@ class MainController extends BaseController
                     'http_errors' => false,
                 ]);
 
-                if ($this->config->getRegistryType() === 'registry') {
+                if ($configuredType === 'registry') {
                     $registryReachable = false;
                     $this->probeWithRetry(function () use ($qClient, &$registryReachable) {
                         $resp = $qClient->get('/v2/');
@@ -330,7 +338,7 @@ class MainController extends BaseController
                         }
                     });
                     $checks['harbor'] = $registryReachable;
-                    $checks['harbor_version'] = 'registry';
+                    $checks['harbor_version'] = $probe->distributionVersion() ?? '';
                     $checks['harbor_components'] = ['registry' => $registryReachable];
                 } else {
                     $components = [
@@ -365,16 +373,32 @@ class MainController extends BaseController
                     $checks['harbor_version'] = $harbor->getHarborVersion() ?? 'v2';
                     $checks['harbor_components'] = $componentResults;
                 }
+
+                $detectedType = $probe->detectedType();
+                $checks['registry_detected_type'] = $detectedType;
+                $checks['registry_type_mismatch'] = ($detectedType !== 'unknown' && $detectedType !== $configuredType);
+                if ($checks['registry_type_mismatch']) {
+                    \App\Helper\Log::error('[健康检查] 镜像仓库类型与地址不符', [
+                        'configured' => $configuredType,
+                        'detected'   => $detectedType,
+                        'url'        => $harborUrl,
+                    ]);
+                }
             } catch (\Exception $e) {
                 if (!$probeLogged) {
                     \App\Helper\Log::error('[健康检查] 镜像仓库连接失败', ['platform' => 'registry', 'url' => $harborUrl, 'error' => $e->getMessage()]);
                 }
                 $checks['harbor'] = false;
-                $checks['harbor_version'] = $this->config->getRegistryType() === 'registry' ? 'registry' : ($harbor->getHarborVersion() ?? 'v2');
+                $checks['harbor_version'] = $configuredType === 'registry' ? '' : ($harbor->getHarborVersion() ?? 'v2');
                 $checks['harbor_components'] = null;
+                $checks['registry_detected_type'] = 'unknown';
+                $checks['registry_type_mismatch'] = false;
             }
         } else {
             $checks['harbor'] = null;
+            $checks['registry_type'] = $this->config->getRegistryType();
+            $checks['registry_detected_type'] = 'unknown';
+            $checks['registry_type_mismatch'] = false;
         }
 
         $gitOk = $checks['git'] === null || !empty(array_filter($checks['git'], fn($g) => $g['reachable']));

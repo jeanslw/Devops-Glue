@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Devops-Glue API",
-    "version": "2.11.0",
-    "description": "DevOps 工具链集成接口 —— Jenkins/GitLab CI、GitLab/Gitee/GitHub/Gitea、Harbor 统一 API。",
+    "version": "2.11.1",
+    "description": "DevOps 工具链集成接口",
     "contact": {
       "email": "jeanslw@qq.com"
     }
@@ -290,7 +290,7 @@
                 "type": "string",
                 "nullable": true,
                 "example": "v2",
-                "description": "Harbor 模式返回实际版本（如 v2）；registry:2 模式固定返回 \"registry\""
+                "description": "Harbor 模式返回实际版本（如 v2）；registry:2 模式返回探测到的 distribution 版本（如 2.0），探测不到则为空"
               },
               "harbor_components": {
                 "type": "object",
@@ -313,6 +313,20 @@
                     "description": "镜像仓库管理（依赖 registryctl）"
                   }
                 }
+              },
+              "registry_type": {
+                "type": "string",
+                "enum": ["harbor", "registry"],
+                "description": "镜像仓库配置的类型（harbor / registry），取值来自 ci_app_settings.registry_type"
+              },
+              "registry_detected_type": {
+                "type": "string",
+                "enum": ["harbor", "registry", "unknown"],
+                "description": "按地址实际探测到的类型：harbor=命中 Harbor 端点；registry=仅 /v2/ 可达；unknown=地址不可达无法判定"
+              },
+              "registry_type_mismatch": {
+                "type": "boolean",
+                "description": "配置类型与实际地址类型不符（如选 harbor 但地址是标准 registry，或反之）；仅告警，不阻断保存"
               }
             }
           },

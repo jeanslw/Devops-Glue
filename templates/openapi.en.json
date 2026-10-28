@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Devops-Glue API",
-    "version": "2.11.0",
-    "description": "DevOps toolchain integration API: CI, Git platforms, Harbor, auth and admin.",
+    "version": "2.11.1",
+    "description": "DevOps toolchain integration API",
     "contact": {
       "email": "jeanslw@qq.com"
     }
@@ -290,7 +290,7 @@
                 "type": "string",
                 "nullable": true,
                 "example": "v2",
-                "description": "Harbor mode returns the actual version (e.g. v2); registry:2 mode always returns \"registry\""
+                "description": "Harbor mode returns the actual version (e.g. v2); registry:2 mode returns the probed distribution version (e.g. 2.0), or empty when undetectable"
               },
               "harbor_components": {
                 "type": "object",
@@ -313,6 +313,20 @@
                     "description": "Image registry management (depends on registryctl)"
                   }
                 }
+              },
+              "registry_type": {
+                "type": "string",
+                "enum": ["harbor", "registry"],
+                "description": "Configured registry type (harbor / registry), from ci_app_settings.registry_type"
+              },
+              "registry_detected_type": {
+                "type": "string",
+                "enum": ["harbor", "registry", "unknown"],
+                "description": "Type detected from the address: harbor = Harbor endpoint hit; registry = only /v2/ reachable; unknown = address unreachable, cannot decide"
+              },
+              "registry_type_mismatch": {
+                "type": "boolean",
+                "description": "Configured type does not match the actual address type (e.g. harbor selected but address is a standard registry, or vice versa); warning only, does not block saving"
               }
             }
           },

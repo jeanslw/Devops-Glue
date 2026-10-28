@@ -244,8 +244,8 @@ return [
     'platform.github_desc'  => '通过 X-GitHub-Api-Version Header 传递，仅影响显示',
     'platform.gitea_desc'   => 'API v1，自建平台',
     'platform.harbor_desc'  => '支持 v1.10 / v2.x 自动探测；机器人账户需 v2.2.0+',
-    'platform.registry_label' => '镜像仓库',
-    'platform.registry_desc'  => '标准 OCI Distribution 接口（registry:2），仅推送与拉取，不提供漏洞扫描',
+    'platform.registry_label' => 'Container Registry',
+    'platform.registry_desc'  => '标准 OCI Distribution 接口，仅推送与拉取，不提供漏洞扫描',
 
     // ── 安全审计 ──
     'security.scan_results' => '安全审计结果',
@@ -277,6 +277,7 @@ return [
     'monitor.git_unreachable'=> 'API 不可达',
     'monitor.git_no_ref'  => '无运行时引用',
     'monitor.container_registry' => 'Container Registry',
+    'monitor.registry_type_mismatch' => '仓库类型不匹配（所选类型与地址实际服务不符）',
     'monitor.system_check' => '系统监测',
     'monitor.build_mode'   => '构建模式',
     'monitor.db_type'      => '数据库类型',
@@ -902,6 +903,7 @@ return [
     'platform_conn.registry_type_label' => '仓库类型',
     'platform_conn.registry_type_harbor' => 'Harbor（含漏洞扫描）',
     'platform_conn.registry_type_registry' => 'Registry v2（标准 OCI，无扫描）',
+    'platform_conn.registry_type_mismatch' => '仓库类型不匹配：所选类型与地址实际服务不一致',
     'platform_conn.token_label'  => 'Token',
     'platform_conn.username_label' => '用户名',
     'platform_conn.password_label' => '密码',

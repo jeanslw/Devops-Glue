@@ -152,7 +152,7 @@ GET /api/health
 - `stats.harbor_repos`: 活跃映射中出现的不同 `registry_repository` 数量（Harbor 与 registry:2 同口径）
 - HTTP 200 (正常) / 503 (降级)
 
-> **说明：** 当镜像仓库类型为 `registry:2`（`registry_type=registry`）时，`checks.harbor` 为 `/v2/` 的可达性布尔值，`harbor_version` 为字符串 `"registry"`，可达时 `harbor_components` 为 `{"registry": true}`；Harbor 类型仍按 `core` / `jobservice` / `registry` 三组件探测。
+> **说明：** 当镜像仓库类型为 `registry:2`（`registry_type=registry`）时，`checks.harbor` 为 `/v2/` 的可达性布尔值，`harbor_version` 为探测到的 distribution 版本（如 `2.0`，探测不到则为空），可达时 `harbor_components` 为 `{"registry": true}`；Harbor 类型仍按 `core` / `jobservice` / `registry` 三组件探测。两种类型都额外返回 `registry_type`（配置类型）、`registry_detected_type`（地址实际类型：harbor/registry/unknown）、`registry_type_mismatch`（配置与实际不符时为 true，仅告警不阻断）。
 
 ### 快速健康信息
 

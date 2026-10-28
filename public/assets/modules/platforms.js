@@ -96,6 +96,10 @@ function renderPlatforms() {
                 + esc(__.t(p.hosting === 'saas' ? 'platform_conn.hosting_saas' : 'platform_conn.hosting_self_hosted'))
                 + '</span>'
             : '';
+        const typeMismatch = def.key === 'harbor' && !!_pc.registry_type_mismatch;
+        const mismatchWarn = typeMismatch
+            ? '<div style="margin:6px 0 0 18px;color:#dc2626;font-size:12px;">⚠ ' + esc(__.t('platform_conn.registry_type_mismatch')) + '</div>'
+            : '';
         return '<div class="pc-row" data-key="' + esc(def.key) + '">'
             + '<div class="pc-row-hd" onclick="togglePlatformRow(this)">'
                 + '<span class="pc-caret">▸</span>'
@@ -106,7 +110,7 @@ function renderPlatforms() {
                 + '</span>'
                 + '<button class="btn btn-sm btn-del" onclick="event.stopPropagation();onPlatformDelete(\'' + esc(def.key) + '\')">🗑 ' + esc(__.t('platform_conn.delete')) + '</button>'
             + '</div>'
-            + '<div class="pc-body">' + ciToggle + '<div class="pc-grid">' + fields + '</div>' + '</div>'
+            + '<div class="pc-body">' + ciToggle + mismatchWarn + '<div class="pc-grid">' + fields + '</div>' + '</div>'
         + '</div>';
     }).join('');
 
@@ -125,6 +129,14 @@ export async function loadPlatformConnections() {
         if (!res.ok) { toast(d.message || __.t('js.network_error'), false); return; }
         _pc = d;
         renderPlatforms();
+        try {
+            const h = await apiFetch('/api/health');
+            if (h.ok) {
+                const hd = await h.json();
+                _pc.registry_type_mismatch = !!(hd.checks && hd.checks.registry_type_mismatch);
+                renderPlatforms();
+            }
+        } catch (e) {}
     } catch (e) {
         toast(__.t('js.network_error') + ': ' + e.message, false);
     }

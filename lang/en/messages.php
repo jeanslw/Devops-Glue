@@ -244,8 +244,8 @@ return [
     'platform.github_desc'  => 'Sent via X-GitHub-Api-Version header, cosmetic only',
     'platform.gitea_desc'   => 'API v1, self-hosted platform',
     'platform.harbor_desc'  => 'Supports v1.10 / v2.x auto-detection; robot accounts require v2.2.0+',
-    'platform.registry_label' => 'Registry',
-    'platform.registry_desc'  => 'Standard OCI Distribution API (registry:2); push/pull only, no vulnerability scanning',
+    'platform.registry_label' => 'Container Registry',
+    'platform.registry_desc'  => 'Standard OCI Distribution API; push/pull only, no vulnerability scanning',
 
     // ── Security Audit ──
     'security.scan_results' => 'Security Audit Results',
@@ -277,6 +277,7 @@ return [
     'monitor.git_unreachable'=> 'API Unreachable',
     'monitor.git_no_ref'  => 'No Runtime Reference',
     'monitor.container_registry' => 'Container Registry',
+    'monitor.registry_type_mismatch' => 'Registry type mismatch (selected type does not match the actual service)',
     'monitor.system_check' => 'System Health',
     'monitor.build_mode'   => 'Build Mode',
     'monitor.db_type'      => 'Database Type',
@@ -904,6 +905,7 @@ return [
     'platform_conn.registry_type_label' => 'Registry Type',
     'platform_conn.registry_type_harbor' => 'Harbor (with vulnerability scanning)',
     'platform_conn.registry_type_registry' => 'Registry v2 (standard OCI, no scanning)',
+    'platform_conn.registry_type_mismatch' => 'Registry type mismatch: selected type does not match the actual service',
     'platform_conn.token_label'  => 'Token',
     'platform_conn.username_label' => 'Username',
     'platform_conn.password_label' => 'Password',

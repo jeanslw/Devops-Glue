@@ -460,7 +460,7 @@ Unauthenticated external probe for Uptime Kuma / cloud LB / container orchestrat
 
 3. Image registry check (type from `registry_type` on the platform-connection card, stored in `ci_app_settings`)
    ├─ registry: GET /v2/ (HTTP status < 500 counts as reachable)
-   │   └─ harbor: boolean, harbor_version: "registry", harbor_components: {"registry": true} when reachable
+   │   └─ harbor: boolean, harbor_version: the probed distribution version (e.g. 2.0, empty if undetectable), harbor_components: {"registry": true} when reachable; also returns registry_type / registry_detected_type / registry_type_mismatch for the frontend to identify the type and warn
    └─ harbor (default): multi-component
        ├─ core:       GET /api/v2.0/projects
        ├─ jobservice: GET /api/v2.0/jobservice/ping (404 still considered OK)
