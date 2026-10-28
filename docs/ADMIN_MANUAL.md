@@ -110,8 +110,21 @@ See [Appendix A](#appendix-a-environment-variables-reference) for the full list 
 
 Two databases are supported, selected by `DB_DRIVER`:
 
-- `DB_DRIVER=mysql`: Docker Compose auto-starts MySQL 8.4 and creates the database. MariaDB 10.4+ is also fully supported. Fill in `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASS` / `DB_ROOT_PASS` in the root `app.env`. `DB_PASS` and `DB_ROOT_PASS` **have no defaults — when either is empty the `env-check` preflight container prints bilingual (Chinese/English) guidance and aborts startup (the mysql container never runs)**: the root account is separated from the application account (`MYSQL_USER`, `devops` by default), and the application connects as the application account. These passwords take effect only on first initialization of the mysql volume; upgrading with an existing volume requires creating the account manually (see the SQL in `docker-compose.yml` comments) or rebuilding the volume after backup.
+- `DB_DRIVER=mysql`: Docker Compose auto-starts MySQL 8.4 and creates the database. MariaDB 10.4+ is also fully supported. Fill in `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASS` / `DB_ROOT_PASS` in the root `app.env`. `DB_PASS` and `DB_ROOT_PASS` **have no defaults — when either is empty the `env-check` preflight container prints bilingual (Chinese/English) guidance and aborts startup (the mysql container never runs)**: the root account is separated from the application account (`MYSQL_USER`, `devops` by default), and the application connects as the application account. These passwords take effect only on first initialization of the mysql volume; an **existing volume never re-runs the init scripts**, so if `DB_USER` / `DB_PASS` changed, sync the account inside MySQL as shown below (replace the placeholders with the values from the root `.env`) or rebuild the volume after a backup.
 - `DB_DRIVER=sqlite`: Data file at `config/data/data.db`, no extra database service required. MySQL/MariaDB is recommended for production.
+
+**Creating / updating the account by hand on an existing volume** (run inside the `mysql` container; replace `<DB_USER>` / `<DB_PASS>` / `<DB_NAME>` with the values from the root `.env`):
+
+```bash
+docker compose exec mysql mysql -uroot -p
+```
+
+```sql
+CREATE USER IF NOT EXISTS '<DB_USER>'@'%' IDENTIFIED BY '<DB_PASS>';
+ALTER USER '<DB_USER>'@'%' IDENTIFIED BY '<DB_PASS>';
+GRANT ALL PRIVILEGES ON `<DB_NAME>`.* TO '<DB_USER>'@'%';
+FLUSH PRIVILEGES;
+```
 
 `DB_AUTO_MIGRATE` controls table creation:
 

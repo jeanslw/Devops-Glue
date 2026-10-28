@@ -1,7 +1,8 @@
-# nginx  对外 HTTP 入口
-# web    纯 php-fpm，无状态，支持 --scale web=N
-# worker supervisord 的 4个 cron
-
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
 
 x-web-common: &web-common
   image: devops-glue:latest
@@ -28,11 +29,7 @@ x-web-common: &web-common
     - DAC_OVERRIDE
     - FOWNER
     - KILL
-  logging:
-    driver: json-file
-    options:
-      max-size: "10m"
-      max-file: "3"
+  logging: *default-logging
   # php-fpm 端口存活
   healthcheck:
     test: ["CMD-SHELL", "php -r 'exit(@fsockopen(\"127.0.0.1\", 9000) ? 0 : 1);' && php /app/cli/healthcheck.php"]
@@ -46,17 +43,28 @@ x-web-common: &web-common
 
 services:
   nginx:
-    image: nginx:1.22-alpine
+    image: nginx:1.28-alpine
     container_name: devops-glue-nginx
     volumes:
       - ./config/docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./public:/app/public:ro
       #- ./config/certs:/etc/nginx/certs:ro
+      #- /etc/localtime:/etc/localtime:ro
     ports:
       - "8080:80"
       #- "[::]:8080:80"
       #- "8443:443"
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - NET_BIND_SERVICE
+      - SETUID
+      - SETGID
+    logging: *default-logging
     depends_on:
       web:
         condition: service_healthy
@@ -103,7 +111,6 @@ services:
       mysql:
         condition: service_healthy
 
-  # 启动前预检,查看原因：docker compose logs env-check
   env-check:
     image: mysql:8.4
     entrypoint: ["sh", "-c"]
@@ -119,23 +126,23 @@ services:
       - |
         fail=0
         if [ ! -f /check/app.env ]; then
-          echo "[启动中止] 缺少 config/app.env：请先执行 cp config/app.env.example config/app.env 并填写配置（至少填一个 Git 平台的 URL 和 Token）"
-          echo "[ABORT] Missing config/app.env: run 'cp config/app.env.example config/app.env' and fill it in first (at least one Git platform URL + token)"
+          echo "[启动中止] 缺少 config/app.env：请先执行 cp config/app.env.example && config/app.env 并填写配置。"
+          echo "[ABORT] Missing config/app.env: Please first run cp config/app.env.example && config/app.env and fill in the configuration."
           fail=1
         fi
         if [ -z "$$DB_USER" ]; then
-          echo "[启动中止] 缺少数据库业务账号名：请在根目录 .env 设置 DB_USER（mysql 服务据此创建同名账号，应用同名连库，建议 devops）"
-          echo "[ABORT] Missing database application username: set DB_USER in the root .env (the mysql service creates an account with this name; the app connects with it; suggest 'devops')"
+          echo "[启动中止] 缺少数据库业务账号名：请在根目录 .env 设置 DB_USER"
+          echo "[ABORT] Missing database application username: set DB_USER in the root .env"
           fail=1
         fi
         if [ -z "$$DB_PASS" ]; then
-          echo "[启动中止] 缺少数据库业务账号口令：请在根目录 .env 设置 DB_PASS（业务账号 devops 连库口令，建议 openssl rand -base64 24）"
-          echo "[ABORT] Missing database application password: set DB_PASS in the root .env (password for the application account 'devops'; suggested: openssl rand -base64 24)"
+          echo "[启动中止] 缺少数据库业务账号口令：请在根目录 .env 设置 DB_PASS"
+          echo "[ABORT] Missing database application password: set DB_PASS in the root .env"
           fail=1
         fi
         if [ -z "$$DB_ROOT_PASS" ]; then
-          echo "[启动中止] 缺少 MySQL 管理员口令：请在根目录 .env 设置 DB_ROOT_PASS（MySQL root 超级管理员口令，仅数据卷首次初始化时使用）"
-          echo "[ABORT] Missing MySQL administrator password: set DB_ROOT_PASS in the root .env (MySQL root superuser password; used only on first-time volume initialization)"
+          echo "[启动中止] 缺少 MySQL 管理员口令：请在根目录 .env 设置 DB_ROOT_PASS（仅数据卷首次初始化时使用）"
+          echo "[ABORT] Missing MySQL administrator password: set DB_ROOT_PASS in the root .env (used only on first-time volume initialization)"
           fail=1
         fi
         key_ok=0
@@ -145,15 +152,15 @@ services:
           grep -qE '^DATA_ENC_KEY=[[:space:]]*[^[:space:]]' "$$f" && key_ok=1
         done
         if [ "$$key_ok" != "1" ]; then
-          echo '[启动中止] 缺少敏感字段加密密钥 DATA_ENC_KEY：请在 config/app.env 或根 .env 设置（生成：php -r "echo base64_encode(random_bytes(32));"）'
-          echo '[ABORT] Missing sensitive-field encryption key DATA_ENC_KEY: set it in config/app.env or the root .env (generate: php -r "echo base64_encode(random_bytes(32));")'
+          echo '[启动中止] 缺少敏感字段加密密钥 DATA_ENC_KEY：请在 config/app.env 或根 .env 设置'
+          echo '[ABORT] Missing sensitive-field encryption key DATA_ENC_KEY: set it in config/app.env or the root .env'
           fail=1
         fi
         if [ "$$fail" = "1" ]; then
           echo "------------------------------------------------------------------------"
           echo "请补全根目录 .env 后重新执行 / Fill in the root .env, then run again: docker compose up -d --build"
-          echo "提示 / Note: 升级存量 mysql-data 数据卷无需重建卷，手工建号 SQL 见本文件 mysql 服务注释。"
-          echo "       Existing mysql-data volumes do not need rebuilding; see the manual SQL in the mysql service comments below."
+          echo "提示 / Note: 升级存量 mysql-data 数据卷无需重建卷，手动迁移模式请启用mysql服务的创建SQL脚本"
+          echo "       Existing mysql-data volumes do not need rebuilding; For manual migration mode, please enable the SQL creation script for MySQL service"
           exit 1
         fi
         echo "[预检通过 / PASS] 数据库必填环境变量已配置 / Required database environment variables are set"
@@ -173,9 +180,9 @@ services:
     volumes:
       - mysql-data:/var/lib/mysql
       - ./database/mysql_init.sql:/docker-entrypoint-initdb.d/01-ci.sql:ro
-      # 联合部署 CD 时启用
       # - ../Devops_CD/database/init_mysql.sql:/docker-entrypoint-initdb.d/02-cd.sql:ro
     restart: unless-stopped
+    logging: *default-logging
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     healthcheck:
       test: ["CMD-SHELL", "MYSQL_PWD=\"$$MYSQL_PASSWORD\" mysql -h127.0.0.1 -u\"$$MYSQL_USER\" --silent -e 'SELECT 1'"]
@@ -184,42 +191,51 @@ services:
       retries: 10
       start_period: 60s
 
-## ──────────────────────────────────────
-## Devops CD Service — 与 CI/MySQL 共用根目录 .env
-## ──────────────────────────────────────
-## 集中部署时取消下方注释。DB / Harbor / CI_API_TOKEN 由 .env 注入；
-## SECRET_KEY 留空会被 ${SECRET_KEY:?} 拒绝启动。
-## CI 的 HTTP 入口是 nginx 服务（web:9000 是 FastCGI，不能直连）。
-#
 #  devops-cd:
 #    build:
 #      context: ../Devops_CD
 #      dockerfile: Dockerfile
-#    container_name: devops-cd
 #    image: devops-cd:latest
-#    volumes:
-#      - cd-service-data:/home/appuser
+#    container_name: devops-cd
+#    depends_on:
+#      env-check:
+#        condition: service_completed_successfully
 #    env_file:
 #      - .env
 #    environment:
+#      PYTHONUNBUFFERED: "1"
+#      HOST: 0.0.0.0
+#      PORT: 8081
 #      TZ: ${TZ:-Asia/Shanghai}
-#      CI_API_URL: http://nginx
-#      SECRET_KEY: "${SECRET_KEY:?请先在根 .env 设置 SECRET_KEY（openssl rand -base64 32）再启用 devops-cd}"
+#      # ── CI API ──
+#      #CI_API_URL: http://nginx
+#      #CI_API_TOKEN: dg_xxx
+#      # ── SSO / OIDC ──
+#      CD_OIDC_SECRET: ${CD_OIDC_SECRET:-}
+#      CD_OIDC_REDIRECT_URI: ${CD_OIDC_REDIRECT_URI:-}
 #    ports:
-#      - "8081:8081"
-#    # Docker + WSL 特殊环境：
-#    extra_hosts:
-#      - "localhost:host-gateway"
+#      - "${CD_BIND_IP:-127.0.0.1}:8081:8081"
 #    restart: unless-stopped
-#    logging:
-#      driver: json-file
-#      options:
-#        max-size: "10m"
-#        max-file: "3"
-#    depends_on:
-#      mysql:
-#        condition: service_healthy
+#    cap_drop:
+#      - ALL
+#    security_opt:
+#      - no-new-privileges:true
+#    # environment:
+#    #   DB_DRIVER: sqlite
+#    #   DB_PATH: /data/data.db
+#    read_only: true
+#    tmpfs:
+#      - /tmp
+#    volumes:
+#      - cd_known_hosts:/home/appuser
+#      # - config/data:/data:rw      
+#    healthcheck:
+#      test: ["CMD", "python", "-c", "import sys, json, urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:8081/api/info', timeout=3)); sys.exit(0 if d.get('status')=='running' and d.get('db_connected') else 1)"]
+#      interval: 30s
+#      timeout: 5s
+#      retries: 3
+#      start_period: 20s
 
 volumes:
   mysql-data:
-  cd-service-data:
+  #cd_known_hosts:

@@ -70,8 +70,7 @@ $app->group('/api', function (RouteCollectorProxy $api) {
     $api->group('/admin', function (RouteCollectorProxy $admin) {
         $admin->map(['POST'], '/login', [AuthController::class, 'login']);
         $admin->map(['POST'], '/logout', [AuthController::class, 'logout']);
-
-        
+       
         $admin->group('', function (RouteCollectorProxy $auth) {
             $auth->map(['PUT'], '/password', [AuthController::class, 'changePassword']);
             $auth->map(['GET'], '/job_git_map', [MappingController::class, 'jobGitMapList']);
@@ -111,8 +110,7 @@ $app->group('/api', function (RouteCollectorProxy $api) {
             $auth->map(['GET'], '/oidc_config', [OidcController::class, 'oidcConfig']);
             $auth->map(['PUT'], '/oidc_config', [OidcController::class, 'updateOidcConfig']);
             $auth->map(['GET'], '/platform_connections', [ConnectionController::class, 'platformConnections']);
-            $auth->map(['PUT'], '/platform_connections', [ConnectionController::class, 'updatePlatformConnections']);
-            
+            $auth->map(['PUT'], '/platform_connections', [ConnectionController::class, 'updatePlatformConnections']);          
             $auth->map(['POST'], '/tag_cleanup', [SystemController::class, 'runTagCleanup']);
             $auth->map(['POST'], '/tag_backfill', [SystemController::class, 'runTagBackfill']);
             $auth->map(['GET'], '/system_info', [SystemController::class, 'systemInfo']);
@@ -124,8 +122,7 @@ $app->group('/api', function (RouteCollectorProxy $api) {
             $auth->map(['POST'], '/api_tokens', [ApiTokenController::class, 'apiTokenCreate']);
             $auth->map(['PUT'], '/api_tokens/{id}/scopes', [ApiTokenController::class, 'apiTokenUpdateScopes']);
             $auth->map(['POST'], '/api_tokens/{id}/revoke', [ApiTokenController::class, 'apiTokenRevoke']);
-            $auth->map(['DELETE'], '/api_tokens/{id}', [ApiTokenController::class, 'apiTokenDelete']);
-            
+            $auth->map(['DELETE'], '/api_tokens/{id}', [ApiTokenController::class, 'apiTokenDelete']);        
             $auth->map(['GET'], '/integrated_services/{service}', [IntegratedServiceController::class, 'status']);
             $auth->map(['POST'], '/integrated_services/{service}/enable', [IntegratedServiceController::class, 'enable']);
             $auth->map(['POST'], '/integrated_services/{service}/disable', [IntegratedServiceController::class, 'disable']);
@@ -142,8 +139,7 @@ $app->group('/api', function (RouteCollectorProxy $api) {
         
         $rbac->map(['POST'], '/users', [RbacController::class, 'userCreate']);
         $rbac->map(['PUT'], '/users/{username}', [RbacController::class, 'userUpdate']);
-        $rbac->map(['DELETE'], '/users/{username}', [RbacController::class, 'userDelete']);
-        
+        $rbac->map(['DELETE'], '/users/{username}', [RbacController::class, 'userDelete']);      
         $rbac->map(['GET'], '/users', [RbacController::class, 'userList']);
         $rbac->map(['GET'], '/users/{username}', [RbacController::class, 'userGet']);
         $rbac->map(['GET'], '/roles', [RbacController::class, 'roleList']);
@@ -194,7 +190,6 @@ $app->group('/api', function (RouteCollectorProxy $api) {
         $registry->map(['GET', 'POST'], '/{project}/repositories/{repository}/tags', [RegistryController::class, 'getTagsList']);
     })->add(AuthMiddleware::class);
 });
-
 
 $app->group('/oauth', function (RouteCollectorProxy $oauth) {
     $oauth->get('/authorize',  [OAuthController::class, 'authorizeForm']);
