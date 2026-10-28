@@ -1,27 +1,14 @@
 # ══════════════════════════════════════════════════════════════════════════
-# Devops-Glue Kubernetes 部署清单（k8s 兼容，与 docker-compose.yml 一一对应）
+# Devops-Glue Kubernetes 部署清单
 #
-# 用法（全量一次性应用，Namespace 会自动创建）：
+# 用法：
 #   kubectl apply -f config/k8s/devops-glue.yaml
-#
-# 组件拓扑（对应 docker-compose 的分布式拆分结构）：
-#   devops-glue-lb  (nginx, LoadBalancer)  ← 唯一对外 HTTP 入口
-#         │  静态文件直接返回（initContainer 从镜像拷贝 public/ 到 emptyDir）；
-#         │  PHP 请求 fastcgi → devops-glue Service（ClusterIP，轮询，:9000）
-#         ▼
-#   devops-glue       Deployment，副本数 replicas=3（web，纯 php-fpm，无状态，可水平扩展）
-#   devops-glue-worker Deployment，副本数 replicas=1（定时任务，单实例化）
-#   devops-glue-mysql （可选，见末尾注释块；生产建议托管/独立 MySQL）
 #
 # 与 docker-compose 的关键差异（务必读）：
 #   1) 无 PHP session：登录 token / API token 全在 MySQL，web 副本无需粘滞（ip_hash）。
-#   2) 无宿主机 bind mount：/data 下日志、GitLab ID 缓存等改为 Pod 临时层（重启即清，
-#      仅缓存性质，安全）；SQLite 库/备份需持久化时用末尾可选 PVC。
-#   3) OIDC 私钥：多副本必须注入「固定」OIDC_RSA_PRIVATE_KEY（见下方 Secret），
-#      否则每个副本自动生成不同私钥 → kid/JWKS 漂移 → Jenkins/Harbor/GitLab SSO 抽风。
-#   4) 镜像：devops-glue:latest 需先 push 到集群可达的镜像仓库；私有仓库加 imagePullSecrets。
-#   5) 静态文件：k8s 无宿主机 bind mount，改为 LB 的 initContainer 把镜像内 public/
-#      拷到 emptyDir 供 nginx 直接返回（见 devops-glue-lb Deployment）。
+#   2) 无宿主机 bind mount：/data 下日志、GitLab ID 缓存等改为 Pod 临时层；
+#      SQLite 库/备份需持久化时用末尾可选 PVC。
+#   3) OIDC 私钥：多副本必须注入「固定」OIDC_RSA_PRIVATE_KEY
 # ══════════════════════════════════════════════════════════════════════════
 apiVersion: v1
 kind: Namespace
@@ -29,21 +16,7 @@ metadata:
   name: devops-glue
 ---
 # ──────────────────────────────────────────────────────────────────────────
-# 应用配置 Secret —— 挂载到 /app/config/app.env，等价于 docker-compose 的
-# bind mount `./config/app.env:/app/config/app.env:ro`。
-#
-# 更省事的替代做法（二选一，二者等价）：直接拿现有文件建 Secret，删掉本段 stringData 即可：
-#   kubectl -n devops-glue create secret generic devops-glue-app-env \
-#     --from-file=app.env=config/app.env
-#
-# ⚠️ OIDC_RSA_PRIVATE_KEY：生产多副本必须固定（openssl genrsa 2048 生成后写死，
-#    多行 PEM 用 \n 转义或直接换行）。留空 = 每副本自动生成不同私钥，SSO 会坏。
-# ⚠️ DATA_ENC_KEY：敏感字段对称加密密钥（必填，缺失即 fail-closed）。本 Secret 同时
-#    挂载到 web（replicas=3）与 worker 两个 Deployment，全部 Pod 读到同一值——这是
-#    「多副本同 key」的唯一保证；换值/丢值 = 库内 token/secret 密文永久不可解。
-# ⚠️ TRUSTED_PROXY_HOPS 默认 0：LB 用 fastcgi_pass 直连 php-fpm，REMOTE_ADDR 即客户端 IP，
-#    无 X-Forwarded-For 跳。仅当 LB 之前还隔着不保留源 IP 的反代/云 LB 时，才按层数递增，
-#    并需同步在 LB 的 nginx 配置里补 `fastcgi_param HTTP_X_FORWARDED_FOR $http_x_forwarded_for;`。
+# 应用配置 Secret —— 挂载到 /app/config/app.env
 # ──────────────────────────────────────────────────────────────────────────
 apiVersion: v1
 kind: Secret
@@ -55,44 +28,28 @@ stringData:
   app.env: |
     APP_ENV=production
     APP_DEBUG=false
-    # 对外可达的完整 URL（Swagger 等使用）
     API_BASE_URL=https://glue.example.com
 
-    # 构建模式：已启用 CI 源集合（首次运行种子，后台「配置模式」写入 DB 后以此为准）
     BUILD_MODE=jenkins,gitlab_ci,gitea_ci
-
-    # ── 数据库（k8s 建议托管/独立 MySQL；DB_HOST 指向其地址/Service）──
     DB_DRIVER=mysql
     DB_HOST=devops-glue-mysql
     DB_PORT=3306
     DB_NAME=devops_glue
     DB_USER=devops
     DB_PASS=CHANGE_ME_DB_PASS
-
-    # ── Jenkins / Harbor / Git 多平台连接已迁入 DB（ci_platform_connections）──
-    # 升级时手动跑一次 cli/migrate-platform-connections.php 搬库，或后台「平台接入状态」页配置；
-    # 此处不再通过 env 注入。
-
-    # ── 管理后台种子账号（仅首启建号，之后后台修改）──
     ADMIN_USER=admin
     ADMIN_PASSWORD=CHANGE_ME_ADMIN_PASS
-
-    # 反代跳数：LB 用 fastcgi_pass（非 proxy_pass），REMOTE_ADDR 直达客户端 IP，故默认 0。
-    # 仅当 LB 前还有不保留源 IP 的云反代/代理协议时按层数递增（见文件头 ⚠️）。
     TRUSTED_PROXY_HOPS=0
 
-    # ── 敏感字段加密密钥（必填，多副本必须同值，见上方 Secret 头 ⚠️）──
+    # ── 敏感字段加密密钥 ──
     # base64 编码的 32 字节，生成：php -r "echo base64_encode(random_bytes(32));"
-    # 本 Secret 同时挂载到 web 与 worker，全部 Pod 读到同一值；务必备份、不进 git。
     DATA_ENC_KEY=CHANGE_ME_DATA_ENC_KEY
 
-    # ── OIDC SSO 签名私钥（多副本必须固定，见文件头 ⚠️）──
+    # ── OIDC SSO 签名私钥 ──
     OIDC_RSA_PRIVATE_KEY=CHANGE_ME_FIXED_RSA_PEM
 ---
 # ──────────────────────────────────────────────────────────────────────────
-# 前端入口 nginx 配置（对应 config/docker/nginx.conf，仅 upstream 指向 k8s Service）。
-#   - 静态文件（root /app/public）由 emptyDir 提供（initContainer 从镜像拷贝）；
-#   - PHP 请求 fastcgi_pass → devops-glue:9000（web 纯 php-fpm）。
+# 前端入口 nginx 配置
 # ──────────────────────────────────────────────────────────────────────────
 apiVersion: v1
 kind: ConfigMap
@@ -164,7 +121,7 @@ data:
     }
 ---
 # ──────────────────────────────────────────────────────────────────────────
-# Web 无状态 Deployment（纯 php-fpm，水平扩展：改 replicas 即可，无 session 无需粘滞）
+# Web 无状态 Deployment
 # ──────────────────────────────────────────────────────────────────────────
 apiVersion: apps/v1
 kind: Deployment
@@ -188,7 +145,6 @@ spec:
       labels:
         app: devops-glue
     spec:
-      # 镜像需先 push 到集群可达仓库；私有仓库在此加 imagePullSecrets。
       # imagePullSecrets:
       #   - name: registry-secret
       containers:
@@ -202,12 +158,10 @@ spec:
             - name: fpm
               containerPort: 9000
           volumeMounts:
-            # 应用配置（等价 compose 的 config/app.env bind mount）
             - name: app-env
               mountPath: /app/config/app.env
               subPath: app.env
               readOnly: true
-          # 与 docker-compose healthcheck 一致：php-fpm 在容器内 TCP 9000 可连接
           readinessProbe:
             exec:
               command: ["sh", "-c", "php -r 'exit(@fsockopen(\"127.0.0.1\", 9000) ? 0 : 1);'"]
@@ -233,7 +187,6 @@ spec:
           secret:
             secretName: devops-glue-app-env
 ---
-# Web 内部 Service（供 LB fastcgi_pass 轮询；9000 是 FastCGI 协议，非 HTTP，不能对外暴露）
 apiVersion: v1
 kind: Service
 metadata:
@@ -274,8 +227,6 @@ spec:
         - name: devops-glue-worker
           image: devops-glue:latest
           imagePullPolicy: IfNotPresent
-          # 覆盖镜像默认 CMD（php-fpm）→ supervisord 跑 cron 循环（镜像内置 supervisord-worker.conf，
-          # 含 tag-cleanup / tag-backfill / api-log-cleanup / db-backup 四个 sleep-loop）。
           command: ["supervisord", "-n", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
           env:
             - name: TZ
@@ -285,7 +236,6 @@ spec:
               mountPath: /app/config/app.env
               subPath: app.env
               readOnly: true
-          # worker 不监听端口；supervisord autorestart 已兜底崩溃重启，无需 liveness
           resources:
             requests:
               cpu: 50m
@@ -298,9 +248,7 @@ spec:
             secretName: devops-glue-app-env
 ---
 # ──────────────────────────────────────────────────────────────────────────
-# 前端入口（唯一对外）—— nginx，对应 docker-compose 的 nginx 服务
-# initContainer 从 devops-glue 镜像拷贝 public/ 到 emptyDir，供 nginx 直接返回静态文件；
-# PHP 请求则 fastcgi 转发到 web（devops-glue Service）。
+# 前端入口
 # ──────────────────────────────────────────────────────────────────────────
 apiVersion: apps/v1
 kind: Deployment
@@ -320,8 +268,6 @@ spec:
         app: devops-glue-lb
     spec:
       initContainers:
-        # 把镜像内 public/（含 index.php 与静态资源）拷到共享 emptyDir。
-        # 与镜像同版本：升级时先 push 新镜像，initContainer 自动用新 public/。
         - name: copy-static
           image: devops-glue:latest
           imagePullPolicy: IfNotPresent
@@ -359,7 +305,6 @@ spec:
         - name: static
           emptyDir: {}
 ---
-# 对外入口 Service：LoadBalancer（云）或 NodePort（裸机）。二选一，删掉不用的。
 apiVersion: v1
 kind: Service
 metadata:
@@ -375,7 +320,6 @@ spec:
     - name: http
       port: 80
       targetPort: http
-  # 裸机无 LoadBalancer 时，改用 NodePort：
   # type: NodePort
   # ports:
   #   - name: http
@@ -384,13 +328,12 @@ spec:
   #     nodePort: 30080
 ---
 # ══════════════════════════════════════════════════════════════════════════
-# 可选：集群内 MySQL（StatefulSet）—— 生产建议托管/独立 MySQL，本块默认注释。
+# 可选：集群内 MySQL（StatefulSet）
 # 启用步骤：
 #   1) 取消下方全部注释；
 #   2) 用 database/mysql_init.sql 建 ConfigMap：
 #        kubectl -n devops-glue create configmap devops-glue-mysql-init \
 #          --from-file=01-ci.sql=database/mysql_init.sql
-#      （联合部署 CD 时把 ../Devops_CD/database/init_mysql.sql 也 --from-file 进来）
 #   3) 在 Secret 的 DB_PASS / 下方 MYSQL_PASSWORD 填入同一口令。
 # ══════════════════════════════════════════════════════════════════════════
 # apiVersion: v1
@@ -479,5 +422,4 @@ spec:
 #   resources:
 #     requests:
 #       storage: 10Gi
-#   # 显式指定支持 RWX 的 StorageClass：
 #   # storageClassName: nfs

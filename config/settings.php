@@ -8,125 +8,32 @@ if (!function_exists('env')) {
 }
 
 return [
-    /*
-     * ==================== Build Provider 配置模式 ====================
-     *
-     * job_git_map 中 build_provider 字段决定每个项目使用的 CI 系统：
-     *   'jenkins'     — Jenkins（默认，不填即走）
-     *   'gitlab_ci'   — GitLab CI/CD
-     *   'gitea_ci'    — Gitea Actions
-     *   'custom_push' — 推送式 CI（见下方 build.custom_providers）
-     *
-     * 全局构建模式是已启用 CI 源的集合（多选），存于数据库 ci_app_settings.build_mode
-     * （值形如 jenkins,gitlab_ci,gitea_ci），由后台配置模式页维护；.env 的 BUILD_MODE 仅作首次运行种子。
-     *
-     * Provider 注册条件（与构建模式解耦，始终按配置注册）：
-     *   - Jenkins：连接 URL 非空即注册
-     *   - GitLab CI：连接 URL + Token 齐备才注册
-     *   - Gitea Actions：连接 URL + Token 齐备才注册
-     *
-     * 下面 jenkins / git.* / harbor 的「连接值」只是结构占位（代码级默认），实际值由
-     * config/container.php 从 ci_platform_connections（DB）注入 —— 彻底移除 env，不再读
-     * GITLAB_BASE_URL / HARBOR_BASE_URL 等连接 env 键。旧版 env 里的连接值不自动搬库，
-     * 升级时手动跑 cli/migrate-platform-connections.php 一次（幂等 + 非破坏）。
-     */
-    // ==================== Jenkins ====================
-    'jenkins' => [
-        'url'   => '',
-        'user'  => 'admin',
-        'token' => '',
-    ],
-
-    // ==================== Git 多平台配置 ====================
     'git' => [
-        // URL 无法匹配任何已注册平台时，回退使用的平台名
         'default_platform' => env('DEFAULT_GIT_PLATFORM', 'gitlab'),
-
-        // ----- GitLab -----
         'gitlab' => [
             'base_url' => '',
             'token'    => '',
         ],
-        // ----- GitHub -----
         'github' => [
             'base_url' => 'https://api.github.com',
             'token'    => '',
         ],
-        // ----- Gitee -----
         'gitee' => [
             'base_url' => 'https://gitee.com/api/v5',
             'token'    => '',
         ],
-        // ----- Gitea -----
         'gitea' => [
             'base_url' => '',
             'token'    => '',
         ],
-        // ----- 自定义平台 -----
-        'custom_providers' => [
-            // 示例：自定义 Git 平台适配器（凭证通过 env() 从 .env 读取，不写死在这里）。
-            // class 实现 GitProviderInterface，构造签名为 (array $config, ?Logger $logger)，详见 src/Service/Git/。
-            // Bitbucket Cloud（API v2.0；App Password 填 username，仅 OAuth/仓库访问令牌可留空走 Bearer）：
-            // [
-            //     'class'  => 'App\\Service\\Git\\BitbucketService',
-            //     'config' => [
-            //         'name'     => 'bitbucket',
-            //         'base_url' => 'https://api.bitbucket.org/2.0',
-            //         'username' => env('BITBUCKET_USERNAME', ''),
-            //         'token'    => env('BITBUCKET_TOKEN', ''),
-            //         'matcher'  => function (string $url): bool {
-            //             return str_contains($url, 'bitbucket.org') || str_contains($url, 'bitbucket');
-            //         },
-            //     ],
-            // ],
-            // GitCode（Gitee 风格 API v5，认证用 PRIVATE-TOKEN）：
-            // [
-            //     'class'  => 'App\\Service\\Git\\GitCodeService',
-            //     'config' => [
-            //         'name'     => 'gitcode',
-            //         'base_url' => 'https://api.gitcode.com/api/v5',
-            //         'token'    => env('GITCODE_TOKEN', ''),
-            //         'matcher'  => function (string $url): bool {
-            //             return str_contains($url, 'gitcode.com') || str_contains($url, 'gitcode');
-            //         },
-            //     ],
-            // ],
-        ],
+        'custom_providers' => [],
     ],
 
-    // ==================== Harbor ====================
-    'harbor' => [
-        'url'      => '',
-        'username' => 'admin',
-        'password' => '',
-    ],
-
-    // ==================== CD（CI→CD 部署日志只读端点） ====================
-    // 部署日志已解耦：CI 不再读共享库视图，改经 CD 的 /api/integration/deploy-logs 拉取。
-    // 留空则部署日志审计降级为「不可用」占位（不抛错）。token 为 CD 侧入站静态令牌，两端同值。
     'cd' => [
         'base_url'  => env('CD_BASE_URL', ''),
         'api_token' => env('CD_API_TOKEN', ''),
     ],
 
-    // ==================== 自定义 Build Provider（推送式 CI） ====================
-    // 默认已配置 CustomPushBuildProvider，开箱即用，无需修改。
-    // 启用：管理后台配置模式 Tab 勾选启用 Custom_Push，即时生效。
-    //
-    // build_mode（jenkins/gitlab_ci/both）与 custom_push_enabled 正交，可任意组合。
-    // job_git_map.build_provider 填 'custom_push' 即可选用。
-    //
-    // 用户 CI 对接一个接口（path = job_git_map.job_name）：
-    //   POST /api/build/{path}/report — 一次性上报构建终态结果
-    //      Body: { "pipeline_iid": 123, "status": "success", "finished_at": "2026-08-18 10:05:30",
-    //              "started_at": "2026-08-18 10:00:00", "sha": "abc123", "ref": "main",
-    //              "log_url": "https://ci.example.com/build/123/log",
-    //              "web_url": "https://ci.example.com/build/123",
-    //              "tag": "v1.0.0", "env": "prod", ... }
-    //
-    // 下方 variables 定义上报时允许传入的自定义构建参数（存入 variables_json）。
-    // pipeline_iid/status/finished_at/tag 等控制字段不需要在此声明。
-    // 如需更多参数（如 COMMIT_MSG、BUILDER），直接在下方追加即可。
     'build' => [
         'custom_providers' => [
             [
@@ -134,52 +41,34 @@ return [
                 'class'  => 'App\\Service\\Build\\CustomPushBuildProvider',
                 'config' => [
                     'variables' => [
-                        'env'         => ['type' => 'choice', 'choices' => ['dev', 'staging', 'prod'], 'description' => '构建镜像目标环境（可选）', 'required' => false],
+                        'env' => ['type' => 'choice', 'choices' => ['dev', 'staging', 'prod'], 'description' => '构建镜像目标环境（可选）', 'required' => false],
                     ],
-                    // 服务端代理拉取 log_url 的 SSRF 白名单（可选，逗号分隔主机名）。
-                    // 留空 = 不启用白名单，仅按回环 / 链路本地 / 组播 / 广播 / 云元数据 IP 段拦截。
-                    // 建议内网部署显式配置：CUSTOM_PUSH_LOG_ALLOWED_HOSTS=gitlab.example.com,ci.example.com
                     'log_url_allowed_hosts' => array_values(array_filter(array_map('trim', explode(',', env('CUSTOM_PUSH_LOG_ALLOWED_HOSTS', ''))))),
                 ],
             ],
         ],
     ],
 
-    // ==================== 管理后台 ====================
     'admin' => [
         'user'     => env('ADMIN_USER', 'root'),
         'password' => env('ADMIN_PASSWORD', ''),
-        // 旧版 base64(user:password) 文档令牌兼容开关（默认关）。
-        // 该格式无过期/无吊销且等价于明文凭证；现代随机 token 已覆盖 /docs 访问，此兼容仅按需开启。
         'legacy_token' => env('ADMIN_LEGACY_TOKEN', 'false') === 'true',
     ],
 
-    // ==================== LDAP 外部身份源登录 ====================
-    // 依赖 PHP ext-ldap 扩展（php.ini 启用 extension=ldap），未加载则自动降级，仅本地登录可用。
-    // 启用后登录顺序：本地 admin_users，其次 LDAP（须已在 user_identities 绑定），最后 .env。
-    //
-    // 两种连接模式（二选一）：
-    //   1. 管理员搜索模式（通用）：配 bind_dn + bind_password + base_dn + user_filter，
-    //      先以管理员身份搜索用户 DN，再用该 DN + 用户密码绑定校验。
-    //   2. 直连模式：配 user_dn_pattern（如 uid=%s,ou=users,dc=example,dc=com），
-    //      跳过搜索，直接用模板拼出 DN 绑定。
     'ldap' => [
         'enabled'         => env('LDAP_ENABLED', 'false') === 'true',
         'host'            => env('LDAP_HOST', ''),
         'port'            => (int) env('LDAP_PORT', '389'),
-        'use_tls'         => env('LDAP_USE_TLS', 'false') === 'true',   // 连接后 STARTTLS
-        'use_ldaps'       => env('LDAP_USES_LDAPS', 'false') === 'true', // 直接 ldaps://（通常端口 636）
+        'use_tls'         => env('LDAP_USE_TLS', 'false') === 'true',
+        'use_ldaps'       => env('LDAP_USES_LDAPS', 'false') === 'true',
         'base_dn'         => env('LDAP_BASE_DN', ''),
         'bind_dn'         => env('LDAP_BIND_DN', ''),
         'bind_password'   => env('LDAP_BIND_PASSWORD', ''),
-        'user_filter'     => env('LDAP_USER_FILTER', '(uid=%s)'),        // %s → 登录用户名
-        // 登录成功后回读的属性（逗号分隔）；mail 用于回刷 email，可按目录 schema 增补（如 email/sAMAccountName）
+        'user_filter'     => env('LDAP_USER_FILTER', '(uid=%s)'),
         'attrs'           => array_values(array_filter(array_map('trim', explode(',', env('LDAP_ATTRS', 'uid,cn,mail,dn'))))),
-        'user_dn_pattern' => env('LDAP_USER_DN_PATTERN', ''),            // 非空则走直连模式
+        'user_dn_pattern' => env('LDAP_USER_DN_PATTERN', ''),
         'network_timeout' => (int) env('LDAP_NETWORK_TIMEOUT', '5'),
     ],
-
-    // ==================== CORS ====================
 
     'cors' => [
         'allowed_origins' => env('CORS_ORIGIN', '*') === '*'
@@ -187,63 +76,20 @@ return [
             : array_map('trim', explode(',', env('CORS_ORIGIN', '*'))),
     ],
 
-    // ==================== App ====================
     'app' => [
         'env'           => env('APP_ENV', 'production'),
         'debug'         => env('APP_DEBUG') === 'true',
         'log_path'      => env('LOG_PATH', '/data/logs/ci-platform/'),
-        // 应用日志保留天数：Logger 按此清理旧的 app-*.log（0=不清理）；裸机/Docker 通吃
         'log_retain_days' => max(0, (int) env('LOG_RETAIN_DAYS', '30')),
         'api_base_url'  => env('API_BASE_URL', ''),
-        // 当前实例类型：ci / cd / both（影响登录权限校验）
         'system_type'   => env('SYSTEM_TYPE', 'ci'),
-        // 可信反向代理跳数：0=直连（默认，忽略 X-Forwarded-For）；
-        // 置于 nginx 等反代之后设 1，多层代理按层数增加（登录锁定按此解析真实 IP）。
         'trusted_proxy_hops' => max(0, (int) env('TRUSTED_PROXY_HOPS', '0')),
     ],
 
-    /*
-     * Job ↔ Git ↔ Harbor 三方映射表
-     *
-     * 注意：数据已迁移到 SQLite（config/data/data.db），通过管理界面 /admin 编辑。
-     * 此处仅保留字段文档参考，以下数组为空，修改此处不会生效！
-     * 请通过后台映射管理或直接操作数据库来配置，不要改这个空数组。
-     *
-     * 字段说明：
-     *
-     * ┌──────────────┬──────┬──────────────────────────────────────────────────┐
-     * │ 字段           │ 必填  │ 说明                                             │
-     * ├──────────────┼──────┼──────────────────────────────────────────────────┤
-     * │ job_name     │ 是   │ Jenkins Job 完整路径，如 "java/registry"            │
-     * │ git_platform │      │ 自建实例强烈建议。不填则自动检测 URL 关键词，          │
-     * │              │      │ 可选值: gitlab|gitee|github|gitea 或自定义平台名      │
-     * │ git_remote   │      │ 不填则从 Jenkins Job 的 SCM 配置自动获取             │
-     * │ project_id   │      │ GitLab: 不填自动通过 API 查询; GitHub/Gitee: 可填    │
-     * │ web_url      │      │ 项目主页链接，仅用于映射输出展示                      │
-     * │ current_path │      │ 项目路径，不填从 git_remote 自动推导                 │
-     * │ harbor_      │      │ 关联的 Harbor 仓库，格式 "project/repository"        │
-     * │   repository │      │ 仅用于映射输出展示                                  │
-     * │ api_version  │      │ 纯元数据，不影响 API 路由，仅用于映射输出展示          │
-     * └──────────────┴──────┴──────────────────────────────────────────────────┘
-     */
-    'oauth_clients' => [
-        // OIDC/OAuth 客户端白名单已迁入 DB（ci_oauth_clients，后台「平台接入状态 → OIDC/SSO」页可编辑），
-        // 彻底移除 env：此数组恒为空，唯一权威由 OAuthClientRepository::resolveClients() 从 DB 读取。
-        // 客户端 secret/redirect_uri 留空即 fail-closed（OAuthService 构造函数剔除），
-        // 启用客户端前须在后台同时填齐 secret 与 redirect_uri。
-    ],
+    'oauth_clients' => [],
 
-    // ==================== OIDC Provider（Jenkins / Harbor / GitLab 单点登录）====================
-    // issuer / id_token_ttl 已迁入 DB（ci_app_settings，后台 OIDC 配置页可编辑），
-    // 此处不再读 env，仅作结构占位（config/container.php 的 OidcService 闭包从 DB 注入覆盖）。
-    // 签名私钥（非「登录项」，是密钥材料）保留 env 覆盖：多副本部署必须注入固定
-    // OIDC_RSA_PRIVATE_KEY，否则各副本自动生成的 kid 不一致、客户端验签失败。
     'oidc' => [
-        'issuer'       => '',
-        'id_token_ttl' => 3600,
-        'private_key'  => env('OIDC_RSA_PRIVATE_KEY', ''),
-        'key_file'     => env('OIDC_KEY_FILE', __DIR__ . '/data/oidc_rsa.pem'),
+        'private_key' => env('OIDC_RSA_PRIVATE_KEY', ''),
+        'key_file'    => env('OIDC_KEY_FILE', __DIR__ . '/data/oidc_rsa.pem'),
     ],
-
-    'job_git_map' => [], // ⚠️ 已由 SQLite 接管，此处永远为空，修改无效！请使用 /admin 管理界面
 ];
