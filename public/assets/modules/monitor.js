@@ -13,11 +13,9 @@ function applyRegistryName(isHarbor, ver) {
     _registryName = { isHarbor: isHarbor, ver: ver };
     const nameEl = document.getElementById('name-harbor');
     if (!nameEl) return;
-    // 非 Harbor（registry:2 / 未配置）显示通用名 monitor.container_registry（与卡片标题同文案），
-    // 不直接显示内部占位值 'registry'——那是 /api/health 里 harbor_version 的占位，不是产品名。
     const base = isHarbor ? 'Harbor' : __.t('monitor.container_registry');
     nameEl.dataset.base = base;
-    if (isHarbor && ver) {
+    if (ver) {
         nameEl.innerHTML = esc(base) + ' <span class="svc-ver">' + esc(ver) + '</span>';
     } else {
         nameEl.textContent = base;
@@ -183,13 +181,17 @@ export async function loadMonitor() {
         const hOkRaw = chk.harbor;
         const hOk = hOkRaw === true;
         const hVer = chk.harbor_version || '';
-        // 只有探测到真实 Harbor 版本才显示 Harbor 品牌名；registry:2（版本占位 'registry'）
-        // 与未配置（版本为空）都显示通用「镜像仓库」，不追加假版本号。
-        const isHarbor = hVer !== '' && hVer !== 'registry';
-        applyRegistryName(isHarbor, isHarbor ? hVer : '');
-        const hLabel = hOk ? __.t('common.ok') : hOkRaw===null ? __.t('common.not_configured') : __.t('common.unreachable');
-        const hKey = hOk ? 'common.ok' : (hOkRaw === null ? 'common.not_configured' : 'common.unreachable');
-        setSvc('icon-harbor', 'name-harbor', 'stat-harbor', 'dot-harbor', hOk, '', hLabel, '', hKey);
+        const isHarbor = (chk.registry_type || 'harbor') === 'harbor';
+        applyRegistryName(isHarbor, hVer);
+        const mismatch = chk.registry_type_mismatch === true;
+        if (mismatch) {
+            const mLabel = __.t('monitor.registry_type_mismatch');
+            setSvc('icon-harbor', 'name-harbor', 'stat-harbor', 'dot-harbor', false, '', mLabel, mLabel, 'monitor.registry_type_mismatch');
+        } else {
+            const hLabel = hOk ? __.t('common.ok') : hOkRaw===null ? __.t('common.not_configured') : __.t('common.unreachable');
+            const hKey = hOk ? 'common.ok' : (hOkRaw === null ? 'common.not_configured' : 'common.unreachable');
+            setSvc('icon-harbor', 'name-harbor', 'stat-harbor', 'dot-harbor', hOk, '', hLabel, '', hKey);
+        }
     } catch (e) {
         const ek = e.name === 'AbortError' ? 'js.timeout' : 'js.cannot_connect';
         const msg = __.t(ek);

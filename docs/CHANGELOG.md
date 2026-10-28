@@ -5,14 +5,15 @@
 - **Refactor**
   - `AdminController` and `BuildController` are split apart; this is an internal structure refactor only — URLs, HTTP methods, permission checks, and response structures are unchanged.
   - The build / admin / OAuth SQL moves into dedicated repositories and services, and multi-write transactions all run through one shared `TransactionManager`; behaviour and responses are unchanged.
-
 - **Fixed**
   - When the image registry does not support scanning, the audit record's state is no longer written as `unknown`; it is normalized from the build status to success / failed / pending, matching the commit status.
-
+  - The platform version page's image-registry row now shows the type suffix matching the actual `registry_type`.
+  - The health check now returns the probed distribution version for `registry` mode, instead of the fixed string `"registry"`.
 - **Improved**
   - nginx enables `resolve` on the php-fpm upstream with Docker's built-in DNS: the IP refreshes automatically when php-fpm replicas scale up or down or a container is recreated, and with multiple replicas passive failover takes over once failed requests reach the threshold.
   - docker-compose centralizes log rotation; nginx is upgraded to 1.28 with its container capabilities reduced; a health endpoint and gzip are added.
   - Connection configuration already migrated to the database is removed, along with the configuration template (`settings.example.php`).
+  - The image registry now supports type-consistency detection: when the selected type does not match the actual service behind the address, both the health check and the platform-connection card show a "registry type mismatch" warning and log an error, without blocking the save.
 
 ## v2.11.0 (2026-10-24)
 

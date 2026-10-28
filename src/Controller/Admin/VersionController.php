@@ -8,6 +8,7 @@ use App\Config\AppConfig;
 use App\Service\HarborService;
 use App\Service\JenkinsService;
 use App\Service\PlatformVersionRepository;
+use App\Service\RegistryProbe;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -85,7 +86,19 @@ class VersionController extends BaseAdminController
         }
 
         $result = ['harbor' => [], 'jenkins' => []];
-        if ($this->config->getRegistryType() !== 'registry') {
+        if ($this->config->getRegistryType() === 'registry') {
+            try {
+                $cfg = $this->config->getHarborConfig();
+                $probe = new \App\Service\RegistryProbe(
+                    (string)($cfg['url'] ?? ''),
+                    (string)($cfg['username'] ?? 'admin'),
+                    (string)($cfg['password'] ?? '')
+                );
+                $result['harbor']['detected_version'] = $probe->distributionVersion();
+            } catch (\Throwable $e) {
+                \App\Helper\Log::error('[版本探测] 镜像仓库连接失败', ['error' => $e->getMessage()]);
+            }
+        } else {
             try {
                 $result['harbor']['detected_version'] = $this->harbor?->getHarborVersion();
                 $result['harbor']['robot_support']    = $this->harbor?->getRobotAccountSupport() ?? 'unknown';

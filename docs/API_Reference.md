@@ -152,7 +152,7 @@ Returns connectivity status of Jenkins, Git platforms, and Harbor, plus system s
 - `stats.harbor_repos`: number of distinct `registry_repository` values across active mappings (same for Harbor and registry:2)
 - HTTP 200 (ok) / 503 (degraded)
 
-> **Note:** for a `registry:2` connection (`registry_type=registry`), `checks.harbor` is a boolean reachability probe of `/v2/`, `harbor_version` is the string `"registry"`, and `harbor_components` is `{"registry": true}` when reachable. A Harbor connection keeps the `core` / `jobservice` / `registry` component probe.
+> **Note:** for a `registry:2` connection (`registry_type=registry`), `checks.harbor` is a boolean reachability probe of `/v2/`, `harbor_version` is the probed distribution version (e.g. `2.0`, empty if undetectable), and `harbor_components` is `{"registry": true}` when reachable. A Harbor connection keeps the `core` / `jobservice` / `registry` component probe. Both types also return `registry_type` (configured type), `registry_detected_type` (actual type from the address: harbor/registry/unknown), and `registry_type_mismatch` (true when configured and actual differ — warning only, does not block).
 
 ### Static Health Info
 

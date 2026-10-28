@@ -57,7 +57,7 @@ export async function loadVersions() {
             const desc = isPlainRegistry ? __.t('platform.registry_desc') : info.desc();
 
             return `<tr>
-                <td><strong>${label}</strong> <span style="color:#9ca3af;font-size:11px;">(${key})</span></td>
+                <td><strong>${label}</strong> <span style="color:#9ca3af;font-size:11px;">(${key === 'harbor' ? registryType : key})</span></td>
                 <td><code style="font-size:12px;color:#6b7280;">${esc(defVer)}</code></td>
                 <td>${srcBadge}</td>
                 <td><input data-platform="${key}" value="${esc(displayVal)}" data-initial="${esc(displayVal)}" placeholder="${esc(ph)}"
@@ -65,13 +65,10 @@ export async function loadVersions() {
                 <td style="font-size:12px;color:#6b7280;">${desc}</td>
             </tr>`;
         }).join('');
-        renderHarborCompat();
-        renderJenkinsCompat();
     } catch(e) {
         document.getElementById('ver-loading').innerHTML = '<p style="color:#dc2626;">' + __.t('js.load_failed') + ': ' + esc(e.message) + '</p>';
     }
 
-    // 慢探测：后台补齐实际版本号与 Harbor 机器人支持情况（失败或超时保留未知版本占位）
     try {
         const res = await probeReq;
         if (handle401(res)) return;
@@ -87,15 +84,24 @@ export async function loadVersions() {
         }
         renderHarborCompat();
         renderJenkinsCompat();
-    } catch(e) {}
+    } catch(e) {
+        renderHarborCompat();
+        renderJenkinsCompat();
+    }
 }
 
 function renderHarborCompat() {
     const el = document.getElementById('harbor-compat');
     if (!el) return;
-    // registry:2 无 Harbor 版本与机器人账户概念，不展示兼容性提示条
-    if (getRegistryType() === 'registry') { el.style.display = 'none'; return; }
     const h = currentVersions.harbor || {};
+    if (getRegistryType() === 'registry') {
+        const ver = h.detected_version || null;
+        const verText = ver ? ver : __.t('js.harbor_version_unknown');
+        el.style.display = 'block';
+        el.innerHTML = '<strong>📦 Container Registry</strong> · ' + __.t('js.harbor_detected_version')
+            + ': <code>' + esc(verText) + '</code>';
+        return;
+    }
     const ver = h.detected_version || null;
     const support = h.robot_support || 'unknown';
     const isRobot = !!h.robot_account;
