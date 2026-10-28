@@ -10,6 +10,15 @@
 - **Fixed**
   - When the image registry has no scanning (e.g. `registry:2`), `registry-sync` / `scan-sync` no longer write `unknown` into the audit record's `state`; it is normalized from `ci_status` to success / failed / pending, matching the commit status — even when `scan-sync` is called by mistake.
 
+- **Changed**
+  - `config/settings.php` drops the harbor / jenkins connection config, the `oidc` `issuer` and `id_token_ttl`, and `job_git_map` — all already migrated to the database — and removes all comments; `config/settings.example.php` is deleted as it was never loaded and had diverged from `settings.php`.
+  - `config/app.env.example` defaults the database driver from sqlite to mysql; the CD endpoint `CD_BASE_URL` moves to the end of the file.
+  - The nginx upload limit is tightened from 50M to 8M.
+
+- **Improved**
+  - nginx resolves the php-fpm upstream through Docker's built-in DNS, so scaling web replicas no longer requires restarting nginx.
+  - docker-compose centralizes log rotation; nginx is upgraded to 1.28 and its container capabilities are reduced (cap_drop ALL + no-new-privileges); a health endpoint and gzip are added.
+
 ## v2.11.0 (2026-10-24)
 
 - **Added**
