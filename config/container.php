@@ -91,7 +91,9 @@ return [
             'gitee'  => $conns['gitee'],
             'gitea'  => $conns['gitea'],
         ]);
-        $settings['harbor']  = $conns['harbor'];
+		
+        $registryKey = $c->get(AppSettingRepository::class)->getRegistryType();
+        $settings['harbor']  = $conns[$registryKey] ?? $conns['harbor'];
         $settings['jenkins'] = $conns['jenkins'];
         
         $settings['harbor']['registry_type'] = $c->get(AppSettingRepository::class)->getRegistryType();

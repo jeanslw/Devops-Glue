@@ -10,7 +10,7 @@ const DEFS = [
     { key: 'gitea',   label: '🦎 Gitea',   fields: ['url', 'token'] },
     { key: 'gitee',   label: '🐈 Gitee',   fields: ['url', 'token'] },
     { key: 'github',  label: '🐙 GitHub',  fields: ['url', 'token'] },
-    { key: 'harbor',  labelKey: 'platform_conn.registry_label', fields: ['registry_type', 'url', 'username', 'password'] },
+    { key: 'registry', labelKey: 'platform_conn.registry_label', fields: ['registry_type', 'url', 'username', 'password'] },
 ];
 
 const NAME_BY_KEY = {};
@@ -19,6 +19,15 @@ DEFS.forEach(function (d) { NAME_BY_KEY[d.key] = d; });
 // 平台显示名：品牌名直接内置，需要翻译的用 labelKey（镜像仓库 → Container Registry）
 function platformName(def) {
     return def ? (def.labelKey ? __.t(def.labelKey) : def.label) : '';
+}
+
+// 镜像仓库逻辑上只有一个连接，其 platform 取值随 registry_type 变化（harbor / registry）。
+// 后台返回的 registry_type 字段只挂在当前镜像仓库那一行上，据此推导实际存储的 platform 键。
+function registryPlatformKey() {
+    const entry = (_pc && _pc.platforms || []).find(function (p) {
+        return p.registry_type !== null && p.registry_type !== undefined;
+    });
+    return entry ? entry.platform : 'harbor';
 }
 
 const FIELD_META = {
@@ -76,7 +85,8 @@ function renderPlatforms() {
     (_pc.platforms || []).forEach(function (p) { byKey[p.platform] = p; });
 
     const rows = DEFS.map(function (def) {
-        const p = byKey[def.key] || { platform: def.key, url: '', token_set: false, username: '', password_set: false, configured: false };
+        const lookupKey = def.key === 'registry' ? registryPlatformKey() : def.key;
+        const p = byKey[lookupKey] || { platform: lookupKey, url: '', token_set: false, username: '', password_set: false, configured: false };
         const ok = !!p.configured;
         const dot = ok ? '#16a34a' : '#dc2626';
         const fields = def.fields.map(function (f) { return fieldHtml(p, f); }).join('');
@@ -96,7 +106,7 @@ function renderPlatforms() {
                 + esc(__.t(p.hosting === 'saas' ? 'platform_conn.hosting_saas' : 'platform_conn.hosting_self_hosted'))
                 + '</span>'
             : '';
-        const typeMismatch = def.key === 'harbor' && !!_pc.registry_type_mismatch;
+        const typeMismatch = def.key === 'registry' && !!_pc.registry_type_mismatch;
         const mismatchWarn = typeMismatch
             ? '<div style="margin:6px 0 0 18px;color:#dc2626;font-size:12px;">⚠ ' + esc(__.t('platform_conn.registry_type_mismatch')) + '</div>'
             : '';
@@ -148,7 +158,8 @@ function collectPayload() {
     const platforms = [];
     document.querySelectorAll('#pc-platforms .pc-row').forEach(function (row) {
         const key = row.dataset.key;
-        const orig = (_pc && _pc.platforms || []).find(function (p) { return p.platform === key; }) || {};
+        const actualKey = key === 'registry' ? registryPlatformKey() : key;
+        const orig = (_pc && _pc.platforms || []).find(function (p) { return p.platform === actualKey; }) || {};
 
         const url = row.querySelector('.pc-field-url').value.trim();
         const usernameEl = row.querySelector('.pc-field-username');
@@ -177,7 +188,7 @@ function collectPayload() {
             throw new Error(__.t('platform_conn.url_required', { name: platformName(NAME_BY_KEY[key]) || key }));
         }
 
-        const item = { platform: key, url: url, username: username };
+        const item = { platform: actualKey, url: url, username: username };
         if (tokenProvided) item.token = token;
         if (passwordProvided) item.password = password;
         if (registryTypeEl) item.registry_type = registryType;
@@ -215,6 +226,7 @@ export async function savePlatformConnections() {
 }
 
 export async function onPlatformDelete(key) {
+    const actualKey = key === 'registry' ? registryPlatformKey() : key;
     if (!await confirmDialog({
         title: __.t('common.confirm'),
         message: __.t('platform_conn.delete_confirm', { name: platformName(NAME_BY_KEY[key]) || key }),
@@ -224,7 +236,7 @@ export async function onPlatformDelete(key) {
         const res = await apiFetch('/api/admin/platform_connections', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ platforms: [{ platform: key, delete: true }] }),
+            body: JSON.stringify({ platforms: [{ platform: actualKey, delete: true }] }),
         });
         const d = await res.json();
         if (res.ok) {

@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Config;
 
 /**
@@ -19,7 +20,7 @@ final class AppConfig
     // ── 表名常量 ──
     public const TABLE_JOB_GIT_MAP       = 'ci_job_git_map';
     public const TABLE_PIPELINE_ARTIFACTS = 'ci_pipeline_artifacts';
-    public const TABLE_BUILD_TAG_CACHE = 'ci_build_tag_cache'; 
+    public const TABLE_BUILD_TAG_CACHE = 'ci_build_tag_cache';
     public const TABLE_CUSTOM_BUILDS     = 'ci_custom_builds';
     public const TABLE_SECURITY_CHECKS   = 'ci_security_checks';
     public const TABLE_ADMIN_USERS       = 'ci_admin_users';
@@ -33,11 +34,11 @@ final class AppConfig
     public const TABLE_API_TOKENS        = 'ci_api_tokens';
     public const TABLE_USER_IDENTITIES   = 'ci_user_identities';
     public const TABLE_OPERATION_LOGS    = 'ci_operation_logs';
-    public const TABLE_API_ACCESS_LOGS   = 'ci_api_access_logs'; 
-    public const TABLE_INTEGRATED_SERVICES = 'ci_integrated_services'; 
-    public const TABLE_OAUTH_CLIENTS      = 'ci_oauth_clients'; 
-    public const TABLE_PLATFORM_CONNECTIONS = 'ci_platform_connections'; 
- 
+    public const TABLE_API_ACCESS_LOGS   = 'ci_api_access_logs';
+    public const TABLE_INTEGRATED_SERVICES = 'ci_integrated_services';
+    public const TABLE_OAUTH_CLIENTS      = 'ci_oauth_clients';
+    public const TABLE_PLATFORM_CONNECTIONS = 'ci_platform_connections';
+
     public const LEGACY_TABLE_NAMES = [
         'admin_users'        => 'ci_admin_users',
         'cache'              => 'ci_cache',
@@ -86,8 +87,8 @@ final class AppConfig
     public const PERM_CI_USERS_PASSWORD     = 'ci.users.password';
     public const PERM_CI_USERS_MANAGE_ADMIN = 'ci.users.manage_admin';
     public const PERM_CI_PERMISSIONS_MANAGE   = 'ci.permissions.manage';
-    public const PERM_CI_PERMISSIONS_LIST     = 'ci.permissions.list'; 
-    public const PERM_CI_PERMISSIONS_REGISTER = 'ci.permissions.register'; 
+    public const PERM_CI_PERMISSIONS_LIST     = 'ci.permissions.list';
+    public const PERM_CI_PERMISSIONS_REGISTER = 'ci.permissions.register';
     public const PERM_CI_PERMISSIONS_RULES    = 'ci.permissions.rules';
     public const PERM_CI_MAPPING_EDIT       = 'ci.mapping.edit';
     public const PERM_CI_PLATFORM_EDIT      = 'ci.platform.edit';
@@ -116,7 +117,7 @@ final class AppConfig
     public const PERM_CD_WEBHOOK = 'cd.webhook';
     public const PERM_CD_APPROVAL_CENTER = 'cd.approval-center';
     public const PERM_CD_APPROVE         = 'cd.deploy.approve';
-	
+
     //默认权限种子数据
     public const DEFAULT_PERMISSIONS = [
         self::PERM_CI_MANAGE             => ['name' => 'CI Config', 'parent' => null],
@@ -266,6 +267,10 @@ final class AppConfig
 
     public const SETTING_GIT_CI_ENABLED = 'git_ci_enabled';
     public const GIT_PLATFORMS = ['gitlab', 'github', 'gitee', 'gitea'];
+
+    // 平台连接里「非镜像仓库」类平台（Jenkins + 各 Git 平台）。
+    // 镜像仓库（harbor / registry）为动态单连接，见 PlatformConnectionRepository::REGISTRY_PLATFORMS。
+    public const CONNECTION_PLATFORMS_NON_REGISTRY = ['jenkins', 'gitlab', 'github', 'gitee', 'gitea'];
     public const PROVIDER_CUSTOM_PUSH = 'custom_push';
     public const SETTING_TAG_LOG_KEYWORD = 'tag_log_keyword';
     public const DEFAULT_TAG_LOG_KEYWORD = 'digest';
