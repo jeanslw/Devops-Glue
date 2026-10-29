@@ -14,6 +14,10 @@
   - docker-compose centralizes log rotation; nginx is upgraded to 1.28 with its container capabilities reduced; a health endpoint and gzip are added.
   - Connection configuration already migrated to the database is removed, along with the configuration template (`settings.example.php`).
   - The image registry now supports type-consistency detection: when the selected type does not match the actual service behind the address, both the health check and the platform-connection card show a "registry type mismatch" warning and log an error, without blocking the save.
+- **Changed**
+  - The image-registry connection row's `platform` now follows `registry_type` (`harbor` or `registry`), so the registry type is visible from `ci_platform_connections` alone; switching the type migrates the row and keeps its credentials.
+  - The non-registry platform list (Jenkins + each Git platform) is consolidated into a single constant `AppConfig::CONNECTION_PLATFORMS_NON_REGISTRY`; the registry pair reuses `PlatformConnectionRepository::REGISTRY_PLATFORMS`.
+  - A one-off `cli/migrate-registry-platform.php` script migrates legacy `platform='harbor'` rows to `registry` where `registry_type='registry'` (idempotent; ships under `cli/`).
 
 ## v2.11.0 (2026-10-24)
 

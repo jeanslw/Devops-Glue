@@ -27,12 +27,20 @@ class PlatformConnectionRepository
      * DB 列 → 配置键 的归一化方向（resolveConnections 用）。
      * 每个平台只使用相关列，其余列留空（如 git 平台不使用 username/password）。
      */
+    /**
+     * 镜像仓库（Container Registry）逻辑上只有一个连接，但其 platform 取值随 registry_type 变化：
+     *   - registry_type=harbor  → platform='harbor'（Harbor 服务的 REST API）
+     *   - registry_type=registry → platform='registry'（标准 OCI Distribution，如 registry:2）
+     */
+    public const REGISTRY_PLATFORMS = ['harbor', 'registry'];
+
     private const FIELD_MAP = [
         'gitlab'  => ['url' => 'base_url', 'token' => 'token'],
         'github'  => ['url' => 'base_url', 'token' => 'token'],
         'gitee'   => ['url' => 'base_url', 'token' => 'token'],
         'gitea'   => ['url' => 'base_url', 'token' => 'token'],
         'harbor'  => ['url' => 'url', 'username' => 'username', 'password' => 'password'],
+        'registry' => ['url' => 'url', 'username' => 'username', 'password' => 'password'],
         'jenkins' => ['url' => 'url', 'username' => 'user', 'token' => 'token'],
     ];
 
@@ -46,6 +54,7 @@ class PlatformConnectionRepository
         'gitee'   => ['base_url' => 'https://gitee.com/api/v5', 'token' => ''],
         'gitea'   => ['base_url' => '', 'token' => ''],
         'harbor'  => ['url' => '', 'username' => 'admin', 'password' => ''],
+        'registry' => ['url' => '', 'username' => '', 'password' => ''],
         'jenkins' => ['url' => '', 'user' => 'admin', 'token' => ''],
     ];
 

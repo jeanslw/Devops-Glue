@@ -60,13 +60,15 @@ class ConnectionController extends BaseAdminController
 
         $gitCiPlatforms = $this->appSettings->getGitCiEnabledPlatforms();
         $jenkinsEnabled = $this->appSettings->getJenkinsEnabled();
+        $registryKey    = $this->appSettings->getRegistryType();
 
         $platforms = [];
-        foreach (['jenkins', 'gitlab', 'github', 'gitee', 'gitea', 'harbor'] as $p) {
+        foreach (array_merge(AppConfig::CONNECTION_PLATFORMS_NON_REGISTRY, [$registryKey]) as $p) {
             $cfg = $resolved[$p] ?? [];
             $row = $rows[$p] ?? null;
+            $isRegistry = in_array($p, PlatformConnectionRepository::REGISTRY_PLATFORMS, true);
 
-            if ($p === 'harbor') {
+            if ($isRegistry) {
                 $url         = (string)($cfg['url'] ?? '');
                 $tokenSet    = false;
                 $username    = (string)($cfg['username'] ?? '');
@@ -93,7 +95,7 @@ class ConnectionController extends BaseAdminController
                 'username'     => $username,
                 'password_set' => $passwordSet,
                 'description'  => (string)($row['description'] ?? ''),
-                'registry_type' => $p === 'harbor' ? $this->appSettings->getRegistryType() : null,
+                'registry_type' => $isRegistry ? $this->appSettings->getRegistryType() : null,
                 'configured'   => $configured,
                 'hosting'      => in_array($p, AppConfig::GIT_PLATFORMS, true) ? HostingType::classify($url) : null,
                 'ci_capable'   => $p === 'jenkins' || isset(AppConfig::GIT_PLATFORM_CI_CAPABILITIES[$p]),
@@ -134,7 +136,10 @@ class ConnectionController extends BaseAdminController
         }
         $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
 
-        $valid = ['jenkins', 'gitlab', 'github', 'gitee', 'gitea', 'harbor'];
+        $valid = array_merge(
+            AppConfig::CONNECTION_PLATFORMS_NON_REGISTRY,
+            PlatformConnectionRepository::REGISTRY_PLATFORMS
+        );
         $gitCiPlatforms = $this->appSettings->getGitCiEnabledPlatforms();
         $gitCiTouched = false;
         $jenkinsEnabled = $this->appSettings->getJenkinsEnabled();
@@ -152,13 +157,30 @@ class ConnectionController extends BaseAdminController
                         continue;
                     }
 
-                    $switchedToRegistry = false;
-                    if ($platform === 'harbor' && array_key_exists('registry_type', $p)) {
+                    $isRegistry = in_array($platform, PlatformConnectionRepository::REGISTRY_PLATFORMS, true);
+                    $registryTarget = $platform;
+                    $carryToken = $carryPassword = $carryUsername = '';
+
+                    // 镜像仓库：platform 取值随 registry_type 变化（harbor / registry）。
+                    // 切换类型时把连接行从旧键迁到新键，并保留凭据，避免切回时 401。
+                    if ($isRegistry && array_key_exists('registry_type', $p)) {
                         $newType = (string)($p['registry_type'] ?? 'harbor');
-                        if ($newType === 'registry' && $this->appSettings->getRegistryType() !== 'registry') {
+                        $registryTarget = in_array($newType, PlatformConnectionRepository::REGISTRY_PLATFORMS, true) ? $newType : 'harbor';
+                        if ($this->appSettings->getRegistryType() !== $registryTarget) {
                             $switchedToRegistry = true;
                         }
-                        $this->appSettings->setRegistryType($newType);
+                        $this->appSettings->setRegistryType($registryTarget);
+                    }
+
+                    if ($isRegistry && $platform !== $registryTarget) {
+                        $oldRow = $this->platformConnections->find($platform);
+                        if (is_array($oldRow)) {
+                            $carryToken    = (string)($oldRow['token'] ?? '');
+                            $carryPassword = (string)($oldRow['password'] ?? '');
+                            $carryUsername = (string)($oldRow['username'] ?? '');
+                        }
+                        $this->platformConnections->delete($platform);
+                        $platform = $registryTarget;
                     }
 
                     if ($platform === AppConfig::PROVIDER_JENKINS) {
@@ -201,14 +223,24 @@ class ConnectionController extends BaseAdminController
                         }
                     }
                     if (!empty($p['delete'])) {
-                        $this->platformConnections->delete($platform);
+                        // 镜像仓库两键互斥，删除时两个都清，避免遗留旧键行。
+                        if ($isRegistry) {
+                            $this->platformConnections->delete('harbor');
+                            $this->platformConnections->delete('registry');
+                        } else {
+                            $this->platformConnections->delete($platform);
+                        }
                         continue;
                     }
                     $existing = $this->platformConnections->find($platform);
                     $url      = trim((string)($p['url'] ?? ''));
                     $username = trim((string)($p['username'] ?? ''));
-                    $token    = (string)($existing['token'] ?? '');
-                    $password = (string)($existing['password'] ?? '');
+                    // 切换 registry_type 时旧键行的凭据由 $carry* 兜底，避免凭据丢失。
+                    $token    = (string)($existing['token'] ?? $carryToken);
+                    $password = (string)($existing['password'] ?? $carryPassword);
+                    if ($username === '' && $carryUsername !== '') {
+                        $username = $carryUsername;
+                    }
                     if (array_key_exists('token', $p)) {
                         $t = trim((string)($p['token'] ?? ''));
                         if ($t !== '') {
