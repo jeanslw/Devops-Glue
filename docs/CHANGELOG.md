@@ -9,6 +9,7 @@
   - When the image registry does not support scanning, the audit record's state is no longer written as `unknown`; it is normalized from the build status to success / failed / pending, matching the commit status.
   - The platform version page's image-registry row now shows the type suffix matching the actual `registry_type`.
   - The health check now returns the probed distribution version for `registry` mode, instead of the fixed string `"registry"`.
+  - The custom_push build report endpoint (`report`) now writes a `ci_security_checks` audit row for every terminal status (success / failed / aborted), matching the `commitStatus` and registry-sync endpoints; previously only success wrote an artifact and pipeline failures left no audit trail.
 - **Improved**
   - nginx enables `resolve` on the php-fpm upstream with Docker's built-in DNS: the IP refreshes automatically when php-fpm replicas scale up or down or a container is recreated, and with multiple replicas passive failover takes over once failed requests reach the threshold.
   - docker-compose centralizes log rotation; nginx is upgraded to 1.28 with its container capabilities reduced; a health endpoint and gzip are added.

@@ -136,6 +136,7 @@ final class BuildReportController extends BaseBuildController
         $status      = trim((string) ($body['status'] ?? ''));
         $finishedAt  = trim((string) ($body['finished_at'] ?? ''));
         $tag         = trim((string) ($body['tag'] ?? ''));
+        $sha         = trim((string) ($body['sha'] ?? ''));
 
         if ($pipelineIid <= 0) {
             return $this->jsonError($response, '缺少 pipeline_iid 参数', 400);
@@ -203,6 +204,7 @@ final class BuildReportController extends BaseBuildController
                     if ($txStarted) {
                         $this->tx->rollBack();
                     }
+                    $this->recordReportAudit($path, $sha, $status, $tag, ['success' => false, 'message' => '镜像产物 / Tag 写入数据库失败']);
                     return $this->jsonError($response, '构建记录已写入，但镜像产物 / Tag 写入数据库失败，请重试上报', 500);
                 }
             }
@@ -215,8 +217,11 @@ final class BuildReportController extends BaseBuildController
                 $this->tx->rollBack();
             }
             \App\Helper\Log::exception($e);
+            $this->recordReportAudit($path, $sha, $status, $tag, ['success' => false, 'message' => $e->getMessage()]);
             return $this->jsonError($response, '构建结果写入失败，请重试上报', 500);
         }
+
+        $this->recordReportAudit($path, $sha, $status, $tag, $result);
 
         return $this->output($response, [
             'build_provider' => $provider,
@@ -320,5 +325,27 @@ final class BuildReportController extends BaseBuildController
             \App\Helper\Log::exception($e);
             return false;
         }
+    }
+
+    /**
+     * 把 custom_push 构建终态（成功 / 失败 / 中止）写入 ci_security_checks 审计表，
+     * 与 commitStatus / registry-sync 等端点保持一致的审计覆盖。
+     *
+     * @param array<string,mixed> $result
+     */
+    private function recordReportAudit(string $path, string $sha, string $status, string $tag, array $result): void
+    {
+        $description = 'custom_push 构建终态: ' . $status . ($tag !== '' ? ' → ' . $tag : '');
+        $this->securityChecks->record(
+            $path,
+            $sha,
+            $status,
+            'custom_push',
+            $description,
+            'custom_push',
+            $tag,
+            !empty($result['success']) ? 'success' : 'failed',
+            (string) ($result['message'] ?? '')
+        );
     }
 }
