@@ -126,8 +126,8 @@ services:
       - |
         fail=0
         if [ ! -f /check/app.env ]; then
-          echo "[启动中止] 缺少 config/app.env：请先执行 cp config/app.env.example && config/app.env 并填写配置。"
-          echo "[ABORT] Missing config/app.env: Please first run cp config/app.env.example && config/app.env and fill in the configuration."
+          echo "[启动中止] 缺少 config/app.env：请先执行 cp config/app.env.example config/app.env 并填写配置。"
+          echo "[ABORT] Missing config/app.env: Please first run cp config/app.env.example config/app.env and fill in the configuration."
           fail=1
         fi
         if [ -z "$$DB_USER" ]; then
