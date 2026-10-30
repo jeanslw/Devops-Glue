@@ -1,4 +1,4 @@
-# Devops-Glue API Admin Manual v2.11.0
+# Devops-Glue API Admin Manual v2.11.2
 
 > This manual is organized in a "from zero to usable" order, covering the installation, initialization, and full configuration of Devops-Glue API. Once you complete it in order, you will be able to: log in to the admin panel, connect CI / Git / Harbor platforms, configure build mode and mapping, manage permissions and roles, issue API tokens, and have the companion Devops-Glue CD call it correctly.
 
@@ -14,7 +14,7 @@
 8. [Log In to the Admin Panel](#8-log-in-to-the-admin-panel)
 9. [Connect CI Platforms](#9-connect-ci-platforms)
 10. [Connect Git Platforms](#10-connect-git-platforms)
-11. [Connect Harbor](#11-connect-harbor)
+11. [Connect the Image Registry](#11-connect-the-image-registry)
 12. [Configure Build Mode](#12-configure-build-mode)
 13. [Configure Mapping](#13-configure-mapping)
 14. [Permissions and Roles (RBAC)](#14-permissions-and-roles-rbac)
@@ -38,6 +38,8 @@ Devops-Glue API is a Slim4-based unified API layer that provides a single manage
 
 | Devops-Glue API | Devops-Glue CD |
 |:---:|:---:|
+| v2.11.2 | v1.6.1 |
+| v2.11.1 | v1.6.1 |
 | v2.11.0 | v1.6.1 |
 | v2.10.0 | v1.6.0 |
 | v2.9.0 | v1.6.0 |
@@ -255,7 +257,9 @@ On "System Settings → Platform Management → Platform Connections", fill in t
 
 ---
 
-## 11. Connect Harbor
+## 11. Connect the Image Registry
+
+The image registry is either Harbor (default) or a standard OCI registry (`registry:2`); the two are not used side by side.
 
 On "System Settings → Platform Management → Platform Connections", the image-registry row ("🐳 镜像仓库") carries a **Registry Type** selector (`registry_type`) plus **URL / username / password** (username defaults to `admin`; for a Harbor robot account use `robot$xxx` + its secret).
 
@@ -723,7 +727,7 @@ Go to "API Management" (requires the relevant permission) and choose the require
 |---|---|
 | `main` | Read-only: job list, mapping, Git platforms, Git discovery |
 | `git` | Read-only: Git branches / tags (`/api/git/*`, usable as build-ref candidates) |
-| `harbor.read` | Read-only: Harbor projects / repositories / tags; also all `/api/registry/*` endpoints for **both** registry types (`harbor` / `registry:2`). Not included in the CD service credential |
+| `registry.read` | Read-only: image-registry projects / repositories / tags; also all `/api/registry/*` endpoints for **both** registry types (`harbor` / `registry:2`). Not included in the CD service credential |
 | `harbor.scan` | Trigger Harbor image scans |
 | `build.read` | Read-only: build pipelines / logs / branches |
 | `build.write` | Write: trigger / retry / cancel builds |
@@ -884,8 +888,14 @@ LDAPTLS_REQCERT=never          # internal testing only, skip cert verification; 
 
 # ============ Devops-Glue CD pairing ============
 # [CD-paired] = must match the Devops-Glue CD side character-for-character (see the "CD pairing keys" table at the end of this appendix)
-# The CD_OIDC_* keys have moved to the DB (cd client → ci_oauth_clients, maintained on the
-# "OIDC / SSO Config" page) and are no longer read by the app.
+# The single source of truth for the cd client (Secret / Redirect URI / owning system / enabled)
+# is the DB: maintain it on the "OIDC / SSO Config" page, never keep it in a config file;
+# CD_OIDC_SECRET / CD_OIDC_REDIRECT_URI serve only as migration input for cli/migrate-oidc.php
+# and as the seed source when bootstrapping a fresh database (empty ci_oauth_clients)
+# — and in a joint deployment the CD container reads those two, so do not delete them.
+# Owning system: set the client's "Owning system" field to cd in the console (the DB wins);
+# CD_OIDC_SYSTEM is no longer offered — CD never reads it, nor does Glue at runtime,
+# and the seed defaults the cd client to cd anyway.
 # CD_BASE_URL=https://cd.example.com   # read-only endpoint for CI to fetch CD deploy logs; empty = audit page degrades
 # CD_API_TOKEN=               # [CD-paired] CD-side inbound static token (must match the CD side)
 
@@ -935,6 +945,8 @@ Keys marked `[CD-paired]` are not one-sided Glue settings — they must match th
 
 Symptoms of a pairing mismatch: a cd-client `secret` mismatch → Glue answers `invalid_client` (401) when CD exchanges the token; a `redirect_uri` mismatch → rejected at the authorize step; either value empty → the `cd` client is dropped entirely (fail-closed) and CD cannot sign in via Glue.
 
+> **Owning system `system` (a Glue-internal field; no CD-side counterpart, and it should not live in a config file)**: the cd client must declare `system=cd` — **maintain it on the "Owning system" field of the OIDC / SSO Config page (the DB wins)**. It decides which system's account permission is checked: when missing it falls back to `ci`, so CD accounts (`systems` containing `cd`) are rejected with `auth.no_ci_access`. The env key `CD_OIDC_SYSTEM` has exactly one role — a one-off migration / fresh-DB seeding input read only by `cli/migrate-oidc.php` and the bootstrap seeder (both default the `cd` client to `cd`, so it never lands on `ci` by mistake); neither side reads it at runtime.
+
 ### Joint CI+CD deployment: shared vs. per-service variables
 
 A joint deployment involves two services plus one shared MySQL:
@@ -969,6 +981,23 @@ Everything else in Appendix A — CI systems (`BUILD_MODE`), Git platforms (`DEF
 
 In one sentence: **shared keys are "configure once, effective for both sides"; pairing keys are "written on both sides, must be identical"** — paired keys are never read from each other; they are kept in sync via an ops channel.
 
+**First deployment: the cd client is seeded automatically (since v2.11.2), or you can confirm it by hand**
+
+Glue does not read `CD_OIDC_*` at runtime — the cd client only lives in the DB `ci_oauth_clients`. Since v2.11.2 a fresh database seeds it during bootstrap: when `ci_oauth_clients` is empty, the client rows are created from the root `.env` / `config/app.env` values `OIDC_ISSUER` / `CD_OIDC_SECRET` / `CD_OIDC_REDIRECT_URI` (optionally `CD_OIDC_SYSTEM`, defaulting to `cd`), and the log gets a "seeded the OIDC configuration from env" line — **no manual migration needed**, so CD no longer fails with "client_id or redirect_uri mismatch" right after deployment.
+
+> **Configuring it in the console is still preferred** (the DB is the single source of truth): those env keys are only "fresh-DB seeding / legacy migration" input and play no part at runtime, so **do not keep them in a config file long term**; `CD_OIDC_SYSTEM` in particular need not be written at all (CD never reads it — change the owning system on the client's "Owning system" field instead). For the order and the cleanup checklist see User Manual section 10, "Migrating from env vars to the console (UI first)".
+
+Cases where running it explicitly still helps (upgrading from an older release, or wanting the item-by-item "written / skipped" detail):
+
+```bash
+# Co-deployed: run inside Glue's web service; reads the container env CD_OIDC_* and writes encrypted into the DB (idempotent: an existing cd row is skipped, never overwritten)
+docker compose exec web php cli/migrate-oidc.php
+```
+
+> Safety boundary of the auto-seeder: as soon as the table holds **any** row (added by hand in the admin panel, or written by the migration script) it stands down; hand-made configuration is never overwritten by env.
+
+Alternatively add the `cd` client manually on the "System Settings → Platform Management → OIDC / SSO Config" page (client_id=`cd`, secret, redirect_uri, owning system=`cd`, enabled). Afterwards maintain the callback/secret through that page (editing `.env` alone has no effect).
+
 The three Docker deployment modes (single co-deployed compose / two composes on one host with the shared `devops-net` network / cross-host with port 3306 exposed) and the exact steps are covered in the FAQ entry "How do I deploy the CI and CD services together?".
 
 ### Bare-metal deployment: what to configure
@@ -995,15 +1024,15 @@ Additional notes:
 
 ## Appendix B: CORS Configuration
 
-Edit `config/settings.php`:
+Only the allowed origins are configurable: edit `config/settings.php`, or simply set the `CORS_ORIGIN` environment variable (comma-separated for several origins, `*` = all).
 
 ```php
 'cors' => [
-    'allowed_origins' => ['*'],   // Allowed domains, * = all
-    'allowed_methods' => ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    'allowed_headers' => ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+    'allowed_origins' => ['https://your-frontend.com'],   // allowed domains
 ]
 ```
+
+Allowed methods and headers use the middleware defaults (GET / POST / PUT / DELETE / PATCH / OPTIONS; `Content-Type` / `Authorization` / `X-Requested-With` / `Accept`). To change them, add `allowed_methods` / `allowed_headers` to the `cors` block yourself (the middleware reads them).
 
 ---
 
@@ -1070,7 +1099,7 @@ class BitbucketService implements GitProviderInterface
 
 No further source changes needed. The system automatically discovers and registers custom providers on startup.
 
-> **Note:** Custom platforms do not support independent `app.env` variables (e.g. `BITBUCKET_TOKEN`). Tokens must be written into `settings.php` or extend `AppConfig` yourself.
+> **Note:** A custom platform is not part of the fixed platform list on the Platform Connections page, so it has no independent `app.env` variable (e.g. `BITBUCKET_TOKEN`) and no DB row. Supply its URL / token from the adapter (extend `git.custom_providers` in `config/settings.php`, or extend `AppConfig` yourself).
 
 ### 4. Adding Built-in Platforms
 
@@ -1079,7 +1108,7 @@ To add a built-in platform (GitLab/Gitee/GitHub/Gitea style), modify:
 - `src/Service/Git/XxxService.php` (adapter)
 - `config/container.php` (ProviderRegistry registration)
 - `config/AppConfig.php` (`getXxxConfig` + `getDefaultApiVersion` + `getGitPlatformsConfig`)
-- `config/settings.php` + `settings.example.php` (config sections)
+- `config/settings.php` (config sections)
 - `config/app.env.example` (environment variable declarations)
 
 ---

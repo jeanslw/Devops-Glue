@@ -166,9 +166,6 @@ class ConnectionController extends BaseAdminController
                     if ($isRegistry && array_key_exists('registry_type', $p)) {
                         $newType = (string)($p['registry_type'] ?? 'harbor');
                         $registryTarget = in_array($newType, PlatformConnectionRepository::REGISTRY_PLATFORMS, true) ? $newType : 'harbor';
-                        if ($this->appSettings->getRegistryType() !== $registryTarget) {
-                            $switchedToRegistry = true;
-                        }
                         $this->appSettings->setRegistryType($registryTarget);
                     }
 
@@ -263,6 +260,9 @@ class ConnectionController extends BaseAdminController
                     if ($url === '') {
                         throw new \InvalidArgumentException('平台连接 [' . $platform . '] 填写了凭证但 URL 为空');
                     }
+                    if (!self::isSafePlatformUrl($url)) {
+                        throw new \InvalidArgumentException('平台连接 [' . $platform . '] 的 URL 不合法：仅支持 http/https，且不允许链路本地等不安全地址');
+                    }
                     $description = (string)($existing['description'] ?? '');
                     if (array_key_exists('description', $p)) {
                         $description = trim((string)($p['description'] ?? ''));
@@ -318,5 +318,67 @@ class ConnectionController extends BaseAdminController
         }
 
         return $this->output($response, $this->platformConnectionsPayload(), $request);
+    }
+
+    /**
+     * 校验平台连接 URL 是否可被服务端安全访问（防 SSRF）。
+     *
+     * 仅允许 http/https；禁止空 host、链路本地（169.254.0.0/16、fe80::/10，含云元数据
+     * 169.254.169.254）、未指定/保留段（0.0.0.0/8、240.0.0.0/4）与组播。
+     * 回环与私网地址允许：本产品的平台连接本就指向自建的 GitLab/Jenkins/Harbor
+     * （多为内网或本机开发环境），管理员是受信配置方。
+     */
+    private static function isSafePlatformUrl(string $url): bool
+    {
+        $parts = parse_url($url);
+        if ($parts === false) {
+            return false;
+        }
+        $scheme = strtolower((string)($parts['scheme'] ?? ''));
+        $host   = strtolower((string)($parts['host'] ?? ''));
+        if (!in_array($scheme, ['http', 'https'], true) || $host === '') {
+            return false;
+        }
+        // 域名（非 IP 字面量）交由管理员信任边界，保存时不做 DNS 解析。
+        if (filter_var($host, FILTER_VALIDATE_IP) === false) {
+            return true;
+        }
+        if (str_contains($host, ':')) {
+            return self::isSafePlatformIpv6($host);
+        }
+        $long = ip2long($host);
+        if ($long === false) {
+            return false;
+        }
+        // 拒绝链路本地(云元数据)/未指定/保留/组播；允许回环与私网/公网单播
+        if (($long & 0xFFFF0000) === 0xA9FE0000) {
+            return false; // 169.254.0.0/16
+        }
+        if (($long & 0xFF000000) === 0x00000000) {
+            return false; // 0.0.0.0/8
+        }
+        if (($long & 0xF0000000) === 0xF0000000) {
+            return false; // 240.0.0.0/4（含 255.255.255.255）
+        }
+        if (($long & 0xF0000000) === 0xE0000000) {
+            return false; // 224.0.0.0/4 组播
+        }
+        return true;
+    }
+
+    private static function isSafePlatformIpv6(string $host): bool
+    {
+        if (str_starts_with($host, 'ff')) {
+            return false; // 组播 ff00::/8
+        }
+        if (
+            str_starts_with($host, 'fe8')
+            || str_starts_with($host, 'fe9')
+            || str_starts_with($host, 'fea')
+            || str_starts_with($host, 'feb')
+        ) {
+            return false; // 链路本地 fe80::/10
+        }
+        return true;
     }
 }

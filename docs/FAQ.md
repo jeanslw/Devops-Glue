@@ -1,4 +1,4 @@
-# Devops-Glue API FAQ v2.11.0
+# Devops-Glue API FAQ v2.11.2
 
 ## Table of Contents
 
@@ -156,9 +156,157 @@ php cli/migrate-platform-connections.php   # env → ci_platform_connections
 php cli/migrate-oidc.php                   # env → ci_app_settings + ci_oauth_clients
 ```
 
-Both scripts are **idempotent and non-destructive**: existing DB values / rows are not overwritten, only "env has a value, DB has none" items are filled in; at the end they also encrypt any remaining plaintext sensitive columns. Exit code 0 = done (including "nothing to migrate"), 1 = fatal (DB unreachable, table missing, missing `DATA_ENC_KEY`, etc.). Once the values are visible in the admin panel, you may delete these connection keys from `config/app.env` (the app will never read them again).
+Both scripts are **idempotent and non-destructive**: existing DB values / rows are not overwritten, only "env has a value, DB has none" items are filled in; at the end they also encrypt any remaining plaintext sensitive columns. Exit code 0 = done (including "nothing to migrate"), 1 = fatal (DB unreachable, table missing, missing `DATA_ENC_KEY`, etc.). Once the values are visible in the admin panel, you may delete these connection keys from `config/app.env` (the app will never read them again) — with **two exceptions**: `CD_OIDC_SECRET` / `CD_OIDC_REDIRECT_URI` must **stay** because the CD container reads them in a joint deployment, while `CD_OIDC_SYSTEM` is not even read by CD and should **never** live in a config file (set ownership in the console). For the full order and cleanup checklist see User Manual section 10, "Migrating from env vars to the console".
 
 > Note: the signing private key `OIDC_RSA_PRIVATE_KEY` / `OIDC_KEY_FILE` is **not** migrated — it is always env / file; multi-replica deployments must still inject the same private key.
+
+### Q: Every request logs "deprecated connection / OIDC env keys detected" — how do I stop the flood?
+
+This is not a failure: it is the bootstrap self-check telling you that old keys are still present — but **older builds repeated it per request**. The check runs inside `Database::bootstrap()`, and every php-fpm request is its own life cycle, so an in-process guard cannot stop it: the container log fills up with the same line (very visible under WSL / Docker) and real problems get buried.
+
+**Since v2.11.2 the warning is deduplicated by a "state fingerprint"**: the fingerprint ("which keys are left" + the current `APP_VERSION`) is stored in `ci_app_settings.boot_warn_deprecated_env_keys`, so:
+
+- fingerprint unchanged → **no repeat** across requests, restarts or replicas (upgrading to that build makes the flood stop);
+- fingerprint changed (keys added/removed, version upgraded) → it warns once more, which is the real "something changed" signal;
+- want it to remind you again on purpose? Delete that `boot_warn_*` row and restart (useful for review).
+
+The same dedupe covers the other per-request bootstrap notices: a non-PEM private key, an unreadable key file, schema probe-list drift, and the "seeded admin password not changed yet" reminder (the last one disappears by itself once the password is changed).
+
+**Then act on the keys** (order: User Manual section 10): migrate, confirm the values in the console, and only then remove them from config files. Note the `CD_OIDC_SECRET` / `CD_OIDC_REDIRECT_URI` named in the warning: in a joint deployment the **CD container still reads them** (CD has no other source), so do not delete them from the shared `.env` even when Glue's DB already holds the same value.
+
+### Q: This is a brand-new deployment with a brand-new database — do I still have to run a migration by hand?
+
+**No.** Since v2.11.2 the app seeds it during bootstrap: when `ci_oauth_clients` is still an **empty table** (= never configured), `Database::bootstrap()` writes the issuer and the client rows from whatever env already holds (`OIDC_ISSUER` / `OIDC_ID_TOKEN_TTL` / `CD_OIDC_SECRET` / `CD_OIDC_REDIRECT_URI`, plus `JENKINS_OIDC_*`), and logs `检测到 ci_oauth_clients 为空（全新库）：已按 env 自动播种 OIDC 配置`.
+
+So a joint deployment (CD signing in through Glue) no longer runs into the old "env is perfectly filled in, yet nothing can sign in after deployment (`/oauth/authorize` returns 400)".
+
+Safety boundary (it only fixes the "never configured" case):
+
+- **any** existing row in the table (added by hand in the admin panel, or written by the migration script) → the seeder stays out; hand-made configuration is never overwritten by env;
+- only non-empty env items are written; a failed seeding is logged and does not block startup (a failed bootstrap would not even serve the login page);
+- the signing key `OIDC_RSA_PRIVATE_KEY` / `OIDC_KEY_FILE` stays in env / file and is never seeded.
+
+Running `cli/migrate-oidc.php` once is still recommended when upgrading from an older release, or when you want the item-by-item "written / skipped" detail (it is idempotent: existing DB values and rows are skipped):
+
+```bash
+docker compose exec web php cli/migrate-oidc.php
+
+# Or do it entirely by hand on "System Settings → Platform Management → OIDC / SSO Config"
+```
+
+> `CD_OIDC_SYSTEM` sets the `system` (owning system) column of the seeded row and is **optional**: both the auto-seeder and the migration script default the `cd` client to `cd` (the raw default is `ci`, which makes CD-only accounts fail with `auth.no_ci_access`). It is **not a CD-side setting** — CD never reads it; it is a **Glue DB item**, so maintain it on the client's "Owning system" field in the console (env is only seeding / migration input and the key is no longer offered in config files). See "Login works without `CD_OIDC_SYSTEM=cd` — why?" below and User Manual section 10.
+
+### Q: After clicking "Sign in with Glue" in CD, it says "unified login service temporarily unavailable" and DevTools shows `GET /api/me` 401?
+
+This combination means the **authorize step already succeeded** (CD got an authorization code) and the failure is in CD's callback that exchanges the code for a token:
+
+- CD's backend log shows: `OIDC 登录 校验失败：token 端点返回 HTTP 500`
+- Glue's php-fpm access log shows `POST /index.php 500` with the Basic-auth user `cd` (i.e. `POST /oauth/token`)
+- Because the callback failed, CD never establishes a session, so the frontend's `/api/me` is 401 afterwards
+
+**The most common cause: `OIDC_RSA_PRIVATE_KEY` was set to something that is not a PEM key** (e.g. a `deprecated_env_keys_xxx` placeholder). Both id_token signing and JWKS publishing parse that key, and a parse failure is a 500.
+
+Three checks (all three should be clean):
+
+```bash
+# (1) JWKS must be 200 and return {"keys":[...]}
+curl -s -o /dev/null -w '%{http_code}\n' http://<glue-host>/.well-known/jwks.json
+# (2) the CD login URL must be 302 (not 400)
+curl -s -o /dev/null -w '%{http_code}\n' 'http://<glue-host>/oauth/authorize?response_type=code&client_id=cd&redirect_uri=<CD callback>&scope=openid+profile+email&state=x'
+# (3) the container log should contain no "OIDC: 私钥解析失败"
+docker compose logs web | grep -i 'OIDC'
+```
+
+Fix: **leave `OIDC_RSA_PRIVATE_KEY` empty** in `config/app.env` (it is auto-generated and persisted to `OIDC_KEY_FILE` — the easiest option), or supply a valid RS256 PEM (multi-line PEM escaped as `\n`):
+
+```ini
+OIDC_RSA_PRIVATE_KEY=
+```
+
+Then recreate the containers: `docker compose up -d --force-recreate web worker`.
+
+> The compose pre-flight check covers this: when `OIDC_RSA_PRIVATE_KEY` is non-empty and does not start with `-----BEGIN`, `docker compose up` aborts with a clear message instead of starting a broken instance.
+
+> Every trap on this path now reports in place and leaves a log line — no more guessing:
+> - **a 500 always leaves a log**: the error handler records uncaught exceptions as `ERROR` with class / file:line / method / path / stack trace, so `docker compose logs web | grep -i 'OIDC\|error'` or a search for `/oauth/token` in the application log finds it;
+> - **the signing key set to a non-PEM placeholder**: it throws `OIDC: OIDC_RSA_PRIVATE_KEY …` before signing, and the startup self-check warns about it earlier still;
+> - **an unreadable key file** (typically `root:root 0600`): no longer silently swapped for an in-memory key (which flaps `kid` and makes verification fail at random) — it throws `OIDC: 私钥文件不可读：/data/cache/oidc_rsa.pem`;
+> - **an unwritable key file**: it also fails loudly and points at `chown www-data:www-data <dir>`;
+> - **CD's login page separates upstream failures**: a Glue 5xx now reports "the unified login service returned a server error … check the Glue container log" instead of reusing the generic "cannot reach Devops-Glue" line.
+
+**Two easy traps (Docker Desktop / WSL2)**:
+
+1. `config/app.env` is a **single-file bind mount** — **do not** edit it with `sed -i` or by "saving" from an editor: that swaps the inode, breaks the mount, and the container fails to start (`no such file or directory`). Write in place instead (e.g. `sed 's#old#new#' f > /tmp/x && cat /tmp/x > f`), or re-bind with `docker compose up -d --force-recreate web worker` after editing.
+2. The file behind `OIDC_KEY_FILE` must be **readable** by the php-fpm user (`www-data`). If it was ever generated as root (e.g. by hand-running a CLI via `docker exec`), it becomes `root:root 0600`, `www-data` cannot read it, the key is regenerated in memory on every request, `kid` changes each time (JWKS flapping), and CD's signature verification fails every time. Fix it with:
+   `docker exec <web-container> chown www-data:www-data /data/cache/oidc_rsa.pem`
+   When php-fpm generates it normally, it is already owned by `www-data` — no action needed.
+
+### Q: Login works without `CD_OIDC_SYSTEM=cd` — why?
+
+Because it is **not a CD-side setting at all**, and the problem it addresses already has fallbacks:
+
+- **CD never reads it**: CD only requires `OIDC_ISSUER` / `CD_OIDC_SECRET` / `CD_OIDC_REDIRECT_URI` (its `oidc_client_id` is hard-wired to `cd` in `backend/config.py`, and the compose pre-flight checks only those three). Writing `CD_OIDC_SYSTEM=cd` into CD's `.env` does nothing.
+- **Glue reads it only during "env → DB" seeding**: it sets the **`system` (owning system)** column of the `cd` row in `ci_oauth_clients`. At runtime Glue does not read it either.
+- **Login works without it** for two reasons:
+  1. since **v2.11.2** both the auto-seeder and `cli/migrate-oidc.php` **default the `cd` client's owning system to `cd`** (the older migration script stored an empty value as `ci` — that is when you had to set it explicitly);
+  2. even if the row ended up as `ci`, **any account whose `systems` contains `ci` passes** — Glue's seeded admin is `ci,cd`, which is why signing in as admin always works.
+- **The only case that bites**: a **CD-only account** (User Management → "Access Systems = CD Only") signing into a `cd` client whose **owning system is `ci`** → Glue's login page returns 401 `auth.no_ci_access`. Fix: set that row's "Owning system" to `cd` and save — **no env change, no restart**.
+
+Conclusion: a new deployment can leave `CD_OIDC_SYSTEM` unset; it only matters when seeding from env and wanting the ownership stated explicitly. Full walk-through: User Manual section 9.
+
+### Q: Brand-new database + brand-new CD — which items do I configure in the Glue console to reach a working login?
+
+CD login has to pass **four gates**; the missing one determines which side reports the error (always check which side first, then use the table):
+
+| Gate | Where in the Glue console | What you see when it is missing |
+|---|---|---|
+| ① The `cd` client row (secret / redirect_uri / enabled) | System Settings → Platform Management → **OIDC / SSO Config** | Glue's authorize page: **400 "invalid OAuth request"** |
+| ② The Issuer (Glue's public URL) | Same page (Issuer field) | CD reports 502 / discovery's `issuer` does not match (looks like "the key is wrong") |
+| ③ The account's "Access Systems" includes CD, and its role exists | **User Management** | Glue's login page: 401 `auth.no_ci_access`; CD bounces to `/login?error=errors.no_cd_access` or `errors.identity_unavailable` |
+| ④ The integrated service is enabled + `CI_API_TOKEN` | **API Management → 🔌 Integrated Services** (+ CD's `.env`) | CD bounces to `/login?error=errors.cd_not_enabled` / `errors.cd_not_deployed` |
+
+Shortest path (details and per-step verification commands: User Manual section 9):
+
+1. On "OIDC / SSO Config" set **Issuer = Glue's public URL**; add a `cd` client whose **Redirect URI / Secret match CD's `CD_OIDC_*` character for character**, set **Owning system = `cd`**, tick **Enabled** and save.
+2. In "User Management" make sure the account's **"Access Systems" includes CD** ("CD Only" or "CD + CI"), and that its **role exists** (the seeded `ci,cd` admin is the easiest).
+3. On the "API Management" page, tick "Enable" on the **🔌 Integrated Services** card → **copy the plaintext token, which is shown once** → paste it into CD's `CI_API_TOKEN` (ticking it is also what creates CD's tables).
+4. In CD's `.env` mirror `OIDC_ISSUER` / `CD_OIDC_SECRET` / `CD_OIDC_REDIRECT_URI` from step 1, plus `CI_API_URL` / `CI_API_TOKEN` / `CD_API_TOKEN` / `SECRET_KEY` / `DB_*`.
+5. Click "Sign in with Glue": it should land on Glue and render the **login form** (not a 400), then 302 back to CD's home page.
+
+Three self-check commands:
+
+```bash
+# (1) issuer / jwks_uri must both be external addresses
+curl -s https://glue.example.com/.well-known/openid-configuration | jq .issuer,.jwks_uri
+# (2) the cd client is registered: this must render the login form, not a 400
+curl -s -o /dev/null -w '%{http_code}\n' "https://glue.example.com/oauth/authorize?response_type=code&client_id=cd&redirect_uri=<CD callback>&scope=openid+profile+email&state=x"
+# (3) the integrated service is authorized (using the cd-service plaintext)
+curl -s -H "Authorization: Bearer dg_xxx" http://glue.example.com/api/integration/services/cd | jq .enabled
+```
+
+### Q: Signing into CD with a Glue account is refused: `auth.no_ci_access` vs `errors.no_cd_access` vs `errors.identity_unavailable`?
+
+The three keys come from **different sides** and mean different things — do not conflate them:
+
+| What you see | Shown on | Meaning | Fix |
+|---|---|---|---|
+| 401 `auth.no_ci_access` | **Glue's login page** (CD has not been reached yet) | The client's declared owning system does not match the account's `systems`: the account lacks `cd`, or the `cd` client's owning system was stored as `ci` | In "User Management" add CD to the account's "Access Systems"; or set the `cd` client's "Owning system" to `cd` (see the `CD_OIDC_SYSTEM` question) |
+| `/login?error=errors.no_cd_access` | **CD's login page** | CD's own re-validation (`_has_system(systems, 'cd')`) refuses it: the account's `systems` in Glue does not contain `cd` | Same fix; after the change it takes effect **within one re-validation window (60s by default)** — otherwise sign in again |
+| `/login?error=errors.identity_unavailable` | **CD's login page** | The account was deleted in Glue, or **the role is dangling** (role deleted/renamed → `GET /api/rbac/roles/{role}/permissions` returns 404) — CD is **fail-closed** here and never downgrades to "zero permissions" | Point the user at a role that **exists**; once the role row is back it recovers within one window |
+
+Two notes:
+
+- Glue's `systems` is the **"Access Systems"** field ("CI Only" / "CD Only" / "CD + CI"); to sign into CD it must be one of the two **containing `cd`**;
+- If the page instead reports a "server error", it is an upstream failure rather than an authorization problem — see the next question and the "unified login service temporarily unavailable" one.
+
+### Q: CD reports "CD not enabled / not deployed" (`errors.cd_not_enabled` / `errors.cd_not_deployed`)?
+
+These are CD's **deployment gates**: before letting a login through, CD asks Glue whether the service is authorized and whether CD's tables exist.
+
+- `errors.cd_not_enabled`: **the integrated service is not enabled in Glue** (= Devops-CD has not been authorized to co-exist with this platform). Fix: Glue console → "**API Management**" → the **🔌 Integrated Services** card at the top → tick "Enable" on `CD 部署服务` → confirm. The same transaction issues the service token (**plaintext shown once** — paste it into CD's `CI_API_TOKEN`).
+- `errors.cd_not_deployed`: **enabled, but CD's business tables are not fully created** (the message lists the missing tables). Normally ticking "Enable" creates them using the current migration mode; if a table is still missing, create it as prompted or tick "Enable" once more.
+- Immediately 401 / "service unavailable" **after** a successful login: usually a wrong or revoked `CI_API_TOKEN` (CD re-validates identities via Glue's `/api/rbac/*`). Re-fetch it from the Integrated Services card — unticking the box only **freezes** it (credential kept, re-ticking restores the **same** token and CD needs no changes); ⛔ revoking it in the token list and then ticking "Enable" **reissues a new credential** (update CD afterwards).
+- These actions are visible to `super_admin` only.
 
 ### Q: Error: "DB_DRIVER must be sqlite or mysql"?
 
@@ -837,4 +985,4 @@ No. API responses always return raw data. i18n only affects the frontend UI and 
 
 ---
 
-*Document version: v2.11.0 | Last updated: 2026-10-24*
+*Document version: v2.11.2 | Last updated: 2026-10-30*

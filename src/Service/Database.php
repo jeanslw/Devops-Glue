@@ -9,11 +9,17 @@ class Database
     /** @var array<string,mixed> */
     private static array $config = [];
     private static bool $bootstrapped = false;
-    /** 探测清单漂移只在本进程内记一次日志（bootstrap() 未置位时会重跑，不去重将反复刷同一条）。 */
+    /** 探测清单漂移只在本进程内记一次日志（bootstrap() 未置位时会重跑，不去重将反复刷同一条） */
     private static bool $schemaListDriftLogged = false;
 
     /** 列结构对账每进程只执行一次（版本相等短路时也要跑，不能每请求重复 MODIFY）。 */
     private static bool $columnReconcileDone = false;
+
+    /**
+     * 启动期告警的「状态指纹」记忆（name => fingerprint）：同一状态在本进程内只告警一次。
+     * @var array<string,string>
+     */
+    private static array $warnStateSeen = [];
 
     /**
      * 最近一次 ensureTables() 的逐表建表结果（成功/失败），供迁移 CLI/后台渲染过程列表。
@@ -34,9 +40,14 @@ class Database
     /** ci_app_settings 中记录已应用表结构版本的键（/healthz 探针经 schemaState() 读取，故为 public） */
     public const SCHEMA_VERSION_KEY = 'schema_version';
 
+    /** ci_app_settings 中记录「启动期告警已就哪个状态发过」的键前缀。*/
+    public const BOOT_WARN_KEY_PREFIX = 'boot_warn_';
+
+    /** ci_app_settings 中记录「OIDC env 自动播种已判定一次」的键，防止空表被反复播种复活管理员删除的配置。 */
+    private const OIDC_ENV_SEED_KEY = 'oidc_env_seed_done';
+
     /**
      * 手动建库模式（DB_AUTO_MIGRATE=false）下记录种子数据已应用版本的键。
-     *
      * 与 SCHEMA_VERSION_KEY 分开：该模式的 DDL 与补列由运维负责，复用 schema_version
      * 会把种子已补齐当成表结构已最新。
      */
@@ -101,7 +112,7 @@ class Database
             return;
         }
 
-        self::logSchemaListDriftIfAny();
+        self::logSchemaListDriftIfAny($pdo);
         self::$pdo = $pdo;
         if (empty(self::$config)) {
             self::init();
@@ -147,6 +158,7 @@ class Database
         }
         self::seedAdmin();
         self::verifySeed();
+        self::seedOidcConfigFromEnvIfEmpty();
 
         if ($needMark) {
             self::markSchemaCurrent();
@@ -158,6 +170,7 @@ class Database
         }
         self::assertDataEncKeyPresent(self::pdo());
         self::warnDeprecatedEnvKeys();
+        self::warnOidcSigningKeyIssues();
         self::$bootstrapped = true;
     }
 
@@ -193,9 +206,61 @@ class Database
     }
 
     /**
+     * 启动期告警去重：同一个「状态指纹」只提醒一次（跨请求、跨重启、多副本共享）。
+     * @param callable():void $emit 真正写日志的动作，仅在需要提醒时执行
+     * @param \PDO|null       $pdo  引导早期（self::$pdo 尚未赋值）或调用方自带连接时显式传入
+     */
+    public static function warnOnceOnStateChange(
+        string $name,
+        string $fingerprint,
+        callable $emit,
+        ?\PDO $pdo = null
+    ): void {
+        if ((self::$warnStateSeen[$name] ?? null) === $fingerprint) {
+            return;
+        }
+        self::$warnStateSeen[$name] = $fingerprint;
+
+        try {
+            $pdo = $pdo ?? self::pdo();
+            $key = self::BOOT_WARN_KEY_PREFIX . $name;
+            if (self::readAppSetting($pdo, $key) === $fingerprint) {
+                return;
+            }
+            self::writeAppSetting($pdo, $key, $fingerprint);
+        } catch (\Throwable $e) {
+        }
+
+        $emit();
+    }
+
+    /**
+     * 读取 ci_app_settings 原始值（无该行返回 null）。
+     * 与 recordedVersion() 的区别：查询异常在此向上抛出，由调用方决定降级方式。
+     */
+    private static function readAppSetting(\PDO $pdo, string $key): ?string
+    {
+        $stmt = $pdo->prepare(
+            'SELECT value FROM ' . \App\Config\AppConfig::TABLE_APP_SETTINGS . ' WHERE setting_key = ?'
+        );
+        $stmt->execute([$key]);
+        $row = $stmt->fetchColumn();
+        return $row === false ? null : (string) $row;
+    }
+
+    private static function writeAppSetting(\PDO $pdo, string $key, string $value): void
+    {
+        $sql = self::sqlUpsert(
+            \App\Config\AppConfig::TABLE_APP_SETTINGS,
+            'setting_key, value, updated_at',
+            '?, ?, ' . self::sqlNow()
+        );
+        $pdo->prepare($sql)->execute([$key, $value]);
+    }
+
+    /**
      * 连接与 OIDC 配置已迁入 DB（v2.10.0 起），下列 env 键应用不再读取。
-     * 若仍有非空残留值，说明旧配置尚未迁移（或迁移后未清理），打 warning 提示运维，
-     * 避免「升级后连接/OIDC 静默失效、查无凭据」。
+     * 若仍有非空残留值，说明旧配置尚未迁移（或迁移后未清理），避免「升级后连接/OIDC 静默失效、查无凭据」。
      */
     private static function warnDeprecatedEnvKeys(): void
     {
@@ -218,12 +283,104 @@ class Database
                 $leftover[] = $key;
             }
         }
-        if ($leftover !== []) {
-            \App\Helper\Log::warning(
-                '检测到已废弃的连接/OIDC env 键（v2.10.0 起应用不再读取）：' . implode(', ', $leftover)
-                . '。若从旧版升级，请运行 cli/migrate-platform-connections.php 与 cli/migrate-oidc.php 迁移；'
-                . '迁移确认无误后可删除这些键。',
-                ['deprecated_env_keys' => $leftover]
+        if ($leftover === []) {
+            return;
+        }
+
+        $cdStillReads = array_values(array_intersect($leftover, ['CD_OIDC_SECRET', 'CD_OIDC_REDIRECT_URI']));
+        $deletable    = array_values(array_diff($leftover, $cdStillReads));
+
+        self::warnOnceOnStateChange(
+            'deprecated_env_keys',
+            sha1(\App\Config\AppConfig::APP_VERSION . '|' . implode(',', $leftover)),
+            static function () use ($leftover, $cdStillReads, $deletable): void {
+                $message = '检测到已废弃的连接/OIDC env 键（v2.10.0 起应用不再读取）：' . implode(', ', $leftover)
+                    . '。若从旧版升级，请运行 cli/migrate-platform-connections.php 与 cli/migrate-oidc.php 迁移；'
+                    . '在后台「系统设置 → 平台管理」页确认值已迁到位后，可从配置文件删除这些键'
+                    . ($deletable === []
+                        ? '（本次剩余清单都是 CD 配对项，见下段，均不可删）。'
+                        : '（顺序与清单见《用户配置手册》第 10 章）。');
+                if ($cdStillReads !== []) {
+                    $message .= '其中 ' . implode(', ', $cdStillReads)
+                        . ' 联合部署时 CD 容器仍要读取（CD 侧没有别的来源），'
+                        . '即使 Glue 后台已有同值，也不要从共享 .env 删除，否则 CD 起不来。';
+                }
+                $message .= '注意：OIDC_RSA_PRIVATE_KEY / OIDC_KEY_FILE 不在此清单内，应用仍在读取，请勿删除或改写成占位值。'
+                    . '本提示按「键集合 / 版本变化」去重（见 ci_app_settings.' . self::BOOT_WARN_KEY_PREFIX
+                    . 'deprecated_env_keys），不会按请求重复刷屏。';
+
+                \App\Helper\Log::warning($message, [
+                    'deprecated_env_keys' => $leftover,
+                    'cd_still_reads'      => $cdStillReads,
+                ]);
+            }
+        );
+    }
+
+    /**
+     * 全新库自愈：ci_oauth_clients 还是空表时，用 env 里已有的 OIDC 配置播种一次。
+     */
+    private static function seedOidcConfigFromEnvIfEmpty(): void
+    {
+        try {
+            $pdo = self::pdo();
+            // 只在新库首次引导时自动播种一次：用持久化标记区分「从未播种」与「管理员已清空 OIDC 客户端」。
+            // 否则每次重启都因空表重新导入 env，管理员在后台删光 client 想关 SSO 后会被静默重新打开。
+            if (self::readAppSetting($pdo, self::OIDC_ENV_SEED_KEY) !== null) {
+                return;
+            }
+            if (\App\Service\OidcConfigImporter::hasNoClientRow($pdo)) {
+                $result = (new \App\Service\OidcConfigImporter($pdo))->importFromEnv();
+                if ($result['migrated'] !== []) {
+                    \App\Helper\Log::warning(
+                        '检测到 ci_oauth_clients 为空（全新库）：已按 env 自动播种 OIDC 配置——'
+                        . implode(', ', $result['migrated'])
+                        . '。后续请在后台「系统设置 → 平台管理」页维护；确认无误后可从 env 删除对应键。',
+                        ['oidc_auto_seeded' => $result['migrated']]
+                    );
+                }
+            }
+            // 无论本次是否真的播种都打标：保证「是否自动播种」只判定一次，后续空表不再被反复复活。
+            self::writeAppSetting($pdo, self::OIDC_ENV_SEED_KEY, '1');
+        } catch (\Throwable $e) {
+            \App\Helper\Log::exception($e);
+        }
+    }
+
+    /**
+     * OIDC 签名私钥的启动自检（只告警，不阻断引导）。
+     */
+    private static function warnOidcSigningKeyIssues(): void
+    {
+        $pem = trim(\App\Support\EnvFileLoader::envVal('OIDC_RSA_PRIVATE_KEY', ''));
+        if ($pem !== '' && !str_contains($pem, 'BEGIN')) {
+            self::warnOnceOnStateChange(
+                'oidc_private_key_not_pem',
+                sha1(\App\Config\AppConfig::APP_VERSION . '|' . $pem),
+                static function (): void {
+                    \App\Helper\Log::error(
+                        'OIDC_RSA_PRIVATE_KEY 不是 PEM 私钥（缺少 -----BEGIN ... PRIVATE KEY----- 头）：'
+                        . 'id_token 签发与 JWKS 都会失败（/oauth/token 500）。'
+                        . '请把它留空（自动生成并持久化到 OIDC_KEY_FILE），或填入完整 RSA PEM。'
+                        . '本提示按值去重（见 ci_app_settings.' . self::BOOT_WARN_KEY_PREFIX
+                        . 'oidc_private_key_not_pem），不会按请求重复刷屏。'
+                    );
+                }
+            );
+        }
+
+        $file = trim(\App\Support\EnvFileLoader::envVal('OIDC_KEY_FILE', ''));
+        if ($file !== '' && is_file($file) && !is_readable($file)) {
+            self::warnOnceOnStateChange(
+                'oidc_key_file_unreadable',
+                sha1($file),
+                static function () use ($file): void {
+                    \App\Helper\Log::error(
+                        "OIDC 私钥文件当前不可读：{$file}。PHP 运行用户读不到时无法复用该密钥，"
+                        . '下游按 kid 取 JWKS 会验签失败（症状酷似密码错）。'
+                        . "修正：chown www-data:www-data {$file}（并确保其所在目录可进入）。"
+                    );
+                }
             );
         }
     }
@@ -236,12 +393,7 @@ class Database
     private static function recordedVersion(string $key): ?string
     {
         try {
-            $stmt = self::pdo()->prepare(
-                'SELECT value FROM ' . \App\Config\AppConfig::TABLE_APP_SETTINGS . ' WHERE setting_key = ?'
-            );
-            $stmt->execute([$key]);
-            $row = $stmt->fetchColumn();
-            return ($row === false) ? null : (string) $row;
+            return self::readAppSetting(self::pdo(), $key);
         } catch (\Throwable $e) {
             return null;
         }
@@ -277,9 +429,7 @@ class Database
 
     /**
      * 记录一次版本跃迁（升级 / 降级 / 首次初始化）：降级时额外写一条文件 WARNING，并统一写操作日志。
-     *
      * 只覆盖自动引导产生的跃迁；显式迁移（后台按钮、cli/migrate.php）记录 migrate_schema
-     * 操作行，降级方向另由 noteExplicitDowngrade() 留痕。
      *
      * @param string      $key      被改写的版本键（schema_version / seed_version）
      * @param string|null $before   跃迁前的记录值；null = 首次初始化
@@ -317,7 +467,6 @@ class Database
 
     /**
      * 把一次版本跃迁写进操作日志（ci_operation_logs）。
-     *
      * 首次初始化与升级记为 success，降级回滚记为 failure；detail 带 scope 与 seed_mode，
      * 便于事后核对当时的权限处理方式。
      */
@@ -342,9 +491,6 @@ class Database
     /**
      * 写一条系统级操作日志（操作人 system），按 (action, target, channel) 在
      * SYSTEM_AUDIT_DEDUPE_WINDOW 秒内去重；写入失败不影响引导与迁移。
-     *
-     * channel 参与去重键：自动引导降级与显式迁移降级后果不同，不应互相吞掉审计行。
-     *
      * @param array<string,mixed> $detail
      */
     private static function recordSystemAudit(string $action, string $target, array $detail, string $result, ?string $channel = null): void
@@ -373,12 +519,6 @@ class Database
 
     /**
      * 显式迁移（后台同步库结构、cli/migrate.php）在降级方向的留痕。
-     *
-     * 库中版本标记高于当前代码时，迁移会把标记改写回旧版本并按旧定义 prune 系统角色权限，
-     * 此处写文件 WARNING 与 schema_downgrade 审计行（detail.channel=explicit_migrate）。
-     *
-     * 多个版本键同时领先时聚合为一行：WARNING 给出各键版本，审计行 detail.keys 列出全部键，
-     * target 取最高版本。
      *
      * @param array<string,string|null> $recorded key => 改写前的记录值（null = 此前无记录）
      */
@@ -425,10 +565,6 @@ class Database
 
     /**
      * 当前代码版本定义的全部数据表（系统信息面板与探针按此清单逐表探测）。
-     *
-     * 手写清单，新增应用表时必须同步补一行，否则后台数据表清单与 /healthz 的探测结果
-     * 会少一张表（DatabaseBootstrapTest 中有对应断言）。
-     *
      * @return list<string>
      */
     private static function schemaTables(): array
@@ -459,9 +595,7 @@ class Database
 
     /**
      * 一致性自检：探测清单（{@see schemaTables()}）是否与 AppConfig 的表常量对齐。
-     *
      * 纯函数：只做反射与集合比较，不建连、不写库、不抛异常。
-     *
      * @param list<string>|null $probeList 待比较的探测清单；null 表示使用当前代码的 schemaTables()
      * @return array{
      *     ok: bool,
@@ -512,7 +646,7 @@ class Database
      * 探测清单漂移时记一条 error 日志（进程内只记一次），不抛异常：
      * 漂移只影响清单可见性，不影响建表。
      */
-    private static function logSchemaListDriftIfAny(): void
+    private static function logSchemaListDriftIfAny(\PDO $pdo): void
     {
         if (self::$schemaListDriftLogged) {
             return;
@@ -522,12 +656,22 @@ class Database
             return;
         }
         self::$schemaListDriftLogged = true;
-        \App\Helper\Log::error('schema 探测清单与 AppConfig 表常量不一致（后台「数据表清单」可能少表）', [
-            'missing_from_probe' => $drift['missing'],
-            'probe_unknown'      => $drift['probe_unknown'],
-            'hint'               => '请在 Database::schemaTables() 补上 AppConfig 中缺失的表（新增应用表时必须同步）；'
-                . 'CI 由 DatabaseBootstrapTest::testSchemaProbeListCoversEveryAppOwnedTable 守着该不变量',
-        ]);
+        self::warnOnceOnStateChange(
+            'schema_list_drift',
+            sha1(
+                \App\Config\AppConfig::APP_VERSION . '|' . implode(',', $drift['missing'])
+                . '|' . implode(',', $drift['probe_unknown'])
+            ),
+            static function () use ($drift): void {
+                \App\Helper\Log::error('schema 探测清单与 AppConfig 表常量不一致（后台「数据表清单」可能少表）', [
+                    'missing_from_probe' => $drift['missing'],
+                    'probe_unknown'      => $drift['probe_unknown'],
+                    'hint'               => '请在 Database::schemaTables() 补上 AppConfig 中缺失的表（新增应用表时必须同步）；'
+                        . 'CI 由 DatabaseBootstrapTest::testSchemaProbeListCoversEveryAppOwnedTable 守着该不变量',
+                ]);
+            },
+            $pdo
+        );
     }
 
     /**
@@ -593,9 +737,6 @@ class Database
 
     /**
      * 读取 schema / 种子版本并判定是否与当前代码对齐（供 /healthz 探针一次查询拿到全部版本语义）
-     * schema_current 只反映表结构：有 schema_version 时与 APP_VERSION 等值比较，无记录时为 null
-     * 手动建库模式下 seed_version 仅证明种子数据已写入，不能代表新增列已就绪，故不作为依据。
-     *
      * schema_ahead 是方向位，与 schema_current 组合可区分两种未对齐：
      * - schema_current=false + schema_ahead=false：代码比库新，需执行结构迁移；
      * - schema_current=false + schema_ahead=true ：库比代码新，典型场景是代码回滚。
@@ -635,9 +776,7 @@ class Database
     }
 
     /**
-     * 已记录的结构版本是否高于当前代码版本（方向位，/healthz 与 bootstrap() 共用）。
-     *
-     * 无记录时返回 false。用 version_compare 比较，避免 '2.20.0' 与 '2.3.0' 的字典序问题。
+     * 已记录的结构版本是否高于当前代码版本（方向位，/healthz 与 bootstrap() 共用），无记录时返回 false。
      */
     private static function isVersionAhead(?string $recorded): bool
     {
@@ -679,11 +818,6 @@ class Database
 
     /**
      * 只读预检：计算若现在迁移会补哪些表 / 哪些列（不建连、不 bootstrap、不写库）。
-     *
-     * 与 ensureTables() 同源（columnMigrations() + schemaTables() + columnSpecs()），结论与实跑一致；
-     * 供 cli/migrate.php --dry-run 使用。覆盖缺失表、缺失列与列类型漂移（mismatched_columns）：
-     * 其中 safe=true 的安全扩容会随迁移对齐，unsafe 仅由 dry-run 提示人工评估，迁移不改动。
-     * 索引与数据搬迁随迁移幂等执行，表不存在时整表新建，其列不单独报告。
      *
      * @param \PDO $pdo 调用方自建连接
      * @return array{
@@ -766,10 +900,6 @@ class Database
     /**
      * 列结构对账清单（仅 MySQL）：表 => 列 => 完整 MODIFY 列子句。
      *
-     * columnMigrations() 解决「列不存在」（ADD COLUMN），本清单解决「列存在但类型/宽度落后于
-     * 建表定义」——典型场景：未发布版本内多轮 DDL，schema_version 已与代码相等，bootstrap 短路，
-     * 存量库的列定义停留在旧宽度（varchar(32) vs 建表脚本 varchar(255)）。
-     *
      * @return array<string, array<string, string>>
      */
     private static function columnSpecs(): array
@@ -784,11 +914,6 @@ class Database
 
     /**
      * 只读对账：列存在但实际类型与 columnSpecs() 期望不一致的清单。
-     *
-     * safe=true 仅当类型族相同且宽度只增（如 varchar(32)→varchar(255)）；其余漂移
-     * （缩容 varchar(512)→varchar(255)、跨类型族 text→varchar 等）safe=false，只报告。
-     * SQLite 无 VARCHAR 长度概念（类型亲和且不截断），列宽漂移无实际危害，返回空集。
-     *
      * @param \PDO $pdo 调用方自建连接
      * @return list<array{table:string, column:string, actual:string, expected:string, definition:string, safe:bool}>
      */
@@ -858,11 +983,10 @@ class Database
 
     /**
      * 列结构自愈：对 columnDrift() 中 safe=true 的漂移执行 MODIFY COLUMN。
-     * 每进程只执行一次（$columnReconcileDone）；表/列名来自代码常量与白名单清单，不接受外部输入。
-     * strict=true（ensureTables / 显式迁移链路）：任一 MODIFY 失败抛出，与 ADD COLUMN 循环同为
+     * 每进程只执行一次；表/列名来自代码常量与白名单清单，不接受外部输入。
+     * strict=true：任一 MODIFY 失败抛出，与 ADD COLUMN 循环同为
      * fail-fast，尚未 markSchemaCurrent，下次启动重试。
-     * strict=false（bootstrap 公共段，含版本相等短路路径）：失败仅记 error 日志，不阻断业务请求；
-     * 成功对齐记 warning 留痕（结构被自动变更，运维应可见），漂移仍在系统信息面板展示。
+     * strict=false：失败仅记 error 日志，不阻断业务请求；
      *
      * @return list<array{table:string, column:string, actual:string, expected:string}> 本次已对齐的列
      */
@@ -911,7 +1035,6 @@ class Database
 
     /**
      * 手动触发迁移：建缺失表 + 补列 + 安全扩容列对齐 + RBAC/管理员种子 + 自检 + 标记 schema 当前。
-     *
      * 入口：后台同步库结构按钮（super_admin 专用）、cli/migrate.php自带连接，空库或手动建库模式漏跑脚本时也能一次建全。
      * 返回值同 schemaStatus()（含迁移后重新对账的 column_drift，正常应为零项）。
      *
@@ -1126,6 +1249,7 @@ class Database
         self::$schemaListDriftLogged = false;
         self::$columnReconcileDone = false;
         self::$tableBuildLog = [];
+        self::$warnStateSeen = [];
     }
 
     public static function driver(): string
@@ -1161,7 +1285,6 @@ class Database
      *    竞争空等 30 秒——与主干单机行为完全一致。
      *
      * $critical 自带双检（持锁后重读版本标记）：接管场景下若上一持有者已完成则跳过。
-     *
      * @param string  $waitKey   竞争者轮询对齐的版本键（自动模式 = SCHEMA_VERSION_KEY、手动模式 = SEED_VERSION_KEY）
      * @param \Closure $critical  需要互斥执行的迁移动作
      */
@@ -1226,11 +1349,6 @@ class Database
      *
      * 跨实例共享：锁以 ci_cache 的 cache_key 为主键，MySQL 多实例 / SQLite 共享单文件下均生效，
      * 使「单 worker 容器 + DB 锁」的定时任务拆分在多实例部署下仍保证同一时刻只有一个实例执行。
-     * 抢占协议：
-     *   1) 先删除「已过期」的租约（expires_at <= 当前时间，即持有者异常退出 / 任务超时未续约）；
-     *   2) 再用普通 INSERT 写入自己的租约——唯一键冲突说明存在有效锁，返回 null。
-     *      （不能用 sqlUpsert/REPLACE：那会在冲突时删除旧行再插入，等于「偷锁」，破坏互斥。）
-     *   value 存持有者 token（host:pid:随机），供 releaseLock 精确释放，避免误删他者已接管的锁。
      * ttl 由调用方按单轮任务耗时给出；任务超时后锁自动过期，下个调度周期可被接管，无死锁。
      */
     public static function tryAcquireLock(string $name, int $ttlSeconds = 600): ?string
@@ -1769,6 +1887,19 @@ class Database
         self::migratePipelineArtifacts($pdo);
 
         self::trimJobGitMapWhitespace($pdo);
+        self::normalizeAbortedSecurityStates($pdo);
+    }
+
+    /**
+     * 幂等数据迁移：把 ci_security_checks 中残留的 state='aborted'（custom_push 中止）归一到 failed。
+     * 审计页 state 过滤只有 success/failed/pending/error，aborted 应视作非成功（failed）；
+     * 原始中止语义已保留在 description 字段。写路径 recordReportAudit 已做同样归一，此处兜底存量行。
+     */
+    private static function normalizeAbortedSecurityStates(\PDO $pdo): void
+    {
+        $pdo->exec(
+            "UPDATE " . \App\Config\AppConfig::TABLE_SECURITY_CHECKS . " SET state = 'failed' WHERE state = 'aborted'"
+        );
     }
 
     /**

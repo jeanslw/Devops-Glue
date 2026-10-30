@@ -336,10 +336,13 @@ final class BuildReportController extends BaseBuildController
     private function recordReportAudit(string $path, string $sha, string $status, string $tag, array $result): void
     {
         $description = 'custom_push 构建终态: ' . $status . ($tag !== '' ? ' → ' . $tag : '');
+        // 审计 state 归一到 failed：审计页 state 过滤只有 success/failed/pending/error，
+        // 中止（aborted）视作非成功归入 failed；原始中止语义保留在 description，且与 writeback_status 的失败口径一致。
+        $auditState = $status === 'aborted' ? 'failed' : $status;
         $this->securityChecks->record(
             $path,
             $sha,
-            $status,
+            $auditState,
             'custom_push',
             $description,
             'custom_push',

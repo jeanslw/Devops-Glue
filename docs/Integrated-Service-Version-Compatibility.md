@@ -2,7 +2,7 @@
 
 > This document lists the version support and key version boundaries for each service Devops-Glue integrates with (Jenkins / GitLab / Gitea / Harbor / Registry).
 > All version boundaries come from each service's official documentation / release notes.
-> Document version: v2.11.0 (2026-10-24)
+> Document version: v2.11.2 (2026-10-30)
 
 ---
 
@@ -121,7 +121,7 @@ Unlike the other three, Harbor has a v1â†’v2 API split and a robot-account JWTâ†
 - Detect the concrete version (`harbor_version` from `/api/v2.0/systeminfo`, anonymous first, authenticated fallback).
 - Decide robot-account support based on the version (boundary v2.2.0).
 
-See the ADMIN_MANUAL "Connect Harbor" section.
+See the ADMIN_MANUAL "Connect the Image Registry" section.
 
 | Harbor version | Can a robot account call the REST API? |
 |---|---|

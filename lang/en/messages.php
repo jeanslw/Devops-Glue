@@ -738,7 +738,7 @@ return [
 
     // ── OAuth2 Provider ──
     'oauth.login_title'      => 'Sign in',
-    'oauth.invalid_request'  => 'Invalid OAuth request (client_id or redirect_uri mismatch)',
+    'oauth.invalid_request'  => 'Invalid OAuth request (client_id or redirect_uri mismatch). On a fresh install run cli/migrate-oidc.php to seed the client whitelist, or add the OIDC client under "System Settings → Platform Management" (client_id / secret / redirect_uri must match the caller)',
 
     // ── Operation Logs ──
     'oplog.menu'               => 'Operation Logs',

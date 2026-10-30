@@ -122,6 +122,7 @@ services:
       DB_PASS: ${DB_PASS:-}
       DB_ROOT_PASS: ${DB_ROOT_PASS:-}
       DATA_ENC_KEY: ${DATA_ENC_KEY:-}
+      OIDC_RSA_PRIVATE_KEY: ${OIDC_RSA_PRIVATE_KEY:-}
     command:
       - |
         fail=0
@@ -156,6 +157,28 @@ services:
           echo '[ABORT] Missing sensitive-field encryption key DATA_ENC_KEY: set it in config/app.env or the root .env'
           fail=1
         fi
+        # OIDC 签名私钥：显式配置时必须像 PEM，否则启动即中止。
+        # 非 PEM 占位值会让 /oauth/token 与 /.well-known/jwks.json 双双 500，CD 侧只报
+        # 「统一登录服务暂时不可用」，极易误诊为客户端密钥/网络问题。留空 = 自动生成，最安全。
+        if [ -n "$$OIDC_RSA_PRIVATE_KEY" ]; then
+          case "$$OIDC_RSA_PRIVATE_KEY" in
+            *-----BEGIN*) : ;;
+            *)
+              echo '[启动中止] OIDC_RSA_PRIVATE_KEY 不是有效的 PEM 私钥（应以 -----BEGIN 开头）；留空则自动生成到 OIDC_KEY_FILE。'
+              echo '[ABORT] OIDC_RSA_PRIVATE_KEY is not a valid PEM private key (must start with -----BEGIN); leave it empty to auto-generate into OIDC_KEY_FILE.'
+              fail=1
+              ;;
+          esac
+        fi
+        for f in /check/app.env /check/app.env.*; do
+          [ -f "$$f" ] || continue
+          if grep -qE '^[[:space:]]*OIDC_RSA_PRIVATE_KEY=[[:space:]]*[^[:space:]]' "$$f" \
+             && ! grep -qE '^[[:space:]]*OIDC_RSA_PRIVATE_KEY=.*-----BEGIN' "$$f"; then
+            echo "[启动中止] $${f} 中的 OIDC_RSA_PRIVATE_KEY 不是有效的 PEM 私钥（应以 -----BEGIN 开头）；留空则自动生成。"
+            echo "[ABORT] OIDC_RSA_PRIVATE_KEY in $${f} is not a valid PEM private key (must start with -----BEGIN); leave it empty to auto-generate."
+            fail=1
+          fi
+        done
         if [ "$$fail" = "1" ]; then
           echo "------------------------------------------------------------------------"
           echo "Fill in the root .env, then run again: docker compose up -d --build"

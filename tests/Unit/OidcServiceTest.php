@@ -100,6 +100,60 @@ class OidcServiceTest extends TestCase
         }
     }
 
+    /**
+     * 占位值必须在「取到私钥」这一步就失败并点名来源。
+     *
+     * 回归背景：env 里被写进 deprecated_env_keys_xxx 这类非 PEM 值后，
+     * /oauth/token 与 /.well-known/jwks.json 双双 500，下游只看到「统一登录服务暂时不可用」，
+     * 极易误诊为客户端密钥错或网络问题。异常文案必须自带可执行的修复指引。
+     */
+    public function testNonPemPrivateKeyFailsFastWithActionableMessage(): void
+    {
+        $svc = $this->makeService(['private_key' => 'deprecated_env_keys_kdkssffsfdfdf']);
+
+        try {
+            $svc->keyId();
+            $this->fail('非 PEM 的 OIDC_RSA_PRIVATE_KEY 必须直接抛异常，不得静默继续');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('OIDC_RSA_PRIVATE_KEY', $e->getMessage());
+            $this->assertStringContainsString('PEM', $e->getMessage());
+        }
+    }
+
+    /**
+     * key_file 不可写时必须报错，而不是「用内存密钥照样签发」。
+     *
+     * 后者会让 kid 随进程变化，下游按 kid 取 JWKS 必然验签失败——症状与密码错几乎一样，排查极贵。
+     */
+    public function testUnwritableKeyFileFailsInsteadOfSilentlyRotatingKey(): void
+    {
+        $blocker = sys_get_temp_dir() . '/devops_glue_oidc_blocker_' . uniqid();
+        file_put_contents($blocker, 'x');
+        $keyFile = $blocker . '/nested/oidc.pem';
+        try {
+            $svc = $this->makeService(['key_file' => $keyFile]);
+            $this->expectException(\RuntimeException::class);
+            $this->expectExceptionMessageMatches('/无法持久化|不可读/');
+            $svc->keyId();
+        } finally {
+            @unlink($blocker);
+        }
+    }
+
+    /** 空的（可读）key_file 视为「尚无密钥」，应自动生成并落盘，不得直接报错。 */
+    public function testEmptyReadableKeyFileIsRegenerated(): void
+    {
+        $file = sys_get_temp_dir() . '/devops_glue_oidc_empty_' . uniqid() . '.pem';
+        file_put_contents($file, '');
+        try {
+            $svc = $this->makeService(['key_file' => $file]);
+            $this->assertNotEmpty($svc->jwks()['keys'][0]['n']);
+            $this->assertGreaterThan(0, (int) filesize($file), '生成后必须落盘，保证跨重启 kid 稳定');
+        } finally {
+            @unlink($file);
+        }
+    }
+
     public function testDiscoveryDocument(): void
     {
         $svc = $this->makeService();

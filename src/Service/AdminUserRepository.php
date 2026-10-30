@@ -300,8 +300,17 @@ class AdminUserRepository
             $stmt->execute();
             $pending = $stmt->fetchColumn();
             if ($pending !== false) {
-                \App\Helper\Log::warning(
-                    "账号 '{$pending}' 仍使用首次建库的初始种子密码（尚未完成首次登录强制改密），请尽快登录并修改密码"
+                // 按「待改密账号 + 版本」指纹去重：同步是每个请求都会跑的，不去重会把容器日志刷屏；
+                // 账号完成改密后（must_change_password 清零）该提示自然消失。
+                Database::warnOnceOnStateChange(
+                    'seed_password_pending',
+                    sha1(AppConfig::APP_VERSION . '|' . (string) $pending),
+                    static function () use ($pending): void {
+                        \App\Helper\Log::warning(
+                            "账号 '{$pending}' 仍使用首次建库的初始种子密码（尚未完成首次登录强制改密），请尽快登录并修改密码"
+                        );
+                    },
+                    $pdo
                 );
             }
         } catch (\Throwable $e) {

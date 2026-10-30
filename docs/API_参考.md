@@ -1,4 +1,4 @@
-# Devops-Glue API 参考 v2.11.0
+# Devops-Glue API 参考 v2.11.2
 
 基础 URL: `http://your-domain.com/api`
 
@@ -87,9 +87,9 @@ GET /healthz
 {
   "status": "ok",
   "db": true,
-  "app_version": "2.11.0",
-  "schema_version": "2.11.0",
-  "seed_version": "2.11.0",
+  "app_version": "2.11.2",
+  "schema_version": "2.11.2",
+  "seed_version": "2.11.2",
   "schema_current": true,
   "schema_ahead": false,
   "auto_migrate": true,
@@ -140,7 +140,7 @@ GET /api/health
   "build_modes": ["jenkins", "gitlab_ci", "gitea_ci"],
   "build_mode_source": "database",
   "db_driver": "mysql",
-  "app_version": "2.11.0",
+  "app_version": "2.11.2",
   "app_env": "production",
   "time": "2026-08-10 12:00:00"
 }
@@ -172,7 +172,7 @@ GET /api/health/static
   "custom_push_enabled": true,
   "custom_push_providers": ["custom_push"],
   "db_driver": "mysql",
-  "app_version": "2.11.0",
+  "app_version": "2.11.2",
   "app_env": "production",
   "time": "2026-08-10 12:00:00"
 }
@@ -331,7 +331,6 @@ custom_push 构建源专用：用户 CI 在构建完成后一次性上报终态�
 > `success` 时必须带 `tag` 且能解析出 `registry_repository`，同步写入 `ci_pipeline_artifacts`（provider、project_id、pipeline_iid、project_key、repository、tag、status），CD 层通过 `GET /api/build/{path}/tag` 读取（列表视图可用 `GET /api/build/projects` / `GET /api/build/{path}/tags`）。
 > 控制字段（`pipeline_iid`/`status`/`finished_at`/`started_at`/`ref`/`sha`/`exit_code`/`log_url`/`web_url`/`tag`/`registry_repository`）以外的字段存入 `variables_json`。
 > `(job_name, pipeline_iid)` 为唯一键，重复上报按覆盖（UPDATE）处理。
-```
 
 ---
 

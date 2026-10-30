@@ -1,4 +1,4 @@
-# Devops-Glue API Technical Guide v2.11.0
+# Devops-Glue API Technical Guide v2.11.2
 
 > This document is intended for developers, operations engineers, and troubleshooting. It covers all business logic, data flows, database table structures, and common issues.
 
@@ -1283,4 +1283,4 @@ When adding/modifying table structures, update the following files and **bump `A
 
 ---
 
-*Document version: v2.11.0 | Last updated: 2026-10-24*
+*Document version: v2.11.2 | Last updated: 2026-10-30*

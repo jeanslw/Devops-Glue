@@ -736,7 +736,7 @@ return [
 
     // ── OAuth2 Provider ──
     'oauth.login_title'      => '登录',
-    'oauth.invalid_request'  => '无效的 OAuth 请求（client_id 或 redirect_uri 不匹配）',
+    'oauth.invalid_request'  => '无效的 OAuth 请求（client_id 或 redirect_uri 不匹配）。全新部署请先跑一次 cli/migrate-oidc.php 播种客户端白名单，或到后台「系统设置 → 平台管理」新增 OIDC 客户端（client_id / secret / redirect_uri 须与调用方一致）',
 
     // ── 操作日志 ──
     'oplog.menu'               => '操作日志',

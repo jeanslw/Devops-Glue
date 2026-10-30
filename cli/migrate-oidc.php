@@ -10,9 +10,7 @@
 require __DIR__ . '/bootstrap.php';
 
 use App\Service\Database;
-use App\Service\AppSettingRepository;
-use App\Service\OAuthClientRepository;
-use App\Support\EnvFileLoader;
+use App\Service\OidcConfigImporter;
 
 try {
     $pdo = Database::getPdo();
@@ -28,65 +26,10 @@ try {
     exit(1);
 }
 
-$appSettings = new AppSettingRepository($pdo);
-$clients     = new OAuthClientRepository($pdo);
-$migrated    = [];
-$skipped     = [];
-
-if ($appSettings->getOidcIssuer() !== null) {
-    $skipped[] = 'issuer（DB 已有值，不覆盖）';
-} else {
-    $issuer = trim(EnvFileLoader::envVal('OIDC_ISSUER'));
-    if ($issuer !== '') {
-        $appSettings->setOidcIssuer($issuer);
-        $migrated[] = 'issuer';
-    }
-}
-
-if ($appSettings->getOidcIdTokenTtl() !== null) {
-    $skipped[] = 'id_token_ttl（DB 已有值，不覆盖）';
-} else {
-    $ttl = (int) trim(EnvFileLoader::envVal('OIDC_ID_TOKEN_TTL'));
-    if ($ttl > 0) {
-        $appSettings->setOidcIdTokenTtl($ttl);
-        $migrated[] = 'id_token_ttl';
-    }
-}
-
-$clientEnv = [
-    'jenkins' => ['secret' => ['JENKINS_OIDC_SECRET'], 'redirect_uri' => ['JENKINS_OIDC_REDIRECT_URI']],
-    'cd'      => ['secret' => ['CD_OIDC_SECRET'], 'redirect_uri' => ['CD_OIDC_REDIRECT_URI'], 'system' => ['CD_OIDC_SYSTEM']],
-];
-foreach ($clientEnv as $clientId => $cols) {
-    if ($clients->find($clientId) !== null) {
-        $skipped[] = "client:{$clientId}（DB 已有行，不覆盖）";
-        continue;
-    }
-    $data     = ['secret' => '', 'redirect_uri' => '', 'system' => '', 'enabled' => true, 'description' => ''];
-    $hasValue = false;
-    foreach ($cols as $field => $envKeys) {
-        $value = '';
-        foreach ($envKeys as $envKey) {
-            $candidate = trim(EnvFileLoader::envVal($envKey));
-            if ($candidate !== '') {
-                $value = $candidate;
-                break;
-            }
-        }
-        $data[$field] = $value;
-        if ($value !== '') {
-            $hasValue = true;
-        }
-    }
-    if ($data['secret'] === '' || $data['redirect_uri'] === '') {
-        if ($hasValue) {
-            $skipped[] = "client:{$clientId}（secret/redirect_uri 不齐，未写入）";
-        }
-        continue;
-    }
-    $clients->save($clientId, $data);
-    $migrated[] = 'client:' . $clientId;
-}
+// 导入逻辑与引导期「空表自动播种」共用一份实现（OidcConfigImporter），避免两处漂移。
+$result   = (new OidcConfigImporter($pdo))->importFromEnv();
+$migrated = $result['migrated'];
+$skipped  = $result['skipped'];
 
 try {
     $encrypted = encryptSensitiveColumns(

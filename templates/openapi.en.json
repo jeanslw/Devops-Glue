@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Devops-Glue API",
-    "version": "2.11.1",
+    "version": "2.11.2",
     "description": "DevOps toolchain integration API",
     "contact": {
       "email": "jeanslw@qq.com"

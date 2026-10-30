@@ -1,24 +1,38 @@
 # Changelog
 
+## v2.11.2 (2026-10-30)
+
+- **Fixed**
+  - A fresh database now seeds its single sign-on configuration from environment variables on first start (issuer, token lifetime, client whitelist); no manual migration is needed and existing rows are never overwritten.
+  - An unusable SSO signing key now fails loudly with fix instructions (non-PEM value, unreadable key file, key that cannot be persisted) instead of silently falling back to a temporary key.
+  - Uncaught exceptions are always logged: 5xx entries record the exception class, location, request method and path, and the stack trace.
+  - Bootstrap notices are deduplicated by state: the leftover connection / SSO environment keys, signing-key problems, data-table list drift and the unchanged initial password are each reported once per state, and again only when that state changes.
+  - The leftover-key notice no longer advises deleting everything after migrating: it states that CD still reads the client secret and the redirect URI in a joint deployment.
+  - Login failure messages now carry actionable fix instructions (run the migration script or add the client in the console).
+- **Improved**
+  - The SSO migration script and the first-start auto-seeding share a single implementation.
+- **Docs**
+  - The User Manual gains sections 9 and 10: signing into Devops-CD with a Glue account, and migrating from environment variables to the console (steps and common misreads).
+  - The FAQ gains five entries: why the CD owning-system key is optional, the login checklist for a fresh database, the three login-failure messages, CD not enabled / not deployed, and how to stop the repeated startup notice.
+  - Config files no longer contain the CD client's owning system; the root config and CD's example config are aligned.
+
 ## v2.11.1 (2026-10-27)
 
 - **Refactor**
-  - `AdminController` and `BuildController` are split apart; this is an internal structure refactor only — URLs, HTTP methods, permission checks, and response structures are unchanged.
-  - The build / admin / OAuth SQL moves into dedicated repositories and services, and multi-write transactions all run through one shared `TransactionManager`; behaviour and responses are unchanged.
+  - The admin and build controllers are split apart, database access moves into dedicated repositories and services, and write operations go through one transaction manager; URLs, HTTP methods, permission checks and response structures are unchanged.
 - **Fixed**
-  - When the image registry does not support scanning, the audit record's state is no longer written as `unknown`; it is normalized from the build status to success / failed / pending, matching the commit status.
-  - The platform version page's image-registry row now shows the type suffix matching the actual `registry_type`.
-  - The health check now returns the probed distribution version for `registry` mode, instead of the fixed string `"registry"`.
-  - The custom_push build report endpoint (`report`) now writes a `ci_security_checks` audit row for every terminal status (success / failed / aborted), matching the `commitStatus` and registry-sync endpoints; previously only success wrote an artifact and pipeline failures left no audit trail.
+  - When the image registry does not support scanning, the audit state is normalized from the build result to success / failed / pending instead of "unknown".
+  - The platform version page shows the registry row's type suffix based on the actual registry type.
+  - The health check returns the probed distribution version in standard-registry mode instead of the fixed string "registry".
+  - The custom_push build report endpoint writes a security audit row for all three terminal states (success, failed, aborted).
 - **Improved**
-  - nginx enables `resolve` on the php-fpm upstream with Docker's built-in DNS: the IP refreshes automatically when php-fpm replicas scale up or down or a container is recreated, and with multiple replicas passive failover takes over once failed requests reach the threshold.
-  - docker-compose centralizes log rotation; nginx is upgraded to 1.28 with its container capabilities reduced; a health endpoint and gzip are added.
-  - Connection configuration already migrated to the database is removed, along with the configuration template (`settings.example.php`).
-  - The image registry now supports type-consistency detection: when the selected type does not match the actual service behind the address, both the health check and the platform-connection card show a "registry type mismatch" warning and log an error, without blocking the save.
+  - nginx resolves the php-fpm upstream dynamically via Docker's built-in DNS: addresses refresh after scaling up or down or a container recreation, with passive failover when failed requests pass the threshold.
+  - Container log rotation is centralized; nginx is upgraded with reduced container capabilities, plus a health endpoint and gzip.
+  - Connection settings already migrated to the database are removed, along with the configuration template file.
+  - A registry type that does not match the service behind the address shows a "registry type mismatch" warning in the health check and the platform-connection card and logs an error, without blocking the save.
 - **Changed**
-  - The image-registry connection row's `platform` now follows `registry_type` (`harbor` or `registry`), so the registry type is visible from `ci_platform_connections` alone; switching the type migrates the row and keeps its credentials.
-  - The non-registry platform list (Jenkins + each Git platform) is consolidated into a single constant `AppConfig::CONNECTION_PLATFORMS_NON_REGISTRY`; the registry pair reuses `PlatformConnectionRepository::REGISTRY_PLATFORMS`.
-  - A one-off `cli/migrate-registry-platform.php` script migrates legacy `platform='harbor'` rows to `registry` where `registry_type='registry'` (idempotent; ships under `cli/`).
+  - The registry connection row follows the actual registry type; switching the type migrates the row and keeps its credentials.
+  - A one-off script cli/migrate-registry-platform.php moves legacy Harbor-labelled rows that are really standard registries to the standard-registry type (idempotent).
 
 ## v2.11.0 (2026-10-24)
 

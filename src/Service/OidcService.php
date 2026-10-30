@@ -80,15 +80,34 @@ class OidcService
 
         $envPem = trim((string)($this->config['private_key'] ?? ''));
         if ($envPem !== '') {
+            // 占位值/被截断的值在这里就点名（而不是等 openssl 报「解析失败」）：
+            // 下游只看到「统一登录服务暂时不可用」，根因必须留在本服务日志里可查。
+            if (!str_contains($envPem, 'BEGIN')) {
+                throw new \RuntimeException(
+                    'OIDC: OIDC_RSA_PRIVATE_KEY 不是 PEM 私钥（缺少 -----BEGIN ... PRIVATE KEY----- 头）。'
+                    . '请留空以自动生成并持久化到 OIDC_KEY_FILE，或填入完整 RS256 PEM。'
+                );
+            }
             return $this->privateKeyPem = $envPem;
         }
 
         $file = (string)($this->config['key_file'] ?? '');
         if ($file !== '' && is_file($file)) {
-            $pem = file_get_contents($file);
+            if (!is_readable($file)) {
+                // 文件在但读不到 = 权限问题（典型：曾以 root 生成，属主 root:root 0600，php-fpm 跑 www-data）。
+                // 绝不静默换新密钥：那会让 kid 随进程抖动，下游按 kid 取 JWKS 必然验签失败，
+                // 症状与「密钥填错」几乎一样，排查成本极高。宁可在这里明确失败。
+                throw new \RuntimeException(
+                    'OIDC: 私钥文件不可读：' . $file
+                    . '。请确认 PHP 运行用户对该文件（及所在目录）有读权限，'
+                    . '例如：chown www-data:www-data ' . $file
+                );
+            }
+            $pem = @file_get_contents($file);
             if ($pem !== false && trim($pem) !== '') {
                 return $this->privateKeyPem = $pem;
             }
+            // 文件可读但为空/损坏：视为「尚无密钥」，重新生成不会造成 kid 抖动（原本就没有可用密钥）。
         }
 
         return $this->privateKeyPem = $this->generateAndPersist($file);
@@ -125,9 +144,16 @@ class OidcService
             if (!is_dir($dir)) {
                 @mkdir($dir, 0777, true);
             }
-            if (@file_put_contents($file, $pem, LOCK_EX) !== false) {
-                @chmod($file, 0600);
+            if (@file_put_contents($file, $pem, LOCK_EX) === false) {
+                // 落盘失败却继续使用内存密钥 = kid 随进程/重启变化，下游缓存过 JWKS 后
+                // 按 kid 找不到公钥，登录随机失败且极难定位。这里明确失败并给出修复指引。
+                throw new \RuntimeException(
+                    'OIDC: 私钥无法持久化到 ' . $file . '（写入失败）。'
+                    . '请确认目录存在且对 PHP 运行用户可写，例如：chown www-data:www-data ' . $dir
+                    . '；或把 OIDC_KEY_FILE 指向可写路径。'
+                );
             }
+            @chmod($file, 0600);
         }
         return $pem;
     }
@@ -178,11 +204,30 @@ class OidcService
         if ($this->privateKey === null) {
             $key = openssl_pkey_get_private($this->privateKeyPem());
             if ($key === false) {
-                throw new \RuntimeException('OIDC: 私钥解析失败');
+                $source = $this->keySourceLabel();
+                // 明确指路：占位值/被截断的 PEM 会让 /oauth/token 与 /.well-known/jwks.json 双双 500，
+                // CD 侧只看到「统一登录服务暂时不可用」，极易误诊为客户端密钥或网络问题。
+                throw new \RuntimeException(
+                    'OIDC: 私钥解析失败（来源：' . $source . '）：必须是合法的 RS256 PEM 私钥。'
+                    . 'OIDC_RSA_PRIVATE_KEY 留空即自动生成并持久化到 OIDC_KEY_FILE；'
+                    . '常见原因：该键被写成了占位值，或私钥文件内容损坏。'
+                );
             }
             $this->privateKey = $key;
         }
         return $this->privateKey;
+    }
+
+    /**
+     * 私钥当前的实际来源（仅用于报错时指路，避免「明明是文件坏了却提示去查 env」）。
+     */
+    private function keySourceLabel(): string
+    {
+        if (trim((string)($this->config['private_key'] ?? '')) !== '') {
+            return 'OIDC_RSA_PRIVATE_KEY（env）';
+        }
+        $file = (string)($this->config['key_file'] ?? '');
+        return $file !== '' ? 'OIDC_KEY_FILE=' . $file : '自动生成的内存私钥';
     }
 
     /** 公钥 PEM（从私钥派生，供测试/调试；JWKS 用 n/e 而非此 PEM） */

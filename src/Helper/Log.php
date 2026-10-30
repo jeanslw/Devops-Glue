@@ -41,6 +41,16 @@ class Log
     }
 
     /**
+     * @internal 测试用：丢弃已缓存的 Logger 单例，使后续对 LOG_PATH 的改动生效
+     * （单例按「首个 LOG_PATH」绑定，同一进程内换目录不会再初始化）。业务代码勿调用。
+     */
+    public static function reset(): void
+    {
+        self::$logger = null;
+        self::$initialized = false;
+    }
+
+    /**
      * 统一写日志：Logger 未启用 / 初始化失败 / 写入失败时一律回退 error_log，
      * 绝不因日志问题阻塞调用方（迁移、引导这些关键路径都依赖本方法）。
      *

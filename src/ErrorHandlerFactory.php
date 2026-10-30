@@ -46,6 +46,8 @@ class ErrorHandlerFactory
                 $code = ($c >= 400 && $c <= 599) ? $c : 500;
             }
 
+            self::logServerError($request, $exception instanceof \Throwable ? $exception : null, $code);
+
             $lang = $resolveErrorLocale($request);
 
             $finalMessage = $message ?? ($errorMessages[$lang][$code] ?? $errorMessages[$lang][500]);
@@ -84,6 +86,7 @@ class ErrorHandlerFactory
         foreach ($httpExceptions as $exceptionClass => $statusCode) {
             $errorMiddleware->setErrorHandler($exceptionClass, function ($request, $exception, $displayErrorDetails) use ($isApiRequest, $errorMessages, $resolveErrorLocale, $statusCode, $responseFactory) {
                 $response = $responseFactory->createResponse();
+                self::logServerError($request, $exception instanceof \Throwable ? $exception : null, $statusCode);
                 $lang = $resolveErrorLocale($request);
                 $message = $errorMessages[$lang][$statusCode] ?? $errorMessages[$lang][500];
 
@@ -103,6 +106,37 @@ class ErrorHandlerFactory
                 return self::renderErrorHtml($request, $statusCode, $detail, $resolveErrorLocale, $responseFactory);
             });
         }
+    }
+
+    /**
+     * 记录服务端错误（5xx）。
+     *
+     * 背景：Slim 的 ErrorMiddleware 只在**默认 handler**（Slim\Handlers\ErrorHandler）里落日志，
+     * 而本工厂用 setDefaultErrorHandler() 整体替换了它 —— 若不在这里补一行日志，
+     * 所有未捕获异常都会「返回 500 却在日志里查无此事」（例如 /oauth/token 的私钥解析失败，
+     * 下游只看到「统一登录服务暂时不可用」，几乎无法定位）。
+     *
+     * 只记 5xx：4xx（未授权、参数错误等）属预期内的客户端错误，记 error 级只会刷屏。
+     *
+     * @param mixed $request 调用方为 Slim 错误处理闭包，形参无类型（此处做 instanceof 收窄）
+     */
+    private static function logServerError($request, ?\Throwable $exception, int $code): void
+    {
+        if ($code < 500 || $exception === null) {
+            return;
+        }
+
+        $context = [
+            'exception' => $exception::class,
+            'file'      => $exception->getFile() . ':' . $exception->getLine(),
+            'trace'     => $exception->getTraceAsString(),
+        ];
+        if ($request instanceof ServerRequestInterface) {
+            $context['method'] = $request->getMethod();
+            $context['path']   = $request->getUri()->getPath();
+        }
+
+        \App\Helper\Log::error($exception->getMessage(), $context);
     }
 
     private static function renderErrorHtml(ServerRequestInterface $request, int $code, ?string $detail, callable $resolveErrorLocale, ResponseFactoryInterface $responseFactory): \Psr\Http\Message\ResponseInterface

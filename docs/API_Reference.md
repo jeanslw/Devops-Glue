@@ -1,4 +1,4 @@
-# Devops-Glue API Reference v2.11.0
+# Devops-Glue API Reference v2.11.2
 
 Base URL: `http://your-domain.com/api`
 
@@ -87,9 +87,9 @@ Unauthenticated external probe for Uptime Kuma / cloud load balancers / containe
 {
   "status": "ok",
   "db": true,
-  "app_version": "2.11.0",
-  "schema_version": "2.11.0",
-  "seed_version": "2.11.0",
+  "app_version": "2.11.2",
+  "schema_version": "2.11.2",
+  "seed_version": "2.11.2",
   "schema_current": true,
   "schema_ahead": false,
   "auto_migrate": true,
@@ -140,7 +140,7 @@ Returns connectivity status of Jenkins, Git platforms, and Harbor, plus system s
   "build_modes": ["jenkins", "gitlab_ci", "gitea_ci"],
   "build_mode_source": "database",
   "db_driver": "mysql",
-  "app_version": "2.11.0",
+  "app_version": "2.11.2",
   "app_env": "production",
   "time": "2026-08-10 12:00:00"
 }
@@ -172,7 +172,7 @@ Does not probe external platforms (Jenkins / Git / Harbor). Returns stats + syst
   "custom_push_enabled": true,
   "custom_push_providers": ["custom_push"],
   "db_driver": "mysql",
-  "app_version": "2.11.0",
+  "app_version": "2.11.2",
   "app_env": "production",
   "time": "2026-08-10 12:00:00"
 }
