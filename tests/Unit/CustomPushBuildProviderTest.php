@@ -65,7 +65,7 @@ class CustomPushBuildProviderTest extends TestCase
 
     private function makeProvider(array $config = []): CustomPushBuildProvider
     {
-        return new CustomPushBuildProvider($config, $this->pdo);
+        return new CustomPushBuildProvider($config, $this->pdo, new \App\Service\I18nService(__DIR__ . '/../../lang'));
     }
 
     // ── getName ──

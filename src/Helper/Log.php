@@ -15,7 +15,21 @@ class Log
      */
     public static function exception(\Throwable $e): void
     {
-        self::error($e->getMessage(), ['trace' => $e->getTraceAsString()]);
+        self::error($e->getMessage(), [
+            'exception_class' => get_class($e),
+            'location'        => $e->getFile() . ':' . $e->getLine(),
+            'trace'           => $e->getTraceAsString(),
+        ]);
+    }
+
+    /**
+     * 注入当前请求信封（request_id/path/method），委托给底层 Logger 静态上下文。
+     * 在 Bootstrap 每个 HTTP 请求入口调用一次即可，CLI 可不调用。
+     * @see \App\Service\Logger::setRequestContext()
+     */
+    public static function setRequestContext(string $requestId, string $path = '', string $method = ''): void
+    {
+        Logger::setRequestContext($requestId, $path, $method);
     }
 
     /**

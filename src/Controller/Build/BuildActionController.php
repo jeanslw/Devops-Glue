@@ -65,7 +65,7 @@ final class BuildActionController extends BaseBuildController
 
         $p      = $this->registry->create($provider);
         if ($p instanceof \App\Service\Build\CustomPushBuildProvider) {
-            return $this->jsonError($response, 'custom_push 不支持主动触发，请通过 POST /api/build/{path}/report 上报构建结果', 400);
+            return $this->jsonError($response, 'build.custom_push_no_trigger', 400);
         }
         $result = $p->trigger($projectId, $ref, $vars);
         $this->opLog()->record($this->currentUser, 'build_trigger', $path, ['provider' => $provider, 'ref' => $ref], $this->clientIp($request), 'success', $this->operatorType());

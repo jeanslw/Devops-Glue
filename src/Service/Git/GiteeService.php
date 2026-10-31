@@ -6,13 +6,15 @@ use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Exception\ServerException;
 use App\Service\Logger;
+use App\Service\I18nService;
 
 class GiteeService extends AbstractGitProvider
 {
-    public function __construct(string $baseUrl, string $token, ?Logger $logger = null)
+    public function __construct(string $baseUrl, string $token, I18nService $i18n, ?Logger $logger = null)
     {
         $token   = trim($token);
         $headers = $token !== '' ? ['Authorization' => 'token ' . $token] : [];
+        $this->i18n = $i18n;
         $this->initClient($baseUrl, $headers, $logger);
     }
 
@@ -60,18 +62,18 @@ class GiteeService extends AbstractGitProvider
             $response = $this->client->post($url, ['json' => $body]);
             return [
                 'success' => $response->getStatusCode() < 400,
-                'message' => $response->getStatusCode() < 400 ? 'status 已回写' : '回写失败',
+                'message' => $response->getStatusCode() < 400 ? $this->i18n->trans('git.status_written') : $this->i18n->trans('git.writeback_failed'),
             ];
         } catch (ConnectException | ServerException $e) {
             $this->logger?->warning('Gitee commit status 回写失败（服务不可达）', [
                 'repository' => $repository, 'sha' => $sha, 'error' => $e->getMessage(),
             ]);
-            return ['success' => false, 'message' => '回写失败: Gitee 服务不可达'];
+            return ['success' => false, 'message' => $this->i18n->trans('git.writeback_unreachable', ['name' => 'Gitee'])];
         } catch (GuzzleException $e) {
             $this->logger?->warning('Gitee commit status 回写失败', [
                 'repository' => $repository, 'sha' => $sha, 'error' => $e->getMessage(),
             ]);
-            $hint = 'Gitee 公开版不支持 commit status API（企业版未知）';
+            $hint = $this->i18n->trans('git.gitee_no_commit_status_api');
             return ['success' => false, 'message' => $hint];
         }
     }

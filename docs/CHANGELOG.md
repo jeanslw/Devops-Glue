@@ -12,6 +12,7 @@
   - Duplicate build reports (custom_push / commitStatus) no longer stack repeated rows in the security audit table: a unique index on (project, sha, check_type, context) turns the upsert into a true upsert, and existing duplicate rows are deduplicated during migration.
 - **Improved**
   - The SSO migration script and the first-start auto-seeding share a single implementation.
+  - Build, Git platform and registry user-facing messages now switch between Chinese and English.
 - **Docs**
   - The User Manual gains sections 9 and 10: signing into Devops-CD with a Glue account, and migrating from environment variables to the console (steps and common misreads).
   - The FAQ gains five entries: why the CD owning-system key is optional, the login checklist for a fresh database, the three login-failure messages, CD not enabled / not deployed, and how to stop the repeated startup notice.

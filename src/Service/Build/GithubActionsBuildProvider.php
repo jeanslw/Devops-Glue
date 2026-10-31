@@ -4,6 +4,7 @@ namespace App\Service\Build;
 
 use GuzzleHttp\Client;
 use App\Service\Logger;
+use App\Service\I18nService;
 use App\Config\AppConfig;
 
 /**
@@ -23,7 +24,7 @@ class GithubActionsBuildProvider implements BuildProviderInterface
     private string $baseUrl;
     private ?Logger $logger;
 
-    public function __construct(string $baseUrl, string $token, ?Logger $logger = null)
+    public function __construct(string $baseUrl, string $token, private I18nService $i18n, ?Logger $logger = null)
     {
         $this->baseUrl = rtrim($baseUrl, '/');
         $this->logger  = $logger;
@@ -226,7 +227,7 @@ class GithubActionsBuildProvider implements BuildProviderInterface
     {
         $repo = $this->splitRepo($projectId);
         if (!$repo) {
-            return ['success' => false, 'message' => '仓库路径格式错误'];
+            return ['success' => false, 'message' => $this->i18n->trans('git.repo_path_invalid')];
         }
         [$owner, $repoName] = $repo;
 
@@ -236,7 +237,7 @@ class GithubActionsBuildProvider implements BuildProviderInterface
             $workflows = $this->getWorkflows($projectId);
             return [
                 'success'   => false,
-                'message'   => 'GitHub Actions 主动触发需指定 workflow 文件名，可用列表见 workflows 字段',
+                'message'   => $this->i18n->trans('build.workflow_required', ['name' => 'GitHub Actions']),
                 'workflows' => $workflows,
             ];
         }
@@ -268,7 +269,7 @@ class GithubActionsBuildProvider implements BuildProviderInterface
     {
         $repo = $this->splitRepo($projectId);
         if (!$repo) {
-            return ['success' => false, 'message' => '仓库路径格式错误'];
+            return ['success' => false, 'message' => $this->i18n->trans('git.repo_path_invalid')];
         }
         [$owner, $repoName] = $repo;
         $url = "{$this->baseUrl}/repos/{$owner}/{$repoName}/actions/runs/{$pipelineId}/rerun";
@@ -290,7 +291,7 @@ class GithubActionsBuildProvider implements BuildProviderInterface
     {
         $repo = $this->splitRepo($projectId);
         if (!$repo) {
-            return ['success' => false, 'message' => '仓库路径格式错误'];
+            return ['success' => false, 'message' => $this->i18n->trans('git.repo_path_invalid')];
         }
         [$owner, $repoName] = $repo;
         $url = "{$this->baseUrl}/repos/{$owner}/{$repoName}/actions/runs/{$pipelineId}/cancel";
@@ -432,7 +433,7 @@ class GithubActionsBuildProvider implements BuildProviderInterface
     {
         $repo = $this->splitRepo($projectId);
         if (!$repo) {
-            return ['success' => false, 'message' => '仓库路径格式错误'];
+            return ['success' => false, 'message' => $this->i18n->trans('git.repo_path_invalid')];
         }
         [$owner, $repoName] = $repo;
         $body = [

@@ -28,7 +28,7 @@ class GithubActionsBuildProviderTest extends TestCase
         $stack  = HandlerStack::create($mock);
         $client = new Client(['handler' => $stack, 'http_errors' => false]);
 
-        $provider = new GithubActionsBuildProvider('https://api.github.com', $token);
+        $provider = new GithubActionsBuildProvider('https://api.github.com', $token, new \App\Service\I18nService(__DIR__ . '/../../lang'));
 
         $prop = new ReflectionProperty(GithubActionsBuildProvider::class, 'http');
         $prop->setAccessible(true);
@@ -50,7 +50,7 @@ class GithubActionsBuildProviderTest extends TestCase
         $stack->push(Middleware::history($history));
         $client  = new Client(['handler' => $stack, 'http_errors' => false]);
 
-        $provider = new GithubActionsBuildProvider('https://api.github.com', 'tok');
+        $provider = new GithubActionsBuildProvider('https://api.github.com', 'tok', new \App\Service\I18nService(__DIR__ . '/../../lang'));
         $prop = new ReflectionProperty(GithubActionsBuildProvider::class, 'http');
         $prop->setAccessible(true);
         $prop->setValue($provider, $client);
@@ -158,7 +158,7 @@ class GithubActionsBuildProviderTest extends TestCase
         $stack->push(Middleware::history($history));
         $client  = new Client(['handler' => $stack, 'http_errors' => false]);
 
-        $provider = new GithubActionsBuildProvider('https://api.github.com', 'tok');
+        $provider = new GithubActionsBuildProvider('https://api.github.com', 'tok', new \App\Service\I18nService(__DIR__ . '/../../lang'));
         $prop = new ReflectionProperty(GithubActionsBuildProvider::class, 'http');
         $prop->setAccessible(true);
         $prop->setValue($provider, $client);

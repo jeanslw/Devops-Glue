@@ -4,6 +4,7 @@ namespace App\Service\Build;
 
 use GuzzleHttp\Client;
 use App\Service\Logger;
+use App\Service\I18nService;
 use App\Config\AppConfig;
 
 /**
@@ -21,7 +22,7 @@ class GiteaCiBuildProvider implements BuildProviderInterface
     private string $baseUrl;
     private ?Logger $logger;
 
-    public function __construct(string $baseUrl, string $token, ?Logger $logger = null)
+    public function __construct(string $baseUrl, string $token, private I18nService $i18n, ?Logger $logger = null)
     {
         $this->baseUrl = rtrim($baseUrl, '/');
         $this->logger  = $logger;
@@ -185,7 +186,7 @@ class GiteaCiBuildProvider implements BuildProviderInterface
     {
         $repo = $this->splitRepo($projectId);
         if (!$repo) {
-            return ['success' => false, 'message' => '仓库路径格式错误'];
+            return ['success' => false, 'message' => $this->i18n->trans('git.repo_path_invalid')];
         }
         [$owner, $repoName] = $repo;
 
@@ -195,7 +196,7 @@ class GiteaCiBuildProvider implements BuildProviderInterface
             $workflows = $this->getWorkflows($projectId);
             return [
                 'success'   => false,
-                'message'   => 'Gitea Actions 主动触发需指定 workflow 文件名，可用列表见 workflows 字段',
+                'message'   => $this->i18n->trans('build.workflow_required', ['name' => 'Gitea Actions']),
                 'workflows' => $workflows,
             ];
         }
@@ -231,7 +232,7 @@ class GiteaCiBuildProvider implements BuildProviderInterface
     {
         $repo = $this->splitRepo($projectId);
         if (!$repo) {
-            return ['success' => false, 'message' => '仓库路径格式错误'];
+            return ['success' => false, 'message' => $this->i18n->trans('git.repo_path_invalid')];
         }
         [$owner, $repoName] = $repo;
         $url = "{$this->baseUrl}/api/v1/repos/{$owner}/{$repoName}/actions/runs/{$pipelineId}/rerun";
@@ -253,7 +254,7 @@ class GiteaCiBuildProvider implements BuildProviderInterface
     {
         $repo = $this->splitRepo($projectId);
         if (!$repo) {
-            return ['success' => false, 'message' => '仓库路径格式错误'];
+            return ['success' => false, 'message' => $this->i18n->trans('git.repo_path_invalid')];
         }
         [$owner, $repoName] = $repo;
         $url = "{$this->baseUrl}/api/v1/repos/{$owner}/{$repoName}/actions/runs/{$pipelineId}/cancel";
@@ -264,7 +265,7 @@ class GiteaCiBuildProvider implements BuildProviderInterface
 
 
             if ($status === 404 || $status === 405) {
-                return ['success' => false, 'message' => '当前 Gitea 版本不提供取消运行的 API（需 Gitea 1.27+），请在 Gitea 界面操作'];
+                return ['success' => false, 'message' => $this->i18n->trans('build.gitea_no_cancel_api')];
             }
             return [
                 'success' => $status < 400,
@@ -416,7 +417,7 @@ class GiteaCiBuildProvider implements BuildProviderInterface
     {
         $repo = $this->splitRepo($projectId);
         if (!$repo) {
-            return ['success' => false, 'message' => '仓库路径格式错误'];
+            return ['success' => false, 'message' => $this->i18n->trans('git.repo_path_invalid')];
         }
         [$owner, $repoName] = $repo;
         $body = [

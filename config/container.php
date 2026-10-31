@@ -279,10 +279,11 @@ return [
             $registry->register(
                 'gitlab',
                 fn(string $url) => str_contains($url, 'gitlab'),
-                function () use ($gitlabCfg, $logger) {
+                function () use ($gitlabCfg, $logger, $c) {
                     return new \App\Service\Git\GitlabService(
                         $gitlabCfg['base_url'] ?? '',
                         $gitlabCfg['token'] ?? '',
+                        $c->get(I18nService::class),
                         $logger
                     );
                 }
@@ -295,10 +296,11 @@ return [
             $registry->register(
                 'gitee',
                 fn(string $url) => str_contains($url, 'gitee.com') || str_contains($url, 'gitee'),
-                function () use ($giteeCfg, $logger) {
+                function () use ($giteeCfg, $logger, $c) {
                     return new \App\Service\Git\GiteeService(
                         $giteeCfg['base_url'] ?? 'https://gitee.com/api/v5',
                         $giteeCfg['token'] ?? '',
+                        $c->get(I18nService::class),
                         $logger
                     );
                 }
@@ -311,10 +313,11 @@ return [
             $registry->register(
                 'github',
                 fn(string $url) => str_contains($url, 'github.com') || str_contains($url, 'github'),
-                function () use ($githubCfg, $logger) {
+                function () use ($githubCfg, $logger, $c) {
                     return new \App\Service\Git\GithubService(
                         $githubCfg['base_url'] ?? 'https://api.github.com',
                         $githubCfg['token'] ?? '',
+                        $c->get(I18nService::class),
                         $logger
                     );
                 }
@@ -327,10 +330,11 @@ return [
             $registry->register(
                 'gitea',
                 fn(string $url) => str_contains($url, 'gitea'),
-                function () use ($giteaCfg, $logger) {
+                function () use ($giteaCfg, $logger, $c) {
                     return new \App\Service\Git\GiteaService(
                         $giteaCfg['base_url'] ?? '',
                         $giteaCfg['token'] ?? '',
+                        $c->get(I18nService::class),
                         $logger
                     );
                 }
@@ -357,11 +361,11 @@ return [
             $registry->register(
                 $name,
                 $matcher,
-                function () use ($class, $cfg, $logger) {
+                function () use ($class, $cfg, $logger, $c) {
                     if (!class_exists($class)) {
                         throw new \RuntimeException("自定义 Provider 类不存在: {$class}");
                     }
-                    return new $class($cfg, $logger);
+                    return new $class($cfg, $c->get(I18nService::class), $logger);
                 }
             );
         }
@@ -384,7 +388,7 @@ return [
         $jenkinsCfg = $config->getJenkinsConfig();
         if (!empty($jenkinsCfg['url'])) {
             $registry->register(AppConfig::PROVIDER_JENKINS, function () use ($c, $logger) {
-                return new JenkinsBuildProvider($c->get(JenkinsService::class), $c->get(GitService::class), $logger);
+                return new JenkinsBuildProvider($c->get(JenkinsService::class), $c->get(I18nService::class), $c->get(GitService::class), $logger);
             });
         }
 
@@ -402,8 +406,8 @@ return [
         if ($config->isPlatformConfigured('gitea')) {
             $giteaCfg = $config->getGiteaConfig();
             if (!empty($giteaCfg['base_url']) && !empty($giteaCfg['token'])) {
-                $registry->register(AppConfig::PROVIDER_GITEA_CI, function () use ($giteaCfg, $logger) {
-                    return new GiteaCiBuildProvider($giteaCfg['base_url'], $giteaCfg['token'], $logger);
+                $registry->register(AppConfig::PROVIDER_GITEA_CI, function () use ($giteaCfg, $logger, $c) {
+                    return new GiteaCiBuildProvider($giteaCfg['base_url'], $giteaCfg['token'], $c->get(I18nService::class), $logger);
                 });
             }
         }
@@ -412,8 +416,8 @@ return [
         if ($config->isPlatformConfigured('github')) {
             $githubCfg = $config->getGithubConfig();
             if (!empty($githubCfg['base_url']) && !empty($githubCfg['token'])) {
-                $registry->register(AppConfig::PROVIDER_GITHUB_ACTIONS, function () use ($githubCfg, $logger) {
-                    return new GithubActionsBuildProvider($githubCfg['base_url'], $githubCfg['token'], $logger);
+                $registry->register(AppConfig::PROVIDER_GITHUB_ACTIONS, function () use ($githubCfg, $logger, $c) {
+                    return new GithubActionsBuildProvider($githubCfg['base_url'], $githubCfg['token'], $c->get(I18nService::class), $logger);
                 });
             }
         }
@@ -436,6 +440,7 @@ return [
                 return new $class(
                     $cfg,
                     $c->get(\PDO::class),
+                    $c->get(I18nService::class),
                     $c->get(GitService::class),
                     $logger
                 );
@@ -863,7 +868,7 @@ return [
         } catch (\Throwable $e) {
             $logger = null;
         }
-        return new HarborService($c->get('harborClient'), $c->get(\PDO::class), $logger);
+        return new HarborService($c->get('harborClient'), $c->get(\PDO::class), $c->get(I18nService::class), $logger);
     },
 
     'registryClient' => function (\Psr\Container\ContainerInterface $c) {
@@ -898,6 +903,7 @@ return [
             }
             return new DockerRegistryProvider(
                 $c->get('registryClient'),
+                $c->get(I18nService::class),
                 (string) ($registry['username'] ?? ''),
                 (string) ($registry['password'] ?? ''),
                 $logger

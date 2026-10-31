@@ -48,7 +48,7 @@ class DockerRegistryProviderTest extends TestCase
         $stack->push(Middleware::history($this->history));
         $client = new Client(['base_uri' => $baseUri, 'handler' => $stack]);
 
-        return new DockerRegistryProvider($client, $username, $password, null);
+        return new DockerRegistryProvider($client, new \App\Service\I18nService(__DIR__ . '/../../lang'), $username, $password, null);
     }
 
     public function testGetTagsReturnsList(): void

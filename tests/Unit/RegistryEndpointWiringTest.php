@@ -223,7 +223,7 @@ class RegistryEndpointWiringTest extends TestCase
 
     public function testHarborProviderDelegatesToHarborService(): void
     {
-        $harbor = new class (new Client(), new \PDO('sqlite::memory:')) extends HarborService {
+        $harbor = new class (new Client(), new \PDO('sqlite::memory:'), new \App\Service\I18nService(__DIR__ . '/../../lang')) extends HarborService {
             public function getProjects(): array
             {
                 return ['mycode'];
@@ -247,7 +247,7 @@ class RegistryEndpointWiringTest extends TestCase
         
         
         
-        $harbor = new class (new Client(), new \PDO('sqlite::memory:')) extends HarborService {
+        $harbor = new class (new Client(), new \PDO('sqlite::memory:'), new \App\Service\I18nService(__DIR__ . '/../../lang')) extends HarborService {
             
             public array $received = ['', ''];
 

@@ -14,6 +14,7 @@ require __DIR__ . '/bootstrap.php';
 use App\Config\AppConfig;
 use App\Service\AppSettingRepository;
 use App\Service\Database;
+use App\Service\I18nService;
 use App\Service\HarborService;
 use App\Service\PipelineTagService;
 use App\Service\PlatformConnectionRepository;
@@ -42,6 +43,7 @@ if (!$backfillEnabled) {
 $registry = null;
 $registryCfg = (new PlatformConnectionRepository($pdo))->resolveConnections()['harbor'] ?? [];
 $registryUrl = rtrim((string)($registryCfg['url'] ?? ''), '/');
+$i18n = new I18nService(__DIR__ . '/../lang');
 if ($registryUrl !== '') {
     if ((new AppSettingRepository($pdo))->getRegistryType() === 'registry') {
         $registryClient = new Client([
@@ -53,6 +55,7 @@ if ($registryUrl !== '') {
         ]);
         $registry = new DockerRegistryProvider(
             $registryClient,
+            $i18n,
             (string)($registryCfg['username'] ?? ''),
             (string)($registryCfg['password'] ?? ''),
             null
@@ -68,7 +71,7 @@ if ($registryUrl !== '') {
             'connect_timeout' => 5, 
             'timeout'         => 15, 
         ]);
-        $registry = new HarborProvider(new HarborService($harborClient, $pdo, null));
+        $registry = new HarborProvider(new HarborService($harborClient, $pdo, $i18n, null));
     }
 }
 

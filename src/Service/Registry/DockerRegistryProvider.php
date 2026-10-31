@@ -3,6 +3,7 @@
 namespace App\Service\Registry;
 
 use App\Service\Logger;
+use App\Service\I18nService;
 use GuzzleHttp\Client;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\UriInterface;
@@ -29,6 +30,7 @@ class DockerRegistryProvider implements RegistryProviderInterface
 
     public function __construct(
         private Client $client,
+        private I18nService $i18n,
         private string $username = '',
         private string $password = '',
         private ?Logger $logger = null
@@ -61,18 +63,18 @@ class DockerRegistryProvider implements RegistryProviderInterface
             $res  = $this->request('GET', $path, $query);
             $code = $res->getStatusCode();
             if ($code === 404) {
-                return ['error' => '镜像仓库中不存在仓库 ' . $repository, 'http_code' => 404];
+                return ['error' => $this->i18n->trans('registry.repo_not_found', ['repo' => $repository]), 'http_code' => 404];
             }
             if ($code === 401 || $code === 403) {
-                return ['error' => '镜像仓库认证失败', 'http_code' => $code];
+                return ['error' => $this->i18n->trans('registry.auth_failed'), 'http_code' => $code];
             }
             if ($code < 200 || $code >= 300) {
-                return ['error' => '镜像仓库返回 HTTP ' . $code, 'http_code' => $code];
+                return ['error' => $this->i18n->trans('registry.http_error', ['code' => $code]), 'http_code' => $code];
             }
 
             $data = json_decode((string) $res->getBody(), true);
             if (!is_array($data)) {
-                return ['error' => '镜像仓库返回数据格式异常', 'http_code' => 0];
+                return ['error' => $this->i18n->trans('registry.bad_response'), 'http_code' => 0];
             }
             $tags = $data['tags'] ?? [];
             if (is_array($tags)) {
@@ -228,7 +230,7 @@ class DockerRegistryProvider implements RegistryProviderInterface
             return false;
         }
         if ($code < 200 || $code >= 300) {
-            throw new \RuntimeException('镜像仓库返回 HTTP ' . $code . '（仓库 ' . $repository . '）');
+            throw new \RuntimeException($this->i18n->trans('registry.http_error', ['code' => $code]) . '（仓库 ' . $repository . '）');
         }
         return true;
     }
@@ -303,7 +305,7 @@ class DockerRegistryProvider implements RegistryProviderInterface
 
     public function getScanReport(string $repository, string $tag): array
     {
-        return ['error' => '当前镜像仓库类型（registry）不提供漏洞扫描接口'];
+        return ['error' => $this->i18n->trans('registry.scan_not_supported')];
     }
 
     private function tagsPath(string $repository): string
@@ -501,18 +503,18 @@ class DockerRegistryProvider implements RegistryProviderInterface
             $page++;
             $code = $res->getStatusCode();
             if ($code === 404 || $code === 405) {
-                return ['error' => '镜像仓库未开启 /v2/_catalog 接口（无法列出仓库）', 'http_code' => $code];
+                return ['error' => $this->i18n->trans('registry.catalog_not_enabled'), 'http_code' => $code];
             }
             if ($code === 401 || $code === 403) {
-                return ['error' => '镜像仓库认证失败', 'http_code' => $code];
+                return ['error' => $this->i18n->trans('registry.auth_failed'), 'http_code' => $code];
             }
             if ($code < 200 || $code >= 300) {
-                return ['error' => '镜像仓库返回 HTTP ' . $code, 'http_code' => $code];
+                return ['error' => $this->i18n->trans('registry.http_error', ['code' => $code]), 'http_code' => $code];
             }
 
             $data = json_decode((string) $res->getBody(), true);
             if (!is_array($data) || !is_array($data['repositories'] ?? null)) {
-                return ['error' => '镜像仓库返回数据格式异常', 'http_code' => 0];
+                return ['error' => $this->i18n->trans('registry.bad_response'), 'http_code' => 0];
             }
             foreach ($data['repositories'] as $name) {
                 if (is_string($name) && $name !== '') {

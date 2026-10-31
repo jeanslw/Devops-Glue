@@ -3,6 +3,7 @@
 namespace App\Service\Git;
 
 use App\Service\Logger;
+use App\Service\I18nService;
 
 /**
  * Gitea API v1 适配器
@@ -12,8 +13,9 @@ use App\Service\Logger;
  */
 class GiteaService extends AbstractGitProvider
 {
-    public function __construct(string $baseUrl, string $token, ?Logger $logger = null)
+    public function __construct(string $baseUrl, string $token, I18nService $i18n, ?Logger $logger = null)
     {
+        $this->i18n = $i18n;
         $this->initClient($baseUrl, ['Authorization' => 'token ' . $token], $logger);
     }
 
@@ -59,7 +61,7 @@ class GiteaService extends AbstractGitProvider
     {
         [$owner, $repo] = $this->splitOwnerRepo($repository);
         if ($owner === '' || $repo === '') {
-            return ['success' => false, 'message' => '仓库路径格式错误'];
+            return ['success' => false, 'message' => $this->i18n->trans('git.repo_path_invalid')];
         }
         $body = [
             'state'       => $state === 'failed' ? 'failure' : $state,

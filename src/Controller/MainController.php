@@ -530,19 +530,6 @@ class MainController extends BaseController
     // ────────────────────────── i18n / docs / openapi ──────────────────────────
 
     /**
-     * GET /api/i18n/{locale} — 获取指定语言的语言包
-     *
-     * @param array<string,string> $args 路由参数
-     */
-    public function i18n(Request $request, Response $response, array $args): Response
-    {
-        $locale = $args['locale'] ?? 'zh_CN';
-        $messages = $this->i18n->getAll($locale);
-        $response->getBody()->write((string) json_encode($messages, JSON_UNESCAPED_UNICODE));
-        return $response->withHeader('Content-Type', 'application/json');
-    }
-
-    /**
      * GET /api/docs — Swagger UI 页面（未登录时同页内嵌登录框）
      *
      * 页面本身（纯 UI）直接放行，不含任何业务数据；OpenAPI 规范(/api/openapi.json)

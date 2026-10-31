@@ -4,6 +4,7 @@ namespace App\Service\Build;
 
 use App\Service\GitService;
 use App\Service\Logger;
+use App\Service\I18nService;
 use App\Config\AppConfig;
 
 /**
@@ -46,6 +47,7 @@ class CustomPushBuildProvider implements BuildProviderInterface
     public function __construct(
         private array $config,
         private \PDO $pdo,
+        private I18nService $i18n,
         private ?GitService $git = null,
         private ?Logger $logger = null
     ) {
@@ -293,7 +295,7 @@ class CustomPushBuildProvider implements BuildProviderInterface
      */
     public function trigger(string $projectId, string $ref, array $variables = []): array
     {
-        return ['success' => false, 'message' => 'custom_push 不支持主动触发，请通过 POST /api/build/{path}/report 上报构建结果'];
+        return ['success' => false, 'message' => $this->i18n->trans('build.custom_push_no_trigger')];
     }
 
     /**
@@ -303,10 +305,6 @@ class CustomPushBuildProvider implements BuildProviderInterface
      *   pipeline_iid（必填）、status（必填，终态）、finished_at（必填）、
      *   started_at / ref / sha / exit_code / log_url / web_url（可选），
      *   以及用户自定义构建参数（排除 REPORT_FIELDS 后写入 variables_json）。
-     *
-     * (job_name, pipeline_iid) 冲突时按覆盖（UPDATE）处理，保留原自增 id。
-     * success 是不可逆终态：已 success 的记录不接受 failed/aborted 降级（防止与
-     * ci_pipeline_artifacts 中已写入的 tag 冲突）；failed/aborted 可以升级为 success。
      *
      * @param array<string, mixed> $body
      * @return array<string, mixed>
@@ -318,23 +316,22 @@ class CustomPushBuildProvider implements BuildProviderInterface
         $finishedAt  = trim((string) ($body['finished_at'] ?? ''));
 
         if ($pipelineIid <= 0) {
-            return ['success' => false, 'message' => '缺少 pipeline_iid 参数'];
+            return ['success' => false, 'message' => $this->i18n->trans('build.report_missing_pipeline_iid')];
         }
         if (!in_array($status, ['success', 'failed', 'aborted'], true)) {
-            return ['success' => false, 'message' => 'status 仅允许: success / failed / aborted'];
+            return ['success' => false, 'message' => $this->i18n->trans('build.custom_push_invalid_status')];
         }
         if ($finishedAt === '') {
-            return ['success' => false, 'message' => '缺少 finished_at 参数'];
+            return ['success' => false, 'message' => $this->i18n->trans('build.custom_push_missing_finished_at')];
         }
 
         $existing = $this->findByIid($jobName, $pipelineIid);
 
-
-
-        if (($existing['status'] ?? '') === 'success' && $status !== 'success') {
-            return ['success' => false, 'message' => '该 pipeline 已是 success 终态，拒绝用 ' . $status . ' 覆盖'];
+        // 状态机约束：success 不可逆，其余状态允许互转；
+        if ($existing && !BuildStatusMachine::canTransition((string) ($existing['status'] ?? ''), $status)) {
+            return ['success' => false, 'message' => $this->i18n->trans('build.custom_push_terminal_conflict', ['current' => (string) ($existing['status'] ?? ''), 'incoming' => $status])];
         }
-        if ($existing && !empty($existing['finished_at']) && $this->isEarlier($finishedAt, (string) $existing['finished_at'])) {
+        if ($existing && !empty($existing['finished_at']) && BuildStatusMachine::isStale($finishedAt, (string) $existing['finished_at'])) {
             return [
                 'success'      => true,
                 'pipeline_id'  => (int) ($existing['id'] ?? 0),
@@ -397,16 +394,6 @@ class CustomPushBuildProvider implements BuildProviderInterface
         }
     }
 
-    private function isEarlier(string $incoming, string $existing): bool
-    {
-        $a = strtotime($incoming);
-        $b = strtotime($existing);
-        if ($a !== false && $b !== false) {
-            return $a < $b;
-        }
-        return strcmp($incoming, $existing) < 0;
-    }
-
     /**
      * 查询指定 pipeline_iid 的记录
      * @return array<string, mixed>|null
@@ -427,13 +414,13 @@ class CustomPushBuildProvider implements BuildProviderInterface
     /** @return array<string, mixed> */
     public function retry(string $projectId, int $pipelineId): array
     {
-        return ['success' => false, 'message' => 'custom_push 不支持 Devops-Glue 主动重试，请在用户 CI 重新触发'];
+        return ['success' => false, 'message' => $this->i18n->trans('build.custom_push_no_retry')];
     }
 
     /** @return array<string, mixed> */
     public function cancel(string $projectId, int $pipelineId): array
     {
-        return ['success' => false, 'message' => 'custom_push 不支持 Devops-Glue 主动取消，请到用户 CI 后台手动中止'];
+        return ['success' => false, 'message' => $this->i18n->trans('build.custom_push_no_cancel')];
     }
 
     // ── 构建参数 ──────────────────────────────────────────────────
@@ -486,6 +473,6 @@ class CustomPushBuildProvider implements BuildProviderInterface
     /** @return array<string, mixed> */
     public function setCommitStatus(string $projectId, string $sha, string $state, string $name, string $description, string $targetUrl = ''): array
     {
-        return ['success' => false, 'message' => 'custom_push 不支持 commit status 回写'];
+        return ['success' => false, 'message' => $this->i18n->trans('build.custom_push_no_commit_status')];
     }
 }

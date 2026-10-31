@@ -3,6 +3,7 @@
 namespace App\Service\Git;
 
 use App\Service\Logger;
+use App\Service\I18nService;
 
 /**
  * Bitbucket Cloud API v2.0 适配器（自定义平台，经 config/settings.php 的 git.custom_providers 注册）。
@@ -17,8 +18,9 @@ class BitbucketService extends AbstractGitProvider
     /**
      * @param array<string,mixed> $config
      */
-    public function __construct(array $config, ?Logger $logger = null)
+    public function __construct(array $config, I18nService $i18n, ?Logger $logger = null)
     {
+        $this->i18n = $i18n;
         $token    = trim($config['token'] ?? '');
         $username = trim($config['username'] ?? '');
         $headers  = [];
@@ -83,7 +85,7 @@ class BitbucketService extends AbstractGitProvider
     {
         [$workspace, $slug] = $this->splitOwnerRepo($repository);
         if ($workspace === '' || $slug === '') {
-            return ['success' => false, 'message' => '仓库路径格式错误'];
+            return ['success' => false, 'message' => $this->i18n->trans('git.repo_path_invalid')];
         }
 
 

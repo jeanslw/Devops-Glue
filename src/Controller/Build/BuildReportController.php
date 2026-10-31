@@ -139,19 +139,19 @@ final class BuildReportController extends BaseBuildController
         $sha         = trim((string) ($body['sha'] ?? ''));
 
         if ($pipelineIid <= 0) {
-            return $this->jsonError($response, '缺少 pipeline_iid 参数', 400);
+            return $this->jsonError($response, 'build.report_missing_pipeline_iid', 400);
         }
         if ($status === '') {
-            return $this->jsonError($response, '缺少 status 参数（构建结果）', 400);
+            return $this->jsonError($response, 'build.report_missing_status', 400);
         }
         if (!in_array($status, ['success', 'failed', 'aborted'], true)) {
-            return $this->jsonError($response, '无效的 status 值，允许: success / failed / aborted（custom_push 直接上报终态，无 pending/running）', 400);
+            return $this->jsonError($response, 'build.report_invalid_status', 400);
         }
         if ($finishedAt === '') {
-            return $this->jsonError($response, '缺少 finished_at 参数（构建完成时间必填）', 400);
+            return $this->jsonError($response, 'build.report_missing_finished_at', 400);
         }
         if ($status === 'success' && $tag === '') {
-            return $this->jsonError($response, 'status=success 时必须上报 tag（镜像标签，供部署层交付）', 400);
+            return $this->jsonError($response, 'build.report_success_requires_tag', 400);
         }
 
         [$provider, $projectId] = $this->resolve($path);
@@ -161,21 +161,21 @@ final class BuildReportController extends BaseBuildController
 
         $p = $this->registry->create($provider);
         if (!$p instanceof \App\Service\Build\CustomPushBuildProvider) {
-            return $this->jsonError($response, 'report 仅支持 custom_push 构建源', 400);
+            return $this->jsonError($response, 'build.report_only_custom_push', 400);
         }
 
         $registryRepo = '';
         if ($status === 'success') {
             $row = $this->mapping->resolveMapRow($path);
             if ($row === null) {
-                return $this->jsonError($response, 'status=success 时未找到 path 对应的映射（job_git_map），无法写入 pipeline artifact', 400);
+                return $this->jsonError($response, 'build.report_success_missing_mapping', 400);
             }
             $registryRepo = trim((string) ($row['registry_repository'] ?? ''));
             if ($registryRepo === '') {
-                return $this->jsonError($response, 'status=success 时 job_git_map 未配置 registry_repository，无法写入 pipeline artifact', 400);
+                return $this->jsonError($response, 'build.report_success_missing_registry_repo', 400);
             }
             if (!$this->isValidRegistryRepo($registryRepo)) {
-                return $this->jsonError($response, 'job_git_map 中 registry_repository 必须是至少两段的 OCI 仓库名（如 mycode/runner-ci、team/project/image），不要携带 registry 地址或 URL', 400);
+                return $this->jsonError($response, 'build.report_invalid_registry_repo', 400);
             }
             if (($verifyErr = $this->verifyRegistryTag($registryRepo, $tag)) !== null) {
                 return $this->jsonError($response, $verifyErr, 400);
@@ -204,8 +204,8 @@ final class BuildReportController extends BaseBuildController
                     if ($txStarted) {
                         $this->tx->rollBack();
                     }
-                    $this->recordReportAudit($path, $sha, $status, $tag, ['success' => false, 'message' => '镜像产物 / Tag 写入数据库失败']);
-                    return $this->jsonError($response, '构建记录已写入，但镜像产物 / Tag 写入数据库失败，请重试上报', 500);
+                    $this->recordReportAudit($path, $sha, $status, $tag, ['success' => false, 'message' => $this->__('build.report_artifact_db_write_failed')]);
+                    return $this->jsonError($response, 'build.report_artifact_write_failed', 500);
                 }
             }
 
@@ -218,7 +218,7 @@ final class BuildReportController extends BaseBuildController
             }
             \App\Helper\Log::exception($e);
             $this->recordReportAudit($path, $sha, $status, $tag, ['success' => false, 'message' => $e->getMessage()]);
-            return $this->jsonError($response, '构建结果写入失败，请重试上报', 500);
+            return $this->jsonError($response, 'build.report_write_failed', 500);
         }
 
         $this->recordReportAudit($path, $sha, $status, $tag, $result);

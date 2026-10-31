@@ -40,7 +40,7 @@ class HarborTagDetailsTest extends TestCase
         $stack->push(Middleware::history($this->history));
         $client = new Client(['base_uri' => 'http://harbor.test/', 'handler' => $stack]);
 
-        return new HarborService($client, new \PDO('sqlite::memory:'));
+        return new HarborService($client, new \PDO('sqlite::memory:'), new \App\Service\I18nService(__DIR__ . '/../../lang'));
     }
 
     /** v2 探测响应：/api/v2.0/projects 200 即判定 v2 */

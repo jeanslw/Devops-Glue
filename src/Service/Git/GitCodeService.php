@@ -6,6 +6,7 @@ use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Exception\ServerException;
 use App\Service\Logger;
+use App\Service\I18nService;
 
 /**
  * GitCode API v5 适配器（自定义平台，经 config/settings.php 的 git.custom_providers 注册）。
@@ -19,8 +20,9 @@ class GitCodeService extends AbstractGitProvider
     /**
      * @param array<string,mixed> $config
      */
-    public function __construct(array $config, ?Logger $logger = null)
+    public function __construct(array $config, I18nService $i18n, ?Logger $logger = null)
     {
+        $this->i18n = $i18n;
         $this->initClient(
             $config['base_url'] ?? '',
             ['PRIVATE-TOKEN' => trim($config['token'] ?? '')],
@@ -75,18 +77,18 @@ class GitCodeService extends AbstractGitProvider
             $response = $this->client->post($url, ['json' => $body]);
             return [
                 'success' => $response->getStatusCode() < 400,
-                'message' => $response->getStatusCode() < 400 ? 'status 已回写' : '回写失败',
+                'message' => $response->getStatusCode() < 400 ? $this->i18n->trans('git.status_written') : $this->i18n->trans('git.writeback_failed'),
             ];
         } catch (ConnectException | ServerException $e) {
             $this->logger?->warning('GitCode commit status 回写失败（服务不可达）', [
                 'repository' => $repository, 'sha' => $sha, 'error' => $e->getMessage(),
             ]);
-            return ['success' => false, 'message' => '回写失败: GitCode 服务不可达'];
+            return ['success' => false, 'message' => $this->i18n->trans('git.writeback_unreachable', ['name' => 'GitCode'])];
         } catch (GuzzleException $e) {
             $this->logger?->warning('GitCode commit status 回写失败', [
                 'repository' => $repository, 'sha' => $sha, 'error' => $e->getMessage(),
             ]);
-            return ['success' => false, 'message' => '回写失败: ' . $e->getMessage()];
+            return ['success' => false, 'message' => $this->i18n->trans('git.writeback_failed') . ': ' . $e->getMessage()];
         }
     }
 }

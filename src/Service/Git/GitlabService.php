@@ -3,11 +3,13 @@
 namespace App\Service\Git;
 
 use App\Service\Logger;
+use App\Service\I18nService;
 
 class GitlabService extends AbstractGitProvider
 {
-    public function __construct(string $baseUrl, string $token, ?Logger $logger = null)
+    public function __construct(string $baseUrl, string $token, I18nService $i18n, ?Logger $logger = null)
     {
+        $this->i18n = $i18n;
         $this->initClient($baseUrl, ['PRIVATE-TOKEN' => $token], $logger);
     }
 

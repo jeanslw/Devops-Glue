@@ -5,6 +5,7 @@ namespace App\Service\Build;
 use App\Service\JenkinsService;
 use App\Service\GitService;
 use App\Service\Logger;
+use App\Service\I18nService;
 use App\Config\AppConfig;
 use App\Exceptions\ApiException;
 use GuzzleHttp\Exception\ClientException;
@@ -15,7 +16,7 @@ class JenkinsBuildProvider implements BuildProviderInterface
     private ?GitService $git;
     private ?Logger $logger;
 
-    public function __construct(JenkinsService $jenkins, ?GitService $git = null, ?Logger $logger = null)
+    public function __construct(JenkinsService $jenkins, private I18nService $i18n, ?GitService $git = null, ?Logger $logger = null)
     {
         $this->jenkins = $jenkins;
         $this->git    = $git;
@@ -101,7 +102,7 @@ class JenkinsBuildProvider implements BuildProviderInterface
         } catch (\RuntimeException $e) {
             throw $e;
         } catch (\Exception $e) {
-            return ['success' => false, 'message' => "Jenkins 不可达: " . $e->getMessage()];
+            return ['success' => false, 'message' => $this->i18n->trans('build.jenkins_unreachable', ['error' => $e->getMessage()])];
         }
 
 
@@ -110,7 +111,7 @@ class JenkinsBuildProvider implements BuildProviderInterface
         } catch (\RuntimeException $e) {
             throw $e;
         } catch (\Exception $e) {
-            return ['success' => false, 'message' => '获取构建参数失败: ' . $e->getMessage()];
+            return ['success' => false, 'message' => $this->i18n->trans('build.jenkins_get_params_failed', ['error' => $e->getMessage()])];
         }
 
 
@@ -118,11 +119,11 @@ class JenkinsBuildProvider implements BuildProviderInterface
             try {
                 /** @var array<string, mixed> $result */
                 $result = $this->jenkins->triggerBuild($fullName, []);
-                return ['success' => true, 'queue_id' => $result['queue_id'] ?? '', 'queue_url' => $result['queue_url'] ?? '', 'message' => '构建已触发'];
+                return ['success' => true, 'queue_id' => $result['queue_id'] ?? '', 'queue_url' => $result['queue_url'] ?? '', 'message' => $this->i18n->trans('build.jenkins_triggered')];
             } catch (\RuntimeException $e) {
                 throw $e;
             } catch (\Exception $e) {
-                return ['success' => false, 'message' => '触发失败: ' . $e->getMessage()];
+                return ['success' => false, 'message' => $this->i18n->trans('build.jenkins_trigger_failed', ['error' => $e->getMessage()])];
             }
         }
 
@@ -134,13 +135,13 @@ class JenkinsBuildProvider implements BuildProviderInterface
         }
 
         if (empty($variables)) {
-            return ['success' => false, 'message' => '缺少构建参数，可用参数: ' . implode(', ', array_keys($allParams))];
+            return ['success' => false, 'message' => $this->i18n->trans('build.jenkins_missing_params', ['params' => implode(', ', array_keys($allParams))])];
         }
 
         $paramNames = array_keys($allParams);
         foreach ($variables as $key => $value) {
             if (!in_array($key, $paramNames, true)) {
-                return ['success' => false, 'message' => "Jenkins Job 没有参数 '{$key}'，可用参数: " . implode(', ', $paramNames)];
+                return ['success' => false, 'message' => $this->i18n->trans('build.jenkins_unknown_param', ['param' => $key, 'params' => implode(', ', $paramNames)])];
             }
         }
 
@@ -152,7 +153,7 @@ class JenkinsBuildProvider implements BuildProviderInterface
                 'success'   => true,
                 'queue_id'  => $result['queue_id'] ?? '',
                 'queue_url' => $result['queue_url'] ?? '',
-                'message'   => $result['message'] ?? '构建已触发',
+                'message'   => $result['message'] ?? $this->i18n->trans('build.jenkins_triggered'),
             ];
         } catch (\Exception $e) {
             $this->logger?->error('Jenkins trigger 失败', ['project' => $projectId, 'error' => $e->getMessage()]);
@@ -163,13 +164,13 @@ class JenkinsBuildProvider implements BuildProviderInterface
     /** @return array<string, mixed> */
     public function retry(string $projectId, int $pipelineId): array
     {
-        return ['success' => false, 'message' => 'Jenkins 不支持 retry，请使用 trigger 重新触发构建'];
+        return ['success' => false, 'message' => $this->i18n->trans('build.jenkins_no_retry')];
     }
 
     /** @return array<string, mixed> */
     public function cancel(string $projectId, int $pipelineId): array
     {
-        return ['success' => false, 'message' => 'Jenkins 不支持 cancel，请到 Jenkins 后台手动中止'];
+        return ['success' => false, 'message' => $this->i18n->trans('build.jenkins_no_cancel')];
     }
 
     /** @return list<array<string, mixed>> */
@@ -250,7 +251,7 @@ class JenkinsBuildProvider implements BuildProviderInterface
     /** @return array<string, mixed> */
     public function setCommitStatus(string $projectId, string $sha, string $state, string $name, string $description, string $targetUrl = ''): array
     {
-        return ['success' => false, 'message' => 'Jenkins 不支持 commit status 回写'];
+        return ['success' => false, 'message' => $this->i18n->trans('build.jenkins_no_commit_status')];
     }
 
     /**

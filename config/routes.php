@@ -4,6 +4,7 @@ use Slim\Routing\RouteCollectorProxy;
 use App\Config\AppConfig;
 use App\Controller\GitController;
 use App\Controller\HealthzController;
+use App\Controller\I18nController;
 use App\Controller\MainController;
 use App\Controller\HarborController;
 use App\Controller\RegistryController;
@@ -52,7 +53,7 @@ $app->group('/api', function (RouteCollectorProxy $api) {
     
     $api->map(['GET'], '/health', [MainController::class, 'healthDetail'])->add(AuthMiddleware::class);
     $api->map(['GET'], '/health/static', [MainController::class, 'healthStatic'])->add(AuthMiddleware::class);
-    $api->get('/i18n/{locale}', [MainController::class, 'i18n']);
+    $api->get('/i18n/{locale}', [I18nController::class, 'i18n']);
 
     
     $api->get('/docs', [MainController::class, 'docs']);

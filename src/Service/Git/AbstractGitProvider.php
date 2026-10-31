@@ -8,6 +8,7 @@ use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Exception\ServerException;
 use App\Service\Logger;
+use App\Service\I18nService;
 
 /**
  * Git 平台适配器基类（模板方法）。
@@ -25,6 +26,7 @@ abstract class AbstractGitProvider implements GitProviderInterface
     protected Client $client;
     protected string $baseUrl;
     protected ?Logger $logger;
+    protected I18nService $i18n;
 
     protected const PAGE_SIZE = 100;
     protected const MAX_PAGES = 20;
@@ -126,7 +128,7 @@ abstract class AbstractGitProvider implements GitProviderInterface
         try {
             $response = $this->client->post($url, ['json' => $body]);
             $ok = $response->getStatusCode() < 400;
-            return ['success' => $ok, 'message' => $ok ? 'status 已回写' : '回写失败'];
+            return ['success' => $ok, 'message' => $this->i18n->trans($ok ? 'git.status_written' : 'git.writeback_failed')];
         } catch (GuzzleException $e) {
             $this->logger?->warning($this->getName() . ' commit status 回写失败', [
                 'url' => $url, 'error' => $e->getMessage(),
@@ -134,8 +136,11 @@ abstract class AbstractGitProvider implements GitProviderInterface
 
 
             $code = $e instanceof BadResponseException ? $e->getResponse()->getStatusCode() : 0;
-            return ['success' => false, 'message' => '回写失败: ' . $this->getName()
-                . ' 服务不可达或拒绝请求' . ($code > 0 ? '（HTTP ' . $code . '）' : '')];
+            $key  = $code > 0 ? 'git.writeback_unreachable_or_denied_http' : 'git.writeback_unreachable_or_denied';
+            return ['success' => false, 'message' => $this->i18n->trans($key, [
+                'name' => $this->getName(),
+                'code' => (string) $code,
+            ])];
         }
     }
 }

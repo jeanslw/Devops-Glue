@@ -13,6 +13,31 @@
     .topbar { display: none; }
     .swagger-ui .info .title { font-size: 28px; }
 
+    /* 压缩 info 区：
+       1) 标题与顶部导航(Home/语言)同行：导航浮在标题行右侧；
+       2) 隐藏 2.11.2 版本徽标（h1>span 的第一个 small，OAS 3.0 带 .version-stamp 保留）；
+       3) 标题独占一行，spec URL 与说明另起一行同行显示（说明由 JS 移入 hgroup.main）；
+       4) Contact the developer 隐藏。 */
+    .swagger-ui .info .main { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 14px; }
+    .swagger-ui .info .main h1.title { flex-basis: 100%; margin: 0; }
+    .swagger-ui .info .main h1.title > span > small:first-child { display: none; }
+    .swagger-ui .info .main .url { font-size: 12px; color: #6b7280; }
+    .swagger-ui .info .main .info__description { display: block; margin: 0; font-size: 13px; color: #6b7280; }
+    .swagger-ui .info .main .info__description p { margin: 0; }
+    .swagger-ui .info .info__contact { display: none; }
+
+    /* Servers 区压高度：默认 .scheme-container 上下各 30px padding，标签和下拉各占一行 */
+    .swagger-ui .scheme-container { padding: 8px 0; margin: 0 0 12px; }
+    .swagger-ui .scheme-container .schemes { gap: 8px; }
+    /* Servers 标签与下拉框被包在一个无 class 的内层 div 里，需 flex 该内层 div */
+    .swagger-ui .scheme-container .schemes-server-container > div { display: flex; align-items: center; gap: 8px; }
+    .swagger-ui .scheme-container .servers-title { font-size: 12px; line-height: 1; margin: 0; }
+    .swagger-ui .scheme-container .servers { margin: 0; }
+    .swagger-ui .scheme-container .servers label { margin: 0; }
+    .swagger-ui .scheme-container .servers select { padding: 3px 28px 3px 8px; font-size: 13px; }
+    .swagger-ui .scheme-container .auth-wrapper { margin: 0; }
+    .swagger-ui .scheme-container .btn.authorize { padding: 5px 12px; font-size: 13px; line-height: 1.4; }
+
     /* 未登录时同页显示的登录层（URL 保持 /api/docs，无独立登录页跳转） */
     #login-layer { position: fixed; inset: 0; z-index: 999; display: flex; align-items: center; justify-content: center;
       background: linear-gradient(135deg, #667eea, #764ba2); font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
@@ -179,9 +204,36 @@
     document.addEventListener('keydown', function (ev) {
       if (ev.key === 'Enter' && document.getElementById('login-layer').style.display !== 'none') login();
     });
+
+    // 把说明移到标题行(hgroup.main)内，使其与 spec URL 同行；标题独占首行，
+    // 顶部导航(Home/语言)绝对定位浮在标题行右侧。
+    function flattenInfoLayout() {
+      var info = document.querySelector('.swagger-ui .info');
+      if (!info) return;
+      var main = info.querySelector('.info .main') || info.querySelector('hgroup.main');
+      var desc = info.querySelector('.info__description');
+      if (main && desc && desc.parentNode !== main) {
+        main.appendChild(desc);
+      }
+    }
+    function setupInfoObserver() {
+      var target = document.getElementById('swagger-ui');
+      if (!target) return;
+      if (window.MutationObserver) {
+        new MutationObserver(flattenInfoLayout).observe(
+          target, { childList: true, subtree: true }
+        );
+      }
+      flattenInfoLayout();
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', setupInfoObserver);
+    } else {
+      setupInfoObserver();
+    }
   </script>
 
-  <div style="background:#f8f9fa;padding:8px 20px;text-align:right;border-bottom:1px solid #e5e7eb;font-size:13px;">
+  <div style="position:absolute;top:16px;right:20px;z-index:10;font-size:13px;">
     <a href="/" style="color:#4f46e5;text-decoration:none;">🏠 Home</a>
     <span style="margin:0 8px;color:#d1d5db;">|</span>
     <select id="swagger-lang" onchange="switchLang(this.value)" style="border:1px solid #d1d5db;border-radius:4px;padding:2px 6px;font-size:12px;">

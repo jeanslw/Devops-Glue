@@ -7,20 +7,23 @@ use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Exception\ServerException;
 use App\Service\Logger;
+use App\Service\I18nService;
 
 class GithubService implements GitProviderInterface
 {
     private Client $client;
     private string $baseUrl;
     private ?Logger $logger;
+    private I18nService $i18n;
 
     private const MAX_PAGES = 20; // 最多 2000 条分支，防止极端仓库触发 rate limit
     private const PER_PAGE  = 100;
 
-    public function __construct(string $baseUrl, string $token, ?Logger $logger = null)
+    public function __construct(string $baseUrl, string $token, I18nService $i18n, ?Logger $logger = null)
     {
         $this->baseUrl = rtrim($baseUrl, '/');
         $this->logger  = $logger;
+        $this->i18n    = $i18n;
         $this->client  = new Client([
             'headers' => [
                 'Authorization'        => 'token ' . $token,
@@ -80,7 +83,7 @@ class GithubService implements GitProviderInterface
         $owner = $parts[0];
         $repo  = $parts[1] ?? '';
         if (empty($owner) || empty($repo)) {
-            return ['success' => false, 'message' => '仓库路径格式错误'];
+            return ['success' => false, 'message' => $this->i18n->trans('git.repo_path_invalid')];
         }
         $body = [
             'state'       => $state === 'failed' ? 'failure' : $state,

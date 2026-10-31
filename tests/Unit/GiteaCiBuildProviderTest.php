@@ -23,7 +23,7 @@ class GiteaCiBuildProviderTest extends TestCase
         $stack  = HandlerStack::create($mock);
         $client = new Client(['handler' => $stack, 'http_errors' => false]);
 
-        $provider = new GiteaCiBuildProvider('https://gitea.example', $token);
+        $provider = new GiteaCiBuildProvider('https://gitea.example', $token, new \App\Service\I18nService(__DIR__ . '/../../lang'));
 
         $prop = new ReflectionProperty(GiteaCiBuildProvider::class, 'http');
         $prop->setAccessible(true);

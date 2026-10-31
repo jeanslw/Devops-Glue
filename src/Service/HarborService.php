@@ -13,7 +13,7 @@ class HarborService
     private ?Logger $logger = null;
     private \PDO $pdo;
 
-    public function __construct(Client $harborClient, \PDO $pdo, ?Logger $logger = null)
+    public function __construct(Client $harborClient, \PDO $pdo, private I18nService $i18n, ?Logger $logger = null)
     {
         $this->client = $harborClient;
         $this->pdo    = $pdo;
@@ -296,7 +296,7 @@ class HarborService
                 }
                 $data = json_decode($body, true);
                 if (!is_array($data)) {
-                    return ['error' => 'Harbor返回数据格式异常'];
+                    return ['error' => $this->i18n->trans('registry.harbor_bad_response')];
                 }
 
                 if ($attempt > 0) {
