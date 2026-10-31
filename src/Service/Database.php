@@ -1865,6 +1865,7 @@ class Database
         self::createIndex('idx_job_git_map_current_path', \App\Config\AppConfig::TABLE_JOB_GIT_MAP, $isMySQL ? 'current_path(255)' : 'current_path');
         self::createIndex('idx_security_checks_project', \App\Config\AppConfig::TABLE_SECURITY_CHECKS, 'project, check_type');
         self::createIndex('idx_security_checks_sha', \App\Config\AppConfig::TABLE_SECURITY_CHECKS, 'sha');
+        self::migrateSecurityChecksUniqueIndex();
         self::createIndex('idx_custom_builds_job', \App\Config\AppConfig::TABLE_CUSTOM_BUILDS, 'job_name');
         self::createIndex('idx_custom_builds_status', \App\Config\AppConfig::TABLE_CUSTOM_BUILDS, 'status');
         self::createIndex('idx_operation_logs_created', \App\Config\AppConfig::TABLE_OPERATION_LOGS, 'created_at');
@@ -2018,6 +2019,55 @@ class Database
                 self::pdo()->exec("CREATE INDEX IF NOT EXISTS {$index} ON {$table} ({$columns})");
             }
         } catch (\Exception $e) {
+            \App\Helper\Log::exception($e);
+        }
+    }
+
+    /**
+     * 为 ci_security_checks 补齐唯一索引 (project, sha, check_type, context)，
+     * 使 SecurityCheckRepository::record() 的 REPLACE INTO 成为真正的 upsert，
+     * 避免 custom_push / commitStatus 重复上报时堆叠重复审计行。
+     *
+     * 存量库可能已有重复行，须先按该组合去重（保留 id 最大者），否则 CREATE UNIQUE INDEX 会因冲突失败。
+     * MySQL 下对长 VARCHAR 使用前缀，避免突破 InnoDB 3072 字节索引上限（实际 project/sha/check_type/context 均远短于前缀，不影响唯一语义）。
+     */
+    private static function migrateSecurityChecksUniqueIndex(): void
+    {
+        $table = \App\Config\AppConfig::TABLE_SECURITY_CHECKS;
+        if (!self::tableExists(self::pdo(), $table)) {
+            return;
+        }
+        try {
+            self::pdo()->exec(
+                "DELETE FROM {$table} WHERE id NOT IN ("
+                . "SELECT keep_id FROM ("
+                . "SELECT MAX(id) AS keep_id FROM {$table} GROUP BY project, sha, check_type, context"
+                . ") x)"
+            );
+        } catch (\Throwable $e) {
+            \App\Helper\Log::error('dedupe ' . $table . ' 失败', ['error' => $e->getMessage()]);
+            return;
+        }
+
+        $index   = 'uniq_security_check';
+        $columns = self::$driver === 'mysql'
+            ? 'project(255), sha(64), check_type(64), context(64)'
+            : 'project, sha, check_type, context';
+        try {
+            if (self::$driver === 'mysql') {
+                $stmt = self::pdo()->prepare(
+                    'SELECT COUNT(*) FROM information_schema.statistics'
+                    . ' WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?'
+                );
+                $stmt->execute([$table, $index]);
+                if ((int)$stmt->fetchColumn() > 0) {
+                    return;
+                }
+                self::pdo()->exec("CREATE UNIQUE INDEX {$index} ON {$table} ({$columns})");
+            } else {
+                self::pdo()->exec("CREATE UNIQUE INDEX IF NOT EXISTS {$index} ON {$table} ({$columns})");
+            }
+        } catch (\Throwable $e) {
             \App\Helper\Log::exception($e);
         }
     }

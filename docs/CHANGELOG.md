@@ -9,6 +9,7 @@
   - Bootstrap notices are deduplicated by state: the leftover connection / SSO environment keys, signing-key problems, data-table list drift and the unchanged initial password are each reported once per state, and again only when that state changes.
   - The leftover-key notice no longer advises deleting everything after migrating: it states that CD still reads the client secret and the redirect URI in a joint deployment.
   - Login failure messages now carry actionable fix instructions (run the migration script or add the client in the console).
+  - Duplicate build reports (custom_push / commitStatus) no longer stack repeated rows in the security audit table: a unique index on (project, sha, check_type, context) turns the upsert into a true upsert, and existing duplicate rows are deduplicated during migration.
 - **Improved**
   - The SSO migration script and the first-start auto-seeding share a single implementation.
 - **Docs**
