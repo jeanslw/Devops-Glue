@@ -28,9 +28,9 @@ export async function loadPermList() {
             else if (canDelete) actions = '<button class="btn btn-sm btn-del" onclick="deletePermission(\'' + p.perm_key + '\')" title="' + __.t('common.delete') + '">🗑</button>';
             else actions = '<span style="color:#9ca3af;font-size:12px;">—</span>';
             return '<tr>' +
-                '<td><code>' + p.perm_key + '</code></td>' +
+                '<td><code>' + esc(p.perm_key) + '</code></td>' +
                 '<td>' + esc(p.description || '-') + '</td>' +
-                '<td>' + (p.parent_key ? '<code>' + p.parent_key + '</code>' : '-') + '</td>' +
+                '<td>' + (p.parent_key ? '<code>' + esc(p.parent_key) + '</code>' : '-') + '</td>' +
                 '<td>' + type + '</td>' +
                 '<td style="font-size:12px;color:#6b7280;">' + (p.created_at || '—') + '</td>' +
                 '<td>' + actions + '</td>' +

@@ -65,7 +65,7 @@ class SecurityCheckRepository
         $rows->execute($bind);
         $checks = $rows->fetchAll();
 
-        $types = $this->pdo->query("SELECT DISTINCT check_type FROM " . AppConfig::TABLE_SECURITY_CHECKS . " ORDER BY check_type")->fetchAll(\PDO::FETCH_COLUMN);
+        $types = $this->distinctCheckTypes();
 
         return [
             'checks'      => $checks,
@@ -79,6 +79,56 @@ class SecurityCheckRepository
                 'writeback_statuses' => ['success', 'failed', 'skipped'],
             ],
         ];
+    }
+
+    /**
+     * 仓库扫描类型去重列表（集合稳定，缓存 300 秒，避免每次检索都全表扫描）。
+     *
+     * @return list<string>
+     */
+    private function distinctCheckTypes(): array
+    {
+        $cached = $this->cacheGet('security:distinct_check_types');
+        if (is_array($cached)) {
+            return array_values(array_map('strval', $cached));
+        }
+        $types = $this->pdo->query(
+            "SELECT DISTINCT check_type FROM " . AppConfig::TABLE_SECURITY_CHECKS . " ORDER BY check_type"
+        )->fetchAll(\PDO::FETCH_COLUMN);
+        $this->cacheSet('security:distinct_check_types', $types, 300);
+        return array_values($types);
+    }
+
+    /** @return array<string,mixed>|null */
+    private function cacheGet(string $key): ?array
+    {
+        try {
+            $stmt = $this->pdo->prepare(
+                "SELECT value FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key = ? AND expires_at > ?"
+            );
+            $stmt->execute([$key, time()]);
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if ($row === false) {
+                return null;
+            }
+            $data = json_decode((string)$row['value'], true);
+            return is_array($data) ? $data : null;
+        } catch (\Exception $e) {
+            return null;
+        }
+    }
+
+    /**
+     * @param array<mixed> $value
+     */
+    private function cacheSet(string $key, array $value, int $ttlSeconds): void
+    {
+        $sql = Database::sqlUpsert(
+            AppConfig::TABLE_CACHE,
+            'cache_key, value, expires_at',
+            '?, ?, ?'
+        );
+        $this->pdo->prepare($sql)->execute([$key, json_encode($value), time() + $ttlSeconds]);
     }
 
     /** 写一条安全扫描/回写审计记录（upsert），失败仅记日志不影响主流程。 */

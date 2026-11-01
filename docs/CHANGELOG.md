@@ -1,5 +1,38 @@
 # Changelog
 
+## v2.11.3 (2026-11-01)
+
+- **Added**
+  - Concurrency regression tests: multiple processes fire real requests in parallel to dynamically reproduce and lock in four concurrency fixes — an authorization code redeemed twice, a terminal build state downgraded, lost login-failure counts, and a single sign-on signing key regenerated.
+  - Console accounts now enforce a forced password change on first sign-in: a seeded admin flagged as pending change can only reach the change-password and logout endpoints until the password is changed; all other admin APIs are rejected.
+  - Deleting a console account now also clears its external identities (LDAP / SSO) in a transaction, avoiding orphaned rows and letting the same external identity rebind.
+  - Login-failure counters now increment atomically: expired rows are purged first, then the count is incremented atomically, fixing lost counts under concurrency.
+  - Authorization-code redemption now takes a row lock and redeems atomically (a one-row delete counts as success), eliminating concurrent double redemption.
+  - SSO signing-key generation now takes a cross-process file lock, preventing multiple workers from each generating a key and causing the key id to jitter so downstream JWKS verification fails.
+  - Build logs, triggers, write-backs and registry-verification user messages now switch between Chinese and English.
+  - Custom-push build-log fetching now pins DNS resolution (closing the rebinding SSRF window) and caps the log body size (truncated when over the limit).
+  - Registry tag authenticity is now verified: when a tag is absent from the repository, the authoritative artifact is no longer written and a clear error is returned.
+  - Mapping build-source now enforces an allowlist, rejecting unsupported build sources.
+  - Permission parent keys now enforce a safe character set, removing the stored XSS injection vector.
+- **Fixed**
+  - Authorization code redemption takes the write lock immediately under SQLite to avoid the concurrent read-then-write deadlock, and a row-count guard keeps a code redeemable at most once.
+  - Custom-push terminal success is now irreversible: a concurrent write that would overwrite an already-success record is treated as an idempotent no-op, avoiding duplicate artifacts and notifications.
+  - Build report finish-time now validates format, rejecting invalid values that would distort the state machine.
+  - Registry sync now skips authoritative artifact writes when the tag fails verification, instead of writing a non-existent tag.
+  - Security-scan search no longer full-scans: the per-request distinct type enumeration is now cached for about 300 seconds, and the audit table gains indexes on (state, check_type, writeback_status, created_at) and on (created_at) covering the common equality filters and the default time-descending list.
+- **Optimized**
+  - Bootstrap now pins idempotent steps (table creation, column reconciliation, data self-heal, seeding, drift detection) to the schema version, running them only on a version change (deploy); per-request bootstrap SQL drops from a dozen-odd statements to a few.
+  - Detailed health checks (external probes) are cached for about 60 seconds; the platform connections page loads the zero-probe static endpoint and reads the registry-type-mismatch flag from the last cached result, removing the synchronous probe that blocked page load.
+  - The role-permission list now uses a single batched query grouped by role, removing the per-role N+1 queries.
+  - Auto-discovery results are cached for about 60 seconds and registry tag listings for about 30 seconds, reducing external-platform and registry calls on the request path (the HTTP clients already had timeouts).
+- **Security**
+  - Mapping and permission lists now escape on render, fixing stored XSS.
+  - Permission parent keys are validated server-side against a safe character set, blocking the injection vector.
+  - Custom-push log URL SSRF protection tightened: address safety checks are stricter (unparseable addresses rejected, loopback / link-local / unique-local / multicast / embedded-IPv4 handled), and resolved addresses are pinned to close the rebinding window.
+- **Docs**
+  - README documents the Docker step of copying .env.example to a root .env and filling in the shared variables.
+  - The root .env is no longer tracked; .env.example is tracked as the template instead.
+
 ## v2.11.2 (2026-10-30)
 
 - **Fixed**

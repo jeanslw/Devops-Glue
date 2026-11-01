@@ -70,11 +70,26 @@ abstract class BaseAdminController extends BaseController
     {
         $entry = [];
         $fields = ['job_name', 'git_platform', 'build_provider', 'git_remote', 'project_id', 'web_url', 'current_path', 'registry_repository', 'api_version', 'status'];
+        $allowedProviders = [
+            AppConfig::PROVIDER_JENKINS,
+            AppConfig::PROVIDER_GITLAB_CI,
+            AppConfig::PROVIDER_GITEA_CI,
+            AppConfig::PROVIDER_GITHUB_ACTIONS,
+            AppConfig::PROVIDER_CUSTOM_PUSH,
+        ];
         foreach ($fields as $f) {
             if (array_key_exists($f, $body)) {
                 $val = $body[$f];
-                if ($f === 'build_provider' && trim((string) $val) === '') {
-                    throw new ApiException('build_provider（构建源）不能为空，请指定该映射使用的 CI', 400);
+                if ($f === 'build_provider') {
+                    $v = trim((string) $val);
+                    if ($v === '') {
+                        throw new ApiException('build_provider（构建源）不能为空，请指定该映射使用的 CI', 400);
+                    }
+                    if (!in_array($v, $allowedProviders, true)) {
+                        throw new ApiException('build_provider（构建源）不被支持：' . $v, 400);
+                    }
+                    $entry[$f] = $v;
+                    continue;
                 }
                 if ($f === 'project_id' && ($val === '' || $val === null)) {
                     $entry[$f] = null;

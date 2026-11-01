@@ -279,7 +279,7 @@ class DockerRegistryProvider implements RegistryProviderInterface
     {
 
         if ($project === '' || str_contains($project, '/')) {
-            return ['error' => "项目 '{$project}' 不存在", 'http_code' => 404];
+            return ['error' => $this->i18n->trans('registry.project_not_found', ['project' => $project]), 'http_code' => 404];
         }
 
         $repositories = $this->catalogRepositories();
@@ -297,7 +297,7 @@ class DockerRegistryProvider implements RegistryProviderInterface
         }
 
         if ($out === []) {
-            return ['error' => "项目 '{$project}' 不存在", 'http_code' => 404];
+            return ['error' => $this->i18n->trans('registry.project_not_found', ['project' => $project]), 'http_code' => 404];
         }
 
         return $out;

@@ -110,7 +110,7 @@ class OidcService
             // 文件可读但为空/损坏：视为「尚无密钥」，重新生成不会造成 kid 抖动（原本就没有可用密钥）。
         }
 
-        return $this->privateKeyPem = $this->generateAndPersist($file);
+        return $this->privateKeyPem = $this->loadOrGenerate($file);
     }
 
     private function generateAndPersist(string $file): string
@@ -156,6 +156,45 @@ class OidcService
             @chmod($file, 0600);
         }
         return $pem;
+    }
+
+    /**
+     * 加载或生成私钥：用跨进程 advisory lock（.lock 文件 + flock LOCK_EX）覆盖
+     * 「检查是否已存在 → 生成 → 落盘 → 读取」全流程，避免多进程/多 worker 并发各自生成
+     * 一把密钥、互相覆盖，导致 kid 随进程抖动、下游按 kid 取 JWKS 验签失败。
+     */
+    private function loadOrGenerate(string $file): string
+    {
+        $lockHandle = null;
+        if ($file !== '') {
+            $lockFile = $file . '.lock';
+            $lockDir  = dirname($file);
+            if (!is_dir($lockDir)) {
+                @mkdir($lockDir, 0777, true);
+            }
+            $lockHandle = @fopen($lockFile, 'c');
+            if ($lockHandle !== false) {
+                flock($lockHandle, LOCK_EX);
+            }
+            if (is_file($file) && is_readable($file)) {
+                $pem = @file_get_contents($file);
+                if ($pem !== false && trim($pem) !== '') {
+                    if ($lockHandle !== false) {
+                        flock($lockHandle, LOCK_UN);
+                        fclose($lockHandle);
+                    }
+                    return $pem;
+                }
+            }
+        }
+        try {
+            return $this->generateAndPersist($file);
+        } finally {
+            if ($lockHandle !== null && $lockHandle !== false) {
+                flock($lockHandle, LOCK_UN);
+                fclose($lockHandle);
+            }
+        }
     }
 
     /**

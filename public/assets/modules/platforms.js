@@ -140,7 +140,7 @@ export async function loadPlatformConnections() {
         _pc = d;
         renderPlatforms();
         try {
-            const h = await apiFetch('/api/health');
+            const h = await apiFetch('/api/health/static');
             if (h.ok) {
                 const hd = await h.json();
                 _pc.registry_type_mismatch = !!(hd.checks && hd.checks.registry_type_mismatch);

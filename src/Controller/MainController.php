@@ -21,6 +21,7 @@ class MainController extends BaseController
     private AppSettingRepository $appSettings;
     private ?HarborService $harbor;
     private ?TokenService $tokenService = null;
+    private const HEALTH_DETAIL_CACHE_KEY = 'health:detail:v1';
 
     public function __construct(I18nService $i18n, JenkinsService $jenkins, Settings $config, MappingManager $mapping, AppSettingRepository $appSettings, ?HarborService $harbor = null, ?TokenService $tokenService = null)
     {
@@ -226,6 +227,13 @@ class MainController extends BaseController
      */
     public function healthDetail(Request $request, Response $response): Response
     {
+        $cached = $this->getCachedHealthDetail();
+        if ($cached !== null) {
+            $response->getBody()->write((string) json_encode($cached));
+            $httpCode = ($cached['status'] ?? 'ok') === 'ok' ? 200 : 503;
+            return $response->withStatus($httpCode)->withHeader('Content-Type', 'application/json');
+        }
+
         $checks = [
             'jenkins'         => false,
             'jenkins_version' => null,
@@ -410,6 +418,7 @@ class MainController extends BaseController
         $data = $this->buildHealthStaticData();
         $data['status'] = $status;
         $data['checks'] = $checks;
+        $this->cacheHealthDetail($data);
 
         $response->getBody()->write((string) json_encode($data));
         $httpCode = $allOk ? 200 : 503;
@@ -449,6 +458,35 @@ class MainController extends BaseController
     }
 
     /**
+     * 读上次健康探测结果（含 registry_type_mismatch）；未命中返回 null。
+     *
+     * @return array<mixed>|null
+     */
+    private function getCachedHealthDetail(): ?array
+    {
+        return $this->appSettings->getCache(self::HEALTH_DETAIL_CACHE_KEY);
+    }
+
+    /**
+     * 缓存健康探测结果 60 秒，避免平台页加载时同步发起外部探测。
+     *
+     * @param array<string,mixed> $detail
+     */
+    private function cacheHealthDetail(array $detail): void
+    {
+        $this->appSettings->setCache(self::HEALTH_DETAIL_CACHE_KEY, $detail, 60);
+    }
+
+    /**
+     * 上次健康探测记录的 registry_type_mismatch；无缓存返回 false。
+     */
+    private function getLastRegistryMismatch(): bool
+    {
+        $cached = $this->getCachedHealthDetail();
+        return ($cached['checks']['registry_type_mismatch'] ?? false) === true;
+    }
+
+    /**
      * 汇总不依赖外部网络探测的健康信息（统计卡片 + 系统监测 + Custom_Push）。
      *
      * @return array<string,mixed>
@@ -473,6 +511,9 @@ class MainController extends BaseController
             'app_version'           => AppConfig::APP_VERSION,
             'app_env'               => $this->config->getAppEnv(),
             'time'                  => date('Y-m-d H:i:s'),
+            'checks'                => [
+                'registry_type_mismatch' => $this->getLastRegistryMismatch(),
+            ],
         ];
     }
 

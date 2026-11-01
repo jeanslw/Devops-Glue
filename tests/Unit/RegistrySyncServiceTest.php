@@ -159,7 +159,8 @@ class RegistrySyncServiceTest extends TestCase
             $gitRegistry,
             $registry,
             $settings,
-            $this->pdo
+            $this->pdo,
+            new AppSettingRepository($this->pdo)
         );
     }
 

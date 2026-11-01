@@ -70,7 +70,9 @@ composer install
 
 # 3. Configure environment
 cp config/app.env.example config/app.env
-# Edit config/app.env with your actual credentials
+
+# 3.1 For Docker deployment, you need to copy the .env file from the root directory and edit the .env to fill in DB_USER / DB_PASS / DB_ROOT_PASS (as well as CD-related items);
+cp .env.example .env
 
 # 4. Start (PHP built-in server or Docker)
 php -S 0.0.0.0:8080 -t public/

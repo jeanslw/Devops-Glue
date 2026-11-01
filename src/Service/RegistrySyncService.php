@@ -5,6 +5,7 @@ namespace App\Service;
 use App\Config\AppConfig;
 use App\Helper\Log;
 use App\Service\Build\BuildProviderRegistry;
+use App\Service\AppSettingRepository;
 use App\Service\Git\ProviderRegistry as GitProviderRegistry;
 use App\Service\Registry\RegistryProviderInterface;
 
@@ -28,7 +29,8 @@ class RegistrySyncService
         private ?GitProviderRegistry $gitRegistry,
         private ?RegistryProviderInterface $registry,
         private Settings $config,
-        private \PDO $pdo
+        private \PDO $pdo,
+        private AppSettingRepository $appSettings
     ) {
     }
 
@@ -90,13 +92,20 @@ class RegistrySyncService
 
         $tag = is_string($body['tag'] ?? null) ? trim($body['tag']) : '';
 
+        $tagVerified = false; // tag 是否已通过镜像仓库实际校验（存在）；仅此情况才写权威 artifact
         $tags = null;
         if ($this->registry !== null) {
-            try {
-                $tags = $this->registry->getTags($repository);
-            } catch (\RuntimeException $e) {
-                Log::exception($e);
-                $tags = ['error' => $e->getMessage()];
+            $tags = $this->getCachedTags($repository);
+            if ($tags === null) {
+                try {
+                    $tags = $this->registry->getTags($repository);
+                    if (!isset($tags['error'])) {
+                        $this->appSettings->setCache('registry:tags:' . md5($repository), $tags, 30);
+                    }
+                } catch (\RuntimeException $e) {
+                    Log::exception($e);
+                    $tags = ['error' => $e->getMessage()];
+                }
             }
         }
 
@@ -107,8 +116,11 @@ class RegistrySyncService
 
 
         if ($this->registry !== null && !isset($tags['error']) && $tag !== '') {
-            if (!in_array($tag, (array) $tags, true)) {
-                Log::warning('registry-sync tag 校验未通过', ['tag' => $tag, 'repo' => $repository]);
+            if (in_array($tag, (array) $tags, true)) {
+                $tagVerified = true;
+            } else {
+                // 仓库已配置但 tag 不存在：仅写审计，不写权威 artifact（与 BuildReportController 的严格校验一致）
+                Log::warning('registry-sync tag 未在镜像仓库校验通过，跳过权威 artifact 写入', ['tag' => $tag, 'repo' => $repository]);
             }
         }
 
@@ -212,8 +224,13 @@ class RegistrySyncService
             $writebackParts[] = $result['message'];
         }
         if ($ciStatus === 'success' && $iid > 0) {
-            $artifactOk = $this->recordArtifact($path, $iid, $tag, $repository, $scanState, $sourceUpdatedAt);
-            $writebackParts[] = $artifactOk ? 'artifact_write=success' : 'artifact_write=failed';
+            // 仅当 tag 已通过镜像仓库校验（或仓库未配置、无法校验时按原行为尽力关联）才写权威 artifact
+            if ($this->registry === null || $tagVerified) {
+                $artifactOk = $this->recordArtifact($path, $iid, $tag, $repository, $scanState, $sourceUpdatedAt);
+                $writebackParts[] = $artifactOk ? 'artifact_write=success' : 'artifact_write=failed';
+            } else {
+                $writebackParts[] = 'artifact_write=skipped (tag_not_in_registry)';
+            }
         } elseif ($iid > 0) {
             $writebackParts[] = 'artifact_write=skipped (ci_status=' . $ciStatus . ')';
         }
@@ -256,6 +273,15 @@ class RegistrySyncService
     private function isValidRepository(string $repository): bool
     {
         return (bool) preg_match('#^[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)+$#', $repository);
+    }
+
+    /** 读缓存的镜像标签列表；未命中返回 null（仅缓存成功列举，不含错误）。
+     *
+     * @return array<string,mixed>|null
+     */
+    private function getCachedTags(string $repository): ?array
+    {
+        return $this->appSettings->getCache('registry:tags:' . md5($repository));
     }
 
     private function recordArtifact(string $path, int $iid, string $tag, string $repository, string $scanState, string $sourceUpdatedAt): bool

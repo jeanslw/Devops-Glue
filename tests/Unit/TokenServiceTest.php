@@ -49,7 +49,8 @@ class TokenServiceTest extends TestCase
         $this->pdo->exec('CREATE TABLE ' . AppConfig::TABLE_ADMIN_USERS . ' (
             username TEXT PRIMARY KEY,
             status INTEGER NOT NULL DEFAULT 1,
-            role TEXT NOT NULL DEFAULT "admin"
+            role TEXT NOT NULL DEFAULT "admin",
+            must_change_password INTEGER NOT NULL DEFAULT 0
         )');
     }
 

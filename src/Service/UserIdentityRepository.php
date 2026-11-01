@@ -92,6 +92,16 @@ class UserIdentityRepository
         return $stmt->execute([$providerType, $providerUid]) && $stmt->rowCount() > 0;
     }
 
+    /** 删除某用户名下的全部身份绑定（删除用户时清理孤儿数据，避免外部身份无法重新绑定） */
+    public function deleteByUsername(string $username): int
+    {
+        $stmt = $this->pdo->prepare(
+            "DELETE FROM " . AppConfig::TABLE_USER_IDENTITIES . " WHERE username = ?"
+        );
+        $stmt->execute([$username]);
+        return (int)$stmt->rowCount();
+    }
+
     /**
      * 登录成功后回填最新 LDAP 属性（email/raw_profile）。
      * 与 bind 不同：这里幂等 update，不插入；快照源是 LDAP 服务端字段，属缓存用途。

@@ -112,61 +112,52 @@ class Database
             return;
         }
 
-        self::logSchemaListDriftIfAny($pdo);
         self::$pdo = $pdo;
         if (empty(self::$config)) {
             self::init();
         }
 
-        $needMark     = false;
-        $needSeedMark = false;
-        $seedMode     = self::SEED_MODE_PRUNE;
-        $recorded     = null;
-        if (self::$config['auto_migrate'] ?? true) {
-            $recorded = self::recordedVersion(self::SCHEMA_VERSION_KEY);
-            if (!self::isVersionCurrent($recorded)) {
-                $seedMode = self::isVersionAhead($recorded) ? self::SEED_MODE_MERGE : self::SEED_MODE_PRUNE;
-                self::runExclusively(self::SCHEMA_VERSION_KEY, function () use ($seedMode): void {
+        $autoMigrate = (self::$config['auto_migrate'] ?? true);
+        $versionKey  = $autoMigrate ? self::SCHEMA_VERSION_KEY : self::SEED_VERSION_KEY;
+        $recorded    = self::recordedVersion($versionKey);
+        $needMark    = false;
+        $seedMode    = self::SEED_MODE_PRUNE;
 
-                    if (self::isVersionCurrent(self::recordedVersion(self::SCHEMA_VERSION_KEY))) {
-                        return;
-                    }
+        // 版本变更（部署）时才执行一次建表/补列/数据自愈/种子/漂移检测，避免每请求重复 SQL。
+        if (!self::isVersionCurrent($recorded)) {
+            $seedMode = self::isVersionAhead($recorded) ? self::SEED_MODE_MERGE : self::SEED_MODE_PRUNE;
+            self::runExclusively($versionKey, function () use ($autoMigrate, $seedMode): void {
+                $key = $autoMigrate ? self::SCHEMA_VERSION_KEY : self::SEED_VERSION_KEY;
+                if (self::isVersionCurrent(self::recordedVersion($key))) {
+                    return;
+                }
+                if ($autoMigrate) {
                     self::ensureTables($seedMode);
-                });
-                $needMark = true;
-            }
-        } else {
-            $recorded = self::recordedVersion(self::SEED_VERSION_KEY);
-            if (!self::isVersionCurrent($recorded)) {
-                $seedMode = self::isVersionAhead($recorded) ? self::SEED_MODE_MERGE : self::SEED_MODE_PRUNE;
-                self::runExclusively(self::SEED_VERSION_KEY, function () use ($seedMode): void {
-
-                    if (self::isVersionCurrent(self::recordedVersion(self::SEED_VERSION_KEY))) {
-                        return;
-                    }
+                } else {
                     self::seedRbac($seedMode);
-                });
-                $needSeedMark = true;
-            }
+                }
+                self::healCdServiceTokenScopes(self::pdo());
+                self::migrateScopeHarborReadToRegistryRead(self::pdo());
+                if ($autoMigrate) {
+                    self::reconcileColumns(self::pdo(), false);
+                }
+                self::seedAdmin();
+                self::verifySeed();
+                self::logSchemaListDriftIfAny(self::pdo());
+            });
+            $needMark = true;
         }
 
-        self::healCdServiceTokenScopes(self::pdo());
-        self::migrateScopeHarborReadToRegistryRead(self::pdo());
-
-        if (self::$config['auto_migrate'] ?? true) {
-            self::reconcileColumns(self::pdo(), false);
-        }
-        self::seedAdmin();
-        self::verifySeed();
         self::seedOidcConfigFromEnvIfEmpty();
 
         if ($needMark) {
-            self::markSchemaCurrent();
-            self::noteVersionTransition(self::SCHEMA_VERSION_KEY, $recorded, $seedMode, 'schema');
-        }
-        if ($needSeedMark) {
-            self::markSeedCurrent();
-            self::noteVersionTransition(self::SEED_VERSION_KEY, $recorded, $seedMode, 'seed');
+            if ($autoMigrate) {
+                self::markSchemaCurrent();
+                self::noteVersionTransition(self::SCHEMA_VERSION_KEY, $recorded, $seedMode, 'schema');
+            } else {
+                self::markSeedCurrent();
+                self::noteVersionTransition(self::SEED_VERSION_KEY, $recorded, $seedMode, 'seed');
+            }
         }
         self::assertDataEncKeyPresent(self::pdo());
         self::warnDeprecatedEnvKeys();
@@ -1865,6 +1856,8 @@ class Database
         self::createIndex('idx_job_git_map_current_path', \App\Config\AppConfig::TABLE_JOB_GIT_MAP, $isMySQL ? 'current_path(255)' : 'current_path');
         self::createIndex('idx_security_checks_project', \App\Config\AppConfig::TABLE_SECURITY_CHECKS, 'project, check_type');
         self::createIndex('idx_security_checks_sha', \App\Config\AppConfig::TABLE_SECURITY_CHECKS, 'sha');
+        self::createIndex('idx_security_checks_filter', \App\Config\AppConfig::TABLE_SECURITY_CHECKS, 'state, check_type, writeback_status, created_at');
+        self::createIndex('idx_security_checks_created', \App\Config\AppConfig::TABLE_SECURITY_CHECKS, 'created_at');
         self::migrateSecurityChecksUniqueIndex();
         self::createIndex('idx_custom_builds_job', \App\Config\AppConfig::TABLE_CUSTOM_BUILDS, 'job_name');
         self::createIndex('idx_custom_builds_status', \App\Config\AppConfig::TABLE_CUSTOM_BUILDS, 'status');

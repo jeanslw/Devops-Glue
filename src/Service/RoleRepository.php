@@ -22,10 +22,24 @@ class RoleRepository
             "SELECT id, name, description, is_system, created_at FROM " . AppConfig::TABLE_ROLES . " ORDER BY id"
         )->fetchAll();
         /** @var list<array<string,mixed>> $roles */
-        $permStmt = $this->pdo->prepare("SELECT perm_key FROM " . AppConfig::TABLE_ROLE_PERMISSIONS . " WHERE role_id = ?");
+        $ids = [];
+        foreach ($roles as $r) {
+            $ids[] = (int)$r['id'];
+        }
+        $permsByRole = [];
+        if ($ids !== []) {
+            $placeholders = implode(',', array_fill(0, count($ids), '?'));
+            $permStmt = $this->pdo->prepare(
+                "SELECT role_id, perm_key FROM " . AppConfig::TABLE_ROLE_PERMISSIONS
+                . " WHERE role_id IN ({$placeholders})"
+            );
+            $permStmt->execute($ids);
+            foreach ($permStmt->fetchAll(\PDO::FETCH_ASSOC) as $row) {
+                $permsByRole[(int)$row['role_id']][] = $row['perm_key'];
+            }
+        }
         foreach ($roles as &$r) {
-            $permStmt->execute([$r['id']]);
-            $r['permissions'] = $permStmt->fetchAll(\PDO::FETCH_COLUMN);
+            $r['permissions'] = $permsByRole[(int)$r['id']] ?? [];
             $r['is_system'] = (bool)$r['is_system'];
         }
         return $roles;

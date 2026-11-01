@@ -113,7 +113,7 @@ export async function loadMaps() {
                 const badgeCls = plat !== '—' && platforms.includes(plat) ? 'badge-' + plat : 'badge-default';
                 return `<tr>
                     <td><strong>${esc(m.job_name)}</strong></td>
-                    <td><span class="badge ${bpBadge}">${bpLabel}</span></td>
+                    <td><span class="badge ${bpBadge}">${esc(bpLabel)}</span></td>
                     <td>${plat !== '—' ? `<span class="badge ${badgeCls}">${esc(plat)}</span>` : '—'}</td>
                     <td class="mono">${esc(m.git_remote || '—')}</td>
                     <td>${esc(m.registry_repository || '—')}</td>

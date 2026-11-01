@@ -74,6 +74,10 @@ class PermissionController extends BaseAdminController
         if (!preg_match('/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_-]*)+$/i', $permKey)) {
             return $this->jsonError($response, 'validation.invalid_perm_key', 400);
         }
+        // parent_key 仅允许安全字符集，排除 HTML 元字符，杜绝存储型 XSS 注入向量
+        if ($parent !== null && !preg_match('/^[a-zA-Z0-9_.\-]*$/', $parent)) {
+            return $this->jsonError($response, 'parent_key 只能包含字母、数字、下划线、点和连字符', 400);
+        }
         if (array_key_exists($permKey, AppConfig::DEFAULT_PERMISSIONS)) {
             return $this->jsonError($response, 'permission.builtin_immutable', 400);
         }

@@ -202,14 +202,14 @@ class GithubActionsBuildProvider implements BuildProviderInterface
     {
         $repo = $this->splitRepo($projectId);
         if (!$repo) {
-            return '日志不可用';
+            return $this->i18n->trans('build.log_unavailable');
         }
         [$owner, $repoName] = $repo;
         $url = "{$this->baseUrl}/repos/{$owner}/{$repoName}/actions/jobs/{$jobId}/logs";
         try {
             $resp = $this->http->get($url);
             if ($resp->getStatusCode() >= 400) {
-                return '日志不可用（HTTP ' . $resp->getStatusCode() . '）';
+                return $this->i18n->trans('build.log_unavailable_http', ['code' => $resp->getStatusCode()]);
             }
             $raw = (string) $resp->getBody();
             return (string) preg_replace("/\e\[[0-9;]*[mK]/", '', $raw);
@@ -256,7 +256,7 @@ class GithubActionsBuildProvider implements BuildProviderInterface
                 'success' => $resp->getStatusCode() < 400,
                 'run_id'  => null,
                 'web_url' => "https://github.com/{$owner}/{$repoName}/actions",
-                'message' => $resp->getStatusCode() < 400 ? 'workflow 已触发' : '触发失败（HTTP ' . $resp->getStatusCode() . '）',
+                'message' => $resp->getStatusCode() < 400 ? $this->i18n->trans('build.workflow_triggered') : $this->i18n->trans('build.trigger_failed_http', ['code' => $resp->getStatusCode()]),
             ];
         } catch (\Exception $e) {
             $this->logger?->error('GitHub Actions 触发失败', ['project' => $projectId, 'ref' => $ref, 'error' => $e->getMessage()]);
@@ -278,7 +278,7 @@ class GithubActionsBuildProvider implements BuildProviderInterface
             $data = json_decode($resp->getBody(), true);
             return [
                 'success' => $resp->getStatusCode() < 400,
-                'message' => $resp->getStatusCode() < 400 ? 'rerun 已触发' : ($data['message'] ?? 'rerun 失败'),
+                'message' => $resp->getStatusCode() < 400 ? $this->i18n->trans('build.rerun_triggered') : ($data['message'] ?? $this->i18n->trans('build.rerun_failed')),
             ];
         } catch (\Exception $e) {
             $this->logger?->error('GitHub Actions rerun 失败', ['project' => $projectId, 'run' => $pipelineId, 'error' => $e->getMessage()]);
@@ -300,7 +300,7 @@ class GithubActionsBuildProvider implements BuildProviderInterface
             $data = json_decode($resp->getBody(), true);
             return [
                 'success' => $resp->getStatusCode() < 400,
-                'message' => $resp->getStatusCode() < 400 ? 'cancel 已触发' : ($data['message'] ?? 'cancel 失败'),
+                'message' => $resp->getStatusCode() < 400 ? $this->i18n->trans('build.cancel_triggered') : ($data['message'] ?? $this->i18n->trans('build.cancel_failed')),
             ];
         } catch (\Exception $e) {
             $this->logger?->error('GitHub Actions cancel 失败', ['project' => $projectId, 'run' => $pipelineId, 'error' => $e->getMessage()]);
@@ -450,7 +450,7 @@ class GithubActionsBuildProvider implements BuildProviderInterface
             $data = json_decode($resp->getBody(), true);
             return [
                 'success' => $resp->getStatusCode() < 400,
-                'message' => $resp->getStatusCode() < 400 ? 'status 已回写' : ($data['message'] ?? '回写失败'),
+                'message' => $resp->getStatusCode() < 400 ? $this->i18n->trans('git.status_written') : ($data['message'] ?? $this->i18n->trans('git.writeback_failed')),
             ];
         } catch (\Exception $e) {
             $this->logger?->error('GitHub commit status 回写失败', ['project' => $projectId, 'sha' => $sha, 'error' => $e->getMessage()]);

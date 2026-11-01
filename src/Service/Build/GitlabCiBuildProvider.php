@@ -4,6 +4,7 @@ namespace App\Service\Build;
 
 use GuzzleHttp\Client;
 use App\Service\Logger;
+use App\Service\I18nService;
 use App\Config\AppConfig;
 
 class GitlabCiBuildProvider implements BuildProviderInterface
@@ -12,7 +13,7 @@ class GitlabCiBuildProvider implements BuildProviderInterface
     private string $baseUrl;
     private ?Logger $logger;
 
-    public function __construct(string $baseUrl, string $token, ?Logger $logger = null)
+    public function __construct(string $baseUrl, string $token, private I18nService $i18n, ?Logger $logger = null)
     {
         $this->baseUrl = rtrim($baseUrl, '/');
         $this->logger  = $logger;
@@ -128,7 +129,7 @@ class GitlabCiBuildProvider implements BuildProviderInterface
                 'pipeline_id' => $data['id'] ?? 0,
                 'iid'         => $data['iid'] ?? 0,
                 'web_url'     => $data['web_url'] ?? '',
-                'message'     => $resp->getStatusCode() < 400 ? 'ok' : ($data['message'] ?? '触发失败'),
+                'message'     => $resp->getStatusCode() < 400 ? 'ok' : ($data['message'] ?? $this->i18n->trans('build.trigger_failed')),
             ];
         } catch (\Exception $e) {
             $this->logger?->error('GitLab CI trigger 失败', ['project' => $projectId, 'ref' => $ref, 'error' => $e->getMessage()]);
@@ -146,7 +147,7 @@ class GitlabCiBuildProvider implements BuildProviderInterface
             $data = json_decode($resp->getBody(), true);
             return [
                 'success' => $resp->getStatusCode() < 400,
-                'message' => $resp->getStatusCode() < 400 ? 'retry 已触发' : ($data['message'] ?? 'retry 失败'),
+                'message' => $resp->getStatusCode() < 400 ? $this->i18n->trans('build.retry_triggered') : ($data['message'] ?? $this->i18n->trans('build.retry_failed')),
             ];
         } catch (\Exception $e) {
             $this->logger?->error('GitLab CI retry 失败', ['project' => $projectId, 'pipeline' => $pipelineId, 'error' => $e->getMessage()]);
@@ -164,7 +165,7 @@ class GitlabCiBuildProvider implements BuildProviderInterface
             $data = json_decode($resp->getBody(), true);
             return [
                 'success' => $resp->getStatusCode() < 400,
-                'message' => $resp->getStatusCode() < 400 ? 'cancel 已触发' : ($data['message'] ?? 'cancel 失败'),
+                'message' => $resp->getStatusCode() < 400 ? $this->i18n->trans('build.cancel_triggered') : ($data['message'] ?? $this->i18n->trans('build.cancel_failed')),
             ];
         } catch (\Exception $e) {
             $this->logger?->error('GitLab CI cancel 失败', ['project' => $projectId, 'pipeline' => $pipelineId, 'error' => $e->getMessage()]);
@@ -239,7 +240,7 @@ class GitlabCiBuildProvider implements BuildProviderInterface
             $data = json_decode($resp->getBody(), true);
             return [
                 'success' => $resp->getStatusCode() < 400,
-                'message' => $resp->getStatusCode() < 400 ? 'status 已回写' : ($data['message'] ?? '回写失败'),
+                'message' => $resp->getStatusCode() < 400 ? $this->i18n->trans('git.status_written') : ($data['message'] ?? $this->i18n->trans('git.writeback_failed')),
             ];
         } catch (\Exception $e) {
             $this->logger?->error('GitLab commit status 回写失败', ['project' => $projectId, 'sha' => $sha, 'error' => $e->getMessage()]);

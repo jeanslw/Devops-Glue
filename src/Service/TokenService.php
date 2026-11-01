@@ -33,7 +33,7 @@ class TokenService
      * 验证 cache 中的随机 token
      *
      * @param string $token Bearer token
-     * @return array{user: string, role: string}|null 验证成功返回用户信息，失败返回 null
+     * @return array{user: string, role: string, must_change: bool}|null 验证成功返回用户信息，失败返回 null
      */
     public function validate(string $token): ?array
     {
@@ -62,8 +62,9 @@ class TokenService
                     $currentRole = $role;
                 }
                 return [
-                    'user' => $user,
-                    'role' => $currentRole !== '' ? $currentRole : AppConfig::ROLE_ADMIN,
+                    'user'        => $user,
+                    'role'        => $currentRole !== '' ? $currentRole : AppConfig::ROLE_ADMIN,
+                    'must_change' => $state['must_change'],
                 ];
             }
         } catch (\Exception $e) {
@@ -77,27 +78,28 @@ class TokenService
      *
      * status 为 0 或查无此行 → active = false；查询异常 → active = true 且 role = null（不阻断已登录会话）。
      *
-     * @return array{active: bool, role: ?string}
+     * @return array{active: bool, role: ?string, must_change: bool}
      */
     private function accountState(string $username): array
     {
         try {
             $stmt = $this->pdo->prepare(
-                "SELECT status, role FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE username = ?"
+                "SELECT status, role, must_change_password FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE username = ?"
             );
             $stmt->execute([$username]);
             $row = $stmt->fetch(\PDO::FETCH_ASSOC);
             if ($row === false) {
-                return ['active' => false, 'role' => null];
+                return ['active' => false, 'role' => null, 'must_change' => false];
             }
             $status = $row['status'] ?? null;
             $active = $status === null ? true : (int)$status !== 0;
             return [
-                'active' => $active,
-                'role'   => isset($row['role']) ? (string)$row['role'] : null,
+                'active'      => $active,
+                'role'        => isset($row['role']) ? (string)$row['role'] : null,
+                'must_change' => ((int)($row['must_change_password'] ?? 0)) === 1,
             ];
         } catch (\Exception $e) {
-            return ['active' => true, 'role' => null];
+            return ['active' => true, 'role' => null, 'must_change' => false];
         }
     }
 
@@ -202,6 +204,30 @@ class TokenService
                 "DELETE FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key = ?"
             )->execute([AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . self::hashAdminToken($token)]);
         } catch (\Exception $e) {
+        }
+    }
+
+    /**
+     * 吊销某用户名下的全部登录会话 token（改密 / 重置密码后强制其所有设备下线）。
+     *
+     * cache token 的值形如 `username|role`，无独立 username 索引；
+     * 这里按前缀 + 值前缀匹配删除（cache 表规模很小，扫描可接受）。
+     */
+    public function revokeAllForUser(string $username): int
+    {
+        try {
+            $escaped = str_replace(['%', '_'], ['\\%', '\\_'], $username);
+            $stmt = $this->pdo->prepare(
+                "DELETE FROM " . AppConfig::TABLE_CACHE
+                . " WHERE cache_key LIKE ? ESCAPE '\\' AND value LIKE ? ESCAPE '\\'"
+            );
+            $stmt->execute([
+                AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . '%',
+                $escaped . '|%',
+            ]);
+            return (int)$stmt->rowCount();
+        } catch (\Exception $e) {
+            return 0;
         }
     }
 

@@ -49,6 +49,10 @@ class AuthMiddleware implements MiddlewareInterface
 
         $result = $this->tokenService->validate($token);
         if ($result) {
+            // 后端强制首次改密：must_change_password=1 时仅放行改密/登出，其余管理 API 一律拒绝
+            if (!empty($result['must_change']) && !$this->isPasswordChangeAllowed($request)) {
+                return $this->forbidden($request, 'auth.must_change_password');
+            }
             $permissions = $this->tokenService->loadPermissions($result['role']);
             return $handler->handle(
                 $request
@@ -203,6 +207,17 @@ class AuthMiddleware implements MiddlewareInterface
             }
         }
         return implode('/', $segments);
+    }
+
+    /**
+     * 待改密用户允许访问的端点：仅「修改密码」与「登出」，其余一律拒绝。
+     */
+    private function isPasswordChangeAllowed(Request $request): bool
+    {
+        $path = $request->getUri()->getPath();
+        // 仅精确匹配本人改密与登出，避免误放行管理员重置他人密码端点
+        return $path === '/api/admin/password'
+            || $path === '/api/admin/logout';
     }
 
     private function unauthorized(Request $request, string $messageKey): Response

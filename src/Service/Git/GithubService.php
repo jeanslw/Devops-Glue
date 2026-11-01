@@ -96,7 +96,7 @@ class GithubService implements GitProviderInterface
 
         $result = $this->request('POST', "/repos/{$owner}/{$repo}/statuses/{$sha}", ['json' => $body]);
         $ok = !isset($result['error']);
-        return ['success' => $ok, 'message' => $ok ? 'status 已回写' : ($result['error'] ?? '回写失败')];
+        return ['success' => $ok, 'message' => $ok ? $this->i18n->trans('git.status_written') : ($result['error'] ?? $this->i18n->trans('git.writeback_failed'))];
     }
 
     /**

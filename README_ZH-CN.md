@@ -69,7 +69,9 @@ composer install
 
 # 3. 配置环境
 cp config/app.env.example config/app.env
-# 编辑 config/app.env 填入实际凭证
+
+# 3.1 Docker 部署需复制根目录 .env，编辑 .env 填写 DB_USER / DB_PASS / DB_ROOT_PASS（以及 CD 相关项）；
+cp .env.example .env
 
 # 4. 启动（PHP 内置服务器或 Docker）
 php -S 0.0.0.0:8080 -t public/

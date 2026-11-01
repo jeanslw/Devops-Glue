@@ -18,16 +18,22 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 class UserController extends BaseAdminController
 {
     private AdminUserRepository $adminUserRepository;
+    private \App\Service\UserIdentityRepository $userIdentityRepository;
+    private \App\Service\TokenService $tokenService;
 
     public function __construct(
         \App\Service\I18nService $i18n,
         \App\Service\Settings $config,
         \App\Service\AppSettingRepository $appSettings,
         \App\Service\OperationLogRepository $operationLog,
-        AdminUserRepository $adminUserRepository
+        AdminUserRepository $adminUserRepository,
+        \App\Service\UserIdentityRepository $userIdentityRepository,
+        \App\Service\TokenService $tokenService
     ) {
         parent::__construct($i18n, $config, $appSettings, $operationLog);
         $this->adminUserRepository = $adminUserRepository;
+        $this->userIdentityRepository = $userIdentityRepository;
+        $this->tokenService = $tokenService;
     }
 
     public function userList(Request $request, Response $response): Response
@@ -240,6 +246,7 @@ class UserController extends BaseAdminController
             }
 
             $this->adminUserRepository->updatePassword($targetUser, PasswordHasher::hash($newPass));
+            $this->tokenService->revokeAllForUser($targetUser);
 
             $this->opLog()->record($this->currentUser, 'reset_user_password', $targetUser, [], $this->clientIp($request), 'success');
             return $this->output($response, ['success' => true, 'username' => $targetUser], $request);
@@ -331,7 +338,7 @@ class UserController extends BaseAdminController
                 return $this->jsonError($response, 'user.cannot_delete_admin', 403);
             }
 
-            $this->adminUserRepository->deleteUser($targetUser);
+            $this->adminUserRepository->deleteUserWithIdentities($this->userIdentityRepository, $targetUser);
             $this->opLog()->record($this->currentUser, 'delete_user', $targetUser, [], $this->clientIp($request), 'success');
             return $this->output($response, ['success' => true], $request);
         } catch (\Exception $e) {

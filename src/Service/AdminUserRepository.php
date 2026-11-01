@@ -219,6 +219,24 @@ class AdminUserRepository
         $this->pdo->prepare("DELETE FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE username = ?")->execute([$username]);
     }
 
+    /**
+     * 删除用户并一并清理其身份绑定（LDAP/OAuth identity），事务化避免孤儿数据。
+     * 同一 PDO 连接下跨两张表的删除要么都成功要么都回滚。
+     */
+    public function deleteUserWithIdentities(UserIdentityRepository $identityRepo, string $username): void
+    {
+        $username = $this->normalizeUsername($username);
+        $this->pdo->beginTransaction();
+        try {
+            $identityRepo->deleteByUsername($username);
+            $this->deleteUser($username);
+            $this->pdo->commit();
+        } catch (\Throwable $e) {
+            $this->pdo->rollBack();
+            throw $e;
+        }
+    }
+
     public function countByRole(string $role): int
     {
         $stmt = $this->pdo->prepare("SELECT count(*) FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE role = ?");

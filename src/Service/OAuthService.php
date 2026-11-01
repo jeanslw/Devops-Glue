@@ -137,35 +137,70 @@ class OAuthService
     public function consumeCode(string $code, string $clientId, string $redirectUri): ?array
     {
         $key = self::CODE_PREFIX . $code;
+        $driver = $this->pdo->getAttribute(\PDO::ATTR_DRIVER_NAME);
         try {
-            $stmt = $this->pdo->prepare(
-                "SELECT value FROM " . AppConfig::TABLE_CACHE
+            // MySQL：beginTransaction + SELECT ... FOR UPDATE 行锁；SQLite：BEGIN IMMEDIATE 立即取写锁，
+            // 规避「先 SELECT 后 DELETE」跨连接对称死锁，杜绝授权码被并发重复兑换。
+            if ($driver === 'sqlite') {
+                $this->pdo->exec('BEGIN IMMEDIATE');
+            } else {
+                $this->pdo->beginTransaction();
+            }
+            $lockSql = "SELECT value FROM " . AppConfig::TABLE_CACHE
                 . " WHERE cache_key = ? AND expires_at > ?"
-            );
+                . ($driver === 'mysql' ? ' FOR UPDATE' : '');
+            $stmt = $this->pdo->prepare($lockSql);
             $stmt->execute([$key, time()]);
             $row = $stmt->fetch(\PDO::FETCH_ASSOC);
             if (!$row) {
+                $this->endConsumeTx($driver, false);
                 return null;
             }
-
-            $this->pdo->prepare(
-                "DELETE FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key = ?"
-            )->execute([$key]);
-
             $data = json_decode($row['value'], true);
             if (!is_array($data)) {
+                $this->endConsumeTx($driver, false);
                 return null;
             }
-
+            // 在删除前完成 client_id / redirect_uri 校验，避免误消费合法授权码
             if (
                 ($data['client_id'] ?? '') !== $clientId
                 || ($data['redirect_uri'] ?? '') !== $redirectUri
             ) {
+                $this->endConsumeTx($driver, false);
                 return null;
             }
+            // 原子消费：仅当删除影响 1 行才算本次兑换成功
+            $del = $this->pdo->prepare(
+                "DELETE FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key = ?"
+            );
+            $del->execute([$key]);
+            if ($del->rowCount() !== 1) {
+                $this->endConsumeTx($driver, false);
+                return null;
+            }
+            $this->endConsumeTx($driver, true);
             return $data;
         } catch (\Throwable) {
+            try {
+                $this->endConsumeTx($driver, false);
+            } catch (\Throwable) {
+            }
             return null;
+        }
+    }
+
+    /**
+     * @param string $driver PDO 驱动名
+     * @param bool $commit true 提交，false 回滚
+     */
+    private function endConsumeTx(string $driver, bool $commit): void
+    {
+        if ($driver === 'sqlite') {
+            $this->pdo->exec($commit ? 'COMMIT' : 'ROLLBACK');
+        } elseif ($commit) {
+            $this->pdo->commit();
+        } else {
+            $this->pdo->rollBack();
         }
     }
 

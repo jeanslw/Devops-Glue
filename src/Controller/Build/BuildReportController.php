@@ -150,6 +150,13 @@ final class BuildReportController extends BaseBuildController
         if ($finishedAt === '') {
             return $this->jsonError($response, 'build.report_missing_finished_at', 400);
         }
+        // 校验时间戳：接受 ISO 8601 / YYYY-MM-DD HH:MM:SS，也兼容纯数字 epoch 秒（存量客户端可能上报）；
+        // 解析失败直接拒绝，避免下游 strtotime 失败时退化为字符串比较导致状态机判断失真。
+        $validFormat = preg_match('/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?$/', $finishedAt) === 1
+            || ctype_digit($finishedAt);
+        if (!$validFormat || @strtotime($finishedAt) === false) {
+            return $this->jsonError($response, 'build.report_invalid_finished_at', 400);
+        }
         if ($status === 'success' && $tag === '') {
             return $this->jsonError($response, 'build.report_success_requires_tag', 400);
         }
@@ -190,7 +197,7 @@ final class BuildReportController extends BaseBuildController
         try {
             $result = $p->report($projectId, $body);
 
-            if (!empty($result['success']) && $status === 'success' && ($result['action'] ?? '') !== 'ignored_stale') {
+            if (!empty($result['success']) && $status === 'success' && !in_array(($result['action'] ?? ''), ['ignored_stale', 'ignored_terminal'], true)) {
                 if (
                     !$this->recordPipelineTag(
                         $projectId,
@@ -240,26 +247,26 @@ final class BuildReportController extends BaseBuildController
     private function verifyRegistryTag(string $repo, string $tag): ?string
     {
         if (!$this->registryProvider) {
-            return '镜像仓库未配置，无法校验仓库与 tag 的真实性';
+            return $this->__('build.registry_unconfigured_verify');
         }
         if (!$this->isValidRegistryRepo($repo)) {
-            return 'registry_repository 格式错误（应为至少两段的 OCI 仓库名）';
+            return $this->__('build.registry_repo_format_verify');
         }
 
         try {
             if (!$this->registryProvider->repositoryExists($repo)) {
-                return '镜像仓库不存在：' . $repo . '（请核对 job_git_map 的 registry_repository）';
+                return $this->__('build.registry_repo_not_exist', ['repo' => $repo]);
             }
             $tags = $this->registryProvider->getTags($repo);
         } catch (\Throwable $e) {
-            return '镜像仓库不可达（' . $e->getMessage() . '），无法校验仓库与 tag';
+            return $this->__('build.registry_unreachable_verify', ['error' => $e->getMessage()]);
         }
 
         if (isset($tags['error'])) {
-            return '查询镜像仓库 tag 失败：' . $this->registryErrorMessage($tags) . '（仓库 ' . $repo . '）';
+            return $this->__('build.registry_tag_query_failed', ['error' => $this->registryErrorMessage($tags), 'repo' => $repo]);
         }
         if (!in_array($tag, $tags, true)) {
-            return '镜像仓库 ' . $repo . ' 中不存在 tag「' . $tag . '」：该 tag 的镜像尚未推送，或 tag 名拼写有误';
+            return $this->__('build.registry_tag_not_found', ['repo' => $repo, 'tag' => $tag]);
         }
         return null;
     }
@@ -272,23 +279,21 @@ final class BuildReportController extends BaseBuildController
     private function registryErrorMessage(array $err): string
     {
         $httpCode = $err['http_code'] ?? 0;
-        $msg      = $err['error'] ?? '未知错误';
+        $msg      = $err['error'] ?? $this->__('build.unknown_error');
         if ($httpCode === 0) {
-            if (str_contains($msg, '不存在')) {
-                return $msg;
-            }
-            return '镜像仓库不可达（' . $msg . '）';
+            // http_code 为 0 表示请求层未拿到响应（不可达/超时）；provider 的 not-found 已带 404 由上方分支处理
+            return $this->__('build.registry_unreachable_msg', ['msg' => $msg]);
         }
         if ($httpCode === 404) {
-            return '资源不存在（HTTP 404）';
+            return $this->__('build.registry_not_found_404');
         }
         if ($httpCode === 401 || $httpCode === 403) {
-            return '镜像仓库认证失败（HTTP ' . $httpCode . '），请检查后台「平台连接配置」里镜像仓库账号的权限';
+            return $this->__('build.registry_auth_failed_http', ['code' => (string) $httpCode]);
         }
         if ($httpCode >= 500) {
-            return '镜像仓库服务端异常（HTTP ' . $httpCode . '）';
+            return $this->__('build.registry_server_error', ['code' => (string) $httpCode]);
         }
-        return '镜像仓库返回 HTTP ' . $httpCode . '（' . $msg . '）';
+        return $this->__('build.registry_http_error_msg', ['code' => (string) $httpCode, 'msg' => $msg]);
     }
 
     private function recordPipelineTag(

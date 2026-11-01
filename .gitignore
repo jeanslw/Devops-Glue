@@ -2,6 +2,9 @@
 config/app.env
 app.env.local
 app.env.*.local
+.env
+# 真实本地 .env 不入库（从 .env.example 复制后填值）；.env.example 为模板，保持跟踪
+
 *.docx
 *.db
 

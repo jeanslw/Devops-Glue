@@ -192,14 +192,25 @@ class AdminAuthService
     {
         try {
             $key = self::loginFailKey($ip, $username);
-            $stmt = $this->pdo->prepare(
-                "SELECT value FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key = ? AND expires_at > ?"
+            $now = time();
+            $exp = $now + AppConfig::LOGIN_FAIL_LOCK_SECONDS;
+            // 先清理已过期行：保证锁定窗口到期后计数归零重新计数，再原子递增
+            $this->pdo->prepare(
+                "DELETE FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key = ? AND expires_at <= ?"
+            )->execute([$key, $now]);
+            // 原子递增：算术上下文里两驱动都会把数字字符串转数值，避免「先读出→应用层+1→回写」丢计数
+            $upd = $this->pdo->prepare(
+                "UPDATE " . AppConfig::TABLE_CACHE
+                . " SET value = value + 1, expires_at = ?"
+                . " WHERE cache_key = ?"
             );
-            $stmt->execute([$key, time()]);
-            $val = $stmt->fetchColumn();
-            $count = ($val === false ? 0 : (int)$val) + 1;
-            $sql = Database::sqlUpsert(AppConfig::TABLE_CACHE, 'cache_key, value, expires_at', '?, ?, ?');
-            $this->pdo->prepare($sql)->execute([$key, (string)$count, time() + AppConfig::LOGIN_FAIL_LOCK_SECONDS]);
+            $upd->execute([$exp, $key]);
+            if ($upd->rowCount() === 0) {
+                // 该行尚不存在（首次失败）：插入初始计数；并发首插仅可能丢失极少量，可接受
+                $this->pdo->prepare(
+                    "INSERT INTO " . AppConfig::TABLE_CACHE . " (cache_key, value, expires_at) VALUES (?, '1', ?)"
+                )->execute([$key, $exp]);
+            }
         } catch (\Throwable $e) {
             \App\Helper\Log::exception($e);
         }

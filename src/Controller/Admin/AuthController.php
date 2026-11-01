@@ -143,10 +143,8 @@ class AuthController extends BaseAdminController
             $this->adminUserRepository->updatePassword($username, $hash);
 
             try {
-                $header = $request->getHeaderLine('Authorization');
-                if (preg_match('/^Bearer\s+(.+)$/i', $header, $m)) {
-                    $this->tokenService->revoke($m[1]);
-                }
+                // 改密后吊销该用户全部会话 token，强制所有设备重新登录（含当前设备）
+                $this->tokenService->revokeAllForUser($username);
             } catch (\Exception $e) {
                 \App\Helper\Log::exception($e);
             }

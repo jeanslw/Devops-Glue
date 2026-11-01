@@ -53,6 +53,49 @@ class AppSettingRepository
             ->execute([$key]);
     }
 
+    // ─── ci_cache 通用读写（带过期） ───
+
+    /**
+     * 读 ci_cache；命中且未过期返回数组，否则 null。
+     *
+     * @return array<mixed>|null
+     */
+    public function getCache(string $key): ?array
+    {
+        try {
+            $stmt = $this->pdo->prepare(
+                "SELECT value FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key = ? AND expires_at > ?"
+            );
+            $stmt->execute([$key, time()]);
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if ($row === false) {
+                return null;
+            }
+            $data = json_decode((string)$row['value'], true);
+            return is_array($data) ? $data : null;
+        } catch (\Exception $e) {
+            return null;
+        }
+    }
+
+    /**
+     * 写 ci_cache（覆盖式，带过期秒数）。
+     *
+     * @param array<mixed> $value
+     */
+    public function setCache(string $key, array $value, int $ttlSeconds): void
+    {
+        try {
+            $sql = Database::sqlUpsert(
+                AppConfig::TABLE_CACHE,
+                'cache_key, value, expires_at',
+                '?, ?, ?'
+            );
+            $this->pdo->prepare($sql)->execute([$key, json_encode($value), time() + $ttlSeconds]);
+        } catch (\Exception $e) {
+        }
+    }
+
     private function getBoolFlag(string $key, bool $default): bool
     {
         $value = $this->getString($key);

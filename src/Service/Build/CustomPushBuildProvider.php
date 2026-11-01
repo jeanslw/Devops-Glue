@@ -137,7 +137,7 @@ class CustomPushBuildProvider implements BuildProviderInterface
             $logUrl = $stmt->fetchColumn();
 
             if (empty($logUrl)) {
-                return '无构建日志';
+                return $this->i18n->trans('build.no_build_log');
             }
 
 
@@ -145,23 +145,40 @@ class CustomPushBuildProvider implements BuildProviderInterface
 
             if (!$this->isSafeLogUrl((string) $logUrl)) {
                 $this->logger?->error('custom_push 日志 URL 校验失败（疑似 SSRF）', ['project' => $projectId, 'job' => $jobId]);
-                return '日志 URL 不合法（仅允许公网或内网 http/https 地址，禁止回环/链路本地地址），请直接访问：' . $logUrl;
+                return $this->i18n->trans('build.log_url_invalid', ['url' => (string) $logUrl]);
             }
 
 
 
+            // DNS pinning：把已校验过的安全 IP 通过 curl resolve 钉死，避免「先校验 DNS、
+            // 再交由 Guzzle 重新解析」之间的 rebinding 窗口（攻击者可在间隙将域名指向内网）。
+            $parts = parse_url((string) $logUrl);
+            $host  = strtolower((string) ($parts['host'] ?? ''));
+            $scheme = strtolower((string) ($parts['scheme'] ?? 'http'));
+            $port  = isset($parts['port']) ? (int) $parts['port'] : ($scheme === 'https' ? 443 : 80);
+            $ips   = $this->resolveHostIps($host);
+            $resolve = [];
+            foreach ($ips as $ip) {
+                $resolve[] = $host . ':' . $port . ':' . $ip;
+            }
             $client = new \GuzzleHttp\Client([
                 'timeout'         => 15,
                 'connect_timeout' => 5,
                 'http_errors'     => false,
                 'allow_redirects' => false,
+                'curl'            => ['resolve' => $resolve],
             ]);
             $resp = $client->get((string) $logUrl);
             $status = $resp->getStatusCode();
             if ($status >= 200 && $status < 300) {
-                return (string) $resp->getBody();
+                $body = (string) $resp->getBody();
+                $max  = 1_000_000; // 限制日志体大小，避免大响应占用内存
+                if (strlen($body) > $max) {
+                    $body = substr($body, 0, $max) . "\n" . $this->i18n->trans('build.log_truncated');
+                }
+                return $body;
             }
-            return '日志拉取失败 (HTTP ' . $status . ')，请直接访问：' . $logUrl;
+            return $this->i18n->trans('build.log_fetch_failed', ['code' => (string) $status, 'url' => (string) $logUrl]);
         } catch (\Exception $e) {
             $this->logger?->error('custom_push 日志拉取失败', ['project' => $projectId, 'job' => $jobId, 'error' => $e->getMessage()]);
             BuildProviderError::throwFor($e, '自定义推送');
@@ -253,36 +270,50 @@ class CustomPushBuildProvider implements BuildProviderInterface
 
     private function isSafeIpv6(string $ip): bool
     {
-        $n = strtolower($ip);
-        if (
-            $n === '::' || $n === '::1'
-            || str_starts_with($n, 'fe80:')
-            || str_starts_with($n, 'ff0')
-        ) {
+        $bin = @inet_pton($ip);
+        if ($bin === false || strlen($bin) !== 16) {
+            return false; // 无法解析为合法 IPv6 的地址一律拒绝（避免解析失败 fall-through 放行）
+        }
+        // 未指定 ::
+        if ($bin === str_repeat("\x00", 16)) {
             return false;
         }
-
-        $bin = @inet_pton($ip);
-        if ($bin !== false && strlen($bin) === 16) {
-            $embedded = null;
-            if (substr($bin, 0, 12) === "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff") {
-                $embedded = substr($bin, 12, 4);
-            } elseif (substr($bin, 0, 4) === "\x00\x64\xff\x9b") {
-                $embedded = substr($bin, 12, 4);
-            } elseif (substr($bin, 0, 2) === "\x20\x02") {
-                $embedded = substr($bin, 2, 4);
-            }
-            if ($embedded !== null) {
-                $unpacked = unpack('N', $embedded);
-                if ($unpacked === false) {
-                    return false;
-                }
-                $ip = long2ip($unpacked[1]);
-
-                return is_string($ip) ? $this->isSafeIp($ip) : false;
-            }
+        // 回环 ::1
+        if ($bin === str_repeat("\x00", 15) . "\x01") {
+            return false;
         }
-        return true;
+        $b0 = ord($bin[0]);
+        $b1 = ord($bin[1]);
+        // 链路本地 fe80::/10（含云元数据地址段）
+        if ($b0 === 0xFE && ($b1 & 0xC0) === 0x80) {
+            return false;
+        }
+        // 唯一本地地址 fd00::/8（私网，SSRF 范畴内按不可信处理）
+        if ($b0 === 0xFD) {
+            return false;
+        }
+        // 组播 ff00::/8
+        if ($b0 === 0xFF) {
+            return false;
+        }
+        // 嵌入 IPv4 的地址：取出 IPv4 部分复用 isSafeIp 判定
+        $embedded = null;
+        if (substr($bin, 0, 12) === "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff") {
+            $embedded = substr($bin, 12, 4);
+        } elseif (substr($bin, 0, 4) === "\x00\x64\xff\x9b") {
+            $embedded = substr($bin, 12, 4);
+        } elseif (substr($bin, 0, 2) === "\x20\x02") {
+            $embedded = substr($bin, 2, 4);
+        }
+        if ($embedded !== null) {
+            $unpacked = unpack('N', $embedded);
+            if ($unpacked === false) {
+                return false;
+            }
+            $v4 = long2ip($unpacked[1]);
+            return is_string($v4) ? $this->isSafeIp($v4) : false;
+        }
+        return true; // 其余为全局公网 IPv6 单播
     }
 
     // ── 上报（用户 CI 一次性回写终态结果） ─────────────────────────
@@ -354,14 +385,24 @@ class CustomPushBuildProvider implements BuildProviderInterface
 
         try {
             if ($existing) {
+                // 并发防护：终态 success 不可逆。UPDATE 增加 status != 'success' 条件，
+                // 若并发已被置为 success，受影响行数为 0，视为幂等忽略，避免重复写制品 / 通知。
                 $stmt = $this->pdo->prepare(
                     'UPDATE ' . AppConfig::TABLE_CUSTOM_BUILDS . '
                      SET ref = ?, sha = ?, variables_json = ?, status = ?, exit_code = ?,
                          log_url = ?, web_url = ?, started_at = ?, finished_at = ?
-                     WHERE job_name = ? AND pipeline_iid = ?'
+                     WHERE job_name = ? AND pipeline_iid = ? AND status != ?'
                 );
-                $stmt->execute([$ref, $sha, $varsJson, $status, $exitCode, $logUrl, $webUrl, $startedAt, $finishedAt, $jobName, $pipelineIid]);
-
+                $stmt->execute([$ref, $sha, $varsJson, $status, $exitCode, $logUrl, $webUrl, $startedAt, $finishedAt, $jobName, $pipelineIid, 'success']);
+                if ($stmt->rowCount() === 0) {
+                    $record = $this->findByIid($jobName, $pipelineIid);
+                    return [
+                        'success'      => true,
+                        'pipeline_id'  => (int) ($record['id'] ?? 0),
+                        'pipeline_iid' => $pipelineIid,
+                        'action'       => 'ignored_terminal',
+                    ];
+                }
                 $record = $this->findByIid($jobName, $pipelineIid);
                 return [
                     'success'      => true,

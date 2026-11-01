@@ -396,8 +396,8 @@ return [
         if ($config->isPlatformConfigured('gitlab')) {
             $glCfg = $config->getGitlabConfig();
             if (!empty($glCfg['base_url']) && !empty($glCfg['token'])) {
-                $registry->register(AppConfig::PROVIDER_GITLAB_CI, function () use ($glCfg, $logger) {
-                    return new GitlabCiBuildProvider($glCfg['base_url'], $glCfg['token'], $logger);
+                $registry->register(AppConfig::PROVIDER_GITLAB_CI, function () use ($glCfg, $logger, $c) {
+                    return new GitlabCiBuildProvider($glCfg['base_url'], $glCfg['token'], $c->get(I18nService::class), $logger);
                 });
             }
         }
@@ -538,7 +538,9 @@ return [
             $c->get(Settings::class),
             $c->get(AppSettingRepository::class),
             $c->get(OperationLogRepository::class),
-            $c->get(AdminUserRepository::class)
+            $c->get(AdminUserRepository::class),
+            $c->get(UserIdentityRepository::class),
+            $c->get(TokenService::class)
         );
     },
 
@@ -929,7 +931,8 @@ return [
             $c->has(ProviderRegistry::class) ? $c->get(ProviderRegistry::class) : null,
             $c->get('registryProvider'),
             $c->get(Settings::class),
-            $c->get(\PDO::class)
+            $c->get(\PDO::class),
+            $c->get(AppSettingRepository::class)
         );
     },
 
