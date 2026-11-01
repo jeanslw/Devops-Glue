@@ -267,6 +267,9 @@ class MappingManager
 
 
         foreach ($this->allMaps() as $m) {
+            if (($m['status'] ?? AppConfig::STATUS_ACTIVE) !== AppConfig::STATUS_ACTIVE) {
+                continue;
+            }
             $job = trim((string) ($m['job_name'] ?? ''));
             if ($job !== '' && $job === $projectPath) {
                 return $m;

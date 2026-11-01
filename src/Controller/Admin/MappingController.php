@@ -42,11 +42,6 @@ class MappingController extends BaseAdminController
         if (!$this->autoDiscover) {
             return $this->jsonError($response, 'map.discover_disabled', 503);
         }
-        $cacheKey = 'discover:result';
-        $cached = $this->appSettings->getCache($cacheKey);
-        if ($cached !== null) {
-            return $this->output($response, $cached, $request);
-        }
         try {
             $result = $this->autoDiscover->discover();
             $found = $result['found'];
@@ -67,7 +62,6 @@ class MappingController extends BaseAdminController
                     return $entry['job_name'] ?? null;
                 }, $found),
             ];
-            $this->appSettings->setCache($cacheKey, $payload, 60);
             return $this->output($response, $payload, $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.scan_failed') . ': ' . $e->getMessage(), 500);

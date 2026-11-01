@@ -207,13 +207,14 @@ class OAuthService
     /**
      * 签发访问令牌
      */
-    public function issueAccessToken(string $username, string $role, string $clientId): string
+    public function issueAccessToken(string $username, string $role, string $clientId, string $scope = ''): string
     {
         $token = bin2hex(random_bytes(32));
         $value = json_encode([
             'user'      => $username,
             'role'      => $role,
             'client_id' => $clientId,
+            'scope'     => $scope,
         ]);
         $sql = Database::sqlUpsert(AppConfig::TABLE_CACHE, 'cache_key, value, expires_at', '?, ?, ?');
         $this->pdo->prepare($sql)->execute([

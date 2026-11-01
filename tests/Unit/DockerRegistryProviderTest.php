@@ -106,7 +106,7 @@ class DockerRegistryProviderTest extends TestCase
     {
         $mock = new MockHandler([
             new Response(401, [
-                'WWW-Authenticate' => 'Bearer realm="http://auth.test/token",service="registry.test",scope="repository:team/app:pull"',
+                'WWW-Authenticate' => 'Bearer realm="http://registry.test/token",service="registry.test",scope="repository:team/app:pull"',
             ]),
             new Response(200, [], (string) json_encode(['token' => 'jwt-token'])),
             new Response(200, [], (string) json_encode(['tags' => ['v1']])),
@@ -116,7 +116,7 @@ class DockerRegistryProviderTest extends TestCase
         $this->assertSame(['v1'], $tags);
         $this->assertCount(3, $this->history);
         $tokenUri = $this->history[1]['request']->getUri();
-        $this->assertSame('auth.test', $tokenUri->getHost());
+        $this->assertSame('registry.test', $tokenUri->getHost());
         $this->assertSame('/token', $tokenUri->getPath());
         $this->assertStringContainsString('service=registry.test', $tokenUri->getQuery());
         $this->assertStringContainsString('scope=repository%3Ateam%2Fapp%3Apull', $tokenUri->getQuery());
@@ -204,7 +204,7 @@ class DockerRegistryProviderTest extends TestCase
         
         $mock = new MockHandler([
             new Response(401, [
-                'WWW-Authenticate' => 'Bearer realm="https://auth.test/token",service="registry.test",scope="repository:team/app:pull"',
+                'WWW-Authenticate' => 'Bearer realm="https://registry.test/token",service="registry.test",scope="repository:team/app:pull"',
             ]),
             new Response(200, [], (string) json_encode(['token' => 'jwt-token'])),
             new Response(200, [], (string) json_encode(['tags' => ['v1']])),
@@ -214,7 +214,7 @@ class DockerRegistryProviderTest extends TestCase
         $this->assertSame(['v1'], $tags);
         $this->assertCount(3, $this->history);
         $this->assertSame('https', $this->history[1]['request']->getUri()->getScheme());
-        $this->assertSame('auth.test', $this->history[1]['request']->getUri()->getHost());
+        $this->assertSame('registry.test', $this->history[1]['request']->getUri()->getHost());
         $this->assertStringContainsString('Basic ', $this->history[1]['request']->getHeaderLine('Authorization'));
         $this->assertSame('Bearer jwt-token', $this->history[2]['request']->getHeaderLine('Authorization'));
     }

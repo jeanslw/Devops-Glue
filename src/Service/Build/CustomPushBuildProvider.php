@@ -207,43 +207,6 @@ class CustomPushBuildProvider implements BuildProviderInterface
     }
 
     /**
-     * 校验 log_url 是否可被服务端安全拉取（防 SSRF）。
-     *
-     * 允许：http/https 协议；配置白名单时 host 须精确命中；目标主机解析后的所有 IP
-     * 均为全局单播或私网地址。
-     * 禁止：file/gopher 等协议；回环（127.0.0.0/8、::1）；链路本地（169.254.0.0/16
-     * 含云元数据、fe80::/10）；未指定/保留段（0.0.0.0/8、240.0.0.0/4）；组播；
-     * 无法解析的域名；白名单外的 host（白名单非空时）。
-     */
-    // @phpstan-ignore-next-line method.unused
-    private function isSafeLogUrl(string $url): bool
-    {
-        $parts  = parse_url($url);
-        $scheme = strtolower((string) ($parts['scheme'] ?? ''));
-        $host   = strtolower((string) ($parts['host'] ?? ''));
-        if (!in_array($scheme, ['http', 'https'], true) || $host === '') {
-            return false;
-        }
-
-
-
-        if ($this->allowedLogHosts !== [] && !in_array($host, $this->allowedLogHosts, true)) {
-            return false;
-        }
-
-
-        if (filter_var($host, FILTER_VALIDATE_IP) !== false) {
-            return $this->isSafeIp($host);
-        }
-
-
-
-        // 复用 resolveAndValidate：解析 + 校验一次完成，保证与 getJobTrace 用同一份已验证 IP，
-        // 避免二次解析的 rebinding 窗口。
-        return $this->resolveAndValidate($host) !== null;
-    }
-
-    /**
      * 解析域名并逐个校验 IP；全部安全返回已验证 IP 列表，任一不安全或解析失败返回 null。
      * getJobTrace 解析 + 校验一次性完成，杜绝二次解析的 DNS rebinding 窗口。
      *
@@ -326,8 +289,8 @@ class CustomPushBuildProvider implements BuildProviderInterface
         if ($b0 === 0xFE && ($b1 & 0xC0) === 0x80) {
             return false;
         }
-        // 唯一本地地址 fd00::/8（私网，SSRF 范畴内按不可信处理）
-        if ($b0 === 0xFD) {
+        // 唯一本地地址 fc00::/7（含 fc00::/8 与 fd00::/8，私网，SSRF 范畴内按不可信处理）
+        if (($b0 & 0xFE) === 0xFC) {
             return false;
         }
         // 组播 ff00::/8
@@ -423,55 +386,95 @@ class CustomPushBuildProvider implements BuildProviderInterface
 
         try {
             if ($existing) {
-                // 并发防护：终态 success 不可逆。UPDATE 增加 status != 'success' 条件，
-                // 若并发已被置为 success，受影响行数为 0，视为幂等忽略，避免重复写制品 / 通知。
-                $stmt = $this->pdo->prepare(
-                    'UPDATE ' . AppConfig::TABLE_CUSTOM_BUILDS . '
-                     SET ref = ?, sha = ?, variables_json = ?, status = ?, exit_code = ?,
-                         log_url = ?, web_url = ?, started_at = ?, finished_at = ?
-                     WHERE job_name = ? AND pipeline_iid = ? AND status != ?
-                       AND (finished_at IS NULL OR finished_at <= ?)'
-                );
-                $stmt->execute([$ref, $sha, $varsJson, $status, $exitCode, $logUrl, $webUrl, $startedAt, $finishedAt, $jobName, $pipelineIid, 'success', $finishedAt]);
-                if ($stmt->rowCount() === 0) {
-                    $record = $this->findByIid($jobName, $pipelineIid);
-                    return [
-                        'success'      => true,
-                        'pipeline_id'  => (int) ($record['id'] ?? 0),
-                        'pipeline_iid' => $pipelineIid,
-                        'action'       => 'ignored_terminal',
-                    ];
-                }
-                $record = $this->findByIid($jobName, $pipelineIid);
-                return [
-                    'success'      => true,
-                    'pipeline_id'  => (int) ($record['id'] ?? 0),
-                    'pipeline_iid' => $pipelineIid,
-                    'action'       => 'updated',
-                ];
+                // 并发防护：终态 success 不可逆（受保护 UPDATE）。
+                return $this->reconcileExisting($jobName, $pipelineIid, $ref, $sha, $varsJson, $status, $exitCode, $logUrl, $webUrl, $startedAt, $finishedAt);
             }
 
-            $sql = \App\Service\Database::sqlUpsert(
-                AppConfig::TABLE_CUSTOM_BUILDS,
-                'job_name, pipeline_iid, ref, sha, variables_json, status, exit_code, log_url, web_url, triggered_at, started_at, finished_at',
-                '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?'
-            );
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->execute([
-                $jobName, $pipelineIid, $ref, $sha, $varsJson, $status, $exitCode, $logUrl, $webUrl,
-                date('Y-m-d H:i:s'), $startedAt, $finishedAt,
-            ]);
-
-            return [
-                'success'      => true,
-                'pipeline_id'  => (int) $this->pdo->lastInsertId(),
-                'pipeline_iid' => $pipelineIid,
-                'action'       => 'created',
-            ];
+            // 首次上报：先 INSERT（唯一键 job_name+pipeline_iid 天然防并发重复）；
+            // 若因并发已被其它请求插入而冲突，则回落到「终态 success 不可逆」的受保护 UPDATE，
+            // 避免后到的 failed 用 REPLACE 覆盖先写成功的记录（A-01）。
+            $insertSql = 'INSERT INTO ' . AppConfig::TABLE_CUSTOM_BUILDS . '
+                (job_name, pipeline_iid, ref, sha, variables_json, status, exit_code, log_url, web_url, triggered_at, started_at, finished_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+            try {
+                $stmt = $this->pdo->prepare($insertSql);
+                $stmt->execute([
+                    $jobName, $pipelineIid, $ref, $sha, $varsJson, $status, $exitCode, $logUrl, $webUrl,
+                    date('Y-m-d H:i:s'), $startedAt, $finishedAt,
+                ]);
+                return [
+                    'success'      => true,
+                    'pipeline_id'  => (int) $this->pdo->lastInsertId(),
+                    'pipeline_iid' => $pipelineIid,
+                    'action'       => 'created',
+                ];
+            } catch (\PDOException $e) {
+                if (!$this->isUniqueViolation($e)) {
+                    throw $e;
+                }
+                // 并发首插冲突：回落到受保护 UPDATE（不覆盖 success 终态）
+                return $this->reconcileExisting($jobName, $pipelineIid, $ref, $sha, $varsJson, $status, $exitCode, $logUrl, $webUrl, $startedAt, $finishedAt);
+            }
         } catch (\Exception $e) {
             $this->logger?->error('custom_push report 失败', ['project' => $jobName, 'error' => $e->getMessage()]);
             BuildProviderError::throwFor($e, '自定义推送');
         }
+    }
+
+    /**
+     * 受保护 UPDATE：终态 success 不可逆。仅当目标行当前不是 success 且时序不更旧时才覆盖；
+     * 命中 success 终态或更新更旧记录时影响 0 行，调用方据此返回 ignored_terminal。
+     * 首次上报并发冲突（唯一键重复）也回落到此，确保后到的 failed 不会用覆盖写掉先写成功的记录（A-01）。
+     *
+     * @param string|null $varsJson
+     * @param string|null $exitCode
+     * @param string|null $startedAt
+     * @param string|null $finishedAt
+     *
+     * @return array{success:bool, pipeline_id:int, pipeline_iid:int, action:string}
+     */
+    private function reconcileExisting(
+        string $jobName,
+        int $pipelineIid,
+        string $ref,
+        string $sha,
+        $varsJson,
+        string $status,
+        $exitCode,
+        string $logUrl,
+        string $webUrl,
+        $startedAt,
+        $finishedAt
+    ): array {
+        $stmt = $this->pdo->prepare(
+            'UPDATE ' . AppConfig::TABLE_CUSTOM_BUILDS . '
+             SET ref = ?, sha = ?, variables_json = ?, status = ?, exit_code = ?,
+                 log_url = ?, web_url = ?, started_at = ?, finished_at = ?
+             WHERE job_name = ? AND pipeline_iid = ? AND status != ?
+               AND (finished_at IS NULL OR finished_at <= ?)'
+        );
+        $stmt->execute([$ref, $sha, $varsJson, $status, $exitCode, $logUrl, $webUrl, $startedAt, $finishedAt, $jobName, $pipelineIid, 'success', $finishedAt]);
+        $record = $this->findByIid($jobName, $pipelineIid);
+        $action = $stmt->rowCount() === 0 ? 'ignored_terminal' : 'updated';
+
+        return [
+            'success'      => true,
+            'pipeline_id'  => (int) ($record['id'] ?? 0),
+            'pipeline_iid' => $pipelineIid,
+            'action'       => $action,
+        ];
+    }
+
+    /**
+     * 判断是否为唯一键冲突（并发首插冲突），跨驱动兼容 MySQL / SQLite。
+     */
+    private function isUniqueViolation(\PDOException $e): bool
+    {
+        $code = (string) $e->getCode();
+        if (in_array($code, ['23000', '23505'], true)) {
+            return true;
+        }
+        return (bool) preg_match('/UNIQUE constraint failed|Duplicate entry/i', $e->getMessage());
     }
 
     /**

@@ -408,6 +408,19 @@ class CustomPushBuildProviderTest extends TestCase
         $this->assertStringContainsString('日志 URL 不合法', $provider->getJobTrace('jobA', $id));
     }
 
+    public function testGetJobTraceRejectsUniqueLocalIpv6(): void
+    {
+        // ULA fc00::/7（含 fc00::/8 与 fd00::/8）按不可信地址拒绝，防止绕过 SSRF 防护
+        $provider = $this->makeProvider();
+        $provider->report('jobA', [
+            'pipeline_iid' => 95, 'status' => 'success', 'finished_at' => '2026-08-18 10:05:30',
+            'log_url' => 'http://[fc00::1]/build.log',
+        ]);
+        $id = (int) $provider->findByIid('jobA', 95)['id'];
+
+        $this->assertStringContainsString('日志 URL 不合法', $provider->getJobTrace('jobA', $id));
+    }
+
     // ── getVariables ──
 
     public function testGetVariablesEmptyByDefault(): void

@@ -150,16 +150,13 @@ class MappingManagerTest extends TestCase
         $this->assertSame('java/registry', $r['projectId']);
     }
 
-    public function testDisabledProviderJobNameNotHijackedByOtherProviderCurrentPath(): void
+    public function testJobNameTakesPrecedenceOverOtherProviderCurrentPath(): void
     {
-        
-        
-        
         $this->insertMap([
             'job_name'       => 'jeanslw/Devops_CD',
             'build_provider' => AppConfig::PROVIDER_GITEA_CI,
             'current_path'   => 'jeanslw/Devops_CD',
-            'status'         => AppConfig::STATUS_PENDING,
+            'status'         => AppConfig::STATUS_ACTIVE,
         ]);
         $this->insertMap([
             'job_name'       => 'python/Devops_CD',
@@ -169,9 +166,32 @@ class MappingManagerTest extends TestCase
         ]);
 
         $r = $this->makeManager()->resolveProject('jeanslw/Devops_CD');
-        
+
         $this->assertSame(AppConfig::PROVIDER_GITEA_CI, $r['provider']);
         $this->assertSame('jeanslw/Devops_CD', $r['projectId']);
+    }
+
+    public function testPendingMapIsNotResolved(): void
+    {
+        // P1 #4 回归：pending 映射不应被解析执行，须由 active 映射接管
+        $this->insertMap([
+            'job_name'       => 'pending/job',
+            'build_provider' => AppConfig::PROVIDER_GITEA_CI,
+            'current_path'   => 'pending/job',
+            'status'         => AppConfig::STATUS_PENDING,
+        ]);
+        $this->insertMap([
+            'job_name'       => 'active/job',
+            'build_provider' => AppConfig::PROVIDER_JENKINS,
+            'current_path'   => 'pending/job',
+            'status'         => AppConfig::STATUS_ACTIVE,
+        ]);
+
+        $r = $this->makeManager()->resolveProject('pending/job');
+
+        // pending 映射未被解析：provider 应为 active 的 jenkins，而非 pending 的 gitea
+        $this->assertSame(AppConfig::PROVIDER_JENKINS, $r['provider']);
+        $this->assertNotSame(AppConfig::PROVIDER_GITEA_CI, $r['provider']);
     }
 
     public function testDashPathIsNotNormalizedToSlashJob(): void

@@ -174,7 +174,8 @@ class OAuthController extends BaseController
         $accessToken = $this->oauth->issueAccessToken(
             (string)$data['user'],
             (string)$data['role'],
-            $clientId
+            $clientId,
+            (string)($data['scope'] ?? '')
         );
 
         $scope = (string)($data['scope'] ?? '');
@@ -189,7 +190,7 @@ class OAuthController extends BaseController
 
         if ($this->hasOpenidScope($scope)) {
             $payload['id_token'] = $this->oidc->signIdToken(
-                $this->buildIdTokenClaims((string)$data['user'], (string)$data['role'], $this->resolveIssuer($request)),
+                $this->buildIdTokenClaims((string)$data['user'], (string)$data['role'], $this->resolveIssuer($request), $scope),
                 $clientId,
                 $nonce
             );
@@ -222,17 +223,24 @@ class OAuthController extends BaseController
 
         $username  = (string)$data['user'];
         $role      = (string)($data['role'] ?? '');
+        $scopes    = $this->scopeList((string)($data['scope'] ?? ''));
         $emailInfo = $this->resolveEmailInfo($username);
-        $response->getBody()->write((string) json_encode([
+        $claims = [
             'sub'                => $username,
             'username'           => $username,
             'preferred_username' => $username,
             'name'               => $username,
-            'email'              => $emailInfo['email'],
-            'email_verified'     => $emailInfo['verified'],
             'role'               => $role,
-            'groups'             => $this->oidc->groupsFromRole($role),
-        ]));
+        ];
+        // P2 #6：仅在对应 scope 授权时返回敏感声明（email / groups）
+        if (in_array('email', $scopes, true)) {
+            $claims['email'] = $emailInfo['email'];
+            $claims['email_verified'] = $emailInfo['verified'];
+        }
+        if (in_array('groups', $scopes, true)) {
+            $claims['groups'] = $this->oidc->groupsFromRole($role);
+        }
+        $response->getBody()->write((string) json_encode($claims));
 
         return $response->withHeader('Content-Type', 'application/json');
     }
@@ -254,12 +262,15 @@ class OAuthController extends BaseController
             return $this->oauthError($response, 'invalid_token', 401);
         }
 
+        $scopes = $this->scopeList((string)($data['scope'] ?? ''));
         $emailInfo = $this->resolveEmailInfo((string)$data['user']);
-        $response->getBody()->write((string) json_encode([[
+        // P2 #6：email 端点仅在 email scope 授权时返回邮箱
+        $emails = in_array('email', $scopes, true) ? [[
             'email'    => $emailInfo['email'],
             'primary'  => true,
             'verified' => $emailInfo['verified'],
-        ]]));
+        ]] : [];
+        $response->getBody()->write((string) json_encode($emails));
         return $response->withHeader('Content-Type', 'application/json');
     }
 
@@ -285,6 +296,17 @@ class OAuthController extends BaseController
     }
 
     /**
+     * 将 scope 字符串拆分为数组
+     *
+     * @return list<string>
+     */
+    private function scopeList(string $scope): array
+    {
+        $parts = preg_split('/\s+/', trim($scope));
+        return is_array($parts) ? $parts : [];
+    }
+
+    /**
      * 取用户邮箱：实时查库（token 期内 email 变更即时生效）；
      * 用户不存在或 email 为空时退回 username@devops-glue.local 占位（客户端要求 email 非空）。
      *
@@ -295,7 +317,7 @@ class OAuthController extends BaseController
         $user  = $this->users->findByUsername($username);
         $email = trim((string)($user['email'] ?? ''));
         if ($email !== '') {
-            return ['email' => $email, 'verified' => true];
+            return ['email' => $email, 'verified' => false];
         }
 
 
@@ -317,39 +339,31 @@ class OAuthController extends BaseController
     /**
      * 组装 id_token 的 claims（iss/sub 由 OidcService 补 exp/iat/aud/nonce）
      *
-     * 新增 claim（如 P2 计划的 `systems`）必须同时改 4 处，漏掉第 2 处该 claim 会被丢弃
-     * （签出的 id_token 里没有它，也不报错）：
-     *   1. 本方法：组装取值；
-     *   2. `OidcService::OPTIONAL_CLAIMS`：透传白名单（关键）；
-     *   3. `OidcService::CLAIMS_SUPPORTED`：discovery 的 `claims_supported` 声明；
-     *   4. `userinfo()` 的返回数组：若该 claim 也要在 userinfo 暴露。
-     * 对应测试：`tests/Unit/OidcServiceTest.php` 的两条白名单交叉断言。
-     *
      * @return array<string,mixed>
      */
-    private function buildIdTokenClaims(string $username, string $role, string $issuer): array
+    private function buildIdTokenClaims(string $username, string $role, string $issuer, string $scope): array
     {
         $emailInfo = $this->resolveEmailInfo($username);
-        return [
+        $scopes    = $this->scopeList($scope);
+        $claims = [
             'iss'                => $issuer,
             'sub'                => $username,
             'name'               => $username,
             'preferred_username' => $username,
-            'email'              => $emailInfo['email'],
-            'email_verified'     => $emailInfo['verified'],
-            'groups'             => $this->oidc->groupsFromRole($role),
         ];
+        // P2 #6：仅在对应 scope 授权时返回敏感声明（email / groups）
+        if (in_array('email', $scopes, true)) {
+            $claims['email'] = $emailInfo['email'];
+            $claims['email_verified'] = $emailInfo['verified'];
+        }
+        if (in_array('groups', $scopes, true)) {
+            $claims['groups'] = $this->oidc->groupsFromRole($role);
+        }
+        return $claims;
     }
 
     /**
      * 确定 issuer：优先后台 OIDC 配置的 issuer（DB），缺省从当前请求 scheme+host 推导
-     *
-     * 推导路径有意不读 X-Forwarded-Proto / X-Forwarded-Host（可伪造，会污染 discovery 文档），
-     * 因此经 nginx / Ingress 反向代理时，推导出的 issuer 很可能是内网地址（如 http://devops-glue），
-     * 有两种后果：一是 OIDC 客户端 `iss` 校验失败；二是更隐蔽的，discovery 的 `jwks_uri` 也指向内网，
-     * 客户端拉不到公钥，表现为验签失败而不是网络不通，容易误判为密钥问题。
-     * 因此凡经反向代理对外提供 SSO 的部署，必须在后台 OIDC 配置页设置 issuer=<对外地址>；
-     *   联调前核对方式：`curl -s <issuer>/.well-known/openid-configuration | jq .issuer,.jwks_uri`。
      */
     private function resolveIssuer(Request $request): string
     {

@@ -183,6 +183,9 @@ class RbacController extends BaseController
             }
 
             $this->adminUserRepository->updateUser($targetUser, $passwordHash, $canonicalRole);
+            if ($passwordHash !== null) {
+                $this->tokenService->revokeAllForUser($targetUser);
+            }
             return $this->output($response, ['success' => true], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.modify_failed') . ': ' . $e->getMessage(), 500);

@@ -338,7 +338,7 @@ class DockerRegistryProvider implements RegistryProviderInterface
 
         if ($res->getStatusCode() === 401) {
             $challenge = $res->getHeaderLine('WWW-Authenticate');
-            if (stripos($challenge, 'bearer') !== false && $this->fetchToken($challenge)) {
+            if (stripos($challenge, 'bearer') !== false && $this->fetchToken($challenge, $this->registryHost())) {
                 // 重新计算请求头：fetchToken 已写入 Bearer token，必须用新头重试
                 $headers = array_merge($this->authHeaders(), $extraHeaders);
                 try {
@@ -362,7 +362,22 @@ class DockerRegistryProvider implements RegistryProviderInterface
         return $res;
     }
 
-    private function fetchToken(string $challenge): bool
+    /**
+     * 取 registry 主机名（来自 client 的 base_uri，而非请求相对路径），用于 Bearer realm 同源校验。
+     */
+    private function registryHost(): string
+    {
+        $base = $this->client->getConfig('base_uri');
+        if ($base instanceof \Psr\Http\Message\UriInterface) {
+            $baseStr = (string) $base;
+        } else {
+            $baseStr = is_string($base) ? $base : '';
+        }
+        $host = parse_url($baseStr, PHP_URL_HOST);
+        return is_string($host) ? $host : '';
+    }
+
+    private function fetchToken(string $challenge, string $registryHost): bool
     {
         $params = [];
         if (preg_match_all('/(\w+)="([^"]*)"/', $challenge, $matches, PREG_SET_ORDER)) {
@@ -372,6 +387,13 @@ class DockerRegistryProvider implements RegistryProviderInterface
         }
         $realm = $params['realm'] ?? '';
         if ($realm === '') {
+            return false;
+        }
+
+        // P2 #7：Bearer realm 主机必须与 registry 主机同源，避免恶意 registry 把 Basic 凭据诱导转发到任意主机
+        $realmHost = (string) parse_url($realm, PHP_URL_HOST);
+        if ($registryHost === '' || $realmHost === '' || $realmHost !== $registryHost) {
+            $this->logger?->warning('Bearer realm 主机与 registry 主机不一致，拒绝转发凭据', ['realm' => $realm, 'registry_host' => $registryHost]);
             return false;
         }
 

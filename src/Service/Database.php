@@ -120,13 +120,14 @@ class Database
         $autoMigrate = (self::$config['auto_migrate'] ?? true);
         $versionKey  = $autoMigrate ? self::SCHEMA_VERSION_KEY : self::SEED_VERSION_KEY;
         $recorded    = self::recordedVersion($versionKey);
-        $needMark    = false;
         $seedMode    = self::SEED_MODE_PRUNE;
+
+        self::ensureCacheTable();
 
         // 版本变更（部署）时才执行一次建表/补列/数据自愈/种子/漂移检测，避免每请求重复 SQL。
         if (!self::isVersionCurrent($recorded)) {
             $seedMode = self::isVersionAhead($recorded) ? self::SEED_MODE_MERGE : self::SEED_MODE_PRUNE;
-            self::runExclusively($versionKey, function () use ($autoMigrate, $seedMode): void {
+            self::runExclusively($versionKey, function () use ($autoMigrate, $seedMode, $recorded): void {
                 $key = $autoMigrate ? self::SCHEMA_VERSION_KEY : self::SEED_VERSION_KEY;
                 if (self::isVersionCurrent(self::recordedVersion($key))) {
                     return;
@@ -144,21 +145,17 @@ class Database
                 self::seedAdmin();
                 self::verifySeed();
                 self::logSchemaListDriftIfAny(self::pdo());
+                if ($autoMigrate) {
+                    self::markSchemaCurrent();
+                    self::noteVersionTransition(self::SCHEMA_VERSION_KEY, $recorded, $seedMode, 'schema');
+                } else {
+                    self::markSeedCurrent();
+                    self::noteVersionTransition(self::SEED_VERSION_KEY, $recorded, $seedMode, 'seed');
+                }
             });
-            $needMark = true;
         }
 
         self::seedOidcConfigFromEnvIfEmpty();
-
-        if ($needMark) {
-            if ($autoMigrate) {
-                self::markSchemaCurrent();
-                self::noteVersionTransition(self::SCHEMA_VERSION_KEY, $recorded, $seedMode, 'schema');
-            } else {
-                self::markSeedCurrent();
-                self::noteVersionTransition(self::SEED_VERSION_KEY, $recorded, $seedMode, 'seed');
-            }
-        }
         self::assertDataEncKeyPresent(self::pdo());
         self::warnDeprecatedEnvKeys();
         self::warnOidcSigningKeyIssues();
@@ -331,7 +328,6 @@ class Database
                     );
                 }
             }
-            // 无论本次是否真的播种都打标：保证「是否自动播种」只判定一次，后续空表不再被反复复活。
             self::writeAppSetting($pdo, self::OIDC_ENV_SEED_KEY, '1');
         } catch (\Throwable $e) {
             \App\Helper\Log::exception($e);
@@ -1279,6 +1275,34 @@ class Database
      * @param string  $waitKey   竞争者轮询对齐的版本键（自动模式 = SCHEMA_VERSION_KEY、手动模式 = SEED_VERSION_KEY）
      * @param \Closure $critical  需要互斥执行的迁移动作
      */
+    /**
+     * 预先创建 ci_cache 锁表（A-07）：冷启动在空库时，runExclusively 依赖该表实现迁移互斥；
+     * 若表不存在，多个 worker 会绕过锁并发执行迁移。此处用 CREATE TABLE IF NOT EXISTS 先建好该表。
+     */
+    private static function ensureCacheTable(): void
+    {
+        $pdo = self::pdo();
+        try {
+            $pdo->query('SELECT 1 FROM cache LIMIT 1');
+            return;
+        } catch (\Throwable $e) {
+        }
+        $isMySQL = self::$driver === 'mysql';
+        if ($isMySQL) {
+            self::buildTable($pdo, \App\Config\AppConfig::TABLE_CACHE, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_CACHE . " (
+                cache_key VARCHAR(255) PRIMARY KEY,
+                `value` MEDIUMTEXT NOT NULL,
+                expires_at INTEGER
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        } else {
+            self::buildTable($pdo, \App\Config\AppConfig::TABLE_CACHE, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_CACHE . " (
+                cache_key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                expires_at INTEGER
+            )");
+        }
+    }
+
     private static function runExclusively(string $waitKey, \Closure $critical): void
     {
         $token = self::tryAcquireLock(self::MIGRATION_LOCK_KEY, self::MIGRATION_LOCK_TTL);

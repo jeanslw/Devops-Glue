@@ -99,8 +99,26 @@ class TokenService
                 'must_change' => ((int)($row['must_change_password'] ?? 0)) === 1,
             ];
         } catch (\Exception $e) {
-            return ['active' => true, 'role' => null, 'must_change' => false];
+            // schema 迁移兼容（表 / 列缺失）时沿用缓存角色、不锁定会话；
+            // 其余数据库异常一律 fail-closed，避免停用 / 降权账户会话仍可用。
+            if ($e instanceof \PDOException && $this->isSchemaCompatError($e)) {
+                return ['active' => true, 'role' => null, 'must_change' => false];
+            }
+            return ['active' => false, 'role' => null, 'must_change' => false];
         }
+    }
+
+    /**
+     * 判断是否为 schema 迁移期间的兼容错误（表 / 列缺失）：
+     * 升级瞬间表或列尚未补齐，应沿用旧行为（不锁定会话）；其他数据库异常才 fail-closed。
+     */
+    private function isSchemaCompatError(\PDOException $e): bool
+    {
+        $code = (string) $e->getCode();
+        if (in_array($code, ['42S02', '42S22', '42703'], true)) {
+            return true;
+        }
+        return (bool) preg_match('/no such table|no such column|unknown column/i', $e->getMessage());
     }
 
     /**

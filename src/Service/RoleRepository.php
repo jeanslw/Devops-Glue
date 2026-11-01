@@ -108,11 +108,7 @@ class RoleRepository
         $stmt = $this->pdo->prepare("INSERT INTO " . AppConfig::TABLE_ROLE_PERMISSIONS . " (role_id, perm_key) VALUES (?, ?)");
         foreach ($permKeys as $pk) {
             if (in_array($pk, $validKeys, true)) {
-                try {
-                    $stmt->execute([$roleId, $pk]);
-                } catch (\Exception $e) {
-                    \App\Helper\Log::exception($e);
-                }
+                $stmt->execute([$roleId, $pk]);
             }
         }
     }

@@ -150,11 +150,21 @@ final class BuildReportController extends BaseBuildController
         if ($finishedAt === '') {
             return $this->jsonError($response, 'build.report_missing_finished_at', 400);
         }
-        // 校验时间戳：接受 ISO 8601 / YYYY-MM-DD HH:MM:SS，也兼容纯数字 epoch 秒（存量客户端可能上报）；
-        // 解析失败直接拒绝，避免下游 strtotime 失败时退化为字符串比较导致状态机判断失真。
-        $validFormat = preg_match('/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?$/', $finishedAt) === 1
-            || ctype_digit($finishedAt);
-        if (!$validFormat || @strtotime($finishedAt) === false) {
+        $isIso   = preg_match('/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?$/', $finishedAt) === 1;
+        $isEpoch = ctype_digit($finishedAt);
+        if (!$isIso && !$isEpoch) {
+            return $this->jsonError($response, 'build.report_invalid_finished_at', 400);
+        }
+        if ($isEpoch) {
+            $ts = (int) $finishedAt;
+            if (strlen($finishedAt) > 11) {
+                $ts = intdiv($ts, 1000);
+            }
+            if ($ts < 946684800 || $ts > 32503680000) {
+                return $this->jsonError($response, 'build.report_invalid_finished_at', 400);
+            }
+            $finishedAt = date('Y-m-d H:i:s', $ts);
+        } elseif (@strtotime($finishedAt) === false) {
             return $this->jsonError($response, 'build.report_invalid_finished_at', 400);
         }
         if ($status === 'success' && $tag === '') {

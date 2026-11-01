@@ -68,6 +68,12 @@ class RoleController extends BaseAdminController
         $name = trim($body['name'] ?? '');
         $desc = trim($body['description'] ?? '');
         $perms = $body['permissions'] ?? [];
+        if ($this->currentRole !== AppConfig::ROLE_SUPER_ADMIN) {
+            $denied = array_diff(array_map('strval', (array) $perms), $this->userPermissions);
+            if ($denied !== []) {
+                return $this->jsonError($response, 'user.permission_escalation', 403);
+            }
+        }
         if ($name === '') {
             return $this->jsonError($response, 'user.invalid_username', 400);
         }
@@ -116,6 +122,13 @@ class RoleController extends BaseAdminController
             }
             if ($r['is_system']) {
                 return $this->jsonError($response, 'user.cannot_create_admin', 403);
+            }
+
+            if ($perms !== null && $this->currentRole !== AppConfig::ROLE_SUPER_ADMIN) {
+                $denied = array_diff(array_map('strval', (array) $perms), $this->userPermissions);
+                if ($denied !== []) {
+                    return $this->jsonError($response, 'user.permission_escalation', 403);
+                }
             }
 
             $sets = [];

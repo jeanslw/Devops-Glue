@@ -200,6 +200,9 @@ class UserController extends BaseAdminController
             }
 
             $this->adminUserRepository->updateUser($targetUser, $passwordHash, $role, $email);
+            if ($passwordHash !== null) {
+                $this->tokenService->revokeAllForUser($targetUser);
+            }
             $this->opLog()->record($this->currentUser, 'update_user', $targetUser, ['role' => $role, 'password_changed' => $passwordHash !== null], $this->clientIp($request), 'success');
             return $this->output($response, ['success' => true], $request);
         } catch (\Exception $e) {

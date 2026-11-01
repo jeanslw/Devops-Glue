@@ -481,7 +481,7 @@ return [
     'js.copy_failed_perm'       => '复制失败，请检查浏览器权限',
     'js.fetch_failed'           => '获取失败',
     'js.discover_confirm'       => '将自动扫描项目并导入映射表',
-    'js.discover_note'          => '将自动扫描当前已配置平台的 Git 仓库与 CI 项目并导入映射；不同平台之间相同仓库地址的项目可能会有重复。结果缓存约 60 秒，60 秒内再次发现将复用缓存、不会重复扫描外部平台。',
+    'js.discover_note'          => '将自动扫描当前已配置平台的 Git 仓库与 CI 项目并导入映射；不同平台之间相同仓库地址的项目可能会有重复。',
     'js.discover_ok'            => '扫描成功：发现 {found} 项，新增 {saved} 项',
     'js.discover_partial'       => '扫描部分失败：{names}',
     'js.discover_all_failed'    => '扫描全部失败：{names}',

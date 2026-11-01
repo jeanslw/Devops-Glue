@@ -68,7 +68,16 @@ final class BuildActionController extends BaseBuildController
             return $this->jsonError($response, 'build.custom_push_no_trigger', 400);
         }
         $result = $p->trigger($projectId, $ref, $vars);
-        $this->opLog()->record($this->currentUser, 'build_trigger', $path, ['provider' => $provider, 'ref' => $ref], $this->clientIp($request), 'success', $this->operatorType());
+        $ok = !empty($result['success']);
+        $this->opLog()->record(
+            $this->currentUser,
+            'build_trigger',
+            $path,
+            ['provider' => $provider, 'ref' => $ref, 'ok' => $ok, 'message' => $result['message'] ?? ''],
+            $this->clientIp($request),
+            $ok ? 'success' : 'failure',
+            $this->operatorType()
+        );
         return $this->output($response, [
             'build_provider' => $provider,
             'project_id'     => $projectId,
@@ -97,7 +106,16 @@ final class BuildActionController extends BaseBuildController
 
         $p      = $this->registry->create($provider);
         $result = $p->retry($projectId, $pipelineId);
-        $this->opLog()->record($this->currentUser, 'build_retry', $path, ['provider' => $provider, 'pipeline_id' => $pipelineId], $this->clientIp($request), 'success', $this->operatorType());
+        $ok = !empty($result['success']);
+        $this->opLog()->record(
+            $this->currentUser,
+            'build_retry',
+            $path,
+            ['provider' => $provider, 'pipeline_id' => $pipelineId, 'ok' => $ok, 'message' => $result['message'] ?? ''],
+            $this->clientIp($request),
+            $ok ? 'success' : 'failure',
+            $this->operatorType()
+        );
         return $this->output($response, [
             'build_provider' => $provider,
             'project_id'     => $projectId,
@@ -126,7 +144,16 @@ final class BuildActionController extends BaseBuildController
 
         $p      = $this->registry->create($provider);
         $result = $p->cancel($projectId, $pipelineId);
-        $this->opLog()->record($this->currentUser, 'build_cancel', $path, ['provider' => $provider, 'pipeline_id' => $pipelineId], $this->clientIp($request), 'success', $this->operatorType());
+        $ok = !empty($result['success']);
+        $this->opLog()->record(
+            $this->currentUser,
+            'build_cancel',
+            $path,
+            ['provider' => $provider, 'pipeline_id' => $pipelineId, 'ok' => $ok, 'message' => $result['message'] ?? ''],
+            $this->clientIp($request),
+            $ok ? 'success' : 'failure',
+            $this->operatorType()
+        );
         return $this->output($response, [
             'build_provider' => $provider,
             'project_id'     => $projectId,

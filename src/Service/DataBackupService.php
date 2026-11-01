@@ -173,8 +173,9 @@ class DataBackupService
         }
         $dir = rtrim($dir, '/');
         if (!is_dir($dir)) {
-            @mkdir($dir, 0777, true);
+            @mkdir($dir, 0700, true);
         }
+        @chmod($dir, 0700);
         return $dir;
     }
 
@@ -329,8 +330,9 @@ class DataBackupService
 
         $tmpSql  = $dir . '/' . $base . '.sql';
         $zipFile = $dir . '/' . $base . '.zip';
-        if (file_put_contents($tmpSql, $header . $body) === false) {
-            throw new \RuntimeException('写入备份临时 SQL 失败');
+        $sqlData = $header . $body;
+        if (file_put_contents($tmpSql, $sqlData) !== strlen($sqlData)) {
+            throw new \RuntimeException('写入备份临时 SQL 失败（磁盘满或权限不足）');
         }
         try {
             $zip = new \ZipArchive();
@@ -338,13 +340,18 @@ class DataBackupService
             if ($res !== true) {
                 throw new \RuntimeException('创建 zip 失败（ZipArchive::open=' . $res . '）');
             }
-            $zip->addFile($tmpSql, $base . '.sql');
-            $zip->close();
+            if (!$zip->addFile($tmpSql, $base . '.sql')) {
+                throw new \RuntimeException('向 zip 添加 SQL 文件失败');
+            }
+            if (!$zip->close()) {
+                throw new \RuntimeException('写入 zip 归档失败（磁盘满或权限不足）');
+            }
         } finally {
             if (is_file($tmpSql)) {
                 @unlink($tmpSql);
             }
         }
+        @chmod($zipFile, 0600);
 
         return ['name' => basename($zipFile), 'mode' => $mode, 'counts' => $counts];
     }

@@ -481,7 +481,7 @@ return [
     'js.copy_failed_perm'       => 'Copy failed, please check browser clipboard permissions',
     'js.fetch_failed'           => 'Failed to fetch',
     'js.discover_confirm'       => 'This will auto-scan projects and import mappings',
-    'js.discover_note'          => 'This will auto-scan Git repositories and CI projects on the currently configured platforms and import mappings; projects with the same repository address may be duplicated across platforms. Results are cached for about 60 seconds; rediscovering within that window reuses the cache and does not re-scan the external platforms.',
+    'js.discover_note'          => 'This will auto-scan Git repositories and CI projects on the currently configured platforms and import mappings; projects with the same repository address may be duplicated across platforms.',
     'js.discover_ok'            => 'Scan completed: {found} found, {saved} added',
     'js.discover_partial'       => 'Scan partially failed: {names}',
     'js.discover_all_failed'    => 'Scan failed on all sources: {names}',

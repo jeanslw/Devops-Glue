@@ -102,7 +102,7 @@ class RegistrySyncService
                 try {
                     $tags = $this->registry->getTags($repository);
                     if (!isset($tags['error'])) {
-                        $this->appSettings->setCache('registry:tags:' . md5($repository), $tags, 30);
+                        $this->appSettings->setCache($this->tagCacheKey($repository), $tags, 30);
                     }
                 } catch (\RuntimeException $e) {
                     Log::exception($e);
@@ -190,6 +190,13 @@ class RegistrySyncService
                 default   => 'pending',
             };
 
+        // A-02：配置了镜像仓库但未通过 tag 校验时，CI 虽成功也不应记为绿色 success——
+        // 否则未验证的 tag 会写绿色 commit status 并进入 SHA→tag 成功映射。
+        $commitState = $auditState;
+        if ($this->registry !== null && !$tagVerified && $commitState === 'success') {
+            $commitState = 'pending';
+        }
+
         $canWriteBack = $sha !== '' && $gitPlatform !== '' && $this->gitRegistry !== null
             && $this->gitRegistry->isRegistered($gitPlatform);
 
@@ -198,7 +205,7 @@ class RegistrySyncService
             $gitRepo = $gitProjectId ? (string) $gitProjectId
                 : ($gitCurrentPath !== '' ? $gitCurrentPath : $path);
 
-            $gitState = $auditState;
+            $gitState = $commitState;
             try {
                 $result = $this->gitRegistry->create($gitPlatform)
                     ->setCommitStatus($gitRepo, $sha, $gitState, $checkType, $desc, $this->registryUrl());
@@ -241,11 +248,11 @@ class RegistrySyncService
         $this->recordSecurityCheck(
             $path,
             $sha,
-            $auditState,
+            $commitState,
             $checkType,
             $desc,
             $tag,
-            $ciStatus === 'success' ? 'success' : 'skipped',
+            ($this->registry === null || $tagVerified) && $ciStatus === 'success' ? 'success' : 'skipped',
             implode(' | ', $writebackParts)
         );
 
@@ -287,7 +294,7 @@ class RegistrySyncService
      */
     private function getCachedTags(string $repository): ?array
     {
-        return $this->appSettings->getCache('registry:tags:' . md5($repository));
+        return $this->appSettings->getCache($this->tagCacheKey($repository));
     }
 
     private function recordArtifact(string $path, int $iid, string $tag, string $repository, string $scanState, string $sourceUpdatedAt): bool
@@ -349,5 +356,13 @@ class RegistrySyncService
     private function registryUrl(): string
     {
         return (string) ($this->config->getHarborConfig()['url'] ?? '');
+    }
+
+    /**
+     * 镜像标签缓存键：绑定 registry 连接端点（URL），避免不同 registry 同名仓库互相串用缓存（A-03）。
+     */
+    private function tagCacheKey(string $repository): string
+    {
+        return 'registry:tags:' . md5($repository . '|' . $this->registryUrl());
     }
 }

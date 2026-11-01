@@ -2,26 +2,11 @@
 
 ## v2.11.3 (2026-11-01)
 
-> 基于 review 报告（Devops-Glue-v2.11.3-Review-2026-11-01）的残留问题修复，全部为安全 / 健壮性加固，无功能性变更。
-
-- **Security / Fixed**
-  - **Session revocation after password change was silently failing (High)**: `TokenService::revokeAllForUser` used `ESCAPE '\'` which is a syntax error under MySQL's default backslash-escaping, so the exception was swallowed and old sessions were not revoked. Now uses `!` as the LIKE escape character so changing/resetting a password correctly invalidates all existing tokens.
-  - **Custom-push log SSRF (Medium)**: `getJobTrace` now resolves and validates once, pinning the same verified IPs via `CURLOPT_RESOLVE`, closing the DNS-rebinding window from the second resolution; IPv6 addresses are bracketed for libcurl; the response body is streamed and truncated at the size limit instead of being fully buffered.
-  - **Login-failure count lost under first-insert race (Medium)**: `AdminAuthService::recordLoginFailure` now uses a real atomic upsert (MySQL `ON DUPLICATE KEY UPDATE` / SQLite `ON CONFLICT DO UPDATE`), preventing lost counts on concurrent first failures.
-  - **Build-state terminal timestamp was non-atomic (Low)**: `CustomPushBuildProvider` report now folds the `finished_at` ordering into the atomic UPDATE condition, avoiding a newer failed/aborted being overwritten by an older one.
-  - **OIDC private-key lock was not fail-closed (Low)**: `OidcService` now throws when it cannot acquire the generation lock (fopen/flock failed) instead of generating without a lock.
-  - **Registry-sync unverified tag not surfaced (Low)**: `RegistrySyncService::sync` now returns `tag_verified` and `artifact_written`, surfaced in the API response for auditing / frontend awareness.
-
-- **Fixed**
-  - **Role permission update was non-transactional (Low)**: `RoleController::roleUpdate` now wraps "role rename/description, permission delete and rebuild" in a single transaction, avoiding "old permissions deleted but new only partially written" inconsistency.
-
-## v2.11.3 (2026-11-01)
-
 - **Added**
-  - Concurrency regression tests: multiple processes fire real requests in parallel to dynamically reproduce and lock in four concurrency fixes — an authorization code redeemed twice, a terminal build state downgraded, lost login-failure counts, and a single sign-on signing key regenerated.
+  - Concurrency regression tests: multiple processes fire real requests in parallel to reproduce and lock in several concurrency fixes (authorization code redeemed twice, terminal build state downgraded, lost login-failure counts, and single sign-on signing key regenerated).
   - Console accounts now enforce a forced password change on first sign-in: a seeded admin flagged as pending change can only reach the change-password and logout endpoints until the password is changed; all other admin APIs are rejected.
   - Deleting a console account now also clears its external identities (LDAP / SSO) in a transaction, avoiding orphaned rows and letting the same external identity rebind.
-  - Login-failure counters now increment atomically: expired rows are purged first, then the count is incremented atomically, fixing lost counts under concurrency.
+  - Login-failure counters now increment atomically (expired rows purged first, then atomic increment), fixing lost counts under concurrency on first failure.
   - Authorization-code redemption now takes a row lock and redeems atomically (a one-row delete counts as success), eliminating concurrent double redemption.
   - SSO signing-key generation now takes a cross-process file lock, preventing multiple workers from each generating a key and causing the key id to jitter so downstream JWKS verification fails.
   - Build logs, triggers, write-backs and registry-verification user messages now switch between Chinese and English.
@@ -29,24 +14,39 @@
   - Registry tag authenticity is now verified: when a tag is absent from the repository, the authoritative artifact is no longer written and a clear error is returned.
   - Mapping build-source now enforces an allowlist, rejecting unsupported build sources.
   - Permission parent keys now enforce a safe character set, removing the stored XSS injection vector.
-- **Fixed**
-  - Authorization code redemption takes the write lock immediately under SQLite to avoid the concurrent read-then-write deadlock, and a row-count guard keeps a code redeemable at most once.
-  - Custom-push terminal success is now irreversible: a concurrent write that would overwrite an already-success record is treated as an idempotent no-op, avoiding duplicate artifacts and notifications.
-  - Build report finish-time now validates format, rejecting invalid values that would distort the state machine.
-  - Registry sync now skips authoritative artifact writes when the tag fails verification, instead of writing a non-existent tag.
-  - Security-scan search no longer full-scans: the per-request distinct type enumeration is now cached for about 300 seconds, and the audit table gains indexes on (state, check_type, writeback_status, created_at) and on (created_at) covering the common equality filters and the default time-descending list.
 - **Optimized**
   - Bootstrap now pins idempotent steps (table creation, column reconciliation, data self-heal, seeding, drift detection) to the schema version, running them only on a version change (deploy); per-request bootstrap SQL drops from a dozen-odd statements to a few.
   - Detailed health checks (external probes) are cached for about 60 seconds; the platform connections page loads the zero-probe static endpoint and reads the registry-type-mismatch flag from the last cached result, removing the synchronous probe that blocked page load.
   - The role-permission list now uses a single batched query grouped by role, removing the per-role N+1 queries.
-  - Auto-discovery results are cached for about 60 seconds and registry tag listings for about 30 seconds, reducing external-platform and registry calls on the request path (the HTTP clients already had timeouts).
+  - Security-scan search no longer full-scans: the per-request distinct type enumeration is now cached for about 300 seconds, and the audit table gains indexes covering the common equality filters and the default time-descending list.
+  - Auto-discovery result caching (about 60 seconds) is removed to avoid stale results hurting the user experience; registry tag listing caching (about 30 seconds) is kept.
+- **Fixed**
+  - Authorization code redemption takes the write lock immediately under SQLite to avoid the concurrent read-then-write deadlock, and a row-count guard keeps a code redeemable at most once.
+  - Custom-push terminal success is now irreversible: a concurrent write that would overwrite an already-success record is treated as an idempotent no-op, avoiding duplicate artifacts and notifications.
+  - Build report finish-time now validates format, rejecting invalid values that would distort the state machine; pure numeric Unix timestamps (seconds / milliseconds) are also accepted and normalized, no longer wrongly rejected.
+  - Registry sync now skips authoritative artifact writes when the tag fails verification, instead of writing a non-existent tag.
+  - Mapping and permission lists now escape on render, fixing stored XSS; permission parent keys are validated server-side against a safe character set, blocking the injection vector.
+  - Role permission update is now a single transaction (rename / description, permission delete and rebuild), and permission writes no longer swallow exceptions, so the transaction wrapper can actually roll back.
+  - Build trigger / retry / cancel audit now records the provider's actual result, so failures are no longer logged as success.
+  - Registry tag cache key is now bound to the registry connection endpoint, so repositories with the same name under different registries no longer share a cache.
+  - The generic and API password-change entry points now revoke all of the user's sessions after a change, consistent with the dedicated change-password entry point.
+  - Mapping resolution's single entry point now rejects non-active mappings, so pending / inactive mappings are no longer resolved and executed.
+  - Lost login-failure counts under first-insert race are fixed: a real atomic upsert is now used.
+  - Build terminal-timestamp non-atomicity is fixed: the finished_at ordering is folded into the atomic UPDATE condition, avoiding a newer failed / aborted being overwritten by an older one.
+  - OIDC private-key lock was not fail-closed: it now throws when the lock cannot be acquired, instead of generating without a lock.
+  - Registry sync unverified tag not surfaced: the sync result now returns tag_verified and artifact_written, surfaced in the API response for auditing / frontend awareness.
+  - The first build report now inserts first (unique key prevents concurrent duplicates) and falls back to a protected update on conflict, so a later failure no longer overwrites an earlier successful record.
+  - When a registry is configured but the tag fails verification, no green commit status is written, no success is written back, and the mapping is not marked successful.
+  - Cold-start on an empty database now creates the mutex table first so migration mutual exclusion takes effect; the schema version marker is moved inside the migration lock, avoiding the concurrent re-run window.
+  - Backup writes now verify the actual byte count and the archive write result; the backup directory permission is tightened to owner-only read / write and the backup archive file to owner-only read.
 - **Security**
-  - Mapping and permission lists now escape on render, fixing stored XSS.
-  - Permission parent keys are validated server-side against a safe character set, blocking the injection vector.
-  - Custom-push log URL SSRF protection tightened: address safety checks are stricter (unparseable addresses rejected, loopback / link-local / unique-local / multicast / embedded-IPv4 handled), and resolved addresses are pinned to close the rebinding window.
-- **Docs**
-  - README documents the Docker step of copying .env.example to a root .env and filling in the shared variables.
-  - The root .env is no longer tracked; .env.example is tracked as the template instead.
+  - Session revocation after password change / reset was silently failing: the escape syntax error is fixed so old tokens are correctly invalidated after a password change.
+  - Custom-push log URL SSRF protection tightened: address safety checks are stricter (unparseable addresses rejected, loopback / link-local / unique-local / multicast / embedded-IPv4 handled), resolved addresses are pinned to close the rebinding window; unique-local addresses (both ranges) are rejected as untrusted, closing the earlier gap that only blocked one range; IPv6 literals are bracketed for libcurl; the response body is streamed and truncated at the size limit instead of being fully buffered.
+  - SSO userinfo, identity token and email endpoints now filter sensitive claims (email / groups) by authorization scope, and the access token records the granted scope.
+  - The email_verified flag is now returned true only when a verification mechanism actually exists (none today, so it is always false).
+  - Registry Bearer auth realm host must now share the origin with the registry host, refusing to forward base credentials to an arbitrary host.
+  - Token account-state lookup exceptions are now fail-closed (only migration-compatibility cases such as missing table / column are allowed through), avoiding disabled / downgraded accounts keeping working sessions.
+  - RBAC hardening: implied-rule targets may no longer point at sensitive permissions (account / role management); deleting an implied rule now prunes each role's no-longer-derived orphan implied permissions; role create / update enforces the privilege-escalation ceiling that a non-super-admin cannot grant permissions it does not itself hold.
 
 ## v2.11.2 (2026-10-30)
 
