@@ -2,6 +2,21 @@
 
 ## v2.11.3 (2026-11-01)
 
+> 基于 review 报告（Devops-Glue-v2.11.3-Review-2026-11-01）的残留问题修复，全部为安全 / 健壮性加固，无功能性变更。
+
+- **Security / Fixed**
+  - **Session revocation after password change was silently failing (High)**: `TokenService::revokeAllForUser` used `ESCAPE '\'` which is a syntax error under MySQL's default backslash-escaping, so the exception was swallowed and old sessions were not revoked. Now uses `!` as the LIKE escape character so changing/resetting a password correctly invalidates all existing tokens.
+  - **Custom-push log SSRF (Medium)**: `getJobTrace` now resolves and validates once, pinning the same verified IPs via `CURLOPT_RESOLVE`, closing the DNS-rebinding window from the second resolution; IPv6 addresses are bracketed for libcurl; the response body is streamed and truncated at the size limit instead of being fully buffered.
+  - **Login-failure count lost under first-insert race (Medium)**: `AdminAuthService::recordLoginFailure` now uses a real atomic upsert (MySQL `ON DUPLICATE KEY UPDATE` / SQLite `ON CONFLICT DO UPDATE`), preventing lost counts on concurrent first failures.
+  - **Build-state terminal timestamp was non-atomic (Low)**: `CustomPushBuildProvider` report now folds the `finished_at` ordering into the atomic UPDATE condition, avoiding a newer failed/aborted being overwritten by an older one.
+  - **OIDC private-key lock was not fail-closed (Low)**: `OidcService` now throws when it cannot acquire the generation lock (fopen/flock failed) instead of generating without a lock.
+  - **Registry-sync unverified tag not surfaced (Low)**: `RegistrySyncService::sync` now returns `tag_verified` and `artifact_written`, surfaced in the API response for auditing / frontend awareness.
+
+- **Fixed**
+  - **Role permission update was non-transactional (Low)**: `RoleController::roleUpdate` now wraps "role rename/description, permission delete and rebuild" in a single transaction, avoiding "old permissions deleted but new only partially written" inconsistency.
+
+## v2.11.3 (2026-11-01)
+
 - **Added**
   - Concurrency regression tests: multiple processes fire real requests in parallel to dynamically reproduce and lock in four concurrency fixes — an authorization code redeemed twice, a terminal build state downgraded, lost login-failure counts, and a single sign-on signing key regenerated.
   - Console accounts now enforce a forced password change on first sign-in: a seeded admin flagged as pending change can only reach the change-password and logout endpoints until the password is changed; all other admin APIs are rejected.

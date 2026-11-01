@@ -193,4 +193,46 @@ class TokenServiceTest extends TestCase
         $this->assertTrue($legacy->validateLegacy(base64_encode('admin:secret')));
         $this->assertFalse($legacy->validateLegacy(base64_encode('admin:wrong')));
     }
+
+    /**
+     * 锁定 #3.1 修复：revokeAllForUser 在 MySQL 默认反斜杠转义下，ESCAPE '\' 会被当成“转义后的引号”
+     * 导致 SQL 语法错误、异常被吞、旧会话未吊销。改用 '!' 作转义符后，按值前缀匹配可正确删除目标用户
+     * 的全部 token。注：MySQL 8.4 下的语法错误需集成测试复现，此处锁定转义后的匹配语义在 SQLite 正确。
+     */
+    public function testRevokeAllForUserRemovesOnlyTargetUser(): void
+    {
+        $this->seedToken('tok_alice_1', 'alice|admin');
+        $this->seedToken('tok_alice_2', 'alice|admin');
+        $this->seedToken('tok_bob', 'bob|viewer');
+
+        $deleted = $this->service->revokeAllForUser('alice');
+
+        $this->assertSame(2, $deleted);
+        $aliceLeft = $this->pdo->query(
+            "SELECT COUNT(*) AS c FROM " . AppConfig::TABLE_CACHE . " WHERE value = 'alice|admin'"
+        )->fetch()['c'];
+        $this->assertSame(0, (int)$aliceLeft, 'alice 的全部 token 必须被吊销');
+        $bobLeft = $this->pdo->query(
+            "SELECT COUNT(*) AS c FROM " . AppConfig::TABLE_CACHE . " WHERE value = 'bob|viewer'"
+        )->fetch()['c'];
+        $this->assertSame(1, (int)$bobLeft, '其他用户的 token 不受影响');
+    }
+
+    public function testRevokeAllForUserEscapesLikeWildcardsInUsername(): void
+    {
+        // 用户名含 LIKE 通配符 %/_ 时，转义后仍仅删除目标用户，不被通配误导（回归 MySQL ESCAPE 语法）
+        $this->seedToken('tok_special', 'a%b_c|admin');
+        $this->seedToken('tok_other', 'axbyc|admin');
+
+        $this->service->revokeAllForUser('a%b_c');
+
+        $special = $this->pdo->query(
+            "SELECT COUNT(*) AS c FROM " . AppConfig::TABLE_CACHE . " WHERE value = 'a%b_c|admin'"
+        )->fetch()['c'];
+        $this->assertSame(0, (int)$special);
+        $other = $this->pdo->query(
+            "SELECT COUNT(*) AS c FROM " . AppConfig::TABLE_CACHE . " WHERE value = 'axbyc|admin'"
+        )->fetch()['c'];
+        $this->assertSame(1, (int)$other);
+    }
 }

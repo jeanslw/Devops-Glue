@@ -78,6 +78,8 @@ final class RegistrySyncController extends BaseBuildController
             'vulnerability_count'  => (int) ($result['vulnerability_count'] ?? 0),
             'scan_state'           => (string) ($result['scan_state'] ?? 'unknown'),
             'commit_status'        => $result['commit_status'] ?? ['success' => false, 'message' => ''],
+            'tag_verified'         => (bool) ($result['tag_verified'] ?? false),
+            'artifact_written'     => (bool) ($result['artifact_written'] ?? false),
         ], $request);
     }
 }

@@ -553,7 +553,8 @@ return [
             $c->get(OperationLogRepository::class),
             $c->get(AdminRbacService::class),
             $c->get(AdminUserRepository::class),
-            $c->get(RoleRepository::class)
+            $c->get(RoleRepository::class),
+            $c->get(\App\Service\TransactionManager::class)
         );
     },
 

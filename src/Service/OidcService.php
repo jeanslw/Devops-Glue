@@ -173,16 +173,23 @@ class OidcService
                 @mkdir($lockDir, 0777, true);
             }
             $lockHandle = @fopen($lockFile, 'c');
-            if ($lockHandle !== false) {
-                flock($lockHandle, LOCK_EX);
+            if ($lockHandle === false) {
+                throw new \RuntimeException(
+                    'OIDC: 无法获取私钥生成锁文件 ' . $lockFile . '（fopen 失败），已拒绝无锁生成。'
+                    . '请确认目录存在且对 PHP 运行用户可写。'
+                );
+            }
+            if (!flock($lockHandle, LOCK_EX)) {
+                fclose($lockHandle);
+                throw new \RuntimeException(
+                    'OIDC: 无法获取私钥生成锁 ' . $lockFile . '（flock 失败），已拒绝无锁生成。'
+                );
             }
             if (is_file($file) && is_readable($file)) {
                 $pem = @file_get_contents($file);
                 if ($pem !== false && trim($pem) !== '') {
-                    if ($lockHandle !== false) {
-                        flock($lockHandle, LOCK_UN);
-                        fclose($lockHandle);
-                    }
+                    flock($lockHandle, LOCK_UN);
+                    fclose($lockHandle);
                     return $pem;
                 }
             }
@@ -190,7 +197,7 @@ class OidcService
         try {
             return $this->generateAndPersist($file);
         } finally {
-            if ($lockHandle !== null && $lockHandle !== false) {
+            if ($lockHandle !== null) {
                 flock($lockHandle, LOCK_UN);
                 fclose($lockHandle);
             }

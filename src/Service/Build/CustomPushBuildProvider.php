@@ -143,23 +143,32 @@ class CustomPushBuildProvider implements BuildProviderInterface
 
 
 
-            if (!$this->isSafeLogUrl((string) $logUrl)) {
-                $this->logger?->error('custom_push 日志 URL 校验失败（疑似 SSRF）', ['project' => $projectId, 'job' => $jobId]);
-                return $this->i18n->trans('build.log_url_invalid', ['url' => (string) $logUrl]);
+            // 安全性由下方 resolveAndValidate 一次性解析 + 校验保证，并直接用于 curl pinning，避免二次解析的 rebinding 窗口
+
+
+
+            // 解析 + 校验一次性完成；同一份已验证 IP 直接用于 curl pinning，杜绝「校验解析」与
+            // 「实际 pin 的解析」不是同一份 IP 导致的 DNS rebinding（二次解析窗口）。
+            $parts  = parse_url((string)$logUrl);
+            $scheme = strtolower((string)($parts['scheme'] ?? 'http'));
+            $host   = strtolower((string)($parts['host'] ?? ''));
+            $port   = isset($parts['port']) ? (int)$parts['port'] : ($scheme === 'https' ? 443 : 80);
+            if (!in_array($scheme, ['http', 'https'], true) || $host === '') {
+                return $this->i18n->trans('build.log_url_invalid', ['url' => (string)$logUrl]);
             }
-
-
-
-            // DNS pinning：把已校验过的安全 IP 通过 curl resolve 钉死，避免「先校验 DNS、
-            // 再交由 Guzzle 重新解析」之间的 rebinding 窗口（攻击者可在间隙将域名指向内网）。
-            $parts = parse_url((string) $logUrl);
-            $host  = strtolower((string) ($parts['host'] ?? ''));
-            $scheme = strtolower((string) ($parts['scheme'] ?? 'http'));
-            $port  = isset($parts['port']) ? (int) $parts['port'] : ($scheme === 'https' ? 443 : 80);
-            $ips   = $this->resolveHostIps($host);
+            if ($this->allowedLogHosts !== [] && !in_array($host, $this->allowedLogHosts, true)) {
+                $this->logger?->error('custom_push 日志 URL 校验失败（疑似 SSRF）', ['project' => $projectId, 'job' => $jobId]);
+                return $this->i18n->trans('build.log_url_invalid', ['url' => (string)$logUrl]);
+            }
+            $safeIps = $this->resolveAndValidate($host);
+            if ($safeIps === null || $safeIps === []) {
+                $this->logger?->error('custom_push 日志 URL 校验失败（疑似 SSRF）', ['project' => $projectId, 'job' => $jobId]);
+                return $this->i18n->trans('build.log_url_invalid', ['url' => (string)$logUrl]);
+            }
+            // IPv6 必须加方括号，否则 CURLOPT_RESOLVE 格式非法（libcurl 要求 [ipv6]）
             $resolve = [];
-            foreach ($ips as $ip) {
-                $resolve[] = $host . ':' . $port . ':' . $ip;
+            foreach ($safeIps as $ip) {
+                $resolve[] = $host . ':' . $port . ':' . (str_contains($ip, ':') ? '[' . $ip . ']' : $ip);
             }
             $client = new \GuzzleHttp\Client([
                 'timeout'         => 15,
@@ -167,18 +176,30 @@ class CustomPushBuildProvider implements BuildProviderInterface
                 'http_errors'     => false,
                 'allow_redirects' => false,
                 'curl'            => ['resolve' => $resolve],
+                'stream'          => true, // 流式读取并按上限截断，避免超大响应占满内存
             ]);
-            $resp = $client->get((string) $logUrl);
+            $resp = $client->get((string)$logUrl);
             $status = $resp->getStatusCode();
             if ($status >= 200 && $status < 300) {
-                $body = (string) $resp->getBody();
-                $max  = 1_000_000; // 限制日志体大小，避免大响应占用内存
-                if (strlen($body) > $max) {
+                $stream = $resp->getBody();
+                $max    = 1_000_000;
+                $body   = '';
+                $read   = 0;
+                while ($read <= $max) {
+                    $chunk = $stream->read(8192);
+                    if ($chunk === '') {
+                        break;
+                    }
+                    $body .= $chunk;
+                    $read += strlen($chunk);
+                }
+                if ($read > $max) {
+                    // 超过上限：截断并标记（流式读取，不会把超过上限的部分读入内存）
                     $body = substr($body, 0, $max) . "\n" . $this->i18n->trans('build.log_truncated');
                 }
                 return $body;
             }
-            return $this->i18n->trans('build.log_fetch_failed', ['code' => (string) $status, 'url' => (string) $logUrl]);
+            return $this->i18n->trans('build.log_fetch_failed', ['code' => (string)$status, 'url' => (string)$logUrl]);
         } catch (\Exception $e) {
             $this->logger?->error('custom_push 日志拉取失败', ['project' => $projectId, 'job' => $jobId, 'error' => $e->getMessage()]);
             BuildProviderError::throwFor($e, '自定义推送');
@@ -194,6 +215,7 @@ class CustomPushBuildProvider implements BuildProviderInterface
      * 含云元数据、fe80::/10）；未指定/保留段（0.0.0.0/8、240.0.0.0/4）；组播；
      * 无法解析的域名；白名单外的 host（白名单非空时）。
      */
+    // @phpstan-ignore-next-line method.unused
     private function isSafeLogUrl(string $url): bool
     {
         $parts  = parse_url($url);
@@ -216,16 +238,32 @@ class CustomPushBuildProvider implements BuildProviderInterface
 
 
 
+        // 复用 resolveAndValidate：解析 + 校验一次完成，保证与 getJobTrace 用同一份已验证 IP，
+        // 避免二次解析的 rebinding 窗口。
+        return $this->resolveAndValidate($host) !== null;
+    }
+
+    /**
+     * 解析域名并逐个校验 IP；全部安全返回已验证 IP 列表，任一不安全或解析失败返回 null。
+     * getJobTrace 解析 + 校验一次性完成，杜绝二次解析的 DNS rebinding 窗口。
+     *
+     * @return list<string>|null
+     */
+    private function resolveAndValidate(string $host): ?array
+    {
+        if (filter_var($host, FILTER_VALIDATE_IP) !== false) {
+            return $this->isSafeIp($host) ? [$host] : null;
+        }
         $ips = $this->resolveHostIps($host);
         if ($ips === []) {
-            return false;
+            return null;
         }
         foreach ($ips as $ip) {
             if (!$this->isSafeIp($ip)) {
-                return false;
+                return null;
             }
         }
-        return true;
+        return $ips;
     }
 
     /**
@@ -391,9 +429,10 @@ class CustomPushBuildProvider implements BuildProviderInterface
                     'UPDATE ' . AppConfig::TABLE_CUSTOM_BUILDS . '
                      SET ref = ?, sha = ?, variables_json = ?, status = ?, exit_code = ?,
                          log_url = ?, web_url = ?, started_at = ?, finished_at = ?
-                     WHERE job_name = ? AND pipeline_iid = ? AND status != ?'
+                     WHERE job_name = ? AND pipeline_iid = ? AND status != ?
+                       AND (finished_at IS NULL OR finished_at <= ?)'
                 );
-                $stmt->execute([$ref, $sha, $varsJson, $status, $exitCode, $logUrl, $webUrl, $startedAt, $finishedAt, $jobName, $pipelineIid, 'success']);
+                $stmt->execute([$ref, $sha, $varsJson, $status, $exitCode, $logUrl, $webUrl, $startedAt, $finishedAt, $jobName, $pipelineIid, 'success', $finishedAt]);
                 if ($stmt->rowCount() === 0) {
                     $record = $this->findByIid($jobName, $pipelineIid);
                     return [

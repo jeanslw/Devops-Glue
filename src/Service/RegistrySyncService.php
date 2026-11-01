@@ -49,7 +49,9 @@ class RegistrySyncService
      *     registry_repository?:string,
      *     vulnerability_count?:int,
      *     scan_state?:string,
-     *     commit_status?:array{success:bool,message:string}
+     *     commit_status?:array{success:bool,message:string},
+     *     tag_verified?:bool,
+     *     artifact_written?:bool
      * }
      */
     public function sync(string $path, array $body, bool $withScan, string $checkType): array
@@ -219,6 +221,7 @@ class RegistrySyncService
 
 
 
+        $artifactWritten = false;
         $writebackParts = ['ci_status=' . $ciStatus];
         if ($result['message'] !== '') {
             $writebackParts[] = $result['message'];
@@ -227,6 +230,7 @@ class RegistrySyncService
             // 仅当 tag 已通过镜像仓库校验（或仓库未配置、无法校验时按原行为尽力关联）才写权威 artifact
             if ($this->registry === null || $tagVerified) {
                 $artifactOk = $this->recordArtifact($path, $iid, $tag, $repository, $scanState, $sourceUpdatedAt);
+                $artifactWritten = (bool)$artifactOk;
                 $writebackParts[] = $artifactOk ? 'artifact_write=success' : 'artifact_write=failed';
             } else {
                 $writebackParts[] = 'artifact_write=skipped (tag_not_in_registry)';
@@ -253,6 +257,8 @@ class RegistrySyncService
             'vulnerability_count' => $vulnCount,
             'scan_state'          => $scanState,
             'commit_status'       => $result,
+            'tag_verified'        => $tagVerified,
+            'artifact_written'    => $artifactWritten,
         ];
     }
 

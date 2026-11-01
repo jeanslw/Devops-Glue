@@ -413,6 +413,44 @@ class ConcurrencyRegressionTest extends TestCase
         );
     }
 
+    /**
+     * 首插竞态（报告 #3.3 真正复现点）：计数行尚不存在时，N 次并发错误登录必须原子累加到 N。
+     * 旧实现先 UPDATE（0 行）再 INSERT，并发首插会丢计数（仅一个 INSERT 成功、其余唯一键冲突被吞）。
+     * 修复后改为单条原子 upsert（ON CONFLICT DO UPDATE value=value+1），不再丢更新。
+     * 不预置计数行 —— 与上面的 testLoginFailureCountIsAtomic（预置行、只覆盖 UPDATE 路径）互补。
+     */
+    public function testLoginFailureCountIsAtomicFromFresh(): void
+    {
+        $ip       = '198.51.100.23';
+        $username = 'bob';
+
+        $tasks = [];
+        for ($w = 1; $w <= self::WORKERS_LOGIN; $w++) {
+            $tasks[] = [
+                'scenario' => 'login_fail',
+                'db'       => $this->dbFile,
+                'params'   => ['ip' => $ip, 'username' => $username],
+            ];
+        }
+        $results = $this->spawnWorkers($tasks);
+        foreach ($results as $r) {
+            $this->assertArrayNotHasKey('error', $r, 'worker 异常：' . ($r['error'] ?? ''));
+        }
+
+        $key  = AppConfig::CACHE_KEY_LOGIN_FAIL_PREFIX . md5($ip . ':' . strtolower($username));
+        $read = $this->openReadPdo();
+        $val  = $read->query(
+            'SELECT value FROM ' . AppConfig::TABLE_CACHE . " WHERE cache_key = '{$key}'"
+        )->fetchColumn();
+        $read = null;
+
+        $this->assertSame(
+            (string) self::WORKERS_LOGIN,
+            (string) $val,
+            '首插竞态下 N 次并发失败登录必须把计数原子累加到 N（旧实现会丢计数）'
+        );
+    }
+
     // ─────────────────────────── F-09 OIDC 私钥首次生成并发一致性 ───────────────────────────
 
     public function testOidcKeyGenerationIsConsistentAcrossProcesses(): void

@@ -216,10 +216,12 @@ class TokenService
     public function revokeAllForUser(string $username): int
     {
         try {
-            $escaped = str_replace(['%', '_'], ['\\%', '\\_'], $username);
+            // 用 '!' 作 LIKE 转义符：MySQL 默认未启用 NO_BACKSLASH_ESCAPES 时，ESCAPE '\'
+            // 会被当成「转义后的引号」导致 SQL 语法错误、异常被吞、旧会话未吊销。
+            $escaped = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $username);
             $stmt = $this->pdo->prepare(
                 "DELETE FROM " . AppConfig::TABLE_CACHE
-                . " WHERE cache_key LIKE ? ESCAPE '\\' AND value LIKE ? ESCAPE '\\'"
+                . " WHERE cache_key LIKE ? AND value LIKE ? ESCAPE '!'"
             );
             $stmt->execute([
                 AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . '%',

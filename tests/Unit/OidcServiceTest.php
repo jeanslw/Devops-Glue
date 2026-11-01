@@ -133,7 +133,7 @@ class OidcServiceTest extends TestCase
         try {
             $svc = $this->makeService(['key_file' => $keyFile]);
             $this->expectException(\RuntimeException::class);
-            $this->expectExceptionMessageMatches('/无法持久化|不可读/');
+            $this->expectExceptionMessageMatches('/无法获取私钥生成锁|fopen 失败/');
             $svc->keyId();
         } finally {
             @unlink($blocker);

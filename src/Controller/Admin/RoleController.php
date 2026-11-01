@@ -12,6 +12,7 @@ use App\Service\I18nService;
 use App\Service\OperationLogRepository;
 use App\Service\RoleRepository;
 use App\Service\Settings;
+use App\Service\TransactionManager;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -24,6 +25,7 @@ class RoleController extends BaseAdminController
     private AdminRbacService $rbacService;
     private AdminUserRepository $adminUserRepository;
     private RoleRepository $roles;
+    private TransactionManager $tm;
 
     public function __construct(
         I18nService $i18n,
@@ -32,12 +34,14 @@ class RoleController extends BaseAdminController
         OperationLogRepository $operationLog,
         AdminRbacService $rbacService,
         AdminUserRepository $adminUserRepository,
-        RoleRepository $roles
+        RoleRepository $roles,
+        TransactionManager $tm
     ) {
         parent::__construct($i18n, $config, $appSettings, $operationLog);
         $this->rbacService        = $rbacService;
         $this->adminUserRepository = $adminUserRepository;
         $this->roles               = $roles;
+        $this->tm                  = $tm;
     }
 
     public function roleList(Request $request, Response $response): Response
@@ -119,21 +123,32 @@ class RoleController extends BaseAdminController
                 if ($this->roles->nameExistsExcluding($name, $roleId)) {
                     return $this->jsonError($response, 'user.username_exists', 409);
                 }
-                $this->adminUserRepository->updateRoleName($r['name'], $name);
                 $sets['name'] = $name;
             }
             if ($desc !== '' && $desc !== ($r['description'] ?? '')) {
                 $sets['description'] = $desc;
             }
-            if ($sets !== []) {
-                $this->roles->update($roleId, $sets);
-            }
 
-            if (is_array($perms)) {
-                $this->roles->deletePermissions($roleId);
-                $expanded = $this->rbacService->expandPermissions($perms);
-                $validKeys = $this->rbacService->allPermissionKeys();
-                $this->roles->insertPermissions($roleId, $expanded, $validKeys);
+            // 角色名/描述、权限删除与重建放进同一事务：任一失败整体回滚，避免「旧权限已删、新权限只写一半」
+            // 或角色名与权限表不一致。
+            $this->tm->begin();
+            try {
+                if ($sets !== []) {
+                    if (isset($sets['name'])) {
+                        $this->adminUserRepository->updateRoleName($r['name'], $sets['name']);
+                    }
+                    $this->roles->update($roleId, $sets);
+                }
+                if (is_array($perms)) {
+                    $this->roles->deletePermissions($roleId);
+                    $expanded = $this->rbacService->expandPermissions($perms);
+                    $validKeys = $this->rbacService->allPermissionKeys();
+                    $this->roles->insertPermissions($roleId, $expanded, $validKeys);
+                }
+                $this->tm->commit();
+            } catch (\Throwable $e) {
+                $this->tm->rollBack();
+                throw $e;
             }
 
             $this->opLog()->record($this->currentUser, 'update_role', (string)$r['name'], ['new_name' => $name !== '' ? $name : $r['name'], 'permissions' => is_array($perms) ? $perms : null], $this->clientIp($request), 'success');
