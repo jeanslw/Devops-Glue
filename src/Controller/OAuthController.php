@@ -226,18 +226,21 @@ class OAuthController extends BaseController
         $scopes    = $this->scopeList((string)($data['scope'] ?? ''));
         $emailInfo = $this->resolveEmailInfo($username);
         $claims = [
-            'sub'                => $username,
-            'username'           => $username,
-            'preferred_username' => $username,
-            'name'               => $username,
-            'role'               => $role,
+            'sub'      => $username,
+            'username' => $username,
         ];
-        // P2 #6：仅在对应 scope 授权时返回敏感声明（email / groups）
+        // P2 #5：name / preferred_username 受 profile scope 约束
+        if (in_array('profile', $scopes, true)) {
+            $claims['preferred_username'] = $username;
+            $claims['name']               = $username;
+        }
+        // P2 #6：仅在对应 scope 授权时返回敏感声明（email / groups / role）
         if (in_array('email', $scopes, true)) {
             $claims['email'] = $emailInfo['email'];
             $claims['email_verified'] = $emailInfo['verified'];
         }
         if (in_array('groups', $scopes, true)) {
+            $claims['role']   = $role;
             $claims['groups'] = $this->oidc->groupsFromRole($role);
         }
         $response->getBody()->write((string) json_encode($claims));
@@ -346,11 +349,14 @@ class OAuthController extends BaseController
         $emailInfo = $this->resolveEmailInfo($username);
         $scopes    = $this->scopeList($scope);
         $claims = [
-            'iss'                => $issuer,
-            'sub'                => $username,
-            'name'               => $username,
-            'preferred_username' => $username,
+            'iss' => $issuer,
+            'sub' => $username,
         ];
+        // P2 #5：name / preferred_username 受 profile scope 约束
+        if (in_array('profile', $scopes, true)) {
+            $claims['name']               = $username;
+            $claims['preferred_username'] = $username;
+        }
         // P2 #6：仅在对应 scope 授权时返回敏感声明（email / groups）
         if (in_array('email', $scopes, true)) {
             $claims['email'] = $emailInfo['email'];

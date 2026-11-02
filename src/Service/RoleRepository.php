@@ -113,6 +113,31 @@ class RoleRepository
         }
     }
 
+    /**
+     * 在事务内新建角色并写入展开后的权限，任一环节失败整体回滚。
+     *
+     * @param string $name
+     * @param string $desc
+     * @param list<string> $permKeys
+     * @param list<string> $validKeys
+     * @return int
+     */
+    public function createWithPermissions(string $name, string $desc, array $permKeys, array $validKeys): int
+    {
+        $this->pdo->beginTransaction();
+        try {
+            $id = $this->create($name, $desc);
+            $this->insertPermissions($id, $permKeys, $validKeys);
+            $this->pdo->commit();
+            return $id;
+        } catch (\Throwable $e) {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+            throw $e;
+        }
+    }
+
     public function deletePermissions(int $roleId): void
     {
         $this->pdo->prepare("DELETE FROM " . AppConfig::TABLE_ROLE_PERMISSIONS . " WHERE role_id = ?")->execute([$roleId]);

@@ -163,9 +163,15 @@ final class BuildReportController extends BaseBuildController
             if ($ts < 946684800 || $ts > 32503680000) {
                 return $this->jsonError($response, 'build.report_invalid_finished_at', 400);
             }
-            $finishedAt = date('Y-m-d H:i:s', $ts);
+            $finishedAt = gmdate('Y-m-d H:i:s', $ts);
         } elseif (@strtotime($finishedAt) === false) {
             return $this->jsonError($response, 'build.report_invalid_finished_at', 400);
+        } else {
+            $ts = strtotime($finishedAt);
+            if ($ts === false) {
+                return $this->jsonError($response, 'build.report_invalid_finished_at', 400);
+            }
+            $finishedAt = gmdate('Y-m-d H:i:s', $ts);
         }
         if ($status === 'success' && $tag === '') {
             return $this->jsonError($response, 'build.report_success_requires_tag', 400);

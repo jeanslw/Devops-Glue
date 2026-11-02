@@ -251,7 +251,7 @@ class DataBackupService
         }
         $cdTables = array_values(array_filter($live, fn($t) => $this->isCdTable($t)));
 
-        $stamp = date('Ymd_His');
+        $stamp = date('Ymd_His') . '_' . substr(md5((string) microtime(true) . mt_rand()), 0, 8);
         $files = [];
 
         $files[] = $this->exportZip('app', $appTables, 'devops-glue_' . $this->driver . '_' . $stamp);

@@ -269,4 +269,36 @@ class MappingManagerTest extends TestCase
             $this->assertSame(1, $count);
         }
     }
+
+    /**
+     * P1 #2 回归：pending 的 Jenkins 映射不得走直连回退，须拒绝执行。
+     */
+    public function testPendingJenkinsMapRejectsDirectFallback(): void
+    {
+        $this->insertMap([
+            'job_name'       => 'pending/jenkins',
+            'build_provider' => AppConfig::PROVIDER_JENKINS,
+            'current_path'   => 'pending/jenkins',
+            'status'         => AppConfig::STATUS_PENDING,
+        ]);
+
+        $this->expectException(\App\Exceptions\ApiException::class);
+        $this->makeManager()->resolveProject('pending/jenkins');
+    }
+
+    /**
+     * P1 #2 回归：inactive 映射同样不得走直连回退。
+     */
+    public function testInactiveMapRejectsDirectFallback(): void
+    {
+        $this->insertMap([
+            'job_name'       => 'inactive/job',
+            'build_provider' => AppConfig::PROVIDER_JENKINS,
+            'current_path'   => 'inactive/job',
+            'status'         => 'inactive',
+        ]);
+
+        $this->expectException(\App\Exceptions\ApiException::class);
+        $this->makeManager()->resolveProject('inactive/job');
+    }
 }

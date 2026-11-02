@@ -23,8 +23,9 @@ class OidcService
     public const SCOPE_OPENID  = 'openid';
     public const SCOPE_PROFILE = 'profile';
     public const SCOPE_EMAIL   = 'email';
+    public const SCOPE_GROUPS  = 'groups';
 
-    public const SCOPES_SUPPORTED = [self::SCOPE_OPENID, self::SCOPE_PROFILE, self::SCOPE_EMAIL];
+    public const SCOPES_SUPPORTED = [self::SCOPE_OPENID, self::SCOPE_PROFILE, self::SCOPE_EMAIL, self::SCOPE_GROUPS];
 
     /** id_token 标准公开 claims（order 无意义，仅用于 discovery.claims_supported） */
     public const CLAIMS_SUPPORTED = [

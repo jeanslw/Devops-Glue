@@ -81,10 +81,9 @@ class RoleController extends BaseAdminController
             if ($this->roles->nameExists($name)) {
                 return $this->jsonError($response, 'user.username_exists', 409);
             }
-            $roleId = $this->roles->create($name, $desc);
             $expanded = $this->rbacService->expandPermissions($perms);
             $validKeys = $this->rbacService->allPermissionKeys();
-            $this->roles->insertPermissions($roleId, $expanded, $validKeys);
+            $roleId = $this->roles->createWithPermissions($name, $desc, $expanded, $validKeys);
             $this->opLog()->record($this->currentUser, 'create_role', $name, ['permissions' => $perms], $this->clientIp($request), 'success');
             return $this->output($response, ['success' => true, 'id' => (int)$roleId, 'name' => $name], $request);
         } catch (\Exception $e) {

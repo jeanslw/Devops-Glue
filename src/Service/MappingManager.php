@@ -238,12 +238,34 @@ class MappingManager
 
         $row = $this->resolveMapRow($projectPath);
         if ($row === null) {
+            if ($this->hasExplicitMapRow($projectPath)) {
+                throw new ApiException('该路径存在未启用的映射，已禁用直连回退', 400);
+            }
             if (!in_array(AppConfig::PROVIDER_JENKINS, $this->activeBuildProviders(), true)) {
                 throw new ApiException('未匹配到任何映射，且 Jenkins 未启用（无法直连），无法确定构建源', 400);
             }
             return ['provider' => AppConfig::PROVIDER_JENKINS, 'projectId' => $projectPath];
         }
         return $this->resolveMap($projectPath, $row);
+    }
+
+    /**
+     * 该路径是否存在任何状态的映射记录（不限于 active）。
+     *
+     * @param string $projectPath
+     * @return bool
+     */
+    private function hasExplicitMapRow(string $projectPath): bool
+    {
+        $projectPath = trim($projectPath);
+        foreach ($this->allMaps() as $m) {
+            $job = trim((string)($m['job_name'] ?? ''));
+            $cp  = trim((string)($m['current_path'] ?? ''));
+            if (($job !== '' && $job === $projectPath) || ($cp !== '' && $cp === $projectPath)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

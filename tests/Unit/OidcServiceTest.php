@@ -249,4 +249,14 @@ class OidcServiceTest extends TestCase
 
         $this->assertArrayNotHasKey('systems', $decoded, 'systems 尚未进入白名单：P2 落地时本断言应随之更新');
     }
+
+    /**
+     * P2 #5 回归：groups / profile scope 必须在 discovery 的 scopes_supported 声明，与实现一致。
+     */
+    public function testScopesSupportedDeclaresGroupsAndProfile(): void
+    {
+        $doc = $this->makeService()->discovery('https://glue.example.com');
+        $this->assertContains('groups', $doc['scopes_supported']);
+        $this->assertContains('profile', $doc['scopes_supported']);
+    }
 }

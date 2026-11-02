@@ -288,9 +288,24 @@ class OAuthService
                 $data['role'] = $acc['role'];
             }
             return true;
-        } catch (\Throwable) {
-            return true;
+        } catch (\Throwable $e) {
+            if ($e instanceof \PDOException && $this->isSchemaCompatError($e)) {
+                return true;
+            }
+            return false;
         }
+    }
+
+    /**
+     * 判断是否为 schema 迁移期间的兼容错误（表 / 列缺失），与 TokenService 口径一致。
+     *
+     * @param \PDOException $e
+     * @return bool
+     */
+    private function isSchemaCompatError(\PDOException $e): bool
+    {
+        $code = (string) $e->getCode();
+        return in_array($code, ['42S02', '42S22', '42703'], true);
     }
 
     /**
