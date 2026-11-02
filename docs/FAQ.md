@@ -212,7 +212,7 @@ Three checks (all three should be clean):
 # (1) JWKS must be 200 and return {"keys":[...]}
 curl -s -o /dev/null -w '%{http_code}\n' http://<glue-host>/.well-known/jwks.json
 # (2) the CD login URL must be 302 (not 400)
-curl -s -o /dev/null -w '%{http_code}\n' 'http://<glue-host>/oauth/authorize?response_type=code&client_id=cd&redirect_uri=<CD callback>&scope=openid+profile+email&state=x'
+curl -s -o /dev/null -w '%{http_code}\n' 'http://<glue-host>/oauth/authorize?response_type=code&client_id=cd&redirect_uri=<CD callback>&scope=openid+profile+email+groups&state=x'
 # (3) the container log should contain no "OIDC: 私钥解析失败"
 docker compose logs web | grep -i 'OIDC'
 ```
@@ -279,7 +279,7 @@ Three self-check commands:
 # (1) issuer / jwks_uri must both be external addresses
 curl -s https://glue.example.com/.well-known/openid-configuration | jq .issuer,.jwks_uri
 # (2) the cd client is registered: this must render the login form, not a 400
-curl -s -o /dev/null -w '%{http_code}\n' "https://glue.example.com/oauth/authorize?response_type=code&client_id=cd&redirect_uri=<CD callback>&scope=openid+profile+email&state=x"
+curl -s -o /dev/null -w '%{http_code}\n' "https://glue.example.com/oauth/authorize?response_type=code&client_id=cd&redirect_uri=<CD callback>&scope=openid+profile+email+groups&state=x"
 # (3) the integrated service is authorized (using the cd-service plaintext)
 curl -s -H "Authorization: Bearer dg_xxx" http://glue.example.com/api/integration/services/cd | jq .enabled
 ```

@@ -111,14 +111,11 @@ class TokenService
     /**
      * 判断是否为 schema 迁移期间的兼容错误（表 / 列缺失）：
      * 升级瞬间表或列尚未补齐，应沿用旧行为（不锁定会话）；其他数据库异常才 fail-closed。
+     * 与 OAuthService 共用 App\Util\SchemaCompat 判定，确保口径一致。
      */
     private function isSchemaCompatError(\PDOException $e): bool
     {
-        $code = (string) $e->getCode();
-        if (in_array($code, ['42S02', '42S22', '42703'], true)) {
-            return true;
-        }
-        return (bool) preg_match('/no such table|no such column|unknown column/i', $e->getMessage());
+        return \App\Util\SchemaCompat::isEvolutionError($e);
     }
 
     /**

@@ -83,7 +83,22 @@ class RoleController extends BaseAdminController
             }
             $expanded = $this->rbacService->expandPermissions($perms);
             $validKeys = $this->rbacService->allPermissionKeys();
-            $roleId = $this->roles->createWithPermissions($name, $desc, $expanded, $validKeys);
+            // 与角色更新一致：写操作统一走 TransactionManager，避免仓储层自管事务在嵌套边界抛 PDOException。
+            $this->tm->begin();
+            try {
+                $roleId = $this->roles->createWithPermissions($name, $desc, $expanded, $validKeys);
+            } catch (\PDOException $e) {
+                $this->tm->rollBack();
+                // 并发同名创建撞 roles.name 唯一键：映射为 409，而非 500
+                if ($e->getCode() === '23000') {
+                    return $this->jsonError($response, 'user.username_exists', 409);
+                }
+                throw $e;
+            } catch (\Throwable $e) {
+                $this->tm->rollBack();
+                throw $e;
+            }
+            $this->tm->commit();
             $this->opLog()->record($this->currentUser, 'create_role', $name, ['permissions' => $perms], $this->clientIp($request), 'success');
             return $this->output($response, ['success' => true, 'id' => (int)$roleId, 'name' => $name], $request);
         } catch (\Exception $e) {

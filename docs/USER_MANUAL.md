@@ -591,7 +591,7 @@ Three self-check commands:
 # (1) discovery's issuer / jwks_uri must both be external addresses
 curl -s https://glue.example.com/.well-known/openid-configuration | jq .issuer,.jwks_uri
 # (2) the cd client is registered: the authorize page should render the login form, not a 400
-curl -s -o /dev/null -w '%{http_code}\n' "https://glue.example.com/oauth/authorize?response_type=code&client_id=cd&redirect_uri=http://cd.example.com/api/auth/oidc/callback&scope=openid+profile+email&state=x"
+curl -s -o /dev/null -w '%{http_code}\n' "https://glue.example.com/oauth/authorize?response_type=code&client_id=cd&redirect_uri=http://cd.example.com/api/auth/oidc/callback&scope=openid+profile+email+groups&state=x"
 # (3) the integrated service is authorized (using the cd-service plaintext)
 curl -s -H "Authorization: Bearer dg_xxx" http://glue.example.com/api/integration/services/cd | jq .enabled
 ```

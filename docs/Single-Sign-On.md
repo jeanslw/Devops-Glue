@@ -37,8 +37,18 @@ Glue exposes the following endpoints (`<issuer>` is Glue's externally reachable 
 Key features:
 
 - **Signature algorithm**: the `id_token` is signed with **RS256**. The private key lives only on the Glue side; the public key is published via JWKS, so each system validates against `jwks.json` alone.
-- **Supported scopes**: `openid profile email`.
-- **`groups` claim**: both `id_token` and `userinfo` return `groups`, an array of Glue user roles (e.g. `["super_admin"]`), which each system maps onto local roles.
+- **Supported scopes**: `openid profile email groups`.
+- **Claim ↔ required scope**:
+
+  | claim | required scope | note |
+  |---|---|---|
+  | `sub` / `username` | (always) | user identifier |
+  | `name` / `preferred_username` | `profile` | display name |
+  | `role` | `profile` | user role; **under `profile`, not `groups`**, so clients requesting only `openid profile email` still receive `role` |
+  | `email` / `email_verified` | `email` | email |
+  | `groups` | `groups` | role array (e.g. `["super_admin"]`); returned only when `groups` scope is requested |
+
+- **Upgrade note (v2.11.3)**: previously `role`/`groups` were returned unconditionally; now `role` is returned under `profile` and `groups` under `groups`. If a downstream depends on `groups`, add the `groups` scope to the authorization request (e.g. `openid profile email groups`), otherwise `userinfo` / `id_token` will no longer carry `groups`.
 - **Backward compatible**: when the authorization request omits `scope=openid`, the flow stays plain OAuth2 and no `id_token` is issued.
 - **nonce passthrough**: when the request carries a `nonce`, the `id_token` echoes it back for replay protection.
 
@@ -145,7 +155,7 @@ jenkins:
       fullNameFieldName: name
       emailFieldName: email
       groupsFieldName: groups           # read roles from the id_token groups claim
-      scopes: "openid profile email"
+      scopes: "openid profile email groups"
       disableSslVerification: false
       # post-auth callback: <jenkins>/securityRealm/finishLogin (matches redirect_uri)
   authorizationStrategy:

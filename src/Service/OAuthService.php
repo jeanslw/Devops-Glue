@@ -297,15 +297,14 @@ class OAuthService
     }
 
     /**
-     * 判断是否为 schema 迁移期间的兼容错误（表 / 列缺失），与 TokenService 口径一致。
+     * 判断是否为 schema 迁移期间的兼容错误（表 / 列缺失），与 TokenService 共用 App\Util\SchemaCompat 口径。
      *
      * @param \PDOException $e
      * @return bool
      */
     private function isSchemaCompatError(\PDOException $e): bool
     {
-        $code = (string) $e->getCode();
-        return in_array($code, ['42S02', '42S22', '42703'], true);
+        return \App\Util\SchemaCompat::isEvolutionError($e);
     }
 
     /**

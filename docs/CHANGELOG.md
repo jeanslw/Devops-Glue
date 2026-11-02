@@ -16,10 +16,9 @@
   - Permission parent keys now enforce a safe character set, removing the stored XSS injection vector.
 - **Optimized**
   - Bootstrap now pins idempotent steps (table creation, column reconciliation, data self-heal, seeding, drift detection) to the schema version, running them only on a version change (deploy); per-request bootstrap SQL drops from a dozen-odd statements to a few.
-  - Detailed health checks (external probes) are cached for about 60 seconds; the platform connections page loads the zero-probe static endpoint and reads the registry-type-mismatch flag from the last cached result, removing the synchronous probe that blocked page load.
+  - Detailed health checks (external probes) are cached for about 30 seconds; the platform connections page loads the zero-probe static endpoint and reads the registry-type-mismatch flag from the last cached result, removing the synchronous probe that blocked page load.
   - The role-permission list now uses a single batched query grouped by role, removing the per-role N+1 queries.
   - Security-scan search no longer full-scans: the per-request distinct type enumeration is now cached for about 300 seconds, and the audit table gains indexes covering the common equality filters and the default time-descending list.
-  - Auto-discovery result caching (about 60 seconds) is removed to avoid stale results hurting the user experience; registry tag listing caching (about 30 seconds) is kept.
 - **Fixed**
   - Authorization code redemption takes the write lock immediately under SQLite to avoid the concurrent read-then-write deadlock, and a row-count guard keeps a code redeemable at most once.
   - Custom-push terminal success is now irreversible: a concurrent write that would overwrite an already-success record is treated as an idempotent no-op, avoiding duplicate artifacts and notifications.
@@ -39,16 +38,16 @@
   - When a registry is configured but the tag fails verification, no green commit status is written, no success is written back, and the mapping is not marked successful.
   - Cold-start on an empty database now creates the mutex table first so migration mutual exclusion takes effect; the schema version marker is moved inside the migration lock, avoiding the concurrent re-run window.
   - Backup writes now verify the actual byte count and the archive write result; the backup directory permission is tightened to owner-only read / write and the backup archive file to owner-only read.
-  - A path with a non-active mapping now rejects the build-source direct fallback, preventing bypass of the mapping status gate.
-  - OAuth access-token account-state lookup exceptions are now fail-closed (only migration-compatibility cases such as missing table / column are allowed through).
-  - Build report finish-time is now normalized to UTC, correcting the opposite conclusions between string comparison and timestamp parsing.
-  - Role creation is now wrapped in a transaction; a failed permission write rolls back entirely, avoiding a half-created role.
+  - A path with a non-active mapping now rejects the build-source direct fallback, preventing bypass of the mapping status gate (after upgrade, any path that has a pending / disabled mapping will immediately return 400 on the trigger that previously relied on the Jenkins direct fallback — enable the mapping instead).
+  - OAuth access-token account-state lookup exceptions are now fail-closed (only migration-compatibility cases such as missing table / column are allowed through; the same detection used by the token service now also covers SQLite / PostgreSQL table / column absence expressed in the message text).
+  - Build report finish-time is now normalized and written back into the report body, so the provider write and the SQL time-order guard see the same format and local timezone (matching the rest of the system's NOW()/date() convention); this corrects the reversed conclusion between string comparison and timestamp parsing that previously caused legitimately newer reports to be silently dropped (no longer mixing UTC with the system-wide local convention).
+  - Role creation now runs inside a controller-level transaction (consistent with role update, via TransactionManager); a failed permission write rolls back entirely. A duplicate name that hits the unique key now maps to 409 instead of 500, avoiding a half-created role.
   - Backup file names now carry a random suffix, avoiding two concurrent requests contending for the same file.
   - Deleting an implied rule now prunes only the permissions derived solely from that rule and not explicitly granted, with cycle detection added; prune errors are no longer swallowed.
 - **Security**
   - Session revocation after password change / reset was silently failing: the escape syntax error is fixed so old tokens are correctly invalidated after a password change.
   - Custom-push log URL SSRF protection tightened: address safety checks are stricter (unparseable addresses rejected, loopback / link-local / unique-local / multicast / embedded-IPv4 handled), resolved addresses are pinned to close the rebinding window; unique-local addresses (both ranges) are rejected as untrusted, closing the earlier gap that only blocked one range; IPv6 literals are bracketed for libcurl; the response body is streamed and truncated at the size limit instead of being fully buffered.
-  - SSO userinfo, identity token and email endpoints now filter sensitive claims (email / groups) by authorization scope, and the access token records the granted scope.
+  - SSO userinfo, identity token and email endpoints now filter sensitive claims by authorization scope, and the access token records the granted scope: the role claim is returned under the profile scope and groups under the groups scope (clients that only request openid profile email still receive role).
   - The email_verified flag is now returned true only when a verification mechanism actually exists (none today, so it is always false).
   - Registry Bearer auth realm host must now share the origin with the registry host, refusing to forward base credentials to an arbitrary host.
   - Token account-state lookup exceptions are now fail-closed (only migration-compatibility cases such as missing table / column are allowed through), avoiding disabled / downgraded accounts keeping working sessions.

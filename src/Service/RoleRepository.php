@@ -124,18 +124,9 @@ class RoleRepository
      */
     public function createWithPermissions(string $name, string $desc, array $permKeys, array $validKeys): int
     {
-        $this->pdo->beginTransaction();
-        try {
-            $id = $this->create($name, $desc);
-            $this->insertPermissions($id, $permKeys, $validKeys);
-            $this->pdo->commit();
-            return $id;
-        } catch (\Throwable $e) {
-            if ($this->pdo->inTransaction()) {
-                $this->pdo->rollBack();
-            }
-            throw $e;
-        }
+        $id = $this->create($name, $desc);
+        $this->insertPermissions($id, $permKeys, $validKeys);
+        return $id;
     }
 
     public function deletePermissions(int $roleId): void

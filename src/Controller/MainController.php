@@ -468,13 +468,13 @@ class MainController extends BaseController
     }
 
     /**
-     * 缓存健康探测结果 60 秒，避免平台页加载时同步发起外部探测。
+     * 缓存健康探测结果 30 秒，避免平台页加载时同步发起外部探测。
      *
      * @param array<string,mixed> $detail
      */
     private function cacheHealthDetail(array $detail): void
     {
-        $this->appSettings->setCache(self::HEALTH_DETAIL_CACHE_KEY, $detail, 60);
+        $this->appSettings->setCache(self::HEALTH_DETAIL_CACHE_KEY, $detail, 30);
     }
 
     /**

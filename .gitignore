@@ -59,3 +59,4 @@ config/gitlab_id_cache.php
 config/data/
 /data/
 backups/
+.git-rewrite/

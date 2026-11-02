@@ -229,18 +229,19 @@ class OAuthController extends BaseController
             'sub'      => $username,
             'username' => $username,
         ];
-        // P2 #5：name / preferred_username 受 profile scope 约束
+        // name / preferred_username / role 受 profile scope 约束：
+        // role 归 profile（而非 groups），已上线且只申请 openid profile email 的客户端仍能拿到 role，避免静默丢角色。
         if (in_array('profile', $scopes, true)) {
             $claims['preferred_username'] = $username;
             $claims['name']               = $username;
+            $claims['role']               = $role;
         }
-        // P2 #6：仅在对应 scope 授权时返回敏感声明（email / groups / role）
+        // email / groups 仅在对应 scope 授权时返回
         if (in_array('email', $scopes, true)) {
             $claims['email'] = $emailInfo['email'];
             $claims['email_verified'] = $emailInfo['verified'];
         }
         if (in_array('groups', $scopes, true)) {
-            $claims['role']   = $role;
             $claims['groups'] = $this->oidc->groupsFromRole($role);
         }
         $response->getBody()->write((string) json_encode($claims));
@@ -352,12 +353,13 @@ class OAuthController extends BaseController
             'iss' => $issuer,
             'sub' => $username,
         ];
-        // P2 #5：name / preferred_username 受 profile scope 约束
+        // name / preferred_username / role 受 profile scope 约束（role 归 profile，兼容现有客户端）
         if (in_array('profile', $scopes, true)) {
             $claims['name']               = $username;
             $claims['preferred_username'] = $username;
+            $claims['role']               = $role;
         }
-        // P2 #6：仅在对应 scope 授权时返回敏感声明（email / groups）
+        // email / groups 仅在对应 scope 授权时返回
         if (in_array('email', $scopes, true)) {
             $claims['email'] = $emailInfo['email'];
             $claims['email_verified'] = $emailInfo['verified'];
