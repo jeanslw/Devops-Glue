@@ -189,5 +189,4 @@ class PermissionController extends BaseAdminController
             return $this->jsonError($response, $this->__('build.save_failed') . ': ' . $e->getMessage(), 500);
         }
     }
-
 }
