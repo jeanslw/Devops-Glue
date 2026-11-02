@@ -1059,7 +1059,7 @@ class DatabaseBootstrapTest extends TestCase
         $this->assertSame(0, $this->cacheRowCount($pdo, 'lock:schema_migration'), '接管者完成后同样释放锁');
     }
 
-    /** 竞争者 + 持有者健在（租约不过期）：轮询超时后降级硬跑（幂等），且不动他人持有的锁。 */
+    /** 竞争者 + 持有者健在（租约不过期）：轮询超时后 fail-closed 中止，不并发跑迁移、不动他人锁。 */
     public function testMigrationLoserHardRunsAfterWaitTimeout(): void
     {
         Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
@@ -1067,7 +1067,7 @@ class DatabaseBootstrapTest extends TestCase
         Database::bootstrap($pdo);
         $this->setVersion($pdo, 'schema_version', '0.0.0');
 
-        $holder = Database::tryAcquireLock('schema_migration', 300); 
+        $holder = Database::tryAcquireLock('schema_migration', 300);
         if ($holder === null) {
             self::fail('测试前置失败：无法抢到模拟锁');
         }
@@ -1076,14 +1076,17 @@ class DatabaseBootstrapTest extends TestCase
         Database::init(['driver' => 'sqlite', 'auto_migrate' => true]);
         Database::setMigrationWaitForTest(1, 0.1);
         try {
-            Database::bootstrap($pdo); 
+            Database::bootstrap($pdo);
+            $this->fail('等待超时且锁被他人持有时，应 fail-closed 中止，不得并发跑迁移');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('迁移锁等待超时', $e->getMessage());
         } finally {
             Database::setMigrationWaitForTest(null, null);
         }
 
-        $this->assertSame(AppConfig::APP_VERSION, $this->version($pdo, 'schema_version'), '超时降级硬跑也必须完成迁移');
+        $this->assertSame('0.0.0', $this->version($pdo, 'schema_version'), 'loser 中止后迁移未完成');
         $rows = $this->cacheRows($pdo, 'lock:schema_migration');
-        $this->assertCount(1, $rows, '硬跑路径不碰他人持有的锁');
+        $this->assertCount(1, $rows, '不碰他人持有的锁');
         $this->assertSame($holder, (string) $rows[0]['value'], '锁仍由原持有者持有');
         Database::releaseLock('schema_migration', $holder);
     }

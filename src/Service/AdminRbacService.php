@@ -136,6 +136,125 @@ class AdminRbacService
     }
 
     /**
+     * 新增隐含规则 src→tgt 是否会形成环（含内置规则与已有规则构成的传递闭包）。
+     *
+     * @param string $src
+     * @param string $tgt
+     * @return bool
+     */
+    public function wouldCreateImpliedCycle(string $src, string $tgt): bool
+    {
+        if ($src === $tgt) {
+            return true;
+        }
+        $implied = [];
+        $rows = $this->pdo->query("SELECT source_key, target_key FROM " . AppConfig::TABLE_IMPLIED_RULES)->fetchAll();
+        foreach ($rows as $r) {
+            $implied[$r['source_key']][] = $r['target_key'];
+        }
+        foreach (AppConfig::IMPLIED_PERMISSIONS as $s => $ts) {
+            foreach ($ts as $t) {
+                $implied[$s][] = $t;
+            }
+        }
+        return $this->reachable($implied, $tgt, $src);
+    }
+
+    /**
+     * 删除某条隐含规则 src→tgt 后，仅移除「仅由该规则推导、且不源于任何其它规则或显式授予」的角色权限。
+     * 不同步反向推算整张扁平权限表，避免误删显式授权或清空角色。
+     *
+     * @param string $src
+     * @param string $tgt
+     * @return int 被清理权限的角色数
+     */
+    public function pruneImpliedPermissionForDeletedRule(string $src, string $tgt): int
+    {
+        $pdo = $this->pdo;
+
+        // 仍可能推导出 tgt 的「其它来源」（数据库规则 + 内置规则），排除被删的 src→tgt
+        $otherSources = [];
+        $rows = $pdo->query("SELECT source_key, target_key FROM " . AppConfig::TABLE_IMPLIED_RULES)->fetchAll();
+        foreach ($rows as $r) {
+            if ($r['target_key'] === $tgt && $r['source_key'] !== $src) {
+                $otherSources[] = $r['source_key'];
+            }
+        }
+        foreach (AppConfig::IMPLIED_PERMISSIONS as $s => $ts) {
+            if (in_array($tgt, $ts, true) && $s !== $src) {
+                $otherSources[] = $s;
+            }
+        }
+
+        $roleIds = $pdo->query("SELECT id FROM " . AppConfig::TABLE_ROLES . " WHERE is_system = 0")->fetchAll(\PDO::FETCH_COLUMN);
+        $permSel = $pdo->prepare("SELECT perm_key FROM " . AppConfig::TABLE_ROLE_PERMISSIONS . " WHERE role_id = ?");
+        $permDel = $pdo->prepare("DELETE FROM " . AppConfig::TABLE_ROLE_PERMISSIONS . " WHERE role_id = ? AND perm_key = ?");
+
+        $cleaned = 0;
+        foreach ($roleIds as $roleId) {
+            $roleId = (int) $roleId;
+            $permSel->execute([$roleId]);
+            $current = $permSel->fetchAll(\PDO::FETCH_COLUMN);
+            if (!in_array($tgt, $current, true)) {
+                continue;
+            }
+            // tgt 是否被任意规则推导（含被删规则）：用于识别「显式授予」以免误删
+            $derivableFromAny = in_array($src, $current, true);
+            foreach ($otherSources as $os) {
+                if (in_array($os, $current, true)) {
+                    $derivableFromAny = true;
+                    break;
+                }
+            }
+            if (!$derivableFromAny) {
+                continue;
+            }
+            $derivedViaOther = false;
+            foreach ($otherSources as $os) {
+                if (in_array($os, $current, true)) {
+                    $derivedViaOther = true;
+                    break;
+                }
+            }
+            if (in_array($src, $current, true) && !$derivedViaOther) {
+                $permDel->execute([$roleId, $tgt]);
+                $cleaned++;
+            }
+        }
+        return $cleaned;
+    }
+
+    /**
+     * 从 from 沿隐含规则边能否到达 to。
+     *
+     * @param array<string, list<string>> $adj
+     * @param string $from
+     * @param string $to
+     * @return bool
+     */
+    private function reachable(array $adj, string $from, string $to): bool
+    {
+        $seen  = [];
+        $queue = [$from];
+        while ($queue) {
+            $node = array_shift($queue);
+            if ($node === $to) {
+                return true;
+            }
+            if (isset($seen[$node])) {
+                continue;
+            }
+            $seen[$node] = true;
+            foreach ($adj[$node] ?? [] as $next) {
+                if (!isset($seen[$next])) {
+                    $queue[] = $next;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
      * 隐含规则变更后，对自定义角色（is_system=0）重算权限，补进新规则带来的隐含权限。
      *
      *

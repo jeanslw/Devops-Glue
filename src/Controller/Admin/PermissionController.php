@@ -139,8 +139,12 @@ class PermissionController extends BaseAdminController
             if ($this->permissions->countByKeys([$src, $tgt]) < 2) {
                 return $this->jsonError($response, 'validation.perm_not_found', 400);
             }
-            if ($this->isSensitivePermission($this->rbacService->expandPermissions([$tgt]))) {
-                return $this->jsonError($response, 'implied.sensitive_forbidden', 403);
+            // 隐含规则目标必须是调用者已持有的权限，防止借规则横向提权（#1）
+            if ($this->currentRole !== AppConfig::ROLE_SUPER_ADMIN && !in_array($tgt, $this->userPermissions, true)) {
+                return $this->jsonError($response, 'implied.target_not_held', 403);
+            }
+            if ($this->rbacService->wouldCreateImpliedCycle($src, $tgt)) {
+                return $this->jsonError($response, 'implied.cycle_forbidden', 400);
             }
             $this->permissions->upsertImpliedRule($src, $tgt);
             $resynced = 0;
@@ -177,31 +181,13 @@ class PermissionController extends BaseAdminController
         }
         try {
             $this->permissions->deleteImpliedRule($src, $tgt);
-            // P1 #2：删除隐含规则后，剪枝各角色不再被推导的孤儿隐含权限
-            try {
-                $this->rbacService->pruneOrphanedImpliedPermissions();
-            } catch (\Exception $e) {
-                \App\Helper\Log::exception($e);
-            }
-            $this->opLog()->record($this->currentUser, 'delete_implied_rule', $src . ' → ' . $tgt, [], $this->clientIp($request), 'success');
-            return $this->output($response, ['deleted' => ['source' => $src, 'target' => $tgt]], $request);
+            // #3：仅移除「仅由该规则推导、且非显式授予」的角色权限，不反向推算整张扁平表
+            $pruned = $this->rbacService->pruneImpliedPermissionForDeletedRule($src, $tgt);
+            $this->opLog()->record($this->currentUser, 'delete_implied_rule', $src . ' → ' . $tgt, ['roles_pruned' => $pruned], $this->clientIp($request), 'success');
+            return $this->output($response, ['deleted' => ['source' => $src, 'target' => $tgt], 'roles_pruned' => $pruned], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.save_failed') . ': ' . $e->getMessage(), 500);
         }
     }
 
-    /**
-     * 判断权限集合中是否含有敏感权限（账号 / 角色管理）。用于阻止把此类权限作为隐含规则目标而被横向授予。
-     *
-     * @param list<string> $keys
-     */
-    private function isSensitivePermission(array $keys): bool
-    {
-        foreach ($keys as $k) {
-            if ($k === AppConfig::PERM_CI_USERS_MANAGE_ADMIN || str_starts_with($k, 'ci.users.manage')) {
-                return true;
-            }
-        }
-        return false;
-    }
 }

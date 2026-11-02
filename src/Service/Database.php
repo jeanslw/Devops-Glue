@@ -1336,7 +1336,17 @@ class Database
                 return;
             }
         }
-        $critical();
+        // 等待超时仍未取得锁：不再无条件执行 critical，避免并发迁移竞态（fail-closed）
+        $token = self::tryAcquireLock(self::MIGRATION_LOCK_KEY, self::MIGRATION_LOCK_TTL);
+        if ($token !== null) {
+            try {
+                $critical();
+            } finally {
+                self::releaseLock(self::MIGRATION_LOCK_KEY, $token);
+            }
+            return;
+        }
+        throw new \RuntimeException('数据库迁移锁等待超时，另一进程可能正在迁移，已中止以避免并发竞态');
     }
 
     /** ci_cache 表当前是否可读（区分「锁被他人持有」与「空库首启无从互斥」） */

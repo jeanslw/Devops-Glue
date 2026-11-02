@@ -39,6 +39,12 @@
   - When a registry is configured but the tag fails verification, no green commit status is written, no success is written back, and the mapping is not marked successful.
   - Cold-start on an empty database now creates the mutex table first so migration mutual exclusion takes effect; the schema version marker is moved inside the migration lock, avoiding the concurrent re-run window.
   - Backup writes now verify the actual byte count and the archive write result; the backup directory permission is tightened to owner-only read / write and the backup archive file to owner-only read.
+  - A path with a non-active mapping now rejects the build-source direct fallback, preventing bypass of the mapping status gate.
+  - OAuth access-token account-state lookup exceptions are now fail-closed (only migration-compatibility cases such as missing table / column are allowed through).
+  - Build report finish-time is now normalized to UTC, correcting the opposite conclusions between string comparison and timestamp parsing.
+  - Role creation is now wrapped in a transaction; a failed permission write rolls back entirely, avoiding a half-created role.
+  - Backup file names now carry a random suffix, avoiding two concurrent requests contending for the same file.
+  - Deleting an implied rule now prunes only the permissions derived solely from that rule and not explicitly granted, with cycle detection added; prune errors are no longer swallowed.
 - **Security**
   - Session revocation after password change / reset was silently failing: the escape syntax error is fixed so old tokens are correctly invalidated after a password change.
   - Custom-push log URL SSRF protection tightened: address safety checks are stricter (unparseable addresses rejected, loopback / link-local / unique-local / multicast / embedded-IPv4 handled), resolved addresses are pinned to close the rebinding window; unique-local addresses (both ranges) are rejected as untrusted, closing the earlier gap that only blocked one range; IPv6 literals are bracketed for libcurl; the response body is streamed and truncated at the size limit instead of being fully buffered.
@@ -46,7 +52,7 @@
   - The email_verified flag is now returned true only when a verification mechanism actually exists (none today, so it is always false).
   - Registry Bearer auth realm host must now share the origin with the registry host, refusing to forward base credentials to an arbitrary host.
   - Token account-state lookup exceptions are now fail-closed (only migration-compatibility cases such as missing table / column are allowed through), avoiding disabled / downgraded accounts keeping working sessions.
-  - RBAC hardening: implied-rule targets may no longer point at sensitive permissions (account / role management); deleting an implied rule now prunes each role's no-longer-derived orphan implied permissions; role create / update enforces the privilege-escalation ceiling that a non-super-admin cannot grant permissions it does not itself hold.
+  - RBAC hardening: an implied-rule target must be a permission the caller already holds (preventing privilege escalation to system / platform-config via rules); deleting an implied rule now prunes only the permissions derived solely from that rule and not explicitly granted, with cycle detection added to avoid wiping a role or dropping explicit grants; role create / update enforces the privilege-escalation ceiling that a non-super-admin cannot grant permissions it does not itself hold.
 
 ## v2.11.2 (2026-10-30)
 
