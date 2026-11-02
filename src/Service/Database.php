@@ -312,8 +312,6 @@ class Database
     {
         try {
             $pdo = self::pdo();
-            // 只在新库首次引导时自动播种一次：用持久化标记区分「从未播种」与「管理员已清空 OIDC 客户端」。
-            // 否则每次重启都因空表重新导入 env，管理员在后台删光 client 想关 SSO 后会被静默重新打开。
             if (self::readAppSetting($pdo, self::OIDC_ENV_SEED_KEY) !== null) {
                 return;
             }
@@ -328,7 +326,11 @@ class Database
                     );
                 }
             }
-            self::writeAppSetting($pdo, self::OIDC_ENV_SEED_KEY, '1');
+            $cdSeeded = (new \App\Service\OAuthClientRepository($pdo))
+                ->find(\App\Config\AppConfig::SERVICE_CD) !== null;
+            if ($cdSeeded) {
+                self::writeAppSetting($pdo, self::OIDC_ENV_SEED_KEY, '1');
+            }
         } catch (\Throwable $e) {
             \App\Helper\Log::exception($e);
         }

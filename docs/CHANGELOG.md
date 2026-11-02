@@ -44,6 +44,7 @@
   - Role creation now runs inside a controller-level transaction (consistent with role update, via TransactionManager); a failed permission write rolls back entirely. A duplicate name that hits the unique key now maps to 409 instead of 500, avoiding a half-created role.
   - Backup file names now carry a random suffix, avoiding two concurrent requests contending for the same file.
   - Deleting an implied rule now prunes only the permissions derived solely from that rule and not explicitly granted, with cycle detection added; prune errors are no longer swallowed.
+  - OIDC auto-seed now records its permanent marker only after the cd client is successfully created, so a fresh install whose first boot runs before env is ready retries on the next boot instead of staying un-seeded; seeding also removes a cd-service row mistaken for an OIDC client.
 - **Security**
   - Session revocation after password change / reset was silently failing: the escape syntax error is fixed so old tokens are correctly invalidated after a password change.
   - Custom-push log URL SSRF protection tightened: address safety checks are stricter (unparseable addresses rejected, loopback / link-local / unique-local / multicast / embedded-IPv4 handled), resolved addresses are pinned to close the rebinding window; unique-local addresses (both ranges) are rejected as untrusted, closing the earlier gap that only blocked one range; IPv6 literals are bracketed for libcurl; the response body is streamed and truncated at the size limit instead of being fully buffered.

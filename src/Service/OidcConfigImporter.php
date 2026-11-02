@@ -11,11 +11,6 @@ use App\Support\EnvFileLoader;
  *   - {@see \App\Service\Database::bootstrap()}：全新库（ci_oauth_clients 空表）首次引导时自动播种，
  *     避免「联合部署完就登不上」（忘了跑迁移 → /oauth/authorize 400 无效的 OAuth 请求）；
  *   - cli/migrate-oidc.php：老版本升级时显式迁移，输出迁移/跳过明细。
- *
- * 边界（只补不改）：
- *   - DB 已有值（issuer / id_token_ttl）或已有行（客户端）一律跳过，重复执行安全；
- *   - 因此不会覆盖后台「系统设置 → 平台管理」里的人工配置。
- *
  * 不在本类范围：签名私钥（OIDC_RSA_PRIVATE_KEY / OIDC_KEY_FILE）始终留在 env / 文件，不迁库。
  */
 final class OidcConfigImporter
@@ -91,6 +86,12 @@ final class OidcConfigImporter
         }
 
         foreach (self::CLIENT_ENV as $clientId => $cols) {
+            $stray = $clientId . '-service';
+            if ($this->clients->find($stray) !== null) {
+                $this->clients->delete($stray);
+                $skipped[] = "client:{$stray}（已移除并改用 {$clientId}）";
+            }
+
             if ($this->clients->find($clientId) !== null) {
                 $skipped[] = "client:{$clientId}（DB 已有行，不覆盖）";
                 continue;
@@ -101,9 +102,6 @@ final class OidcConfigImporter
             $system      = isset($cols['system']) ? self::firstEnvValue($cols['system']) : '';
             $hasEnvValue = $secret !== '' || $redirectUri !== '' || $system !== '';
 
-            // cd 客户端天然归属 CD 系统：未显式提供 CD_OIDC_SYSTEM 时默认 'cd'。
-            // 否则 OAuthClientRepository::save() 会把空 system 归一为 'ci'，
-            // CD 账号（systems 含 cd）登录时会被 auth.no_ci_access 拒绝。
             if ($clientId === AppConfig::SERVICE_CD && $system === '') {
                 $system = AppConfig::SYSTEM_CD;
             }
