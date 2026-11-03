@@ -34,7 +34,6 @@ use App\Service\SecurityCheckRepository;
 use App\Service\BuildTagCacheRepository;
 use App\Service\CustomBuildRepository;
 use App\Service\TransactionManager;
-
 use App\Service\Git\ProviderRegistry;
 use App\Service\Git\GitProviderFactory;
 use App\Service\Build\BuildProviderRegistry;
@@ -61,7 +60,6 @@ use App\Service\OidcService;
 use App\Service\OAuthClientRepository;
 use App\Service\PlatformConnectionRepository;
 use App\Service\Encryptor;
-
 use App\Middleware\CorsMiddleware;
 use App\Middleware\AuthMiddleware;
 use App\Service\Logger;
@@ -91,11 +89,11 @@ return [
             'gitee'  => $conns['gitee'],
             'gitea'  => $conns['gitea'],
         ]);
-		
+
         $registryKey = $c->get(AppSettingRepository::class)->getRegistryType();
         $settings['harbor']  = $conns[$registryKey] ?? $conns['harbor'];
         $settings['jenkins'] = $conns['jenkins'];
-        
+
         $settings['harbor']['registry_type'] = $c->get(AppSettingRepository::class)->getRegistryType();
         return new Settings($settings, $c->get(PlatformVersionRepository::class));
     },
@@ -271,9 +269,9 @@ return [
         $logger  = $c->get(Logger::class);
         $registry = new ProviderRegistry($logger);
 
-        
 
-        
+
+
         if ($config->isPlatformConfigured('gitlab')) {
             $gitlabCfg = $config->getGitlabConfig();
             $registry->register(
@@ -346,7 +344,7 @@ return [
             $class  = $provider['class'] ?? '';
             $cfg    = $provider['config'] ?? [];
             $name   = $cfg['name'] ?? '';
-            $matcher= $cfg['matcher'] ?? null;
+            $matcher = $cfg['matcher'] ?? null;
 
             if (empty($class) || empty($name)) {
                 $logger->warning('跳过无效的自定义 Provider 配置', ['provider' => $provider]);
@@ -384,7 +382,7 @@ return [
         $config   = $c->get(Settings::class);
         $logger   = $c->get(Logger::class);
         $registry = new BuildProviderRegistry($logger);
-		
+
         $jenkinsCfg = $config->getJenkinsConfig();
         if (!empty($jenkinsCfg['url'])) {
             $registry->register(AppConfig::PROVIDER_JENKINS, function () use ($c, $logger) {
@@ -860,7 +858,7 @@ return [
                 $harbor['password'] ?? '',
             ],
             'headers'         => ['Accept' => 'application/json'],
-            'connect_timeout' => 5,  
+            'connect_timeout' => 5,
             'timeout'         => 15,
         ]);
     },

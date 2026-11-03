@@ -1,4 +1,5 @@
 <?php
+
 /**
  * 离线清理过期审计日志 CLI
  *
@@ -14,6 +15,7 @@
  *
  * 退出码：0 = 完成；1 = 数据库初始化失败。
  */
+
 require __DIR__ . '/bootstrap.php';
 
 use App\Config\AppConfig;

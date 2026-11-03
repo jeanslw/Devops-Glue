@@ -74,7 +74,7 @@ final class RegistrySyncController extends BaseBuildController
             'build_provider'       => (string) ($result['build_provider'] ?? ''),
             'sha'                  => $sha !== '' ? $sha : 'N/A',
             'tag'                  => (string) ($result['tag'] ?? ''),
-            'digest'               => $result['digest'] ?? null,
+            'digest'               => isset($result['digest']) ? $result['digest'] : null,
             'registry_repository'  => (string) ($result['registry_repository'] ?? ''),
             'vulnerability_count'  => (int) ($result['vulnerability_count'] ?? 0),
             'scan_state'           => (string) ($result['scan_state'] ?? 'unknown'),

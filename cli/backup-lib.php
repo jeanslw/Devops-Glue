@@ -1,10 +1,12 @@
 <?php
+
 /**
  * 备份/恢复 CLI 共用库（供 cli/backup-db.php、bin/backup.php、bin/restore.php require_once）
  *
  * 随镜像发布（cli/ 在镜像内）；bin/ 下的离线工具是本地补丁，require 本文件
  *
  */
+
 require_once __DIR__ . '/../vendor/autoload.php';
 
 use App\Config\AppConfig;
@@ -78,7 +80,7 @@ function backupLoadEnv(): void
  */
 function backupConnect(): array
 {
-    Database::init(); 
+    Database::init();
     try {
         $pdo = Database::createPdo();
     } catch (\Throwable $e) {
@@ -199,7 +201,7 @@ function backupWriteFile(\PDO $pdo, string $driver, string $targetFile, array $o
             $rows = $pdo->query('SELECT * FROM ' . $t)->fetchAll(\PDO::FETCH_NUM);
             $counts[$t] = count($rows);
             if (empty($rows)) {
-                continue; 
+                continue;
             }
             $head   = 'INSERT INTO ' . $t . ' (' . implode(', ', $cols) . ') VALUES';
             $values = [];

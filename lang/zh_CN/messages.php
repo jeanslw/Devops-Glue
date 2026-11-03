@@ -1,8 +1,10 @@
 <?php
+
 /**
  * 中文语言包（默认）
  * 组织方式：按 domain.key 扁平化，便于使用 Translator
  */
+
 return [
     // ── 通用 ──
     'common.ok'       => '正常',
@@ -346,9 +348,9 @@ return [
     'monitor.service_check' => '服务监测',
     'monitor.build_platform' => '构建平台',
     'monitor.build_no_ci'    => '无已启用 CI',
-    'monitor.git_platforms'=> 'Git 运行时连通性',
-    'monitor.git_reachable'=> 'API 可达',
-    'monitor.git_unreachable'=> 'API 不可达',
+    'monitor.git_platforms' => 'Git 运行时连通性',
+    'monitor.git_reachable' => 'API 可达',
+    'monitor.git_unreachable' => 'API 不可达',
     'monitor.git_no_ref'  => '无运行时引用',
     'monitor.container_registry' => 'Container Registry',
     'monitor.registry_type_mismatch' => '仓库类型不匹配（所选类型与地址实际服务不符）',
@@ -375,8 +377,8 @@ return [
     'admin.account_logout'  => '账号与退出',
     'admin.sidebar_monitor' => '监测概览',
     'admin.sidebar_mapping' => '映射管理',
-    'admin.sidebar_security'=> '安全审计',
-    'admin.sidebar_versions'=> '对接版本',
+    'admin.sidebar_security' => '安全审计',
+    'admin.sidebar_versions' => '对接版本',
     'admin.sidebar_mode'    => '构建模式',
     'admin.sidebar_build_records' => '构建记录',
     'admin.sidebar_pull_records'  => '拉取式记录',
@@ -384,7 +386,7 @@ return [
     'admin.sidebar_users'   => '用户管理',
     'admin.sidebar_user_list' => '用户列表',
     'admin.sidebar_roles'   => '角色管理',
-    'admin.sidebar_password'=> '修改密码',
+    'admin.sidebar_password' => '修改密码',
     'admin.page_lost'       => '管理页面丢失',
     'admin.doc_lost'        => '文档文件丢失',
     'admin.login_page_lost' => '登录页丢失',
@@ -423,10 +425,10 @@ return [
     'form.project_id'       => 'Project ID',
     'form.web_url'          => 'Web URL',
     'form.project_path'     => '项目路径',
-    'form.registry_repository'=> '镜像仓库名',
+    'form.registry_repository' => '镜像仓库名',
     'form.please_select'    => '— 请选择 —',
     'form.placeholder_job_name'  => '例: java/registry',
-    'form.placeholder_git_remote'=> '例: http://git.company.com/project.git',
+    'form.placeholder_git_remote' => '例: http://git.company.com/project.git',
     'form.placeholder_project_path' => '例: group/project',
     'form.placeholder_project_id'    => '数字或空',
     'form.placeholder_web_url'       => '项目主页链接',
@@ -627,7 +629,7 @@ return [
     'role.add_role'     => '＋ 新增角色',
     'role.edit_role'    => '编辑角色',
     'role.name'         => '角色标识',
-    'role.name_required'=> '角色标识不能为空',
+    'role.name_required' => '角色标识不能为空',
     'role.name_placeholder' => '仅小写字母、数字和下划线',
     'role.name_help'    => '仅小写字母、数字、下划线',
     'role.description'  => '显示名称',
@@ -723,8 +725,8 @@ return [
     'perm.register_title'  => '➕ 权限注册',
     'perm.register_hint'   => '手动注册新权限（通常由 CD 项目自动注册，此界面用于特殊情况）。',
     'perm.key_placeholder' => '例: cd.deploy',
-    'perm.desc_placeholder'=> '例：部署管理',
-    'perm.parent_placeholder'=> '例：cd.deploy-manage（可选）',
+    'perm.desc_placeholder' => '例：部署管理',
+    'perm.parent_placeholder' => '例：cd.deploy-manage（可选）',
     'perm.key_format'      => '格式：小写字母、数字、点号、下划线',
     'perm.register_btn'    => '注册',
     'perm.key_required'    => '权限键不能为空',
@@ -740,9 +742,9 @@ return [
     'implied.source_hint'  => '拥有此权限时',
     'implied.target_hint'  => '自动拥有此权限',
     'implied.no_rules'     => '暂无隐含规则',
-    'implied.both_required'=> '源权限和目标权限都必须选择',
+    'implied.both_required' => '源权限和目标权限都必须选择',
     'implied.cannot_same'  => '源权限和目标权限不能相同',
-    'implied.confirm_delete'=> '确定删除此隐含规则？',
+    'implied.confirm_delete' => '确定删除此隐含规则？',
     'implied.add_ok'       => '隐含规则添加成功',
     'implied.delete_ok'    => '隐含规则已删除',
     'implied.builtin_protected' => '系统内置隐含规则不可删除',
@@ -752,13 +754,13 @@ return [
     'api_token.add'             => '＋ 新增 Token',
     'api_token.id'              => 'ID',
     'api_token.name'            => '名称',
-    'api_token.name_placeholder'=> '例：CD 服务账号 / Jenkins 扫描回写',
+    'api_token.name_placeholder' => '例：CD 服务账号 / Jenkins 扫描回写',
     'api_token.scopes'          => '接口权限（Scope）',
     'api_token.expires'         => '过期日期',
     'api_token.expires_hint'    => '留空表示永不过期',
     'api_token.expires_invalid' => '日期格式应为 yyyy/mm/dd，如 2026/08/13',
     'api_token.note'            => '备注',
-    'api_token.note_placeholder'=> '用途说明（可选）',
+    'api_token.note_placeholder' => '用途说明（可选）',
     'api_token.created_title'   => '✅ Token 创建成功',
     'api_token.created_hint'    => '请立即复制保存，此明文 Token 仅显示这一次。',
     'api_token.copy'            => '复制',
@@ -788,7 +790,7 @@ return [
     'api_token.scopes_updated'  => 'Scope 已更新',
     'api_token.not_found'       => 'Token 不存在或已被删除',
     'api_token.disabled'        => '已禁用',
-    'api_token.super_admin_only'=> '仅超级管理员可访问',
+    'api_token.super_admin_only' => '仅超级管理员可访问',
     'api_token.scope_forbidden' => 'API Token 无权访问此接口',
     'api_token.service_unavailable' => 'API Token 服务不可用',
 
@@ -1079,4 +1081,3 @@ return [
     'sys.isvc_token_hint'       => '此明文 Token 仅显示这一次（平台仅保存其摘要）。请粘贴到 CD 的配置（CI_API_TOKEN），关闭后将无法再次查看。',
     'sys.isvc_token_saved'      => '我已保存',
 ];
-

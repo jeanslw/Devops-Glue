@@ -1,4 +1,5 @@
 <?php
+
 /**
  * 数据库迁移 CLI（建缺失表 + 存量库幂等补列 + 索引 + RBAC/管理员种子 + 自检 + 标记 schema 当前）。
  *
@@ -18,6 +19,7 @@
  *   2 = --dry-run 判定需要迁移（有结构变更待补，或版本标记未对齐），供流水线决定是否执行迁移
  *   1 = 致命错误（库连不上 / 建表或种子失败 / 迁移后仍缺表 / 参数无法识别）
  */
+
 require __DIR__ . '/bootstrap.php';
 
 use App\Config\AppConfig;
@@ -259,7 +261,7 @@ function ciPipelineArtifactsBackfillDigests(\PDO $pdo, bool $dryRun, int $limit)
         $digest = '';
         try {
             $details = $registry->getTagDetails($repo);
-            if (is_array($details) && !isset($details['error'])) {
+            if (!isset($details['error'])) {
                 foreach ($details as $d) {
                     if (!is_array($d)) {
                         continue;
@@ -325,8 +327,8 @@ if (!$drift['ok']) {
 if ($dryRun) {
     try {
         $pdo     = Database::connect();
-        $status  = Database::schemaStatus();      
-        $pending = Database::pendingChanges($pdo); 
+        $status  = Database::schemaStatus();
+        $pending = Database::pendingChanges($pdo);
     } catch (\Throwable $e) {
         fwrite(STDERR, "错误：预检失败（无法连接或读取库结构）: {$e->getMessage()}\n");
         exit(1);

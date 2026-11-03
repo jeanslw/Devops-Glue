@@ -1,4 +1,5 @@
 <?php
+
 /**
  * 全库数据备份 CLI（随镜像发布，由 supervisord 的 db-backup 循环调度）
  *
@@ -11,6 +12,7 @@
  * 各自滚动保留最新 10 份。
  * 退出码：0 = 完成或按开关跳过；1 = 致命错误（库连不上 / 写盘失败）。
  */
+
 require_once __DIR__ . '/backup-lib.php';
 
 use App\Service\DataBackupService;

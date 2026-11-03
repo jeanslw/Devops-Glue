@@ -1,4 +1,5 @@
 <?php
+
 use Slim\App;
 use Slim\Routing\RouteCollectorProxy;
 use App\Config\AppConfig;
@@ -32,7 +33,6 @@ use App\Controller\Build\PipelineTagController;
 use App\Controller\OAuthController;
 use App\Middleware\AuthMiddleware;
 
-
 if (!isset($app) || !$app instanceof App) {
     throw new \RuntimeException('routes.php 必须由应用入口在 $app（Slim\App）就绪后加载');
 }
@@ -50,15 +50,15 @@ $app->get('/healthz', [HealthzController::class, '__invoke']);
 
 $app->group('/api', function (RouteCollectorProxy $api) {
 
-    
+
     $api->map(['GET'], '/health', [MainController::class, 'healthDetail'])->add(AuthMiddleware::class);
     $api->map(['GET'], '/health/static', [MainController::class, 'healthStatic'])->add(AuthMiddleware::class);
     $api->get('/i18n/{locale}', [I18nController::class, 'i18n']);
 
-    
+
     $api->get('/docs', [MainController::class, 'docs']);
 
-    
+
     $api->get('/openapi.json', [MainController::class, 'openapiJson']);
 
     $api->group('/main', function (RouteCollectorProxy $main) {
@@ -71,7 +71,7 @@ $app->group('/api', function (RouteCollectorProxy $api) {
     $api->group('/admin', function (RouteCollectorProxy $admin) {
         $admin->map(['POST'], '/login', [AuthController::class, 'login']);
         $admin->map(['POST'], '/logout', [AuthController::class, 'logout']);
-       
+
         $admin->group('', function (RouteCollectorProxy $auth) {
             $auth->map(['PUT'], '/password', [AuthController::class, 'changePassword']);
             $auth->map(['GET'], '/job_git_map', [MappingController::class, 'jobGitMapList']);
@@ -111,7 +111,7 @@ $app->group('/api', function (RouteCollectorProxy $api) {
             $auth->map(['GET'], '/oidc_config', [OidcController::class, 'oidcConfig']);
             $auth->map(['PUT'], '/oidc_config', [OidcController::class, 'updateOidcConfig']);
             $auth->map(['GET'], '/platform_connections', [ConnectionController::class, 'platformConnections']);
-            $auth->map(['PUT'], '/platform_connections', [ConnectionController::class, 'updatePlatformConnections']);          
+            $auth->map(['PUT'], '/platform_connections', [ConnectionController::class, 'updatePlatformConnections']);
             $auth->map(['POST'], '/tag_cleanup', [SystemController::class, 'runTagCleanup']);
             $auth->map(['POST'], '/tag_backfill', [SystemController::class, 'runTagBackfill']);
             $auth->map(['GET'], '/system_info', [SystemController::class, 'systemInfo']);
@@ -123,7 +123,7 @@ $app->group('/api', function (RouteCollectorProxy $api) {
             $auth->map(['POST'], '/api_tokens', [ApiTokenController::class, 'apiTokenCreate']);
             $auth->map(['PUT'], '/api_tokens/{id}/scopes', [ApiTokenController::class, 'apiTokenUpdateScopes']);
             $auth->map(['POST'], '/api_tokens/{id}/revoke', [ApiTokenController::class, 'apiTokenRevoke']);
-            $auth->map(['DELETE'], '/api_tokens/{id}', [ApiTokenController::class, 'apiTokenDelete']);        
+            $auth->map(['DELETE'], '/api_tokens/{id}', [ApiTokenController::class, 'apiTokenDelete']);
             $auth->map(['GET'], '/integrated_services/{service}', [IntegratedServiceController::class, 'status']);
             $auth->map(['POST'], '/integrated_services/{service}/enable', [IntegratedServiceController::class, 'enable']);
             $auth->map(['POST'], '/integrated_services/{service}/disable', [IntegratedServiceController::class, 'disable']);
@@ -137,14 +137,14 @@ $app->group('/api', function (RouteCollectorProxy $api) {
 
     // RBAC 接口
     $api->group('/rbac', function (RouteCollectorProxy $rbac) {
-        
+
         $rbac->map(['POST'], '/users', [RbacController::class, 'userCreate']);
         $rbac->map(['PUT'], '/users/{username}', [RbacController::class, 'userUpdate']);
-        $rbac->map(['DELETE'], '/users/{username}', [RbacController::class, 'userDelete']);      
+        $rbac->map(['DELETE'], '/users/{username}', [RbacController::class, 'userDelete']);
         $rbac->map(['GET'], '/users', [RbacController::class, 'userList']);
         $rbac->map(['GET'], '/users/{username}', [RbacController::class, 'userGet']);
         $rbac->map(['GET'], '/roles', [RbacController::class, 'roleList']);
-        
+
         $rbac->map(['GET'], '/roles/{name}/permissions', [RbacController::class, 'rolePermissions']);
     })->add(AuthMiddleware::class);
 
@@ -193,14 +193,13 @@ $app->group('/api', function (RouteCollectorProxy $api) {
 });
 
 $app->group('/oauth', function (RouteCollectorProxy $oauth) {
-    $oauth->get('/authorize',  [OAuthController::class, 'authorizeForm']);
+    $oauth->get('/authorize', [OAuthController::class, 'authorizeForm']);
     $oauth->post('/authorize', [OAuthController::class, 'authorizeSubmit']);
-    $oauth->post('/token',     [OAuthController::class, 'token']);
+    $oauth->post('/token', [OAuthController::class, 'token']);
     $oauth->map(['GET', 'POST'], '/userinfo', [OAuthController::class, 'userinfo']);
     $oauth->get('/userinfo/emails', [OAuthController::class, 'userinfoEmails']);
 });
 
 // OIDC Discovery / JWKS
 $app->get('/.well-known/openid-configuration', [OAuthController::class, 'discovery']);
-$app->get('/.well-known/jwks.json',              [OAuthController::class, 'jwks']);
-
+$app->get('/.well-known/jwks.json', [OAuthController::class, 'jwks']);

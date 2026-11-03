@@ -1,4 +1,5 @@
 <?php
+
 /**
  * CLI 共享引导：autoload + 环境变量加载 + envVal()。
  */
@@ -23,7 +24,7 @@ App\Support\EnvFileLoader::load(__DIR__ . '/../config');
 function encryptSensitiveColumns(\PDO $pdo, string $table, string $pk, array $cols): int
 {
     $enc = new App\Service\Encryptor();
-    $enc->rawKey(); 
+    $enc->rawKey();
 
     $rows = $pdo->query('SELECT ' . implode(', ', array_merge([$pk], $cols)) . ' FROM ' . $table)
         ->fetchAll(\PDO::FETCH_ASSOC) ?: [];

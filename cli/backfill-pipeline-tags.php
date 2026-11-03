@@ -1,4 +1,5 @@
 <?php
+
 /**
  * 离线回填 ci_pipeline_artifacts 缺失 tag CLI
  *
@@ -9,6 +10,7 @@
  *
  * 退出码：0 = 完成（含开关未开启 / 镜像仓库未配置 / 不可达而安全跳过）；1 = 致命错误（库连不上、表缺失或异常）。
  */
+
 require __DIR__ . '/bootstrap.php';
 
 use App\Config\AppConfig;
@@ -70,8 +72,8 @@ if ($registryUrl !== '') {
                 $registryCfg['password'] ?? '',
             ],
             'headers'         => ['Accept' => 'application/json'],
-            'connect_timeout' => 5, 
-            'timeout'         => 15, 
+            'connect_timeout' => 5,
+            'timeout'         => 15,
         ]);
         $registry = new HarborProvider(new HarborService($harborClient, $pdo, $i18n, null));
     }

@@ -217,6 +217,9 @@ class PipelineTagService
      */
     private function resolveTagDigest(string $repo, string $tag, array &$detailCache): string
     {
+        if ($this->registry === null) {
+            return '';
+        }
         if (!array_key_exists($repo, $detailCache)) {
             try {
                 $details = $this->registry->getTagDetails($repo);

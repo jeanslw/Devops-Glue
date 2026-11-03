@@ -46,6 +46,7 @@ class BuildTagCacheRepository
     }
 
     /** 读某次 pipeline 构建的缓存 tag 与 digest；无则 null。 */
+    /** @return array{tag: string, digest: string}|null */
     public function findTag(string $provider, string $projectId, string $pipelineId): ?array
     {
         $stmt = $this->pdo->prepare(

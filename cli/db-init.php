@@ -1,4 +1,5 @@
 <?php
+
 /**
  * 数据库初始化 CLI（建表 + 种子 + 标记 schema 当前）。
  * 容器 entrypoint 在 supervisord 启动前调用。
@@ -7,6 +8,7 @@
  *
  * 退出码：0 = 完成；1 = 致命错误（库连不上 / 建表失败）。
  */
+
 require __DIR__ . '/bootstrap.php';
 
 use App\Config\AppConfig;

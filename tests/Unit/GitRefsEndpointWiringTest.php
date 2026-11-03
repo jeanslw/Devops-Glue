@@ -128,14 +128,18 @@ class GitRefsEndpointWiringTest extends TestCase
 
     public function testLegacyCdCredentialHealIsWiredIntoBootstrap(): void
     {
-        $db = $this->read('src/Service/Database.php');
+        $orchestrator = $this->read('src/Service/BootstrapOrchestrator.php');
+        $migrator = $this->read('src/Service/SchemaMigrator.php');
 
-        
-        
-        $this->assertSame(
-            2,
-            substr_count($db, 'self::healCdServiceTokenScopes(self::pdo())'),
-            'bootstrap() 与 migrateNow() 两处都必须调用自愈：否则存量 CD 凭据缺 git scope，升级后一路 403'
+        $this->assertStringContainsString(
+            'repairer->healCdServiceTokenScopes',
+            $orchestrator,
+            'bootstrap() 必须调用自愈：否则存量 CD 凭据缺 git scope，升级后一路 403'
+        );
+        $this->assertStringContainsString(
+            'repairer->healCdServiceTokenScopes',
+            $migrator,
+            'migrateNow() 必须调用自愈：否则存量 CD 凭据缺 git scope，升级后一路 403'
         );
         $this->assertStringContainsString('public function addScopes(', $this->read('src/Service/ApiTokenService.php'));
         $this->assertStringContainsString(

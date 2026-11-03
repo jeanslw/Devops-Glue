@@ -2,12 +2,16 @@
 <ruleset name="Devops-Glue">
     <description>PSR-12 with the 120-character line-length rule relaxed (the codebase legitimately exceeds it in many places).</description>
 
-    <!-- 仅检查 src，排除 vendor 与测试/公共资源 -->
     <file>src</file>
+    <file>cli</file>
+    <file>config</file>
+    <file>lang</file>
+    <file>phpstan</file>
     <exclude-pattern>*/vendor/*</exclude-pattern>
 
     <rule ref="PSR12">
         <exclude name="Generic.Files.LineLength"/>
+        <exclude name="PSR1.Files.SideEffects"/>
     </rule>
 
     <arg name="colors"/>

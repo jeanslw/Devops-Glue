@@ -1,8 +1,10 @@
 <?php
+
 /**
  * 容器健康检查 CLI（docker-compose healthcheck 调用）：数据库可达退出 0，否则 1。
  * 只探连通性，不建表、不迁移。
  */
+
 require __DIR__ . '/bootstrap.php';
 
 use App\Service\Database;

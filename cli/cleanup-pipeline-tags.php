@@ -1,4 +1,5 @@
 <?php
+
 /**
  * 离线清理 ci_pipeline_artifacts 过期 tag CLI
  *
@@ -10,6 +11,7 @@
  *
  * 退出码：0 = 完成（含开关未开启 / 镜像仓库未配置 / 不可达而安全跳过）；1 = 致命错误（库连不上、表缺失或异常）。
  */
+
 require __DIR__ . '/bootstrap.php';
 
 use App\Config\AppConfig;

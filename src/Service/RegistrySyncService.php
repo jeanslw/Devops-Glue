@@ -47,6 +47,7 @@ class RegistrySyncService
      *     sha?:string,
      *     tag?:string,
      *     registry_repository?:string,
+     *     digest?:string|null,
      *     vulnerability_count?:int,
      *     scan_state?:string,
      *     commit_status?:array{success:bool,message:string},
@@ -344,7 +345,7 @@ class RegistrySyncService
         }
         try {
             $details = $this->registry->getTagDetails($repository);
-            if (!is_array($details) || isset($details['error'])) {
+            if (isset($details['error'])) {
                 return '';
             }
             foreach ($details as $row) {
