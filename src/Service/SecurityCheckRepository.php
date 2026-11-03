@@ -131,41 +131,45 @@ class SecurityCheckRepository
         $this->pdo->prepare($sql)->execute([$key, json_encode($value), time() + $ttlSeconds]);
     }
 
-    /** 写一条安全扫描/回写审计记录（upsert），失败仅记日志不影响主流程。 */
-    public function record(string $project, string $sha, string $state, string $context, string $description, string $checkType, string $tag, string $writebackStatus = '', string $writebackMessage = ''): void
+    /** 写一条安全扫描/回写审计记录（upsert），失败仅记日志不影响主流程。pipeline_id 用于按构建维度投影 tag。 */
+    public function record(string $project, string $sha, string $state, string $context, string $description, string $checkType, string $tag, string $writebackStatus = '', string $writebackMessage = '', string $pipelineId = ''): void
     {
         try {
             $sql = Database::sqlUpsert(
                 AppConfig::TABLE_SECURITY_CHECKS,
-                'project, sha, check_type, state, context, description, tag, writeback_status, writeback_message, created_at',
-                '?, ?, ?, ?, ?, ?, ?, ?, ?, ' . Database::sqlNow()
+                'project, sha, check_type, state, context, description, tag, writeback_status, writeback_message, pipeline_id, created_at',
+                '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ' . Database::sqlNow()
             );
-            $this->pdo->prepare($sql)->execute([$project, $sha, $checkType, $state, $context, $description, $tag, $writebackStatus, $writebackMessage]);
+            $this->pdo->prepare($sql)->execute([$project, $sha, $checkType, $state, $context, $description, $tag, $writebackStatus, $writebackMessage, $pipelineId]);
         } catch (\Exception $e) {
             \App\Helper\Log::exception($e);
         }
     }
 
     /**
-     * 按项目别名查询「回写成功」的 sha→tag 映射（check_type in harbor-scan/registry-sync 且 writeback_status=success）。
+     * 按 (project, pipeline_id) 查询「回写成功」的 tag 映射（check_type in harbor-scan/registry-sync 且 writeback_status=success）。
+     * 不再按 sha 聚合，避免同一 commit 多次构建塌缩为单一 tag。
      *
-     * @param list<string> $projects
-     * @return array<string,string> sha => tag
+     * @param list<string|int> $pipelineIds
+     * @return array<string,string> pipeline_id => tag
      */
-    public function tagsByShaForProjects(array $projects): array
+    public function tagsByPipelineKeys(string $project, array $pipelineIds): array
     {
-        $ph = implode(',', array_fill(0, count($projects), '?'));
+        if ($pipelineIds === []) {
+            return [];
+        }
+        $ph = implode(',', array_fill(0, count($pipelineIds), '?'));
         $stmt = $this->pdo->prepare(
-            "SELECT sha, tag FROM " . AppConfig::TABLE_SECURITY_CHECKS
+            "SELECT pipeline_id, tag FROM " . AppConfig::TABLE_SECURITY_CHECKS
             . " WHERE check_type IN ('harbor-scan', 'registry-sync') AND writeback_status = 'success'"
-            . " AND sha IS NOT NULL AND sha != '' AND project IN ({$ph})"
+            . " AND pipeline_id IN ({$ph}) AND project = ?"
         );
-        $stmt->execute($projects);
+        $stmt->execute(array_merge($pipelineIds, [$project]));
         $map = [];
         foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $row) {
-            $sha = (string) ($row['sha'] ?? '');
-            if ($sha !== '' && ($row['tag'] ?? '') !== '') {
-                $map[$sha] = $row['tag'];
+            $pid = (string) ($row['pipeline_id'] ?? '');
+            if ($pid !== '' && ($row['tag'] ?? '') !== '') {
+                $map[$pid] = (string) $row['tag'];
             }
         }
         return $map;

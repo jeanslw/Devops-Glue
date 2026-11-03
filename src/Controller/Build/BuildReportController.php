@@ -230,7 +230,7 @@ final class BuildReportController extends BaseBuildController
                     if ($txStarted) {
                         $this->tx->rollBack();
                     }
-                    $this->recordReportAudit($path, $sha, $status, $tag, ['success' => false, 'message' => $this->__('build.report_artifact_db_write_failed')]);
+                    $this->recordReportAudit($path, $sha, $status, $tag, ['success' => false, 'message' => $this->__('build.report_artifact_db_write_failed')], $pipelineIid);
                     return $this->jsonError($response, 'build.report_artifact_write_failed', 500);
                 }
             }
@@ -243,11 +243,11 @@ final class BuildReportController extends BaseBuildController
                 $this->tx->rollBack();
             }
             \App\Helper\Log::exception($e);
-            $this->recordReportAudit($path, $sha, $status, $tag, ['success' => false, 'message' => $e->getMessage()]);
+            $this->recordReportAudit($path, $sha, $status, $tag, ['success' => false, 'message' => $e->getMessage()], $pipelineIid);
             return $this->jsonError($response, 'build.report_write_failed', 500);
         }
 
-        $this->recordReportAudit($path, $sha, $status, $tag, $result);
+        $this->recordReportAudit($path, $sha, $status, $tag, $result, $pipelineIid);
 
         return $this->output($response, [
             'build_provider' => $provider,
@@ -357,7 +357,7 @@ final class BuildReportController extends BaseBuildController
      *
      * @param array<string,mixed> $result
      */
-    private function recordReportAudit(string $path, string $sha, string $status, string $tag, array $result): void
+    private function recordReportAudit(string $path, string $sha, string $status, string $tag, array $result, int $pipelineIid = 0): void
     {
         $description = 'custom_push 构建终态: ' . $status . ($tag !== '' ? ' → ' . $tag : '');
         // 审计 state 归一到 failed：审计页 state 过滤只有 success/failed/pending/error，
@@ -372,7 +372,8 @@ final class BuildReportController extends BaseBuildController
             'custom_push',
             $tag,
             !empty($result['success']) ? 'success' : 'failed',
-            (string) ($result['message'] ?? '')
+            (string) ($result['message'] ?? ''),
+            (string) $pipelineIid
         );
     }
 }

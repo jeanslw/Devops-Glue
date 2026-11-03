@@ -57,7 +57,7 @@ final class PipelineQueryController extends BaseBuildController
         $p = $this->registry->create($provider);
         $perPage = (int) ($request->getQueryParams()['per_page'] ?? 0);
         $data = $p->getPipelines($projectId, $perPage > 0 ? $perPage : 20);
-        $data = $this->attachPullTags($path, $data);
+        $data = $this->attachPullTags($path, $data, $provider, $projectId);
         $format = $request->getQueryParams()['format'] ?? 'raw';
 
         $listFormat = $request->getQueryParams()['list'] ?? '';
@@ -277,56 +277,56 @@ final class PipelineQueryController extends BaseBuildController
      * @param array<int, array<string,mixed>> $pipelines
      * @return array<int, array<string,mixed>>
      */
-    private function attachPullTags(string $path, array $pipelines): array
+    private function attachPullTags(string $path, array $pipelines, string $provider, string $projectId): array
     {
         if (empty($pipelines)) {
             return $pipelines;
         }
         try {
-            $aliases = [$path];
             $registryRepo = '';
             foreach ($this->mapping->allMaps() as $m) {
-                $job = $m['job_name'] ?? '';
-                $cp  = $m['current_path'] ?? '';
-                $matched = ($job === $path || $cp === $path);
-                if ($matched && $registryRepo === '' && !empty($m['registry_repository'])) {
-                    $registryRepo = (string) $m['registry_repository'];
-                }
-                if ($matched && ($job !== '' || $cp !== '')) {
-                    foreach (['job_name', 'current_path'] as $f) {
-                        $v = $m[$f] ?? '';
-                        if ($v !== '' && $v !== $path && !in_array($v, $aliases, true)) {
-                            $aliases[] = $v;
-                        }
+                if (($m['job_name'] ?? '') === $path || ($m['current_path'] ?? '') === $path) {
+                    if ($registryRepo === '' && !empty($m['registry_repository'])) {
+                        $registryRepo = (string) $m['registry_repository'];
                     }
                 }
             }
 
-            $tagBySha = [];
-            $tagSourceBySha = [];
-            foreach ($this->securityChecks->tagsByShaForProjects($aliases) as $sha => $tag) {
-                $tagBySha[$sha] = $tag;
-                $tagSourceBySha[$sha] = 'scan';
+            $logKeys = [];
+            $iids = [];
+            foreach ($pipelines as $p) {
+                $iid = (string) ($p['iid'] ?? '');
+                $id = (string) ($p['id'] ?? '');
+                if ($iid !== '') {
+                    $iids[] = $iid;
+                }
+                $logKey = $provider === AppConfig::PROVIDER_GITLAB_CI ? $iid : $id;
+                if ($logKey !== '') {
+                    $logKeys[] = $logKey;
+                }
             }
+            $logKeys = array_values(array_unique($logKeys));
+            $iids = array_values(array_unique($iids));
 
-            $shas = array_values(array_unique(array_filter(
-                array_map(fn($p) => (string) ($p['sha'] ?? ''), $pipelines),
-                fn($s) => $s !== ''
-            )));
-            if ($shas) {
-                foreach ($this->buildTagCache->tagsBySha($shas) as $sha => $tag) {
-                    if (!isset($tagBySha[$sha])) {
-                        $tagBySha[$sha] = $tag;
-                        $tagSourceBySha[$sha] = 'log';
-                    }
+            // scan 源按 pipeline（iid）；log 源按 runId（gitlab=iid，其余=id），与 resolve 写入键一致；均不再按 sha 聚合
+            $tagByPid = [];
+            foreach ($this->securityChecks->tagsByPipelineKeys($path, $iids) as $pid => $tag) {
+                $tagByPid[$pid] = ['tag' => $tag, 'source' => 'scan'];
+            }
+            foreach ($this->buildTagCache->tagsByPipelineKeys($provider, $projectId, $logKeys) as $pid => $row) {
+                if (!isset($tagByPid[$pid])) {
+                    $tagByPid[$pid] = ['tag' => $row['tag'], 'source' => 'log'];
                 }
             }
 
             foreach ($pipelines as $i => $p) {
-                $sha = (string) ($p['sha'] ?? '');
-                $tag = $sha !== '' && isset($tagBySha[$sha]) ? $tagBySha[$sha] : '';
+                $iid = (string) ($p['iid'] ?? '');
+                $id = (string) ($p['id'] ?? '');
+                $logKey = $provider === AppConfig::PROVIDER_GITLAB_CI ? $iid : $id;
+                $entry = $tagByPid[$logKey] ?? ($iid !== '' ? ($tagByPid[$iid] ?? null) : null);
+                $tag = $entry['tag'] ?? '';
                 $pipelines[$i]['tag'] = $tag;
-                $pipelines[$i]['tag_source'] = $sha !== '' && isset($tagBySha[$sha]) ? ($tagSourceBySha[$sha] ?? '') : '';
+                $pipelines[$i]['tag_source'] = $tag !== '' ? ($entry['source'] ?? '') : '';
                 $pipelines[$i]['can_resolve_tag'] = $tag === ''
                     && (($p['status'] ?? '') === 'success')
                     && $registryRepo !== '';

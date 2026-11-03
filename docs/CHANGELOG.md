@@ -1,5 +1,19 @@
 # Changelog
 
+## v2.11.4 (2026-11-03)
+
+  - **Fixed**
+  - Restored the image digest field on the artifacts table (lost during the v2.8.0 rename); the column is added automatically on upgrade/deploy.
+  - Image-sync and scan-sync now support reporting the image digest; when not reported and the tag is already verified, the digest is resolved from the registry and persisted.
+  - Artifact API responses and queries now return the image digest.
+  - **Added**
+  - The unified migration script (`cli/migrate.php`) now also backfills missing image digests from the registry by repository and tag (the former `migrate-artifact-digests.php` is merged into it).
+  - The fallback backfill task (`backfill-pipeline-tags.php`) now also resolves and backfills the image digest by repository while backfilling tags; also fixed its hardcoded Harbor connection key (registry-type deployments can now fetch the connection correctly).
+  - When extracting the image tag from build logs, `sha256:<hex>` is parsed from the successful-push lines as the image digest, cached into `ci_build_tag_cache`, and returned together with backfills and API responses; the fallback backfill prefers the log digest and falls back to registry resolution when absent.
+  - **Optimized**
+  - Empty image digests no longer overwrite existing values, supporting historical records that did not report a digest.
+  - Image-tag projection now resolves and backfills by `pipeline` (build instance) instead of aggregating by commit `sha`: the `ci_build_tag_cache` unique key changed from `sha` to `(provider, project_id, pipeline_id)`, and `ci_security_checks` gained a `pipeline_id` column. This fixes the collapse where repeatedly building the same commit produced multiple tags (e.g. main-223…main-230) but all builds were wrongly shown with the same tag; log caching and scan write-back now each belong to their own build instance and do not contaminate each other.
+
 ## v2.11.3 (2026-11-01)
 
 - **Added**

@@ -78,6 +78,7 @@ class RegistrySyncServiceTest extends TestCase
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             project TEXT NOT NULL,
             sha TEXT DEFAULT "",
+            pipeline_id TEXT DEFAULT "",
             check_type TEXT DEFAULT "",
             state TEXT DEFAULT "",
             context TEXT DEFAULT "",

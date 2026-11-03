@@ -859,6 +859,7 @@ class Database
                 'tag'               => "{$VARCHAR} DEFAULT ''",
                 'writeback_status'  => "{$VARCHAR} DEFAULT ''",
                 'writeback_message' => 'TEXT',
+                'pipeline_id'       => "{$VARCHAR} DEFAULT ''",
             ],
             \App\Config\AppConfig::TABLE_PIPELINE_ARTIFACTS => [
                 'digest' => "{$VARCHAR} DEFAULT NULL",
@@ -867,6 +868,7 @@ class Database
                 'provider'   => "{$VARCHAR} DEFAULT ''",
                 'project_id' => "{$VARCHAR} DEFAULT ''",
                 'repository' => "{$VARCHAR} DEFAULT ''",
+                'digest'     => "{$VARCHAR} DEFAULT NULL",
             ],
             \App\Config\AppConfig::TABLE_PERMISSIONS => [
                 'parent_key' => $isMySQL ? 'VARCHAR(128)' : 'TEXT',
@@ -1627,19 +1629,22 @@ class Database
             project_key {$VARCHAR} DEFAULT '',
             provider {$VARCHAR} DEFAULT '',
             project_id {$VARCHAR} DEFAULT '',
-            sha {$VARCHAR} NOT NULL UNIQUE,
+            sha {$VARCHAR} DEFAULT '',
             pipeline_id {$VARCHAR} DEFAULT '',
             tag {$VARCHAR} DEFAULT '',
             repository {$VARCHAR} DEFAULT '',
+            digest {$VARCHAR} DEFAULT NULL,
             source {$VARCHAR} DEFAULT 'log',
             created_at {$TS_TYPE} DEFAULT ({$NOW}),
-            updated_at {$TS_TYPE} DEFAULT ({$NOW})
+            updated_at {$TS_TYPE} DEFAULT ({$NOW}),
+            UNIQUE(provider, project_id, pipeline_id)
         ){$ENGINE}");
 
         self::buildTable($pdo, \App\Config\AppConfig::TABLE_SECURITY_CHECKS, "CREATE TABLE IF NOT EXISTS " . \App\Config\AppConfig::TABLE_SECURITY_CHECKS . " (
             id {$PK},
             project {$VARCHAR} NOT NULL,
             sha {$VARCHAR} NOT NULL,
+            pipeline_id {$VARCHAR} DEFAULT '',
             check_type {$VARCHAR} NOT NULL,
             state {$VARCHAR} NOT NULL,
             context {$VARCHAR} NOT NULL,

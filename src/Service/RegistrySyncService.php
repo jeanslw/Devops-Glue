@@ -265,7 +265,8 @@ class RegistrySyncService
             $desc,
             $tag,
             ($this->registry === null || $tagVerified) && $ciStatus === 'success' ? 'success' : 'skipped',
-            implode(' | ', $writebackParts)
+            implode(' | ', $writebackParts),
+            (string) $iid
         );
 
         return [
@@ -365,15 +366,15 @@ class RegistrySyncService
         return '';
     }
 
-    private function recordSecurityCheck(string $project, string $sha, string $state, string $checkType, string $description, string $tag, string $writebackStatus, string $writebackMessage): void
+    private function recordSecurityCheck(string $project, string $sha, string $state, string $checkType, string $description, string $tag, string $writebackStatus, string $writebackMessage, string $pipelineId = ''): void
     {
         try {
             $sql = Database::sqlUpsert(
                 AppConfig::TABLE_SECURITY_CHECKS,
-                'project, sha, check_type, state, context, description, tag, writeback_status, writeback_message, created_at',
-                '?, ?, ?, ?, ?, ?, ?, ?, ?, ' . Database::sqlNow()
+                'project, sha, check_type, state, context, description, tag, writeback_status, writeback_message, pipeline_id, created_at',
+                '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ' . Database::sqlNow()
             );
-            $this->pdo->prepare($sql)->execute([$project, $sha, $checkType, $state, $checkType, $description, $tag, $writebackStatus, $writebackMessage]);
+            $this->pdo->prepare($sql)->execute([$project, $sha, $checkType, $state, $checkType, $description, $tag, $writebackStatus, $writebackMessage, $pipelineId]);
         } catch (\Throwable $e) {
             Log::exception($e);
         }

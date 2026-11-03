@@ -146,9 +146,9 @@ final class PipelineTagController extends BaseBuildController
 
         if (!$force && $sha !== '') {
             try {
-                $cached = $this->buildTagCache->findTag($sha);
+                $cached = $this->buildTagCache->findTag($provider, $projectId, (string) $pipelineId);
                 if ($cached !== null) {
-                    return $this->output($response, ['tag' => $cached, 'resolved' => true, 'cached' => true], $request);
+                    return $this->output($response, ['tag' => $cached['tag'], 'digest' => $cached['digest'], 'resolved' => true, 'cached' => true], $request);
                 }
             } catch (\Throwable $e) {
                 \App\Helper\Log::exception($e);
@@ -157,6 +157,7 @@ final class PipelineTagController extends BaseBuildController
 
         $keyword = $this->appSettings->getTagLogKeyword();
         $tag = '';
+        $digest = '';
         try {
             $p = $this->registry->create($provider);
             $jobs = $p->getJobs($projectId, $pipelineId);
@@ -166,37 +167,43 @@ final class PipelineTagController extends BaseBuildController
                     continue;
                 }
                 $trace = (string) $p->getJobTrace($projectId, $jobId);
-                $tag = $this->extractTagFromTrace($trace, $registryRepo, $keyword, $pipelineId);
-                if ($tag !== '') {
+                $parsed = $this->extractTagFromTrace($trace, $registryRepo, $keyword, $pipelineId);
+                if ($parsed['tag'] !== '') {
+                    $tag = $parsed['tag'];
+                    $digest = $parsed['digest'];
                     break;
                 }
             }
         } catch (\Throwable $e) {
             \App\Helper\Log::exception($e);
             $tag = '';
+            $digest = '';
         }
 
         if ($sha !== '') {
             try {
-                $this->buildTagCache->upsert($path, $provider, (string) $projectId, $sha, (string) $pipelineId, $tag, $registryRepo, 'log');
+                $this->buildTagCache->upsert($path, $provider, (string) $projectId, $sha, (string) $pipelineId, $tag, $registryRepo, 'log', $digest);
             } catch (\Throwable $e) {
                 \App\Helper\Log::exception($e);
             }
         }
 
-        return $this->output($response, ['tag' => $tag, 'resolved' => true, 'cached' => false], $request);
+        return $this->output($response, ['tag' => $tag, 'digest' => $digest, 'resolved' => true, 'cached' => false], $request);
     }
 
     /**
-     * 从单条 job 日志提取镜像 tag：命中推送关键字 + 项目仓库路径后，按 repo:tag 优先、-t/--tag 次之提取。
+     * 从单条 job 日志提取镜像 tag 与 digest：命中推送关键字 + 项目仓库路径后，按 repo:tag 优先、-t/--tag 次之提取 tag；
+     * 同段日志内若存在 sha256:<hex> 则一并提取 digest（docker push 成功行特征）。
+     *
+     * @return array{tag:string,digest:string}
      */
-    private function extractTagFromTrace(string $trace, string $registryRepo, string $keyword, int $pipelineId = 0): string
+    private function extractTagFromTrace(string $trace, string $registryRepo, string $keyword, int $pipelineId = 0): array
     {
         $trace      = (string) $trace;
         $registryRepo = trim((string) $registryRepo);
         $keyword    = trim((string) $keyword);
         if ($trace === '' || $registryRepo === '') {
-            return '';
+            return ['tag' => '', 'digest' => ''];
         }
 
         if ($keyword !== '') {
@@ -210,12 +217,12 @@ final class PipelineTagController extends BaseBuildController
                     }
                 }
                 if (!$hit) {
-                    return '';
+                    return ['tag' => '', 'digest' => ''];
                 }
             }
         }
         if (stripos($trace, $registryRepo) === false) {
-            return '';
+            return ['tag' => '', 'digest' => ''];
         }
         $candidates = [];
         $quoted = preg_quote($registryRepo, '/');
@@ -235,7 +242,14 @@ final class PipelineTagController extends BaseBuildController
                 }
             }
         }
-        return $this->pickTag($candidates, $pipelineId);
+        $tag = $this->pickTag($candidates, $pipelineId);
+
+        $digest = '';
+        if (preg_match('/sha256:([0-9a-f]{64})/i', $trace, $dm)) {
+            $digest = 'sha256:' . strtolower($dm[1]);
+        }
+
+        return ['tag' => $tag, 'digest' => $digest];
     }
 
     /**

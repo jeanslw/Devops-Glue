@@ -118,6 +118,7 @@ CREATE TABLE IF NOT EXISTS `ci_security_checks` (
     `id`                INT AUTO_INCREMENT PRIMARY KEY,
     `project`           VARCHAR(255) NOT NULL,
     `sha`               VARCHAR(255) NOT NULL,
+    `pipeline_id`       VARCHAR(255) DEFAULT '',
     `check_type`        VARCHAR(255) NOT NULL,
     `state`             VARCHAR(255) NOT NULL,
     `context`           VARCHAR(255) NOT NULL,
@@ -207,13 +208,15 @@ CREATE TABLE IF NOT EXISTS `ci_build_tag_cache` (
     `project_key` VARCHAR(255) DEFAULT '',
     `provider`    VARCHAR(255) DEFAULT '',
     `project_id`  VARCHAR(255) DEFAULT '',
-    `sha`         VARCHAR(255) NOT NULL UNIQUE,
+    `sha`         VARCHAR(255) DEFAULT '',
     `pipeline_id` VARCHAR(255) DEFAULT '',
     `tag`         VARCHAR(255) DEFAULT '',
     `repository`  VARCHAR(255) DEFAULT '',
+    `digest`      VARCHAR(255) DEFAULT NULL,
     `source`      VARCHAR(255) DEFAULT 'log',
     `created_at`  DATETIME DEFAULT (NOW()),
-    `updated_at`  DATETIME DEFAULT (NOW())
+    `updated_at`  DATETIME DEFAULT (NOW()),
+    UNIQUE KEY `uq_build_tag_cache` (`provider`, `project_id`, `pipeline_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ── 15. integrated_services（集成服务启用契约表；CI 唯一写入，CD 等集成服务只读 enabled/provision）──

@@ -41,6 +41,7 @@ class PipelineTagServiceTest extends TestCase
             project_key TEXT NOT NULL,
             repository TEXT NOT NULL,
             tag TEXT NOT NULL,
+            digest TEXT DEFAULT NULL,
             status TEXT DEFAULT "",
             source_updated_at TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -63,6 +64,7 @@ class PipelineTagServiceTest extends TestCase
             tag TEXT DEFAULT "",
             repository TEXT DEFAULT "",
             source TEXT DEFAULT "log",
+            digest TEXT DEFAULT NULL,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         )');

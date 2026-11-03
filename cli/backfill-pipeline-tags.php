@@ -41,11 +41,13 @@ if (!$backfillEnabled) {
 }
 
 $registry = null;
-$registryCfg = (new PlatformConnectionRepository($pdo))->resolveConnections()['harbor'] ?? [];
+$regType = (new AppSettingRepository($pdo))->getRegistryType();
+$platformKey = $regType === 'registry' ? 'registry' : 'harbor';
+$registryCfg = (new PlatformConnectionRepository($pdo))->resolveConnections()[$platformKey] ?? [];
 $registryUrl = rtrim((string)($registryCfg['url'] ?? ''), '/');
 $i18n = new I18nService(__DIR__ . '/../lang');
 if ($registryUrl !== '') {
-    if ((new AppSettingRepository($pdo))->getRegistryType() === 'registry') {
+    if ($regType === 'registry') {
         $registryClient = new Client([
             'base_uri'        => $registryUrl . '/',
             'headers'         => ['Accept' => 'application/json'],

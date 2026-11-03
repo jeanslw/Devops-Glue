@@ -130,7 +130,7 @@ class PipelineTagService
 
         try {
             $rows = $this->pdo->query(
-                'SELECT project_key, provider, project_id, pipeline_id, tag, repository '
+                'SELECT project_key, provider, project_id, pipeline_id, tag, repository, digest '
                 . 'FROM ' . AppConfig::TABLE_BUILD_TAG_CACHE
                 . " WHERE source = 'log' AND tag != '' AND provider != '' AND project_id != '' AND repository != ''"
             )->fetchAll();
@@ -144,7 +144,8 @@ class PipelineTagService
         }
 
         $artifactSvc = new PipelineArtifactService($this->pdo);
-        $repoCache = [];
+        $tagCache = [];
+        $detailCache = [];
 
         foreach ($rows as $r) {
             $provider     = (string) $r['provider'];
@@ -153,6 +154,7 @@ class PipelineTagService
             $projectKey   = (string) ($r['project_key'] ?? '');
             $tag          = (string) ($r['tag'] ?? '');
             $repo         = (string) ($r['repository'] ?? '');
+            $cacheDigest  = (string) ($r['digest'] ?? '');
 
             if ($provider === '' || $projectId === '' || $pipelineIid <= 0 || $tag === '' || $repo === '') {
                 $stat['unverifiable']++;
@@ -166,25 +168,23 @@ class PipelineTagService
                 continue;
             }
 
-
             $existing = $artifactSvc->find($identity);
             if ($existing && trim((string) ($existing['tag'] ?? '')) !== '') {
                 $stat['skipped']++;
                 continue;
             }
 
-
-            if (!array_key_exists($repo, $repoCache)) {
+            if (!array_key_exists($repo, $tagCache)) {
                 try {
                     $tags = $this->registry->getTags($repo);
-                    $repoCache[$repo] = !isset($tags['error']) ? $tags : null;
+                    $tagCache[$repo] = !isset($tags['error']) ? $tags : null;
                 } catch (\Throwable $e) {
                     Log::exception($e);
-                    $repoCache[$repo] = null;
+                    $tagCache[$repo] = null;
                 }
             }
 
-            $validTags = $repoCache[$repo];
+            $validTags = $tagCache[$repo];
             if ($validTags === null) {
                 $stat['unreachable']++;
                 continue;
@@ -194,9 +194,10 @@ class PipelineTagService
                 continue;
             }
 
+            $digest = $cacheDigest !== '' ? $cacheDigest : $this->resolveTagDigest($repo, $tag, $detailCache);
 
             try {
-                $res = $artifactSvc->record($identity, $projectKey, $tag, $repo, '');
+                $res = $artifactSvc->record($identity, $projectKey, $tag, $repo, '', null, null, $digest);
                 if ($res['written']) {
                     $stat['promoted']++;
                 }
@@ -206,5 +207,38 @@ class PipelineTagService
         }
 
         return $stat;
+    }
+
+    /**
+     * 从镜像仓库解析某 tag 的 digest，供回填兜底时一并补 digest。
+     * 按仓库缓存 getTagDetails 结果避免同仓库重复拉取；Harbor v1 / 仓库无此 tag 时返回空串。
+     *
+     * @param array<string,mixed> $detailCache
+     */
+    private function resolveTagDigest(string $repo, string $tag, array &$detailCache): string
+    {
+        if (!array_key_exists($repo, $detailCache)) {
+            try {
+                $details = $this->registry->getTagDetails($repo);
+                $detailCache[$repo] = !isset($details['error']) ? $details : null;
+            } catch (\Throwable $e) {
+                Log::exception($e);
+                $detailCache[$repo] = null;
+            }
+        }
+        $details = $detailCache[$repo];
+        if (!is_array($details)) {
+            return '';
+        }
+        foreach ($details as $d) {
+            if (!is_array($d)) {
+                continue;
+            }
+            $name = (string) ($d['name'] ?? $d['tag'] ?? '');
+            if ($name === $tag) {
+                return trim((string) ($d['digest'] ?? ''));
+            }
+        }
+        return '';
     }
 }

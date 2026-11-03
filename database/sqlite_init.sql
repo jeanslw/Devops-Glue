@@ -114,6 +114,7 @@ CREATE TABLE IF NOT EXISTS ci_security_checks (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     project           TEXT NOT NULL,
     sha               TEXT NOT NULL,
+    pipeline_id       TEXT DEFAULT '',
     check_type        TEXT NOT NULL,
     state             TEXT NOT NULL,
     context           TEXT NOT NULL,
@@ -203,13 +204,15 @@ CREATE TABLE IF NOT EXISTS ci_build_tag_cache (
     project_key TEXT DEFAULT '',
     provider    TEXT DEFAULT '',
     project_id  TEXT DEFAULT '',
-    sha         TEXT NOT NULL UNIQUE,
+    sha         TEXT DEFAULT '',
     pipeline_id TEXT DEFAULT '',
     tag         TEXT DEFAULT '',
     repository  TEXT DEFAULT '',
+    digest      TEXT DEFAULT NULL,
     source      TEXT DEFAULT 'log',
     created_at  TEXT DEFAULT (datetime('now','localtime')),
-    updated_at  TEXT DEFAULT (datetime('now','localtime'))
+    updated_at  TEXT DEFAULT (datetime('now','localtime')),
+    UNIQUE(provider, project_id, pipeline_id)
 );
 
 -- ── 15. integrated_services（集成服务启用契约表；CI 唯一写入，CD 等集成服务只读 enabled/provision）──
