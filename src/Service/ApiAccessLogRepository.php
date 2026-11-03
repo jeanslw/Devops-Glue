@@ -109,7 +109,7 @@ class ApiAccessLogRepository
         }
         if (!$hasDateFrom && !$hasDateTo) {
             $where[] = 'created_at >= ?';
-            $bind[]  = date('Y-m-d H:i:s', time() - self::DEFAULT_RANGE_DAYS * 86400);
+            $bind[]  = gmdate('Y-m-d H:i:s', time() - self::DEFAULT_RANGE_DAYS * 86400);
         }
         $whereClause = $where ? 'WHERE ' . implode(' AND ', $where) : '';
 
@@ -177,7 +177,7 @@ class ApiAccessLogRepository
             $stmt = $this->pdo->prepare(
                 'DELETE FROM ' . AppConfig::TABLE_API_ACCESS_LOGS . ' WHERE created_at < ?'
             );
-            $stmt->execute([date('Y-m-d H:i:s', time() - $retainDays * 86400)]);
+            $stmt->execute([gmdate('Y-m-d H:i:s', time() - $retainDays * 86400)]);
             return $stmt->rowCount();
         } catch (\Throwable $e) {
             Log::error('[API调用日志] 清理失败', ['error' => $e->getMessage()]);

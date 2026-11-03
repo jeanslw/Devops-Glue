@@ -6,16 +6,21 @@
   - Artifacts table restores the image digest field, lost during the v2.8.0 rename; it is added back automatically on upgrade/deploy.
   - Image sync and scan sync can now report the image digest; when not reported and the tag is verified, it is resolved from the registry and persisted.
   - Artifact API responses and queries return the image digest.
+  - Database time storage and writes are unified to UTC; all repositories now persist build/pipeline/log timestamps in UTC instead of the container local time, fixing cross-timezone display drift and the SQLite incremental-schema default-value gap.
 - **Added**
   - A migration script backfills missing image digests from the registry by repository and tag.
   - The tag backfill task now also resolves and backfills the image digest while backfilling tags, and fixes its hard-coded harbor connection key so registry-type deployments can fetch the connection correctly.
   - When extracting the image tag from build logs, the sha256 is parsed from the successful-push line as the image digest and cached, returned together with backfills and API responses; the fallback backfill prefers the log digest and falls back to registry resolution when absent.
   - Image sync, scan sync and custom-push report now uniformly take the image digest from the registry's current state: a reported digest that differs from the registry's is overwritten by the registry, and an absent one is resolved from the registry; the build and push records views gain an image digest column.
-  - The image-tag log cache table gains a status field, custom_push reporting/write-back/logbackfill function, dual verification of Tag name and Digest.
+  - The image-tag log cache table gains a status field, custom_push reporting/write-back/log-backfill function, and dual verification of tag name and digest.
+  - A configurable display timezone (admin console → Data Management): the frontend renders all UTC timestamps in this timezone; defaults to UTC, with a dropdown of common timezones plus a free-text field for any IANA timezone, validated server-side.
+  - A one-off migration script `cli/migrate-timezone.php` converts legacy local-time timestamps in the database to UTC (dry-run by default; `--from-tz` selects the source timezone, `--apply` writes). Run it before upgrading to the UTC-storing release.
 - **Optimized**
   - Empty image digests no longer overwrite existing values, supporting historical records that did not report a digest.
   - Image-tag projection now resolves and backfills by pipeline instead of aggregating by commit sha, fixing the collapse where repeated builds of the same commit produced multiple tags but were all wrongly shown with the same tag.
   - Image-tag log backfill now writes only CI-success candidates and follows the registry's current digest: a different digest updates to the registry's, instead of being blindly skipped when an in-house same-name tag exists; identical entries are skipped naturally and the run stays safe to re-run.
+- **Changed**
+  - Removed the `TZ` setting from `docker-compose.yml` so the container runs in UTC and no longer pollutes the database or PHP timezone.
 - **Refactored**
   - Database-related code is split from a single file into several single-responsibility files: schema migration, seeding, data repair, distributed lock, and bootstrap orchestration, for easier maintenance.
 

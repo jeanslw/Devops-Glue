@@ -1,5 +1,5 @@
 import { authHeaders, handle401 } from '../core/api.js';
-import { esc, safeUrl, encodePath } from '../core/utils.js';
+import { esc, safeUrl, encodePath, fmtUtc } from '../core/utils.js';
 import { toast } from '../core/toast.js';
 import { hasPermission } from '../core/auth.js';
 import { currentBuildModes, isPullProvider, pullProviderMeta } from '../core/state.js';
@@ -145,7 +145,7 @@ export async function loadPullRecords(silent) {
             const num = r.iid || r.id || '';
             const ref = r.ref || '';
             const sha = r.sha ? String(r.sha).slice(0, 8) : '';
-            const time = r.created_at || '';
+            const time = fmtUtc(r.created_at);
             const safeWeb = safeUrl(r.web_url);
             const viewCell = safeWeb
                 ? '<a href="' + esc(safeWeb) + '" target="_blank" rel="noopener noreferrer">' + esc(__.t('pull.view')) + '</a>'
@@ -354,7 +354,7 @@ export async function loadPushRecords() {
                 + '<td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + (vars ? esc(vars) : '') + '">' + (vars ? esc(vars) : '—') + '</td>'
                 + '<td>' + logCell + '</td>'
                 + '<td>' + webCell + '</td>'
-                + '<td>' + esc(r.finished_at || '') + '</td>'
+                + '<td>' + esc(fmtUtc(r.finished_at)) + '</td>'
                 + '</tr>';
         }).join('');
 

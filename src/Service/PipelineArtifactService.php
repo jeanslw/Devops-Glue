@@ -52,7 +52,7 @@ final class PipelineArtifactService
             }
         }
 
-        $now = $createdAt ?: date('Y-m-d H:i:s');
+        $now = $createdAt ?: gmdate('Y-m-d H:i:s');
         if ($existing) {
             $digestToStore = $digest !== null && $digest !== ''
                 ? $digest

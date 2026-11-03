@@ -1,5 +1,5 @@
 import { authHeaders, handle401 } from '../core/api.js';
-import { esc } from '../core/utils.js';
+import { esc, fmtUtc } from '../core/utils.js';
 
 const SEC_API = '/api/admin/security_checks';
 let secPage = 1, secTotalPages = 1, secDebounce = null;
@@ -56,7 +56,7 @@ export async function loadSecurityChecks() {
                 const label = (STATE_LABELS[c.state] ? __.t(STATE_LABELS[c.state]) : c.state) || '—';
                 const cls = c.state === 'success' ? 'ok' : c.state === 'failed' ? 'err' : 'off';
                 const shaShort = (c.sha || '').substring(0, 8);
-                const time = (c.created_at || '').replace('T',' ').substring(0, 19);
+                const time = fmtUtc(c.created_at);
                 const wb = c.writeback_status || '';
                 const wbCell = wb
                     ? `<span class="svc-stat ${wb === 'success' ? 'ok' : wb === 'failed' ? 'err' : 'off'}" title="${esc(c.writeback_message || '')}">${WB_ICONS[wb] || ''} ${WB_LABELS[wb] ? __.t(WB_LABELS[wb]) : wb}</span>`

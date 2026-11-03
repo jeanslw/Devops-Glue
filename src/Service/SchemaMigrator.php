@@ -295,8 +295,8 @@ class SchemaMigrator
                 credential TEXT,
                 email TEXT NOT NULL DEFAULT '',
                 raw_profile TEXT,
-                bound_at TEXT DEFAULT (datetime('now','localtime')),
-                updated_at TEXT DEFAULT (datetime('now','localtime')),
+                bound_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now')),
                 UNIQUE (provider_type, provider_uid)
             )");
         }

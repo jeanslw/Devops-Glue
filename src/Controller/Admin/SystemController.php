@@ -49,10 +49,52 @@ class SystemController extends BaseAdminController
         try {
             $status = \App\Service\Database::schemaStatus();
             $status['php_version'] = PHP_VERSION;
+            $status['display_timezone'] = $this->appSettings->getDisplayTimezone();
             return $this->output($response, $status, $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.query_failed') . ': ' . $e->getMessage(), 500);
         }
+    }
+
+    /**
+     * GET /api/admin/display_timezone — 读取当前显示时区配置
+     * 权限：ci.system
+     */
+    public function getDisplayTimezone(Request $request, Response $response): Response
+    {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_SYSTEM)) {
+            return $resp;
+        }
+        return $this->output($response, ['timezone' => $this->appSettings->getDisplayTimezone()], $request);
+    }
+
+    /**
+     * POST /api/admin/display_timezone — 保存显示时区（IANA，如 Asia/Shanghai / America/New_York；空=浏览器时区）
+     * 权限：ci.system
+     */
+    public function saveDisplayTimezone(Request $request, Response $response): Response
+    {
+        $this->initAuthFromRequest($request);
+        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_SYSTEM)) {
+            return $resp;
+        }
+        $body = (array)$request->getParsedBody();
+        $tz = trim((string)($body['timezone'] ?? ''));
+        if ($tz !== '') {
+            $valid = false;
+            foreach (\DateTimeZone::listIdentifiers() as $id) {
+                if ($id === $tz) {
+                    $valid = true;
+                    break;
+                }
+            }
+            if (!$valid) {
+                return $this->jsonError($response, $this->__('sys.display_timezone_invalid'), 400);
+            }
+        }
+        $this->appSettings->setDisplayTimezone($tz);
+        return $this->output($response, ['success' => true, 'timezone' => $tz], $request);
     }
 
     /**

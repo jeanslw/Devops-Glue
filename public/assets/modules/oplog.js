@@ -1,5 +1,5 @@
 import { authHeaders, handle401 } from '../core/api.js';
-import { esc } from '../core/utils.js';
+import { esc, fmtUtc } from '../core/utils.js';
 import { toast } from '../core/toast.js';
 
 let oplogPage = 1;
@@ -53,7 +53,7 @@ export async function loadOperationLogs(page) {
                 const opBadge = r.operator_type === 'api_token'
                     ? ' <span class="badge badge-default" title="' + esc(__.t('oplog.api_token')) + '">🔑 ' + esc(__.t('oplog.api_token')) + '</span>'
                     : '';
-                const time = (r.created_at || '').replace('T', ' ').substring(0, 19);
+                const time = fmtUtc(r.created_at);
                 return '<tr>' +
                     '<td style="font-size:12px;white-space:nowrap;color:#6b7280;">' + esc(time) + '</td>' +
                     '<td>' + esc(r.username) + opBadge + '</td>' +

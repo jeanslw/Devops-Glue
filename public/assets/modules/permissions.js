@@ -1,5 +1,5 @@
 import { authHeaders, handle401 } from '../core/api.js';
-import { esc } from '../core/utils.js';
+import { esc, fmtUtc } from '../core/utils.js';
 import { toast, confirmDialog } from '../core/toast.js';
 import { hasPermission } from '../core/auth.js';
 import { resetPermsCache } from './roles.js';
@@ -32,7 +32,7 @@ export async function loadPermList() {
                 '<td>' + esc(p.description || '-') + '</td>' +
                 '<td>' + (p.parent_key ? '<code>' + esc(p.parent_key) + '</code>' : '-') + '</td>' +
                 '<td>' + type + '</td>' +
-                '<td style="font-size:12px;color:#6b7280;">' + (p.created_at || '—') + '</td>' +
+                '<td style="font-size:12px;color:#6b7280;">' + (fmtUtc(p.created_at) || '—') + '</td>' +
                 '<td>' + actions + '</td>' +
                 '</tr>';
         }).join('');

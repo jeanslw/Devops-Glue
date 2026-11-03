@@ -491,4 +491,28 @@ class AppSettingRepository
         }
         $this->setString(AppConfig::SETTING_OIDC_ID_TOKEN_TTL, (string)$ttl);
     }
+
+    // ─── 显示时区（前端按此 TZ 渲染 UTC 时间；空串=回退浏览器时区）───
+
+    /**
+     * 当前显示时区（IANA，如 Asia/Shanghai / America/New_York）。空串表示未配置，
+     * 前端回退到浏览器本地时区。
+     */
+    public function getDisplayTimezone(): string
+    {
+        return $this->getString('display_timezone') ?? '';
+    }
+
+    /**
+     * 设置显示时区；空串清除配置（回退浏览器时区）。
+     */
+    public function setDisplayTimezone(string $tz): void
+    {
+        $tz = trim($tz);
+        if ($tz === '') {
+            $this->deleteString('display_timezone');
+            return;
+        }
+        $this->setString('display_timezone', $tz);
+    }
 }

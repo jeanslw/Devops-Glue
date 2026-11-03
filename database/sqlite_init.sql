@@ -39,8 +39,8 @@ CREATE TABLE IF NOT EXISTS ci_pipeline_artifacts (
     digest            TEXT DEFAULT NULL,
     status            TEXT DEFAULT '',
     source_updated_at TEXT,
-    created_at        TEXT DEFAULT (datetime('now','localtime')),
-    updated_at        TEXT DEFAULT (datetime('now','localtime')),
+    created_at        TEXT DEFAULT (datetime('now')),
+    updated_at        TEXT DEFAULT (datetime('now')),
     UNIQUE (provider, project_id, pipeline_iid)
 );
 
@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS ci_cache (
 CREATE TABLE IF NOT EXISTS ci_app_settings (
     setting_key TEXT PRIMARY KEY,
     value       TEXT NOT NULL,
-    updated_at  TEXT DEFAULT (datetime('now','localtime'))
+    updated_at  TEXT DEFAULT (datetime('now'))
 );
 
 -- ── 7. admin_users（管理员账号）──
@@ -89,8 +89,8 @@ CREATE TABLE IF NOT EXISTS ci_admin_users (
     avatar_url    TEXT,
     status        INTEGER NOT NULL DEFAULT 1,    -- 1=启用, 0=停用
     must_change_password INTEGER NOT NULL DEFAULT 0,  -- 首次登录强制改密：1=需改密
-    created_at    TEXT DEFAULT (datetime('now','localtime')),
-    updated_at    TEXT DEFAULT (datetime('now','localtime'))
+    created_at    TEXT DEFAULT (datetime('now')),
+    updated_at    TEXT DEFAULT (datetime('now'))
 );
 
 
@@ -103,8 +103,8 @@ CREATE TABLE IF NOT EXISTS ci_user_identities (
     credential    TEXT,                    -- 仅 local 存 bcrypt hash，其余 NULL
     email         TEXT NOT NULL DEFAULT '',
     raw_profile   TEXT,                    -- JSON 快照
-    bound_at      TEXT DEFAULT (datetime('now','localtime')),
-    updated_at    TEXT DEFAULT (datetime('now','localtime')),
+    bound_at      TEXT DEFAULT (datetime('now')),
+    updated_at    TEXT DEFAULT (datetime('now')),
     UNIQUE (provider_type, provider_uid)
 );
 CREATE INDEX IF NOT EXISTS idx_user_identities_username ON user_identities(username);
@@ -122,7 +122,7 @@ CREATE TABLE IF NOT EXISTS ci_security_checks (
     tag               TEXT DEFAULT '',
     writeback_status  TEXT DEFAULT '',
     writeback_message TEXT,
-    created_at        TEXT DEFAULT (datetime('now','localtime'))
+    created_at        TEXT DEFAULT (datetime('now'))
 );
 
 -- ── 8.1 ci_operation_logs（后台操作审计日志，append-only，只增不删）──
@@ -135,7 +135,7 @@ CREATE TABLE IF NOT EXISTS ci_operation_logs (
     ip            TEXT DEFAULT '',
     operator_type TEXT DEFAULT 'admin',
     result        TEXT DEFAULT 'success',
-    created_at    TEXT DEFAULT (datetime('now','localtime'))
+    created_at    TEXT DEFAULT (datetime('now'))
 );
 
 -- ── 8.2 ci_api_access_logs（API token 调用审计日志：只记 token 名，不记 token/body/query）──
@@ -151,7 +151,7 @@ CREATE TABLE IF NOT EXISTS ci_api_access_logs (
     error_reason TEXT DEFAULT '',
     ip           TEXT DEFAULT '',
     duration_ms  INTEGER NOT NULL DEFAULT 0,
-    created_at   TEXT DEFAULT (datetime('now','localtime'))
+    created_at   TEXT DEFAULT (datetime('now'))
 );
 
 -- ── 9. roles（角色）──
@@ -160,7 +160,7 @@ CREATE TABLE IF NOT EXISTS ci_roles (
     name        TEXT NOT NULL UNIQUE,
     description TEXT,
     is_system   INTEGER NOT NULL DEFAULT 0,
-    created_at  TEXT DEFAULT (datetime('now','localtime'))
+    created_at  TEXT DEFAULT (datetime('now'))
 );
 
 -- ── 10. permissions（权限定义；parent_key 用于二级菜单 eg. cd.deploy.single → cd.deploy-manage）──
@@ -195,7 +195,7 @@ CREATE TABLE IF NOT EXISTS ci_api_tokens (
     expires_at INTEGER,
     created_by TEXT,
     note       TEXT,
-    created_at TEXT DEFAULT (datetime('now','localtime'))
+    created_at TEXT DEFAULT (datetime('now'))
 );
 
 -- ── 14. ci_build_tag_cache（拉取式记录「镜像 Tag」日志兜底的懒解析缓存 sha→tag）──
@@ -211,8 +211,8 @@ CREATE TABLE IF NOT EXISTS ci_build_tag_cache (
     digest      TEXT DEFAULT NULL,
     source      TEXT DEFAULT 'log',
     status      TEXT DEFAULT '',
-    created_at  TEXT DEFAULT (datetime('now','localtime')),
-    updated_at  TEXT DEFAULT (datetime('now','localtime')),
+    created_at  TEXT DEFAULT (datetime('now')),
+    updated_at  TEXT DEFAULT (datetime('now')),
     UNIQUE(provider, project_id, pipeline_id)
 );
 
@@ -227,8 +227,8 @@ CREATE TABLE IF NOT EXISTS ci_integrated_services (
     provision    TEXT NOT NULL DEFAULT 'auto',
     api_token_id INTEGER DEFAULT NULL,
     updated_by   TEXT DEFAULT '',
-    created_at   TEXT DEFAULT (datetime('now','localtime')),
-    updated_at   TEXT DEFAULT (datetime('now','localtime')),
+    created_at   TEXT DEFAULT (datetime('now')),
+    updated_at   TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (api_token_id) REFERENCES ci_api_tokens(id) ON DELETE SET NULL
 );
 
@@ -241,8 +241,8 @@ CREATE TABLE IF NOT EXISTS ci_oauth_clients (
     system       TEXT NOT NULL DEFAULT 'ci',
     enabled      INTEGER NOT NULL DEFAULT 1,
     description  TEXT DEFAULT '',
-    created_at   TEXT DEFAULT (datetime('now','localtime')),
-    updated_at   TEXT DEFAULT (datetime('now','localtime'))
+    created_at   TEXT DEFAULT (datetime('now')),
+    updated_at   TEXT DEFAULT (datetime('now'))
 );
 
 -- ── ci_platform_connections（Git/Harbor/Jenkins 连接配置，DB 唯一权威，彻底移除 env）──
@@ -253,8 +253,8 @@ CREATE TABLE IF NOT EXISTS ci_platform_connections (
     username    TEXT,
     password    TEXT,
     description TEXT DEFAULT '',
-    created_at  TEXT DEFAULT (datetime('now','localtime')),
-    updated_at  TEXT DEFAULT (datetime('now','localtime'))
+    created_at  TEXT DEFAULT (datetime('now')),
+    updated_at  TEXT DEFAULT (datetime('now'))
 );
 
 -- ── 索引 ──

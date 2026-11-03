@@ -171,7 +171,7 @@ class Database
     {
         try {
             $pdo   = self::pdo();
-            $since = date('Y-m-d H:i:s', time() - self::SYSTEM_AUDIT_DEDUPE_WINDOW);
+            $since = gmdate('Y-m-d H:i:s', time() - self::SYSTEM_AUDIT_DEDUPE_WINDOW);
 
             $sql    = 'SELECT 1 FROM ' . \App\Config\AppConfig::TABLE_OPERATION_LOGS
                 . ' WHERE action = ? AND target = ? AND created_at >= ?';
@@ -458,7 +458,7 @@ class Database
 
     public static function sqlNow(): string
     {
-        return self::$driver === 'mysql' ? 'NOW()' : "datetime('now','localtime')";
+        return self::$driver === 'mysql' ? 'UTC_TIMESTAMP()' : "datetime('now')";
     }
 
     public static function sqlInsertIgnore(string $table, string $columns, string $values): string

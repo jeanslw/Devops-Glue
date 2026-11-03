@@ -128,7 +128,7 @@ class OperationLogRepository
             $stmt = $this->pdo->prepare(
                 'DELETE FROM ' . AppConfig::TABLE_OPERATION_LOGS . ' WHERE created_at < ?'
             );
-            $stmt->execute([date('Y-m-d H:i:s', time() - $retainDays * 86400)]);
+            $stmt->execute([gmdate('Y-m-d H:i:s', time() - $retainDays * 86400)]);
             return $stmt->rowCount();
         } catch (\Throwable $e) {
             \App\Helper\Log::error('[操作日志] 清理失败', ['error' => $e->getMessage()]);

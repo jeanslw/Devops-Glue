@@ -1,5 +1,5 @@
 import { authHeaders, handle401 } from '../core/api.js';
-import { esc } from '../core/utils.js';
+import { esc, fmtUtc } from '../core/utils.js';
 import { applyBuildRecordsMenuVisibility } from './records.js';
 
 const HEALTH_API = '/api/health';
@@ -142,7 +142,7 @@ export async function loadMonitor() {
         if (sysDbType)    sysDbType.textContent    = data.db_driver ? data.db_driver : __.t('common.unknown');
         if (sysAppVer)    sysAppVer.textContent    = data.app_version ? 'v' + data.app_version : '—';
         if (sysEnvType)   sysEnvType.textContent   = data.app_env || '—';
-        if (sysTime)      sysTime.textContent      = (data.time ? String(data.time).substring(0, 16) : '—');
+        if (sysTime)      sysTime.textContent      = fmtUtc(data.time);
 
         applyBuildRecordsMenuVisibility(data.custom_push_enabled || false);
     } catch (e) {}

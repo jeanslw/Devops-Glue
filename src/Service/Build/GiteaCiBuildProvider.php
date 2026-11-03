@@ -103,7 +103,7 @@ class GiteaCiBuildProvider implements BuildProviderInterface
             return '';
         }
         $ts = strtotime($iso);
-        return $ts ? date('Y-m-d H:i:s', $ts) : $iso;
+        return $ts ? gmdate('Y-m-d H:i:s', $ts) : $iso;
     }
 
     /** job 耗时（秒）：stopped_at - started_at，任一缺失或非法返回 0 */

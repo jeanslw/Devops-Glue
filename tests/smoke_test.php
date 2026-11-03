@@ -892,7 +892,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;ma
 
 $html .= '<div class="header">';
 $html .= '<h1>API 冒烟测试报告</h1>';
-$html .= '<div class="meta">目标: ' . htmlspecialchars($baseUrl) . ' &nbsp;|&nbsp; ' . date('Y-m-d H:i:s') . '</div>';
+$html .= '<div class="meta">目标: ' . htmlspecialchars($baseUrl) . ' &nbsp;|&nbsp; ' . gmdate('Y-m-d H:i:s') . '</div>';
 $html .= '</div>';
 
 $html .= '<div class="summary-bar">';

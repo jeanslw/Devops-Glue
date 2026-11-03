@@ -400,7 +400,7 @@ class CustomPushBuildProvider implements BuildProviderInterface
                 $stmt = $this->pdo->prepare($insertSql);
                 $stmt->execute([
                     $jobName, $pipelineIid, $ref, $sha, $varsJson, $status, $exitCode, $logUrl, $webUrl,
-                    date('Y-m-d H:i:s'), $startedAt, $finishedAt,
+                    gmdate('Y-m-d H:i:s'), $startedAt, $finishedAt,
                 ]);
                 return [
                     'success'      => true,

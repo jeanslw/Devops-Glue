@@ -41,7 +41,18 @@ if (!isset($app) || !$app instanceof App) {
 $app->get('/admin', function ($request, $response) {
     $htmlFile = __DIR__ . '/../templates/admin.html';
     $html = file_exists($htmlFile) ? (string) file_get_contents($htmlFile) : '<h1>Page Not Found / 页面丢失</h1>';
-    $response->getBody()->write(str_replace('{{APP_VERSION}}', AppConfig::APP_VERSION, $html));
+    // 全局注入当前显示时区（管理员配置；空=默认 UTC），使所有后台页面加载即生效，
+    // 避免未访问「数据管理」页时 window.DG_TZ 为空、时间回退到浏览器本地时区。
+    $tz = 'UTC';
+    try {
+        $pdo = \App\Service\Database::getPdo();
+        $tz  = \App\Service\Database::readAppSetting($pdo, 'display_timezone') ?: 'UTC';
+    } catch (\Throwable $e) {
+        $tz = 'UTC';
+    }
+    $html = str_replace('{{APP_VERSION}}', AppConfig::APP_VERSION, $html);
+    $html = str_replace('{{DISPLAY_TIMEZONE}}', (string) json_encode($tz, JSON_UNESCAPED_SLASHES), $html);
+    $response->getBody()->write($html);
     return $response->withHeader('Content-Type', 'text/html; charset=utf-8');
 });
 
@@ -115,6 +126,8 @@ $app->group('/api', function (RouteCollectorProxy $api) {
             $auth->map(['POST'], '/tag_cleanup', [SystemController::class, 'runTagCleanup']);
             $auth->map(['POST'], '/tag_backfill', [SystemController::class, 'runTagBackfill']);
             $auth->map(['GET'], '/system_info', [SystemController::class, 'systemInfo']);
+            $auth->map(['GET'], '/display_timezone', [SystemController::class, 'getDisplayTimezone']);
+            $auth->map(['POST'], '/display_timezone', [SystemController::class, 'saveDisplayTimezone']);
             $auth->map(['POST'], '/migrate', [SystemController::class, 'migrateSchema']);
             $auth->map(['POST'], '/backup', [SystemController::class, 'backupDatabase']);
             $auth->map(['GET'], '/backups', [SystemController::class, 'listBackups']);

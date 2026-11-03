@@ -63,7 +63,7 @@ class GitlabCiBuildProvider implements BuildProviderInterface
             return '';
         }
         $ts = strtotime($iso);
-        return $ts ? date('Y-m-d H:i:s', $ts) : $iso;
+        return $ts ? gmdate('Y-m-d H:i:s', $ts) : $iso;
     }
 
     /** @return list<array<string, mixed>> */

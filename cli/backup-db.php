@@ -21,7 +21,7 @@ use App\Service\OperationLogRepository;
 $force = in_array('--force', $_SERVER['argv'] ?? [], true);
 
 if (!$force && !in_array(envVal('DB_BACKUP_ENABLED', '0'), ['1', 'true', 'on', 'yes'], true)) {
-    echo date('Y-m-d H:i:s') . " - 备份：未启用（DB_BACKUP_ENABLED 未设为 1），跳过\n";
+    echo gmdate('Y-m-d H:i:s') . " - 备份：未启用（DB_BACKUP_ENABLED 未设为 1），跳过\n";
     exit(0);
 }
 
@@ -35,7 +35,7 @@ try {
         : '';
 
     if ($warning !== '') {
-        echo date('Y-m-d H:i:s') . " ⚠ 备份权限告警: {$warning}\n";
+        echo gmdate('Y-m-d H:i:s') . " ⚠ 备份权限告警: {$warning}\n";
         (new OperationLogRepository($pdo))->record(
             'system',
             'backup_database',
@@ -47,7 +47,7 @@ try {
         );
     }
 
-    echo date('Y-m-d H:i:s') . " ✓ 备份完成（CI / CD 分离）\n";
+    echo gmdate('Y-m-d H:i:s') . " ✓ 备份完成（CI / CD 分离）\n";
     foreach ($files as $f) {
         $total = array_sum($f['counts']);
         $label = $f['mode'] === 'cd' ? 'CD' : 'CI';

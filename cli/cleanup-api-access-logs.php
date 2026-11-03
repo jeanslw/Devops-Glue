@@ -34,7 +34,7 @@ try {
 $settings = new AppSettingRepository($pdo);
 
 if (!$settings->getApiAccessLogCleanupEnabled()) {
-    echo date('Y-m-d H:i:s') . " - 审计日志清理：开关已关闭（后台「日志设置」），跳过\n";
+    echo gmdate('Y-m-d H:i:s') . " - 审计日志清理：开关已关闭（后台「日志设置」），跳过\n";
     exit(0);
 }
 
@@ -61,7 +61,7 @@ try {
     $deletedApi = (new ApiAccessLogRepository($pdo))->purge($retainDays);
     $deletedOps = (new OperationLogRepository($pdo))->purge($retainDays);
 
-    echo date('Y-m-d H:i:s')
+    echo gmdate('Y-m-d H:i:s')
         . " ✓ 审计日志清理完成：保留 {$retainDays} 天，"
         . "删除 API 调用日志 {$deletedApi} 条、操作日志 {$deletedOps} 条\n";
 } catch (\Throwable $e) {

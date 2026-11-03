@@ -1,5 +1,20 @@
 import { authHeaders, handle401 } from '../core/api.js';
-import { esc } from '../core/utils.js';
+import { esc, fmtUtc } from '../core/utils.js';
+
+// 把指定时区同步到「显示时区」UI：下拉选中匹配项，未匹配则归为自定义并填入输入框
+function applyTzToUI(tz) {
+    window.DG_TZ = tz || '';
+    const sel = document.getElementById('sys-tz-select');
+    const input = document.getElementById('sys-tz-input');
+    let matched = false;
+    if (sel) {
+        for (const o of sel.options) {
+            if (o.value && o.value === window.DG_TZ) { o.selected = true; matched = true; break; }
+        }
+        if (!matched) sel.value = '';
+    }
+    if (input) input.value = window.DG_TZ;
+}
 import { toast, confirmDialog } from '../core/toast.js';
 import { getRole } from '../core/auth.js';
 import { applyTagSettings, applyApiLogSettings } from './mode.js';
@@ -92,6 +107,15 @@ export async function loadSystemInfo() {
         if (getRole() === 'super_admin') { loadBackups(); }
         loading.style.display = 'none';
         body.style.display = 'block';
+        applyTzToUI(d.display_timezone || 'UTC');
+        const tzSelect = document.getElementById('sys-tz-select');
+        if (tzSelect) tzSelect.onchange = () => {
+            const inp = document.getElementById('sys-tz-input');
+            if (tzSelect.value) { if (inp) inp.value = tzSelect.value; }
+            else { if (inp) { inp.value = ''; inp.focus(); } }
+        };
+        const tzSave = document.getElementById('sys-tz-save');
+        if (tzSave) tzSave.onclick = saveDisplayTimezone;
         // 集成服务面板已迁至 API 管理页（Token 列表上方；由 admin.js 的 api-tokens 分支加载）：
         // 本页只负责库结构 / 备份，不再请求集成服务状态。
     } catch(e) {
@@ -112,6 +136,32 @@ function renderMigrateLog(log) {
             + (r.error ? '<span style="flex-basis:100%;color:#dc2626;font-size:11px;word-break:break-all;">' + esc(r.error) + '</span>' : '');
         return '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:3px 0;font-size:13px;border-bottom:1px solid #f3f4f6;">' + row + '</div>';
     }).join('');
+}
+
+export async function saveDisplayTimezone() {
+    const input = document.getElementById('sys-tz-input');
+    const status = document.getElementById('sys-tz-status');
+    const tz = input ? input.value.trim() : '';
+    if (status) status.textContent = '⏳ …';
+    try {
+        const res = await fetch('/api/admin/display_timezone', {
+            method: 'POST',
+            headers: Object.assign({}, authHeaders(), { 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ timezone: tz })
+        });
+        if (handle401(res)) return;
+        const d = await res.json();
+        if (res.ok) {
+            applyTzToUI(d.timezone || 'UTC');
+            if (status) { status.textContent = '✅ ' + __.t('sys.display_timezone_saved'); status.style.color = '#16a34a'; }
+            toast(__.t('sys.display_timezone_saved'), true);
+        } else {
+            if (status) { status.textContent = '❌ ' + (d.message || ''); status.style.color = '#dc2626'; }
+            toast(d.message || 'save failed', false);
+        }
+    } catch (e) {
+        if (status) { status.textContent = '❌ ' + e.message; status.style.color = '#dc2626'; }
+    }
 }
 
 export async function doMigrate() {
@@ -332,7 +382,7 @@ function renderCdService(d) {
         lines.push('<span>' + esc(__.t('sys.isvc_token')) + '：' + tokenLabel + ' · ' + tokenState + '</span>');
         if (d.updated_by || d.updated_at) {
             lines.push('<span>' + esc(__.t('sys.isvc_updated')) + '：'
-                + esc(d.updated_by || '-') + ' · ' + esc(d.updated_at || '') + '</span>');
+                + esc(d.updated_by || '-') + ' · ' + esc(fmtUtc(d.updated_at)) + '</span>');
         }
         if (!tokenActive) {
             // 故障态（凭据被作废）的自助恢复路径：此刻勾选框是未勾选态，勾一下即补发（不必先取消勾选再勾选）
