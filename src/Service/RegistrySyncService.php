@@ -328,7 +328,7 @@ class RegistrySyncService
                 $tag,
                 $repository,
                 $scanState,
-                $sourceUpdatedAt !== '' ? $sourceUpdatedAt : date('Y-m-d H:i:s'),
+                $sourceUpdatedAt !== '' ? $sourceUpdatedAt : gmdate('Y-m-d H:i:s'),
                 null,
                 $digest !== '' ? $digest : null
             );

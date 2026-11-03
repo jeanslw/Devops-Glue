@@ -360,7 +360,7 @@ class JenkinsService
         $resp = $this->client->get("{$buildUrl}/api/json?tree=timestamp");
         $data = json_decode($resp->getBody(), true);
         $ts = (int) ($data['timestamp'] ?? 0);
-        return $ts > 0 ? date('Y-m-d H:i:s', (int) ($ts / 1000)) : '';
+        return $ts > 0 ? gmdate('Y-m-d H:i:s', (int) ($ts / 1000)) : '';
     }
 
     /**
@@ -381,7 +381,7 @@ class JenkinsService
             $ts = (int) ($b['timestamp'] ?? 0);
             $rev = $this->extractRevision($b['actions'] ?? []);
             $map[(int) $b['number']] = [
-                'time'   => $ts > 0 ? date('Y-m-d H:i:s', (int) ($ts / 1000)) : '',
+                'time'   => $ts > 0 ? gmdate('Y-m-d H:i:s', (int) ($ts / 1000)) : '',
                 'status' => strtolower(($b['result'] ?? null) ?: 'unknown'),
                 'ref'    => $rev['ref'] ?? '',
                 'sha'    => $rev['sha'] ?? '',

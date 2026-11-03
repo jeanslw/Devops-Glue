@@ -1,5 +1,5 @@
 import { authHeaders, handle401 } from '../core/api.js';
-import { esc, escJs, js } from '../core/utils.js';
+import { esc, escJs, js, fmtUtc } from '../core/utils.js';
 import { toast, confirmDialog } from '../core/toast.js';
 import { hasPermission, getRole, getUserName, isRoot } from '../core/auth.js';
 
@@ -44,7 +44,7 @@ export async function loadUsers() {
         const currentUserName = getUserName();
         const currentUserIsRoot = isRoot();
         tbody.innerHTML = users.map(u => {
-            const time = u.updated_at || '-';
+            const time = fmtUtc(u.updated_at) || '-';
             const isSuperAdmin = u.role === 'super_admin';
             const isAdmin = u.role === 'admin';
             const isSelf = u.username === currentUserName;

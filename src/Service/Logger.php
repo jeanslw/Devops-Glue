@@ -97,7 +97,7 @@ class Logger
         }
 
         $entry = [
-            'timestamp' => date('Y-m-d H:i:s'),
+            'timestamp' => gmdate('Y-m-d H:i:s'),
             'level'     => strtoupper($level),
             'message'   => $message,
         ];

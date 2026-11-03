@@ -318,7 +318,7 @@ class DataBackupService
             $metaTables[] = "{$t}({$c})";
         }
         $header = "-- Devops-Glue 数据备份（纯数据 .sql，不含 DDL）\n"
-            . '-- META: exported_at=' . date('Y-m-d H:i:s') . "\n"
+            . '-- META: exported_at=' . gmdate('Y-m-d H:i:s') . "\n"
             . "-- META: source_driver={$this->driver}\n"
             . '-- META: app_version=' . AppConfig::APP_VERSION . "\n"
             . "-- META: mode={$mode}\n"

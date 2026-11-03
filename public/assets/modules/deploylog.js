@@ -1,5 +1,5 @@
 import { authHeaders, handle401 } from '../core/api.js';
-import { esc } from '../core/utils.js';
+import { esc, fmtUtc } from '../core/utils.js';
 import { toast } from '../core/toast.js';
 
 let deploylogPage = 1;
@@ -45,7 +45,7 @@ export async function loadDeployLogs(page) {
             empty.style.display = 'block';
         } else {
             tbody.innerHTML = rows.map(function(r) {
-                const time = (r.created_at || '').replace('T', ' ').substring(0, 19);
+                const time = fmtUtc(r.created_at);
                 const statusHtml = deploylogStatusBadge(r.status);
                 return '<tr>' +
                     '<td style="font-size:12px;white-space:nowrap;color:#6b7280;">' + esc(time) + '</td>' +

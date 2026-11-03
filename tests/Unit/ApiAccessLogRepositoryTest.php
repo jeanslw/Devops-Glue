@@ -59,7 +59,7 @@ class ApiAccessLogRepositoryTest extends TestCase
             'ip'           => '10.0.0.1',
             'duration_ms'  => 12,
         ], $overrides);
-        $createdAt ??= date('Y-m-d H:i:s');
+        $createdAt ??= gmdate('Y-m-d H:i:s');
         $stmt = $this->pdo->prepare(
             'INSERT INTO ' . AppConfig::TABLE_API_ACCESS_LOGS
             . ' (username, token_name, scopes, method, route, status_code, result, error_reason, ip, duration_ms, created_at)'
@@ -142,7 +142,7 @@ class ApiAccessLogRepositoryTest extends TestCase
     public function testListDefaultWindowExcludesRowsOlderThan30Days(): void
     {
         $this->insertRow(['token_name' => 'recent']);
-        $this->insertRow(['token_name' => 'old'], date('Y-m-d H:i:s', time() - 31 * 86400));
+        $this->insertRow(['token_name' => 'old'], gmdate('Y-m-d H:i:s', time() - 31 * 86400));
 
         
         $r = $this->repo->list([], 1, 20);
@@ -181,8 +181,8 @@ class ApiAccessLogRepositoryTest extends TestCase
 
     public function testPurgeDeletesOnlyExpiredRows(): void
     {
-        $this->insertRow(['token_name' => 'fresh'], date('Y-m-d H:i:s', time() - 10 * 86400));
-        $this->insertRow(['token_name' => 'expired'], date('Y-m-d H:i:s', time() - 100 * 86400));
+        $this->insertRow(['token_name' => 'fresh'], gmdate('Y-m-d H:i:s', time() - 10 * 86400));
+        $this->insertRow(['token_name' => 'expired'], gmdate('Y-m-d H:i:s', time() - 100 * 86400));
 
         $deleted = $this->repo->purge(90);
         $this->assertSame(1, $deleted);
@@ -296,8 +296,8 @@ class ApiAccessLogRepositoryTest extends TestCase
             ip TEXT, operator_type TEXT, result TEXT, created_at TEXT
         )');
         $repo = new \App\Service\OperationLogRepository($this->pdo);
-        $old = date('Y-m-d H:i:s', time() - 100 * 86400);
-        $now = date('Y-m-d H:i:s');
+        $old = gmdate('Y-m-d H:i:s', time() - 100 * 86400);
+        $now = gmdate('Y-m-d H:i:s');
         $ins = $this->pdo->prepare('INSERT INTO ' . AppConfig::TABLE_OPERATION_LOGS . ' (username, action, created_at) VALUES (?, ?, ?)');
         $ins->execute(['root', 'login', $old]);
         $ins->execute(['root', 'login', $now]);

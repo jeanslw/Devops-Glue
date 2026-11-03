@@ -510,7 +510,7 @@ class MainController extends BaseController
             'db_driver'             => \App\Service\Database::driver(),
             'app_version'           => AppConfig::APP_VERSION,
             'app_env'               => $this->config->getAppEnv(),
-            'time'                  => date('Y-m-d H:i:s'),
+            'time'                  => gmdate('Y-m-d H:i:s'),
             'checks'                => [
                 'registry_type_mismatch' => $this->getLastRegistryMismatch(),
             ],

@@ -40,8 +40,8 @@ CREATE TABLE IF NOT EXISTS `ci_pipeline_artifacts` (
     `digest`            VARCHAR(255) DEFAULT NULL,
     `status`            VARCHAR(255) DEFAULT '',
     `source_updated_at` DATETIME DEFAULT NULL,
-    `created_at`        DATETIME DEFAULT (NOW()),
-    `updated_at`        DATETIME DEFAULT (NOW()),
+    `created_at`        DATETIME DEFAULT (UTC_TIMESTAMP()),
+    `updated_at`        DATETIME DEFAULT (UTC_TIMESTAMP()),
     UNIQUE KEY `uniq_pipeline_artifact` (`provider`, `project_id`, `pipeline_iid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS `ci_cache` (
 CREATE TABLE IF NOT EXISTS `ci_app_settings` (
     `setting_key` VARCHAR(255) PRIMARY KEY,
     `value`       MEDIUMTEXT NOT NULL,
-    `updated_at`  DATETIME DEFAULT (NOW())
+    `updated_at`  DATETIME DEFAULT (UTC_TIMESTAMP())
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ── 7. admin_users（管理员账号）──
@@ -91,8 +91,8 @@ CREATE TABLE IF NOT EXISTS `ci_admin_users` (
     `avatar_url`    TEXT,
     `status`        TINYINT NOT NULL DEFAULT 1 COMMENT '1=启用, 0=停用',
     `must_change_password` TINYINT NOT NULL DEFAULT 0 COMMENT '首次登录强制改密：1=需改密',
-    `created_at`    DATETIME DEFAULT (NOW()),
-    `updated_at`    DATETIME DEFAULT (NOW())
+    `created_at`    DATETIME DEFAULT (UTC_TIMESTAMP()),
+    `updated_at`    DATETIME DEFAULT (UTC_TIMESTAMP())
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 
@@ -107,8 +107,8 @@ CREATE TABLE IF NOT EXISTS `ci_user_identities` (
     `credential`    TEXT         DEFAULT NULL COMMENT '仅 local 存 bcrypt hash，ldap 为 NULL',
     `email`         VARCHAR(255) NOT NULL DEFAULT '',
     `raw_profile`   MEDIUMTEXT   COMMENT 'JSON 快照，避免每次登录查 LDAP',
-    `bound_at`      DATETIME DEFAULT (NOW()),
-    `updated_at`    DATETIME DEFAULT (NOW()),
+    `bound_at`      DATETIME DEFAULT (UTC_TIMESTAMP()),
+    `updated_at`    DATETIME DEFAULT (UTC_TIMESTAMP()),
     UNIQUE KEY `uniq_provider` (`provider_type`, `provider_uid`(191)),
     KEY `idx_username` (`username`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -126,7 +126,7 @@ CREATE TABLE IF NOT EXISTS `ci_security_checks` (
     `tag`               VARCHAR(255) DEFAULT '',
     `writeback_status`  VARCHAR(255) DEFAULT '',
     `writeback_message` TEXT,
-    `created_at`        DATETIME DEFAULT (NOW())
+    `created_at`        DATETIME DEFAULT (UTC_TIMESTAMP())
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ── 8.1 ci_operation_logs（后台操作审计日志，append-only，只增不删）──
@@ -139,7 +139,7 @@ CREATE TABLE IF NOT EXISTS `ci_operation_logs` (
     `ip`            VARCHAR(255) DEFAULT '',
     `operator_type` VARCHAR(255) DEFAULT 'admin',
     `result`        VARCHAR(255) DEFAULT 'success',
-    `created_at`    DATETIME DEFAULT (NOW())
+    `created_at`    DATETIME DEFAULT (UTC_TIMESTAMP())
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ── 8.2 ci_api_access_logs（API token 调用审计日志：只记 token 名，不记 token/body/query）──
@@ -155,7 +155,7 @@ CREATE TABLE IF NOT EXISTS `ci_api_access_logs` (
     `error_reason` VARCHAR(500) DEFAULT '',
     `ip`           VARCHAR(45) DEFAULT '',
     `duration_ms`  INT NOT NULL DEFAULT 0,
-    `created_at`   DATETIME DEFAULT (NOW())
+    `created_at`   DATETIME DEFAULT (UTC_TIMESTAMP())
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ── 9. roles（角色）──
@@ -164,7 +164,7 @@ CREATE TABLE IF NOT EXISTS `ci_roles` (
     `name`        VARCHAR(255) NOT NULL UNIQUE,
     `description` TEXT,
     `is_system`   TINYINT NOT NULL DEFAULT 0,
-    `created_at`  DATETIME DEFAULT (NOW())
+    `created_at`  DATETIME DEFAULT (UTC_TIMESTAMP())
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ── 10. permissions（权限定义；parent_key 用于二级菜单 eg. cd.deploy.single → cd.deploy-manage）──
@@ -199,7 +199,7 @@ CREATE TABLE IF NOT EXISTS `ci_api_tokens` (
     `expires_at` INT,
     `created_by` VARCHAR(255),
     `note`       TEXT,
-    `created_at` DATETIME DEFAULT (NOW())
+    `created_at` DATETIME DEFAULT (UTC_TIMESTAMP())
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ── 14. ci_build_tag_cache（拉取式记录「镜像 Tag」日志兜底的懒解析缓存 sha→tag）──
@@ -215,8 +215,8 @@ CREATE TABLE IF NOT EXISTS `ci_build_tag_cache` (
     `digest`      VARCHAR(255) DEFAULT NULL,
     `source`      VARCHAR(255) DEFAULT 'log',
     `status`      VARCHAR(255) DEFAULT '',
-    `created_at`  DATETIME DEFAULT (NOW()),
-    `updated_at`  DATETIME DEFAULT (NOW()),
+    `created_at`  DATETIME DEFAULT (UTC_TIMESTAMP()),
+    `updated_at`  DATETIME DEFAULT (UTC_TIMESTAMP()),
     UNIQUE KEY `uq_build_tag_cache` (`provider`, `project_id`, `pipeline_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -231,8 +231,8 @@ CREATE TABLE IF NOT EXISTS `ci_integrated_services` (
     `provision`    VARCHAR(16) NOT NULL DEFAULT 'auto',
     `api_token_id` INT DEFAULT NULL,
     `updated_by`   VARCHAR(64) DEFAULT '',
-    `created_at`   DATETIME DEFAULT (NOW()),
-    `updated_at`   DATETIME DEFAULT (NOW()),
+    `created_at`   DATETIME DEFAULT (UTC_TIMESTAMP()),
+    `updated_at`   DATETIME DEFAULT (UTC_TIMESTAMP()),
     CONSTRAINT `fk_isvc_token` FOREIGN KEY (`api_token_id`)
         REFERENCES `ci_api_tokens`(`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -246,8 +246,8 @@ CREATE TABLE IF NOT EXISTS `ci_oauth_clients` (
     `system`       VARCHAR(16) NOT NULL DEFAULT 'ci',
     `enabled`      TINYINT NOT NULL DEFAULT 1,
     `description`  VARCHAR(255) DEFAULT '',
-    `created_at`   DATETIME DEFAULT (NOW()),
-    `updated_at`   DATETIME DEFAULT (NOW())
+    `created_at`   DATETIME DEFAULT (UTC_TIMESTAMP()),
+    `updated_at`   DATETIME DEFAULT (UTC_TIMESTAMP())
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ── ci_platform_connections（Git/Harbor/Jenkins 连接配置，DB 唯一权威，彻底移除 env）──
@@ -258,8 +258,8 @@ CREATE TABLE IF NOT EXISTS `ci_platform_connections` (
     `username`    TEXT,
     `password`    TEXT,
     `description` VARCHAR(255) DEFAULT '',
-    `created_at`  DATETIME DEFAULT (NOW()),
-    `updated_at`  DATETIME DEFAULT (NOW())
+    `created_at`  DATETIME DEFAULT (UTC_TIMESTAMP()),
+    `updated_at`  DATETIME DEFAULT (UTC_TIMESTAMP())
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ── 索引 ──

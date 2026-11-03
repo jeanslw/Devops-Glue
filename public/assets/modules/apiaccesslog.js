@@ -1,5 +1,5 @@
 import { authHeaders, handle401 } from '../core/api.js';
-import { esc } from '../core/utils.js';
+import { esc, fmtUtc } from '../core/utils.js';
 import { toast } from '../core/toast.js';
 
 let apilogPage = 1;
@@ -39,7 +39,7 @@ export async function loadApiAccessLogs(page) {
             empty.style.display = 'block';
         } else {
             tbody.innerHTML = rows.map(function(r) {
-                const time = (r.created_at || '').replace('T', ' ').substring(0, 19);
+                const time = fmtUtc(r.created_at);
                 return '<tr>' +
                     '<td style="font-size:12px;white-space:nowrap;color:#6b7280;">' + esc(time) + '</td>' +
                     '<td style="font-size:12px;white-space:nowrap;">' + esc(r.token_name || '') + '</td>' +

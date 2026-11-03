@@ -1322,6 +1322,51 @@
                                 <tr><td data-i18n="sys.schema_list">数据表一致性</td><td id="sys-schema-list">-</td></tr>
                                 <tr><td data-i18n="sys.column_drift">列结构一致性</td><td id="sys-column-drift">-</td></tr>
                                 <tr><td data-i18n="sys.php_version">PHP 版本</td><td id="sys-php-version">-</td></tr>
+                                <tr><td data-i18n="sys.display_timezone">显示时区</td><td>
+                                    <select id="sys-tz-select" style="padding:4px 6px;max-width:280px;">
+                                        <option value="UTC">UTC</option>
+                                        <option value="Asia/Shanghai">Asia/Shanghai (北京)</option>
+                                        <option value="Asia/Hong_Kong">Asia/Hong_Kong (香港)</option>
+                                        <option value="Asia/Taipei">Asia/Taipei (台北)</option>
+                                        <option value="Asia/Tokyo">Asia/Tokyo (东京)</option>
+                                        <option value="Asia/Seoul">Asia/Seoul (首尔)</option>
+                                        <option value="Asia/Singapore">Asia/Singapore (新加坡)</option>
+                                        <option value="Asia/Kuala_Lumpur">Asia/Kuala_Lumpur (吉隆坡)</option>
+                                        <option value="Asia/Bangkok">Asia/Bangkok (曼谷)</option>
+                                        <option value="Asia/Jakarta">Asia/Jakarta (雅加达)</option>
+                                        <option value="Asia/Manila">Asia/Manila (马尼拉)</option>
+                                        <option value="Asia/Kolkata">Asia/Kolkata (加尔各答)</option>
+                                        <option value="Asia/Dhaka">Asia/Dhaka (达卡)</option>
+                                        <option value="Asia/Karachi">Asia/Karachi (卡拉奇)</option>
+                                        <option value="Asia/Dubai">Asia/Dubai (迪拜)</option>
+                                        <option value="Asia/Tehran">Asia/Tehran (德黑兰)</option>
+                                        <option value="Europe/London">Europe/London (伦敦)</option>
+                                        <option value="Europe/Paris">Europe/Paris (巴黎)</option>
+                                        <option value="Europe/Berlin">Europe/Berlin (柏林)</option>
+                                        <option value="Europe/Madrid">Europe/Madrid (马德里)</option>
+                                        <option value="Europe/Rome">Europe/Rome (罗马)</option>
+                                        <option value="Europe/Moscow">Europe/Moscow (莫斯科)</option>
+                                        <option value="Europe/Istanbul">Europe/Istanbul (伊斯坦布尔)</option>
+                                        <option value="Africa/Cairo">Africa/Cairo (开罗)</option>
+                                        <option value="Africa/Johannesburg">Africa/Johannesburg (约翰内斯堡)</option>
+                                        <option value="Africa/Lagos">Africa/Lagos (拉各斯)</option>
+                                        <option value="America/Sao_Paulo">America/Sao_Paulo (圣保罗)</option>
+                                        <option value="America/Argentina/Buenos_Aires">America/Argentina/Buenos_Aires (布宜诺斯艾利斯)</option>
+                                        <option value="America/Mexico_City">America/Mexico_City (墨西哥城)</option>
+                                        <option value="America/New_York">America/New_York (纽约)</option>
+                                        <option value="America/Chicago">America/Chicago (芝加哥)</option>
+                                        <option value="America/Denver">America/Denver (丹佛)</option>
+                                        <option value="America/Los_Angeles">America/Los_Angeles (洛杉矶)</option>
+                                        <option value="America/Anchorage">America/Anchorage (安克雷奇)</option>
+                                        <option value="Pacific/Honolulu">Pacific/Honolulu (檀香山)</option>
+                                        <option value="Australia/Perth">Australia/Perth (珀斯)</option>
+                                        <option value="Australia/Sydney">Australia/Sydney (悉尼)</option>
+                                        <option value="Pacific/Auckland">Pacific/Auckland (奥克兰)</option>
+                                    </select>
+                                    <input id="sys-tz-input" type="text" style="width:240px;padding:4px 6px;box-sizing:border-box;margin-left:6px;">
+                                    <button id="sys-tz-save" class="btn btn-pri" style="margin-left:6px;" data-i18n="sys.display_timezone_save">保存时区</button>
+                                    <span id="sys-tz-status" class="mode-save-status"></span>
+                                </td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1355,6 +1400,8 @@
 </div><!-- /app-page -->
 
 <!-- 见 <head> 顶部说明：资源引用必须带 ?v={{APP_VERSION}} -->
+<!-- 全局注入显示时区：后台所有页面加载即生效，避免未访问「数据管理」页时 window.DG_TZ 为空导致时间回退浏览器时区（空配置=默认 UTC） -->
+<script>window.DG_TZ = {{DISPLAY_TIMEZONE}};</script>
 <script src="/assets/i18n.js?v={{APP_VERSION}}"></script>
 <script type="module" src="/assets/admin.js?v={{APP_VERSION}}"></script>
 

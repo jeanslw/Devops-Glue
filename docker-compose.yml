@@ -8,8 +8,6 @@ x-web-common: &web-common
   image: devops-glue:latest
   env_file:
     - .env
-  environment:
-    TZ: ${TZ:-Asia/Shanghai}
   volumes:
     - ./config/app.env:/app/config/app.env:ro
     - ./config/docker/php-fpm.conf:/usr/local/etc/php-fpm.d/zz-custom.conf:ro
@@ -80,8 +78,6 @@ services:
     container_name: devops-glue-worker
     env_file:
       - .env
-    environment:
-      TZ: ${TZ:-Asia/Shanghai}
     volumes:
       - ./config/app.env:/app/config/app.env:ro
       - ./config/docker/supervisord-worker.conf:/etc/supervisor/conf.d/supervisord.conf:ro
@@ -195,7 +191,6 @@ services:
       env-check:
         condition: service_completed_successfully
     environment:
-      TZ: ${TZ:-Asia/Shanghai}
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASS:-}
       MYSQL_DATABASE: ${DB_NAME:-devops_glue}
       MYSQL_USER: ${DB_USER:-devops}
@@ -229,7 +224,6 @@ services:
 #      PYTHONUNBUFFERED: "1"
 #      HOST: 0.0.0.0
 #      PORT: 8081
-#      TZ: ${TZ:-Asia/Shanghai}
 #      # ── CI API ──
 #      #CI_API_URL: http://nginx
 #      #CI_API_TOKEN: dg_xxx

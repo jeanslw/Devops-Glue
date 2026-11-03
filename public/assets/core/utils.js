@@ -76,6 +76,31 @@ export function fmtYmd(ts) {
     return d.getFullYear() + '/' + p(d.getMonth() + 1) + '/' + p(d.getDate());
 }
 
+/**
+ * 把存储为 UTC 的 'Y-m-d H:i:s'（无时区标记）按指定/全局时区渲染为本地可读串。
+ * - 数据库时间统一以 UTC 存储，这里补 'Z' 让 JS 严格按 UTC 解析，避免被当本地时。
+ * - tz 优先级：显式参数 > window.DG_TZ（后台下发的 display_timezone）> 浏览器本地时区。
+ * 注：存量历史数据仍是部署时本地时、未迁移；统一按 UTC→TZ 渲染时，部署环境≠UTC 的旧数据会差一个偏移。
+ */
+export function fmtUtc(dt, tz) {
+    if (!dt) return '-';
+    let iso = String(dt).replace(' ', 'T');
+    if (iso.length === 19) iso = iso + 'Z';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return String(dt);
+    const useTz = tz || window.DG_TZ || undefined;
+    try {
+        return new Intl.DateTimeFormat(undefined, {
+            timeZone: useTz,
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', second: '2-digit',
+            hour12: false
+        }).format(d);
+    } catch (e) {
+        return String(dt);
+    }
+}
+
 export function normalizePerms(raw) {
     if (Array.isArray(raw)) return raw;
     if (raw === '*') return ['*'];

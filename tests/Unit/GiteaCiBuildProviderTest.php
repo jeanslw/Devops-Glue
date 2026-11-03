@@ -62,8 +62,8 @@ class GiteaCiBuildProviderTest extends TestCase
         $this->assertSame('success', $pipes[0]['status']);
         $this->assertStringContainsString('/actions/runs/42', $pipes[0]['web_url']);
         
-        $this->assertSame(date('Y-m-d H:i:s', strtotime('2025-04-01T10:00:00Z')), $pipes[0]['created_at']);
-        $this->assertSame(date('Y-m-d H:i:s', strtotime('2025-04-01T10:05:00Z')), $pipes[0]['updated_at']);
+        $this->assertSame(gmdate('Y-m-d H:i:s', strtotime('2025-04-01T10:00:00Z')), $pipes[0]['created_at']);
+        $this->assertSame(gmdate('Y-m-d H:i:s', strtotime('2025-04-01T10:05:00Z')), $pipes[0]['updated_at']);
     }
 
     public function testGetJobsParsesGitea127JobsObjectAndCompletedAtDuration(): void

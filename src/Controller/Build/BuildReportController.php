@@ -163,7 +163,7 @@ final class BuildReportController extends BaseBuildController
             if ($ts < 946684800 || $ts > 32503680000) {
                 return $this->jsonError($response, 'build.report_invalid_finished_at', 400);
             }
-            $finishedAt = date('Y-m-d H:i:s', $ts);
+            $finishedAt = gmdate('Y-m-d H:i:s', $ts);
         } elseif (@strtotime($finishedAt) === false) {
             return $this->jsonError($response, 'build.report_invalid_finished_at', 400);
         } else {
@@ -171,7 +171,7 @@ final class BuildReportController extends BaseBuildController
             if ($ts === false) {
                 return $this->jsonError($response, 'build.report_invalid_finished_at', 400);
             }
-            $finishedAt = date('Y-m-d H:i:s', $ts);
+            $finishedAt = gmdate('Y-m-d H:i:s', $ts);
         }
         // 规范化值写回 $body：让 provider 内部写入与 SQL 时序守卫看到同一格式/时区，
         // 避免库存 ISO、新来 epoch 时字符串比较结论相反而把合法较新上报静默丢弃（与全库本地口径一致）。

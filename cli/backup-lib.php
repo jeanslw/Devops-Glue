@@ -225,7 +225,7 @@ function backupWriteFile(\PDO $pdo, string $driver, string $targetFile, array $o
         $metaTables[] = "{$t}({$c})";
     }
     $header = "-- Devops-Glue 数据备份（备份 CLI 导出）\n"
-        . '-- META: exported_at=' . date('Y-m-d H:i:s') . "\n"
+        . '-- META: exported_at=' . gmdate('Y-m-d H:i:s') . "\n"
         . "-- META: source_driver={$driver}\n"
         . '-- META: app_version=' . AppConfig::APP_VERSION . "\n"
         . "-- META: mode={$mode}\n"

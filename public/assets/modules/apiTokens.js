@@ -1,5 +1,5 @@
 import { authHeaders, handle401 } from '../core/api.js';
-import { esc, fmtYmd } from '../core/utils.js';
+import { esc, fmtYmd, fmtUtc } from '../core/utils.js';
 import { toast, confirmDialog } from '../core/toast.js';
 
 let _apiScopes = [];
@@ -55,7 +55,7 @@ export async function loadApiTokens() {
                     '<td class="scope-cell" style="font-size:12px;max-width:260px;">' + scopes + '</td>' +
                     '<td>' + exp + '</td>' +
                     '<td>' + status + '</td>' +
-                    '<td style="font-size:12px;">' + esc(t.created_at || '') + '</td>' +
+                    '<td style="font-size:12px;">' + esc(fmtUtc(t.created_at)) + '</td>' +
                     '<td>' + actions + '</td>' +
                 '</tr>';
             }).join('');

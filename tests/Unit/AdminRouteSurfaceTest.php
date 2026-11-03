@@ -36,6 +36,7 @@ class AdminRouteSurfaceTest extends TestCase
         'GET /api/admin/build_mode',
         'GET /api/admin/custom_builds',
         'GET /api/admin/deploy_logs',
+        'GET /api/admin/display_timezone',
         'GET /api/admin/integrated_services/{service}',
         'GET /api/admin/job_git_map',
         'GET /api/admin/me/permissions',
@@ -54,6 +55,7 @@ class AdminRouteSurfaceTest extends TestCase
         'POST /api/admin/api_tokens/{id}/revoke',
         'POST /api/admin/backup',
         'POST /api/admin/discover',
+        'POST /api/admin/display_timezone',
         'POST /api/admin/implied_rules',
         'POST /api/admin/integrated_services/{service}/disable',
         'POST /api/admin/integrated_services/{service}/enable',
@@ -98,8 +100,8 @@ class AdminRouteSurfaceTest extends TestCase
 
     public function testRouteObjectCountIsStable(): void
     {
-        // 路由对象数（非按方法展开数）：112
-        $this->assertCount(112, $this->routes(), '全仓路由对象数发生变化（拆分不应新增/删除任何路由）');
+        // 路由对象数（非按方法展开数）：114（新增 display_timezone GET/POST 两条）
+        $this->assertCount(114, $this->routes(), '全仓路由对象数发生变化（拆分不应新增/删除任何路由）');
     }
 
     /**
