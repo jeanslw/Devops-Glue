@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS `ci_pipeline_artifacts` (
     `project_key`       VARCHAR(255) NOT NULL,
     `repository`        TEXT NOT NULL,
     `tag`               VARCHAR(255) NOT NULL,
+    `digest`            VARCHAR(255) DEFAULT NULL,
     `status`            VARCHAR(255) DEFAULT '',
     `source_updated_at` DATETIME DEFAULT NULL,
     `created_at`        DATETIME DEFAULT (NOW()),
@@ -261,6 +262,7 @@ CREATE TABLE IF NOT EXISTS `ci_platform_connections` (
 -- 新库一次性建全（无存量数据，不保留迁移逻辑），直接建索引
 CREATE INDEX `idx_pipeline_artifacts_project_key` ON `ci_pipeline_artifacts` (`project_key`);
 CREATE INDEX `idx_pipeline_artifacts_created` ON `ci_pipeline_artifacts` (`created_at`);
+CREATE INDEX `idx_pipeline_artifacts_digest` ON `ci_pipeline_artifacts` (`digest`);
 CREATE INDEX `idx_job_git_map_current_path` ON `ci_job_git_map` (`current_path`(255));
 CREATE INDEX `idx_security_checks_project`  ON `ci_security_checks` (`project`(64), `check_type`(64));
 CREATE INDEX `idx_security_checks_sha`      ON `ci_security_checks` (`sha`);

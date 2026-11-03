@@ -127,6 +127,18 @@ class RegistrySyncService
         }
 
 
+
+        $digest = '';
+        foreach (['digest', 'image_digest'] as $dk) {
+            if (is_string($body[$dk] ?? null) && trim($body[$dk]) !== '') {
+                $digest = trim($body[$dk]);
+                break;
+            }
+        }
+        if ($digest === '' && $tagVerified && $this->registry !== null && $tag !== '') {
+            $digest = $this->resolveDigestFromRegistry($repository, $tag);
+        }
+
         $bodySha = is_string($body['sha'] ?? null) ? trim($body['sha']) : '';
         $bodyIid = is_scalar($body['pipeline_iid'] ?? null) ? (int) $body['pipeline_iid'] : 0;
         $sourceUpdatedAt = is_string($body['source_updated_at'] ?? null) ? trim($body['source_updated_at']) : '';
@@ -236,7 +248,7 @@ class RegistrySyncService
         if ($ciStatus === 'success' && $iid > 0) {
             // 仅当 tag 已通过镜像仓库校验（或仓库未配置、无法校验时按原行为尽力关联）才写权威 artifact
             if ($this->registry === null || $tagVerified) {
-                $artifactOk = $this->recordArtifact($path, $iid, $tag, $repository, $scanState, $sourceUpdatedAt);
+                $artifactOk = $this->recordArtifact($path, $iid, $tag, $repository, $scanState, $sourceUpdatedAt, $digest);
                 $artifactWritten = (bool)$artifactOk;
                 $writebackParts[] = $artifactOk ? 'artifact_write=success' : 'artifact_write=failed';
             } else {
@@ -260,6 +272,7 @@ class RegistrySyncService
             'build_provider'      => $provider,
             'sha'                 => $sha,
             'tag'                 => $tag,
+            'digest'              => $digest !== '' ? $digest : null,
             'registry_repository' => $repository,
             'vulnerability_count' => $vulnCount,
             'scan_state'          => $scanState,
@@ -297,7 +310,7 @@ class RegistrySyncService
         return $this->appSettings->getCache($this->tagCacheKey($repository));
     }
 
-    private function recordArtifact(string $path, int $iid, string $tag, string $repository, string $scanState, string $sourceUpdatedAt): bool
+    private function recordArtifact(string $path, int $iid, string $tag, string $repository, string $scanState, string $sourceUpdatedAt, string $digest = ''): bool
     {
         if ($tag === '' || $repository === '') {
             return false;
@@ -309,13 +322,47 @@ class RegistrySyncService
                 $tag,
                 $repository,
                 $scanState,
-                $sourceUpdatedAt !== '' ? $sourceUpdatedAt : date('Y-m-d H:i:s')
+                $sourceUpdatedAt !== '' ? $sourceUpdatedAt : date('Y-m-d H:i:s'),
+                null,
+                $digest !== '' ? $digest : null
             );
             return $res['written'] || $res['ignored'];
         } catch (\Throwable $e) {
             Log::exception($e);
             return false;
         }
+    }
+
+    /**
+     * 从 Registry tag details 解析指定 tag 的 digest；失败返回空串。
+     */
+    private function resolveDigestFromRegistry(string $repository, string $tag): string
+    {
+        if ($this->registry === null || $tag === '') {
+            return '';
+        }
+        try {
+            $details = $this->registry->getTagDetails($repository);
+            if (!is_array($details) || isset($details['error'])) {
+                return '';
+            }
+            foreach ($details as $row) {
+                if (!is_array($row)) {
+                    continue;
+                }
+                $name = (string) ($row['name'] ?? $row['tag'] ?? '');
+                if ($name !== $tag) {
+                    continue;
+                }
+                $d = trim((string) ($row['digest'] ?? ''));
+                if ($d !== '') {
+                    return $d;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::exception($e);
+        }
+        return '';
     }
 
     private function recordSecurityCheck(string $project, string $sha, string $state, string $checkType, string $description, string $tag, string $writebackStatus, string $writebackMessage): void

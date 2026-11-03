@@ -860,6 +860,9 @@ class Database
                 'writeback_status'  => "{$VARCHAR} DEFAULT ''",
                 'writeback_message' => 'TEXT',
             ],
+            \App\Config\AppConfig::TABLE_PIPELINE_ARTIFACTS => [
+                'digest' => "{$VARCHAR} DEFAULT NULL",
+            ],
             \App\Config\AppConfig::TABLE_BUILD_TAG_CACHE => [
                 'provider'   => "{$VARCHAR} DEFAULT ''",
                 'project_id' => "{$VARCHAR} DEFAULT ''",
@@ -1539,6 +1542,7 @@ class Database
             project_key {$VCHAR255},
             repository TEXT NOT NULL,
             tag {$VARCHAR} NOT NULL,
+            digest {$VARCHAR} DEFAULT NULL,
             status {$VARCHAR} DEFAULT '',
             source_updated_at {$TS_TYPE} DEFAULT NULL,
             created_at {$TS_TYPE} DEFAULT ({$NOW}),
@@ -1889,6 +1893,7 @@ class Database
         self::seedRbac($seedMode);
         self::createIndex('idx_pipeline_artifacts_project_key', \App\Config\AppConfig::TABLE_PIPELINE_ARTIFACTS, 'project_key');
         self::createIndex('idx_pipeline_artifacts_created', \App\Config\AppConfig::TABLE_PIPELINE_ARTIFACTS, 'created_at');
+        self::createIndex('idx_pipeline_artifacts_digest', \App\Config\AppConfig::TABLE_PIPELINE_ARTIFACTS, 'digest');
         self::createIndex('idx_job_git_map_current_path', \App\Config\AppConfig::TABLE_JOB_GIT_MAP, $isMySQL ? 'current_path(255)' : 'current_path');
         self::createIndex('idx_security_checks_project', \App\Config\AppConfig::TABLE_SECURITY_CHECKS, 'project, check_type');
         self::createIndex('idx_security_checks_sha', \App\Config\AppConfig::TABLE_SECURITY_CHECKS, 'sha');
@@ -2350,9 +2355,26 @@ class Database
         }
 
         try {
+            $hasDigestCol = false;
+            try {
+                $colStmt = $pdo->query('SELECT * FROM ' . $tagTable . ' LIMIT 0');
+                if ($colStmt !== false) {
+                    for ($c = 0, $n = $colStmt->columnCount(); $c < $n; $c++) {
+                        $meta = $colStmt->getColumnMeta($c);
+                        if (isset($meta['name']) && strtolower((string) $meta['name']) === 'digest') {
+                            $hasDigestCol = true;
+                            break;
+                        }
+                    }
+                }
+            } catch (\Throwable $e) {
+                $hasDigestCol = false;
+            }
+            $selectCols = $hasDigestCol
+                ? 'project, pipeline_iid, tag, digest, harbor_repository, status, created_at'
+                : 'project, pipeline_iid, tag, harbor_repository, status, created_at';
             $rows = $pdo->query(
-                'SELECT project, pipeline_iid, tag, harbor_repository, status, created_at
-                 FROM ' . $tagTable . ' ORDER BY created_at DESC'
+                'SELECT ' . $selectCols . ' FROM ' . $tagTable . ' ORDER BY created_at DESC'
             )->fetchAll();
             if (!$rows) {
                 self::dropTableIfExists($pdo, $tagTable);
@@ -2363,8 +2385,8 @@ class Database
             )->fetchAll();
             $insert = self::sqlInsertIgnore(
                 $artifactTable,
-                'provider, project_id, pipeline_iid, project_key, repository, tag, status, source_updated_at, created_at, updated_at',
-                '?, ?, ?, ?, ?, ?, ?, ?, ?, ' . self::sqlNow()
+                'provider, project_id, pipeline_iid, project_key, repository, tag, digest, status, source_updated_at, created_at, updated_at',
+                '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ' . self::sqlNow()
             );
             $stmt = $pdo->prepare($insert);
             $started = false;
@@ -2395,6 +2417,7 @@ class Database
                 }
                 $createdAt = (string) ($row['created_at'] ?? '');
                 $createdAt = $createdAt !== '' ? $createdAt : null;
+                $legacyDigest = $hasDigestCol ? trim((string) ($row['digest'] ?? '')) : '';
                 $stmt->execute([
                     $provider,
                     $projectId,
@@ -2402,6 +2425,7 @@ class Database
                     $project,
                     (string) ($row['harbor_repository'] ?? ''),
                     (string) $row['tag'],
+                    $legacyDigest !== '' ? $legacyDigest : null,
                     (string) ($row['status'] ?? ''),
                     $createdAt,
                     $createdAt,

@@ -25,7 +25,8 @@ use PHPUnit\Framework\TestCase;
  *   - 镜像仓库未配置：仍写入审计记录，scan_state 为 unknown；
  *   - tag 不在仓库 tag 列表中：只记日志，不阻断审计记录；
  *   - 仅 ci_status=success 写 ci_pipeline_artifacts；
- *   - scan-sync 对不支持扫描的仓库：scan_state 保持 unknown，check_type 为 harbor-scan。
+ *   - scan-sync 对不支持扫描的仓库：scan_state 保持 unknown，check_type 为 harbor-scan；
+ *   - digest：请求体优先，否则从 tag details 解析并落库。
  *
  * 依赖 SQLite 内存库 + mock RegistryProviderInterface，不触网。
  *
@@ -66,6 +67,7 @@ class RegistrySyncServiceTest extends TestCase
             project_key TEXT DEFAULT "",
             repository TEXT DEFAULT "",
             tag TEXT DEFAULT "",
+            digest TEXT DEFAULT NULL,
             status TEXT DEFAULT "",
             source_updated_at TEXT DEFAULT "",
             created_at TEXT DEFAULT "",
@@ -97,12 +99,23 @@ class RegistrySyncServiceTest extends TestCase
         $stmt->execute([$jobName, 'gitlab', $jobName, $repo, 'custom_push', 'active']);
     }
 
-    private function registry(array $tags, bool $scanning = false): RegistryProviderInterface
+    /**
+     * @param list<string> $tags tag 名称列表（供 getTags）
+     * @param array<string,string> $digests tag => digest（供 getTagDetails）
+     */
+    private function registry(array $tags, bool $scanning = false, array $digests = []): RegistryProviderInterface
     {
-        return new class($tags, $scanning) implements RegistryProviderInterface {
-            
-            public function __construct(private array $tags, private bool $scanning)
-            {
+        return new class($tags, $scanning, $digests) implements RegistryProviderInterface {
+
+            /**
+             * @param list<string> $tags
+             * @param array<string,string> $digests
+             */
+            public function __construct(
+                private array $tags,
+                private bool $scanning,
+                private array $digests
+            ) {
             }
 
             public function type(): string
@@ -122,7 +135,17 @@ class RegistrySyncServiceTest extends TestCase
 
             public function getTagDetails(string $repository): array
             {
-                return $this->tags;
+                $details = [];
+                foreach ($this->tags as $name) {
+                    if (!is_string($name) || $name === '') {
+                        continue;
+                    }
+                    $details[] = [
+                        'name'   => $name,
+                        'digest' => $this->digests[$name] ?? '',
+                    ];
+                }
+                return $details;
             }
 
             public function repositoryExists(string $repository): bool
@@ -305,11 +328,6 @@ class RegistrySyncServiceTest extends TestCase
 
     public function testFailedStatusWritesAuditButNoArtifact(): void
     {
-        
-        
-        
-        
-        
         $this->service($this->registry(['v1']))->sync('team/app', [
             'ci_status' => 'failed',
             'tag'       => 'v1',
@@ -333,7 +351,6 @@ class RegistrySyncServiceTest extends TestCase
 
     public function testRunningStatusWritesAuditButNoArtifact(): void
     {
-        
         $this->service($this->registry(['v1']))->sync('team/app', [
             'ci_status' => 'running',
             'tag'       => 'v1',
@@ -378,7 +395,6 @@ class RegistrySyncServiceTest extends TestCase
             'pipeline_iid' => 10,
         ], false, 'registry-sync');
 
-        
         $this->assertSame('unknown', $result['scan_state']);
         $this->assertSame('success', $capture['state']);
         $this->assertSame('registry-sync', $capture['context']);
@@ -399,5 +415,76 @@ class RegistrySyncServiceTest extends TestCase
 
         $this->assertSame('unknown', $result['scan_state']);
         $this->assertSame('pending', $capture['state']);
+    }
+
+    public function testDigestFromBodyIsStoredOnArtifact(): void
+    {
+        $digest = 'sha256:1111111111111111111111111111111111111111111111111111111111111111';
+        $result = $this->service($this->registry(['v1']))->sync('team/app', [
+            'ci_status'    => 'success',
+            'tag'          => 'v1',
+            'digest'       => $digest,
+            'sha'          => 'abc123',
+            'pipeline_iid' => 10,
+        ], false, 'registry-sync');
+
+        $this->assertTrue($result['artifact_written']);
+        $this->assertSame($digest, $result['digest']);
+
+        $rows = $this->artifacts();
+        $this->assertCount(1, $rows);
+        $this->assertSame($digest, $rows[0]['digest']);
+    }
+
+    public function testDigestResolvedFromRegistryTagDetails(): void
+    {
+        $digest = 'sha256:2222222222222222222222222222222222222222222222222222222222222222';
+        $result = $this->service(
+            $this->registry(['v1'], false, ['v1' => $digest])
+        )->sync('team/app', [
+            'ci_status'    => 'success',
+            'tag'          => 'v1',
+            'sha'          => 'abc123',
+            'pipeline_iid' => 10,
+        ], false, 'registry-sync');
+
+        $this->assertTrue($result['artifact_written']);
+        $this->assertSame($digest, $result['digest']);
+        $this->assertSame($digest, $this->artifacts()[0]['digest']);
+    }
+
+    public function testBodyDigestTakesPrecedenceOverRegistry(): void
+    {
+        $bodyDigest = 'sha256:3333333333333333333333333333333333333333333333333333333333333333';
+        $regDigest  = 'sha256:4444444444444444444444444444444444444444444444444444444444444444';
+        $result = $this->service(
+            $this->registry(['v1'], false, ['v1' => $regDigest])
+        )->sync('team/app', [
+            'ci_status'    => 'success',
+            'tag'          => 'v1',
+            'digest'       => $bodyDigest,
+            'sha'          => 'abc123',
+            'pipeline_iid' => 10,
+        ], false, 'registry-sync');
+
+        $this->assertSame($bodyDigest, $result['digest']);
+        $this->assertSame($bodyDigest, $this->artifacts()[0]['digest']);
+    }
+
+    public function testTagNotVerifiedDoesNotWriteArtifactOrDigest(): void
+    {
+        $result = $this->service(
+            $this->registry(['v9'], false, ['v9' => 'sha256:dead'])
+        )->sync('team/app', [
+            'ci_status'    => 'success',
+            'tag'          => 'v1',
+            'digest'       => 'sha256:should-not-write',
+            'sha'          => 'abc123',
+            'pipeline_iid' => 10,
+        ], false, 'registry-sync');
+
+        $this->assertFalse($result['tag_verified']);
+        $this->assertFalse($result['artifact_written']);
+        $this->assertSame([], $this->artifacts());
     }
 }

@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS ci_pipeline_artifacts (
     project_key       TEXT NOT NULL,
     repository        TEXT NOT NULL,
     tag               TEXT NOT NULL,
+    digest            TEXT DEFAULT NULL,
     status            TEXT DEFAULT '',
     source_updated_at TEXT,
     created_at        TEXT DEFAULT (datetime('now','localtime')),
@@ -255,6 +256,7 @@ CREATE TABLE IF NOT EXISTS ci_platform_connections (
 -- ── 索引 ──
 CREATE INDEX IF NOT EXISTS idx_pipeline_artifacts_project_key ON ci_pipeline_artifacts(project_key);
 CREATE INDEX IF NOT EXISTS idx_pipeline_artifacts_created    ON ci_pipeline_artifacts(created_at);
+CREATE INDEX IF NOT EXISTS idx_pipeline_artifacts_digest     ON ci_pipeline_artifacts(digest);
 CREATE INDEX IF NOT EXISTS idx_job_git_map_current_path   ON ci_job_git_map(current_path);
 CREATE INDEX IF NOT EXISTS idx_security_checks_project    ON ci_security_checks(project, check_type);
 CREATE INDEX IF NOT EXISTS idx_security_checks_sha        ON ci_security_checks(sha);

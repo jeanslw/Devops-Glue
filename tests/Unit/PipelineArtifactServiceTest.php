@@ -30,6 +30,7 @@ class PipelineArtifactServiceTest extends TestCase
             project_key TEXT NOT NULL,
             repository TEXT NOT NULL,
             tag TEXT NOT NULL,
+            digest TEXT DEFAULT NULL,
             status TEXT DEFAULT "",
             source_updated_at TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -77,5 +78,40 @@ class PipelineArtifactServiceTest extends TestCase
         $this->service->record(new PipelineIdentity('gitlab_ci', '123', 1), 'jobA', 'g1', 'repo/app', 'success');
 
         $this->assertSame(2, (int) $this->pdo->query('SELECT COUNT(*) FROM ' . AppConfig::TABLE_PIPELINE_ARTIFACTS)->fetchColumn());
+    }
+
+    public function testRecordStoresDigest(): void
+    {
+        $id = new PipelineIdentity('gitlab_ci', '9', 3);
+        $this->service->record(
+            $id, 'group/app', 'v2', 'repo/app', 'success',
+            '2026-11-03 10:00:00', '2026-11-03 10:00:00',
+            'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+        );
+        $row = $this->service->find($id);
+        $this->assertSame(
+            'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            $row['digest']
+        );
+    }
+
+    public function testEmptyDigestDoesNotWipeExisting(): void
+    {
+        $id = new PipelineIdentity('jenkins', 'jobB', 5);
+        $this->service->record(
+            $id, 'jobB', 'v1', 'repo/app', 'success',
+            '2026-11-03 11:00:00', '2026-11-03 11:00:00',
+            'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+        );
+        $this->service->record(
+            $id, 'jobB', 'v1', 'repo/app', 'success',
+            '2026-11-03 11:01:00', '2026-11-03 11:01:00',
+            null
+        );
+        $row = $this->service->find($id);
+        $this->assertSame(
+            'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+            $row['digest']
+        );
     }
 }

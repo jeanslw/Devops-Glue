@@ -10,6 +10,7 @@ use App\Config\AppConfig;
  * Pipeline 到 Primary Artifact（当前阶段保持 1:1）的规范读写层。
  *
  * ci_pipeline_artifacts 是唯一权威数据来源。
+ * digest 为镜像不可变身份（通常 Docker-Content-Digest / sha256:...），可空以兼容旧数据与未上报场景。
  */
 final class PipelineArtifactService
 {
@@ -20,6 +21,7 @@ final class PipelineArtifactService
     /**
      * 写入/更新主 artifact。
      * source_updated_at 非空时采用单调更新：旧事件不能覆盖更新事件。
+     * digest 入参非空时写入/更新；入参为空时不覆盖已有 digest（防止二次上报擦掉已回填值）。
      *
      * @return array{written:bool,ignored:bool}
      */
@@ -31,10 +33,13 @@ final class PipelineArtifactService
         string $status = '',
         ?string $sourceUpdatedAt = null,
         ?string $createdAt = null,
+        ?string $digest = null,
     ): array {
         if ($tag === '' || $repository === '') {
             return ['written' => false, 'ignored' => false];
         }
+
+        $digest = $this->normalizeDigest($digest);
 
         $existing = $this->find($identity);
         if ($existing && $sourceUpdatedAt !== null && $sourceUpdatedAt !== '') {
@@ -46,26 +51,32 @@ final class PipelineArtifactService
 
         $now = $createdAt ?: date('Y-m-d H:i:s');
         if ($existing) {
+            $digestToStore = $digest !== null && $digest !== ''
+                ? $digest
+                : (string) ($existing['digest'] ?? '');
+
             $stmt = $this->pdo->prepare(
                 'UPDATE ' . AppConfig::TABLE_PIPELINE_ARTIFACTS . '
                  SET project_key = ?, tag = ?, repository = ?, status = ?,
-                     source_updated_at = ?, created_at = ?, updated_at = ' . Database::sqlNow() . '
+                     digest = ?, source_updated_at = ?, created_at = ?, updated_at = ' . Database::sqlNow() . '
                  WHERE provider = ? AND project_id = ? AND pipeline_iid = ?'
             );
             $stmt->execute([
-                $projectKey, $tag, $repository, $status, $sourceUpdatedAt, $createdAt ?: $existing['created_at'],
+                $projectKey, $tag, $repository, $status, $digestToStore !== '' ? $digestToStore : null,
+                $sourceUpdatedAt, $createdAt ?: $existing['created_at'],
                 $identity->provider, $identity->projectId, $identity->pipelineIid,
             ]);
         } else {
             $sql = Database::sqlInsertIgnore(
                 AppConfig::TABLE_PIPELINE_ARTIFACTS,
-                'provider, project_id, pipeline_iid, project_key, repository, tag, status, source_updated_at, created_at, updated_at',
-                '?, ?, ?, ?, ?, ?, ?, ?, ?, ' . Database::sqlNow()
+                'provider, project_id, pipeline_iid, project_key, repository, tag, digest, status, source_updated_at, created_at, updated_at',
+                '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ' . Database::sqlNow()
             );
             $stmt = $this->pdo->prepare($sql);
             $stmt->execute([
                 $identity->provider, $identity->projectId, $identity->pipelineIid,
-                $projectKey, $repository, $tag, $status, $sourceUpdatedAt, $now,
+                $projectKey, $repository, $tag, $digest !== null && $digest !== '' ? $digest : null,
+                $status, $sourceUpdatedAt, $now,
             ]);
         }
 
@@ -90,7 +101,7 @@ final class PipelineArtifactService
     public function all(): array
     {
         return $this->pdo->query(
-            'SELECT provider, project_id, pipeline_iid, project_key, repository, tag, status,
+            'SELECT provider, project_id, pipeline_iid, project_key, repository, tag, digest, status,
                     source_updated_at, created_at
              FROM ' . AppConfig::TABLE_PIPELINE_ARTIFACTS . ' ORDER BY created_at DESC'
         )->fetchAll();
@@ -107,14 +118,26 @@ final class PipelineArtifactService
     }
 
     /**
+     * 规范化 digest：trim；空串视为 null；不做强制格式拒绝（兼容非 sha256 仓库实现）。
+     */
+    private function normalizeDigest(?string $digest): ?string
+    {
+        if ($digest === null) {
+            return null;
+        }
+        $digest = trim($digest);
+        return $digest === '' ? null : $digest;
+    }
+
+    /**
      * 每 project_key 最新一条 artifact（按 created_at 取最大）。
      *
-     * @return array<string, array{tag:string, pipeline_iid:mixed, created_at:mixed}>
+     * @return array<string, array{tag:string, pipeline_iid:mixed, created_at:mixed, digest?:string}>
      */
     public function latestTagsByProject(): array
     {
         $rows = $this->pdo->query(
-            'SELECT t.project_key AS project, t.pipeline_iid, t.tag, t.created_at'
+            'SELECT t.project_key AS project, t.pipeline_iid, t.tag, t.digest, t.created_at'
             . ' FROM ' . AppConfig::TABLE_PIPELINE_ARTIFACTS . ' t'
             . ' INNER JOIN (SELECT project_key, MAX(created_at) AS max_created_at'
             . ' FROM ' . AppConfig::TABLE_PIPELINE_ARTIFACTS . ' GROUP BY project_key) m'
@@ -126,6 +149,7 @@ final class PipelineArtifactService
             if (!isset($latest[$r['project']])) {
                 $latest[$r['project']] = [
                     'tag'          => $r['tag'] ?? '',
+                    'digest'       => $r['digest'] ?? '',
                     'pipeline_iid' => $r['pipeline_iid'] ?? '',
                     'created_at'   => $r['created_at'] ?? '',
                 ];
@@ -137,6 +161,9 @@ final class PipelineArtifactService
     /** @param list<string> $keys 命中 project_key 的 artifact 行数 */
     public function countByProjectKeys(array $keys): int
     {
+        if ($keys === []) {
+            return 0;
+        }
         $ph = implode(',', array_fill(0, count($keys), '?'));
         $stmt = $this->pdo->prepare('SELECT COUNT(*) AS c FROM ' . AppConfig::TABLE_PIPELINE_ARTIFACTS . ' WHERE project_key IN (' . $ph . ')');
         $stmt->execute($keys);
@@ -147,13 +174,16 @@ final class PipelineArtifactService
      * 按 project_key 集合分页取 artifact 列表。
      *
      * @param list<string> $keys
-     * @return list<array{tag:string, pipeline_iid:mixed, created_at:mixed}>
+     * @return list<array{tag:string, pipeline_iid:mixed, created_at:mixed, digest?:string}>
      */
     public function listByProjectKeys(array $keys, int $pageSize, int $offset): array
     {
+        if ($keys === []) {
+            return [];
+        }
         $ph = implode(',', array_fill(0, count($keys), '?'));
         $stmt = $this->pdo->prepare(
-            'SELECT tag, pipeline_iid, created_at FROM ' . AppConfig::TABLE_PIPELINE_ARTIFACTS .
+            'SELECT tag, digest, pipeline_iid, created_at FROM ' . AppConfig::TABLE_PIPELINE_ARTIFACTS .
             ' WHERE project_key IN (' . $ph . ') ORDER BY created_at DESC LIMIT ? OFFSET ?'
         );
         foreach ($keys as $i => $k) {
@@ -164,25 +194,27 @@ final class PipelineArtifactService
         $stmt->execute();
         return array_values(array_map(fn($r) => [
             'tag'          => (string)($r['tag'] ?? ''),
+            'digest'       => (string)($r['digest'] ?? ''),
             'pipeline_iid' => $r['pipeline_iid'] ?? '',
             'created_at'   => $r['created_at'] ?? '',
         ], $stmt->fetchAll()));
     }
 
     /**
-     * 全表 tag 索引：project → pipeline_iid → {tag, registry, status}。
+     * 全表 tag 索引：project → pipeline_iid → {tag, registry, status, digest}。
      *
      * @return array<string, array<string, array<string,mixed>>>
      */
     public function tagIndex(): array
     {
         $rows = $this->pdo->query(
-            "SELECT project_key AS project, pipeline_iid, tag, repository AS registry_repository, status, created_at FROM " . AppConfig::TABLE_PIPELINE_ARTIFACTS . " ORDER BY created_at DESC"
+            "SELECT project_key AS project, pipeline_iid, tag, digest, repository AS registry_repository, status, created_at FROM " . AppConfig::TABLE_PIPELINE_ARTIFACTS . " ORDER BY created_at DESC"
         )->fetchAll();
         $result = [];
         foreach ($rows as $r) {
             $result[$r['project']][(string) $r['pipeline_iid']] = [
                 'tag'      => $r['tag'],
+                'digest'   => $r['digest'] ?? '',
                 'registry' => $r['registry_repository'] ?? '',
                 'status'   => $r['status'] ?? '',
             ];
