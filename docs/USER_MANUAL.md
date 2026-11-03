@@ -146,6 +146,7 @@ Pick the endpoint by registry type:
 > - This depends on correct mappings (Ch. 2): only when a job is linked to both a Git repo and an image registry does write-back have a target; `registry_repository` is a name with at least two segments (e.g. `project/repo`, `team/project/image`).
 > - Both endpoints require the **API Token scope** `build.report`; `scan-sync` additionally needs scanning enabled on the registry side when reading the scan report.
 > - The two endpoints share one write-back implementation and differ only in whether the scan report is read; the audit record's `check_type` is set by the endpoint you call (`scan-sync` → `harbor-scan`, `registry-sync` → `registry-sync`). Use `registry-sync` for `registry:2` — calling `scan-sync` still writes back, but the audit record is then labelled `harbor-scan`.
+> - The image digest written follows the registry's current state: on write-back the current registry digest is resolved and written; a digest carried by the caller that differs from the registry's is overridden by the registry, and an absent one is resolved from the registry.
 
 ### 3.3 Enabling Custom_Push
 
@@ -187,9 +188,9 @@ The **Build Mode** page has a **🧹 Enable stale tag cleanup** switch.
 The **Build Mode** page has a **🔄 Enable image tag backfill** switch and a **▶ Backfill now** button.
 
 - **What problem it solves**: scan write-back (3.2) requires the Harbor scan callback to actually arrive — and real life has gaps: no callback configured, an unreachable callback URL, or the scanner being down at that moment. The result: **the image was pushed successfully but the authoritative record has no tag**, so the deployment layer cannot see that version. "Backfill" takes log-derived candidate tags (see 3.6), **verifies each one exists in Harbor**, and then writes them into the authoritative records — a safety net for scan write-back, so versions that were "pushed but whose callback was lost" do not vanish from the system.
-- **Trust boundary (why it is safe to promote into the authoritative table)**: a tag is written **only when Harbor explicitly reports it as existing** — the same trust level as scan-sync, never a blind trust in log regexes. It is also written **only when the pipeline has no authoritative tag yet**, never overwriting scan-sync results; safe to re-run (already-backfilled items are skipped naturally).
+- **Trust boundary (why it is still safe to promote)**: a tag is written **only when the registry explicitly reports it as existing** — the same trust level as scan-sync, never a blind trust in log regexes. It is also written **only for CI-success candidates** and **never overwrites write-back sources** like scan-sync. The registry's current digest is the source of truth: a candidate with the same tag and digest as the registry is written; a different digest updates to the registry's current digest, so an existing same-name tag is no longer blindly skipped; identical entries are skipped naturally — safe to re-run.
 - **When to use**: right after onboarding, when historical builds had no scan callbacks — enable the switch and click **Backfill now** once to bulk-recover historical versions. Afterwards you can leave it on for automatic coverage, or run it manually only when needed.
-- **Reading the result**: `Backfill complete: checked {checked} candidates, backfilled {promoted}; skipped {skipped} (already tagged), {unreachable} (Harbor unreachable), {unverifiable} (incomplete fields)` — `promoted` is what was actually written; `unreachable` usually means Harbor was briefly down, just re-run later; the run is recorded in the operation log under the action `tag_backfill`.
+- **Reading the result**: `Backfill complete: checked {checked} candidates, backfilled {promoted}; skipped {skipped} (already same tag & digest), {unreachable} (Harbor unreachable), {unverifiable} (incomplete fields)` — `promoted` is what was actually written or updated; `unreachable` usually means Harbor was briefly down, just re-run later; the run is recorded in the operation log under the action `tag_backfill`.
 - **Note**: backfill depends on candidate tags being derivable from build logs (a 3.6 keyword hit). If your CI log format is unusual and nothing is derived, adjust the 3.6 keyword and re-run the backfill.
 
 ### 3.6 Build-log image keyword
@@ -386,7 +387,7 @@ The dashboard's home view: total mappings, active projects, number of git platfo
 - **Pull records**: build records the system actively polls from Jenkins / GitLab CI / Gitea Actions — pipeline, status, duration, image tag, log link, etc.
 - **Push records**: build records that your CI reports via Custom_Push.
 
-Use it to review the final results and artifacts (image tags) of historical builds — the place to answer "which image did this build produce?". The menu is visible only with the appropriate permission.
+Use it to review the final results and artifacts (image tags and image digests) of historical builds — the place to answer "which image did this build produce, and what is its content?". The push-records view additionally shows the image digest, making it easy to confirm the actual content of a build artifact. The menu is visible only with the appropriate permission.
 
 ### 7.5 Platform Management Page (System Settings)
 

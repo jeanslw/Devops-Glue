@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Devops-Glue：Jenkins · Git · Harbor 一站式 DevOps 工具链集成平台。多链路构建、全链路映射、多平台统一接入、开放 API、服务健康自检。">
+    <meta name="description" content="Devops-Glue：Jenkins · Git · Container Registry 一站式 DevOps 工具链集成平台。多链路构建、全链路映射、多平台统一接入、开放 API、服务健康自检。">
     <meta name="author" content="jeanslw">
     <meta property="og:type" content="article">
     <meta property="og:title" content="Devops-Glue">
-    <meta property="og:description" content="Jenkins · Git · Harbor 一站式 DevOps 工具链集成平台">
+    <meta property="og:description" content="Jenkins · Git · Container Registry 一站式 DevOps 工具链集成平台">
     <title data-i18n="index.title">Devops-Glue</title>
     <link rel="icon" href="/favicon.ico" type="image/x-icon">
     <!-- ?v={{APP_VERSION}}：由 / 路由在服务端替换为当前版本号（同 admin.html，防旧 CSS/JS 被强缓存） -->
@@ -128,10 +128,9 @@
 
     <div class="hero">
         <div class="hero-title">
-            <h1 data-i18n="index.title">Devops-Glue</h1>
             <a href="/admin" class="status-badge" data-dg-home><span class="status-dot" id="status-dot"></span><span id="status-text">运行中</span></a>
         </div>
-        <p data-i18n="index.subtitle">Jenkins · Git · Harbor 一站式 DevOps 工具链集成平台</p>
+        <p data-i18n="index.subtitle">Jenkins · Git · Container Registry 一站式 DevOps 工具链集成平台</p>
     </div>
 
     <div class="features">
@@ -145,7 +144,7 @@
         <div class="feat-card">
             <div class="feat-icon">🔗</div>
             <h2 data-i18n="index.feat_full_trace_title">全链路映射</h2>
-            <p data-i18n="index.feat_full_trace_desc">Pipeline/Job ↔ Git 仓库 ↔ Harbor 镜像，构建→代码→制品完整链路自动关联，Pipeline → Tag 精准追溯。</p>
+            <p data-i18n="index.feat_full_trace_desc">Pipeline/Job ↔ Git 仓库 ↔ Container Registry镜像，构建→代码→制品完整链路自动关联，Pipeline → Tag(Digest) 精准追溯。</p>
         </div>
         <!-- 3 -->
         <div class="feat-card">
@@ -169,7 +168,7 @@
         <div class="feat-card">
             <div class="feat-icon">📡</div>
             <h2 data-i18n="index.feat_health_title">服务健康自检</h2>
-            <p data-i18n="index.feat_health_desc">实时检测 Jenkins · Git 平台 · Harbor 连通性与版本号，故障快速定位，状态一目了然。</p>
+            <p data-i18n="index.feat_health_desc">实时检测 Jenkins · Git 平台 · Container Registry 连通性与版本号，故障快速定位，状态一目了然。</p>
         </div>
     </div>
 

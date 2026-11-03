@@ -613,7 +613,7 @@ If only `ref` is present without other parameters, auto-convert to `{branches: r
    └─ context='harbor-scan', description='#10 → v1.0 · 3 vulns'
    └─ state: the scan conclusion when available; otherwise derived from ci_status (success→success, running→pending, failed→failed)
 7. Persist: the artifact write is gated, the audit record is not
-   └─ ci_pipeline_artifacts: only when ci_status=success (failed/running must not produce deployable artifacts)
+   └─ ci_pipeline_artifacts: only when ci_status=success (failed/running must not produce deployable artifacts); the written digest follows the registry's current state (once the tag is confirmed to exist, its current digest is written — a body digest that differs from the registry's is overwritten by the registry, and an absent one is resolved from the registry)
    └─ audit record (ci_security_checks): written for every ci_status, check_type='harbor-scan';
       writeback_status=success (ci_status=success, the push fact) / skipped (failed, running: audit only)
 ```
@@ -953,11 +953,12 @@ The DI container (`container.php`) automatically registers all custom providers 
 | `log_url` | string(URI) | ❌ | Log URL (pointer only, Devops-Glue does not store log content) |
 | `web_url` | string(URI) | ❌ | User CI build page link |
 | `tag` | string | ✅ (success) | Image tag — required when `status=success`; written to `ci_pipeline_artifacts` |
+| `digest` / `image_digest` | string | ❌ | Image digest — recommended when `status=success`; follows the registry's current digest: compared with the registry when supplied (mismatch resolved in favor of the registry), or resolved from the registry when absent |
 | `registry_repository` | string | — | Registry repository path — resolved from `job_git_map` (body value ignored); must be a path of at least two segments with no scheme, host or port; both repo and `tag` verified to actually exist in the registry on report (400 if either missing) |
 | `env` | string | ❌ | Image target environment (custom variable, optional) |
 
 > Fields outside the **control fields** (`pipeline_iid`/`status`/`finished_at`/`started_at`/`ref`/`sha`/`exit_code`/`log_url`/`web_url`/`tag`/`registry_repository`) are automatically stored in `variables_json`.
-> When `status=success`, `tag` and a resolvable `registry_repository` are mandatory, and `ci_pipeline_artifacts` is written (provider, project_id, pipeline_iid, project_key, repository, tag, status); duplicate reports overwrite (UPDATE) the existing record.
+> When `status=success`, `tag` and a resolvable `registry_repository` are mandatory, and `ci_pipeline_artifacts` is written (provider, project_id, pipeline_iid, project_key, repository, tag, status, digest); the digest follows the registry's current state, and duplicate reports overwrite (UPDATE) the existing record.
 > All JSON keys use lowercase snake_case.
 
 #### 5.11.5 Log Proxy

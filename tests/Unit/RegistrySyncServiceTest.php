@@ -454,7 +454,7 @@ class RegistrySyncServiceTest extends TestCase
         $this->assertSame($digest, $this->artifacts()[0]['digest']);
     }
 
-    public function testBodyDigestTakesPrecedenceOverRegistry(): void
+    public function testRegistryDigestTakesPrecedenceOverBody(): void
     {
         $bodyDigest = 'sha256:3333333333333333333333333333333333333333333333333333333333333333';
         $regDigest  = 'sha256:4444444444444444444444444444444444444444444444444444444444444444';
@@ -468,8 +468,9 @@ class RegistrySyncServiceTest extends TestCase
             'pipeline_iid' => 10,
         ], false, 'registry-sync');
 
-        $this->assertSame($bodyDigest, $result['digest']);
-        $this->assertSame($bodyDigest, $this->artifacts()[0]['digest']);
+        // 以仓库当前 digest 为准：即便 body 携带 digest，也以仓库解析结果写入
+        $this->assertSame($regDigest, $result['digest']);
+        $this->assertSame($regDigest, $this->artifacts()[0]['digest']);
     }
 
     public function testTagNotVerifiedDoesNotWriteArtifactOrDigest(): void

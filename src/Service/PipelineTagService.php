@@ -130,9 +130,10 @@ class PipelineTagService
 
         try {
             $rows = $this->pdo->query(
-                'SELECT project_key, provider, project_id, pipeline_id, tag, repository, digest '
+                'SELECT project_key, provider, project_id, pipeline_id, tag, repository, digest, status '
                 . 'FROM ' . AppConfig::TABLE_BUILD_TAG_CACHE
                 . " WHERE source = 'log' AND tag != '' AND provider != '' AND project_id != '' AND repository != ''"
+                . " AND (status = 'success' OR status = '')"
             )->fetchAll();
         } catch (\Throwable $e) {
             Log::exception($e);
@@ -168,12 +169,6 @@ class PipelineTagService
                 continue;
             }
 
-            $existing = $artifactSvc->find($identity);
-            if ($existing && trim((string) ($existing['tag'] ?? '')) !== '') {
-                $stat['skipped']++;
-                continue;
-            }
-
             if (!array_key_exists($repo, $tagCache)) {
                 try {
                     $tags = $this->registry->getTags($repo);
@@ -194,7 +189,20 @@ class PipelineTagService
                 continue;
             }
 
-            $digest = $cacheDigest !== '' ? $cacheDigest : $this->resolveTagDigest($repo, $tag, $detailCache);
+            // 以仓库当前 digest 为准（解析不到才回退日志缓存的 digest）
+            $repoDigest = $this->resolveTagDigest($repo, $tag, $detailCache);
+            $digest = $repoDigest !== '' ? $repoDigest : $cacheDigest;
+
+            // 已有相同 tag 与 digest 才跳过；tag 缺失或 digest 不同（同名 tag 内容已变）则更新
+            $existing = $artifactSvc->find($identity);
+            if ($existing) {
+                $existingTag = trim((string) ($existing['tag'] ?? ''));
+                $existingDigest = trim((string) ($existing['digest'] ?? ''));
+                if ($existingTag !== '' && $existingDigest === $digest) {
+                    $stat['skipped']++;
+                    continue;
+                }
+            }
 
             try {
                 $res = $artifactSvc->record($identity, $projectKey, $tag, $repo, '', null, null, $digest);

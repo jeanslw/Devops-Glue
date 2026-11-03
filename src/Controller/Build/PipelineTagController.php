@@ -180,9 +180,10 @@ final class PipelineTagController extends BaseBuildController
             $digest = '';
         }
 
+        $status = trim((string) ($body['status'] ?? ''));
         if ($sha !== '') {
             try {
-                $this->buildTagCache->upsert($path, $provider, (string) $projectId, $sha, (string) $pipelineId, $tag, $registryRepo, 'log', $digest);
+                $this->buildTagCache->upsert($path, $provider, (string) $projectId, $sha, (string) $pipelineId, $tag, $registryRepo, 'log', $digest, $status);
             } catch (\Throwable $e) {
                 \App\Helper\Log::exception($e);
             }

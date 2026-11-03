@@ -44,7 +44,10 @@ final class PipelineArtifactService
         $existing = $this->find($identity);
         if ($existing && $sourceUpdatedAt !== null && $sourceUpdatedAt !== '') {
             $old = (string) ($existing['source_updated_at'] ?? '');
-            if ($old !== '' && $this->compareTimes($sourceUpdatedAt, $old) < 0) {
+            // digest 变更优先：同名 tag 内容已变，强制刷新，不受时间单调守卫拦截
+            $digestChanged = $digest !== null && $digest !== ''
+                && $digest !== trim((string) ($existing['digest'] ?? ''));
+            if (!$digestChanged && $old !== '' && $this->compareTimes($sourceUpdatedAt, $old) < 0) {
                 return ['written' => false, 'ignored' => true];
             }
         }

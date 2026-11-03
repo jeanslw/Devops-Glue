@@ -210,6 +210,7 @@ CREATE TABLE IF NOT EXISTS ci_build_tag_cache (
     repository  TEXT DEFAULT '',
     digest      TEXT DEFAULT NULL,
     source      TEXT DEFAULT 'log',
+    status      TEXT DEFAULT '',
     created_at  TEXT DEFAULT (datetime('now','localtime')),
     updated_at  TEXT DEFAULT (datetime('now','localtime')),
     UNIQUE(provider, project_id, pipeline_id)

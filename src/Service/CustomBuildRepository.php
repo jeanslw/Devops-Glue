@@ -26,7 +26,7 @@ class CustomBuildRepository
 
         $stmt = $this->pdo->prepare(
             'SELECT b.job_name, b.pipeline_iid, b.status, b.sha, b.variables_json, b.log_url, b.web_url, b.finished_at,
-                    t.tag
+                    t.tag, t.digest
              FROM ' . AppConfig::TABLE_CUSTOM_BUILDS . ' b
              LEFT JOIN ' . AppConfig::TABLE_PIPELINE_ARTIFACTS . ' t
                ON t.project_key = b.job_name AND t.pipeline_iid = b.pipeline_iid AND t.provider = ?
@@ -40,6 +40,7 @@ class CustomBuildRepository
                 'pipeline_iid'   => (int) ($r['pipeline_iid'] ?? 0),
                 'status'         => $r['status'] ?? '',
                 'tag'            => $r['tag'] ?? '',
+                'digest'         => $r['digest'] ?? '',
                 'sha'            => $r['sha'] ?? '',
                 'variables_json' => $r['variables_json'] ?? '',
                 'log_url'        => $r['log_url'] ?? '',

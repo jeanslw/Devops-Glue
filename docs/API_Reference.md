@@ -300,7 +300,7 @@ Request body: `ci_status` required (`success` / `failed` / `running`); `tag` opt
 
 Request body: `ci_status` required (`success` / `failed` / `running`); `tag` optional (first tag from the registry's tag list when omitted — for `registry:2` the order is not defined, prefer supplying `tag`); `sha` and `pipeline_iid` must be supplied together, both omitted falls back to the latest pipeline; `source_updated_at` optional.
 
-`ci_pipeline_artifacts` is written only when `ci_status=success` and the pipeline identity is complete (so a failed/running pipeline never produces a deployable artifact); the `ci_security_checks` audit record is written for every `ci_status` — `writeback_status=success` (push fact) / `skipped` (failed, running: audit only) — and the commit status is unaffected. Response fields: `build_provider`, `sha` (`N/A` when unknown), `tag`, `registry_repository`, `vulnerability_count`, `scan_state` (`unknown` for this endpoint unless the caller uses `scan-sync`), and `commit_status` (`{success, message}`).
+`ci_pipeline_artifacts` is written only when `ci_status=success` and the pipeline identity is complete (so a failed/running pipeline never produces a deployable artifact); the `ci_security_checks` audit record is written for every `ci_status` — `writeback_status=success` (push fact) / `skipped` (failed, running: audit only) — and the commit status is unaffected. The written digest follows the registry's current state: once the tag is confirmed to exist in the registry, its current digest is written — if the body carries a digest that differs from the registry's, the registry's wins; if absent, the registry's current digest is resolved. Response fields: `build_provider`, `sha` (`N/A` when unknown), `tag`, `registry_repository`, `vulnerability_count`, `scan_state` (`unknown` for this endpoint unless the caller uses `scan-sync`), and `commit_status` (`{success, message}`).
 
 The audit record uses `check_type=registry-sync`; `scan-sync` uses `harbor-scan`. Readers accept both, so earlier records stay visible.
 
@@ -308,8 +308,8 @@ The audit record uses `check_type=registry-sync`; `scan-sync` uses `harbor-scan`
 
 For custom_push build provider only: after user CI completes, report the terminal result in one call — no `pending`/`running` intermediate states. Devops-Glue only stores metadata and log URL pointers; it does not participate in builds nor store log content.
 
-Required: `pipeline_iid` (build ID, integer), `status` (`success`/`failed`/`aborted`), `finished_at` (build completion time); when `status=success`, `tag` is required and `registry_repository` is resolved from `job_git_map` (body value ignored). `registry_repository` must be a path of at least two segments (e.g. `team/project/image`) and must not contain a scheme, host name or port; a value that does not match the format returns 400. On report, both the repository and the `tag` are verified to actually exist in the registry (400 if either is missing).
-Optional: `started_at`, `ref`, `sha`, `exit_code`, `log_url`, `web_url`.
+Required: `pipeline_iid` (build ID, integer), `status` (`success`/`failed`/`aborted`), `finished_at` (build completion time); when `status=success`, `tag` is required and `registry_repository` is resolved from `job_git_map` (body value ignored). `registry_repository` must be a path of at least two segments (e.g. `team/project/image`) and must not contain a scheme, host name or port; a value that does not match the format returns 400. On report, both the repository and the `tag` are verified to actually exist in the registry (400 if either is missing). The image digest is taken from the registry's current state: when `status=success` the body may carry `digest`/`image_digest`, which is compared with the registry's current digest — a mismatch is resolved in favor of the registry; if absent, the registry's current digest is resolved and written.
+Optional: `started_at`, `ref`, `sha`, `exit_code`, `log_url`, `web_url`, `digest`/`image_digest` (image digest — recommended when `status=success`; falls back to the registry's current digest if absent).
 Custom variables: any other field (e.g. `env`) is stored in `variables_json`.
 
 ```json
@@ -328,7 +328,7 @@ Custom variables: any other field (e.g. `env`) is stored in `variables_json`.
 }
 ```
 
-> On `success`, `tag` and a resolvable `registry_repository` are mandatory and `ci_pipeline_artifacts` is written (provider, project_id, pipeline_iid, project_key, repository, tag, status), read by the CD layer via `GET /api/build/{path}/tag` (list views use `GET /api/build/projects` / `GET /api/build/{path}/tags`).
+> On `success`, `tag` and a resolvable `registry_repository` are mandatory and `ci_pipeline_artifacts` is written (provider, project_id, pipeline_iid, project_key, repository, tag, status, digest); the digest follows the registry's current state, read by the CD layer via `GET /api/build/{path}/tag` (list views use `GET /api/build/projects` / `GET /api/build/{path}/tags`).
 > Fields outside control fields (`pipeline_iid`/`status`/`finished_at`/`started_at`/`ref`/`sha`/`exit_code`/`log_url`/`web_url`/`tag`/`registry_repository`) are stored in `variables_json`.
 > `(job_name, pipeline_iid)` is a unique key; duplicate reports overwrite (UPDATE) the existing record.
 

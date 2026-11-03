@@ -10,9 +10,12 @@
   - A migration script backfills missing image digests from the registry by repository and tag.
   - The tag backfill task now also resolves and backfills the image digest while backfilling tags, and fixes its hard-coded harbor connection key so registry-type deployments can fetch the connection correctly.
   - When extracting the image tag from build logs, the sha256 is parsed from the successful-push line as the image digest and cached, returned together with backfills and API responses; the fallback backfill prefers the log digest and falls back to registry resolution when absent.
+  - Image sync, scan sync and custom-push report now uniformly take the image digest from the registry's current state: a reported digest that differs from the registry's is overwritten by the registry, and an absent one is resolved from the registry; the build and push records views gain an image digest column.
+  - The image-tag log cache table gains a status field, custom_push reporting/write-back/logbackfill function, dual verification of Tag name and Digest.
 - **Optimized**
   - Empty image digests no longer overwrite existing values, supporting historical records that did not report a digest.
   - Image-tag projection now resolves and backfills by pipeline instead of aggregating by commit sha, fixing the collapse where repeated builds of the same commit produced multiple tags but were all wrongly shown with the same tag.
+  - Image-tag log backfill now writes only CI-success candidates and follows the registry's current digest: a different digest updates to the registry's, instead of being blindly skipped when an in-house same-name tag exists; identical entries are skipped naturally and the run stays safe to re-run.
 - **Refactored**
   - Database-related code is split from a single file into several single-responsibility files: schema migration, seeding, data repair, distributed lock, and bootstrap orchestration, for easier maintenance.
 

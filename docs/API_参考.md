@@ -300,7 +300,7 @@ body 根级字段（除 `ref`、`variables`、`format`、`token` 外）会自动
 
 请求体：`ci_status` 必填（`success` / `failed` / `running`）；`tag` 可选（省略取仓库 tag 列表首个；`registry:2` 顺序由仓库决定，建议显式传）；`sha` 与 `pipeline_iid` 须成对提供，都不提供时回退到最新流水线；`source_updated_at` 可选。
 
-写入规则：`ci_pipeline_artifacts` 仅当 `ci_status=success` 且流水线身份完整时写（`failed` / `running` 不产出可部署产物，防止被投影成「已推送成功」）；`ci_security_checks` 审计记录任何 `ci_status` 都写——`writeback_status=success`（推送事实）/ `skipped`（failed、running，仅保留审计记录），commit status 回写不受影响。响应字段：`build_provider`、`sha`（未知时返回 `N/A`）、`tag`、`registry_repository`、`vulnerability_count`、`scan_state`（本端点恒为 `unknown`，除非调用方走 `scan-sync`）、`commit_status`（`{success, message}`）。
+写入规则：`ci_pipeline_artifacts` 仅当 `ci_status=success` 且流水线身份完整时写（`failed` / `running` 不产出可部署产物，防止被投影成「已推送成功」）；`ci_security_checks` 审计记录任何 `ci_status` 都写——`writeback_status=success`（推送事实）/ `skipped`（failed、running，仅保留审计记录），commit status 回写不受影响。镜像摘要以镜像仓库当前为准：tag 经仓库确认存在后，解析其当前摘要写入，body 携带的摘要与仓库不一致时以仓库为准，未携带则解析仓库当前摘要。响应字段：`build_provider`、`sha`（未知时返回 `N/A`）、`tag`、`registry_repository`、`vulnerability_count`、`scan_state`（本端点恒为 `unknown`，除非调用方走 `scan-sync`）、`commit_status`（`{success, message}`）。
 
 审计记录的 `check_type` 为 `registry-sync`；`scan-sync` 为 `harbor-scan`。读取端两者都接受，历史记录仍可见。
 
@@ -308,8 +308,8 @@ body 根级字段（除 `ref`、`variables`、`format`、`token` 外）会自动
 
 custom_push 构建源专用：用户 CI 在构建完成后一次性上报终态结果（success/failed/aborted），无 pending/running 中间态。Devops-Glue 只存元数据与日志 URL 指针，不参与构建也不存日志内容。
 
-必填：`pipeline_iid`（构建编号，整数）、`status`（`success`/`failed`/`aborted`）、`finished_at`（构建完成时间）；`status=success` 时 `tag` 必填，`registry_repository` 由 `job_git_map` 配置决定（body 传入会被忽略）。`registry_repository` 格式为至少两段路径（如 `team/project/image`），不得包含 scheme、主机名或端口，不符合格式返回 400；上报时校验仓库与 `tag` 均真实存在于镜像仓库，仓库不存在或 tag 不存在均返回 400。
-可选：`started_at`、`ref`、`sha`、`exit_code`、`log_url`、`web_url`。
+必填：`pipeline_iid`（构建编号，整数）、`status`（`success`/`failed`/`aborted`）、`finished_at`（构建完成时间）；`status=success` 时 `tag` 必填，`registry_repository` 由 `job_git_map` 配置决定（body 传入会被忽略）。`registry_repository` 格式为至少两段路径（如 `team/project/image`），不得包含 scheme、主机名或端口，不符合格式返回 400；上报时校验仓库与 `tag` 均真实存在于镜像仓库，仓库不存在或 tag 不存在均返回 400。镜像摘要以镜像仓库当前为准：`status=success` 时可在 body 携带 `digest`/`image_digest`，系统将其与仓库当前摘要比对，不一致以仓库为准，未携带则解析仓库当前摘要写入。
+可选：`started_at`、`ref`、`sha`、`exit_code`、`log_url`、`web_url`、`digest`/`image_digest`（镜像摘要，`status=success` 时建议携带，缺失则解析仓库当前摘要）。
 自定义变量：其余任意字段（如 `env`）存入 `variables_json`。
 
 ```json
@@ -328,7 +328,7 @@ custom_push 构建源专用：用户 CI 在构建完成后一次性上报终态�
 }
 ```
 
-> `success` 时必须带 `tag` 且能解析出 `registry_repository`，同步写入 `ci_pipeline_artifacts`（provider、project_id、pipeline_iid、project_key、repository、tag、status），CD 层通过 `GET /api/build/{path}/tag` 读取（列表视图可用 `GET /api/build/projects` / `GET /api/build/{path}/tags`）。
+> `success` 时必须带 `tag` 且能解析出 `registry_repository`，同步写入 `ci_pipeline_artifacts`（provider、project_id、pipeline_iid、project_key、repository、tag、status、digest），摘要以镜像仓库当前为准，CD 层通过 `GET /api/build/{path}/tag` 读取（列表视图可用 `GET /api/build/projects` / `GET /api/build/{path}/tags`）。
 > 控制字段（`pipeline_iid`/`status`/`finished_at`/`started_at`/`ref`/`sha`/`exit_code`/`log_url`/`web_url`/`tag`/`registry_repository`）以外的字段存入 `variables_json`。
 > `(job_name, pipeline_iid)` 为唯一键，重复上报按覆盖（UPDATE）处理。
 

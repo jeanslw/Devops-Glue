@@ -191,6 +191,7 @@ final class BuildReportController extends BaseBuildController
         }
 
         $registryRepo = '';
+        $finalDigest = '';
         if ($status === 'success') {
             $row = $this->mapping->resolveMapRow($path);
             if ($row === null) {
@@ -206,6 +207,10 @@ final class BuildReportController extends BaseBuildController
             if (($verifyErr = $this->verifyRegistryTag($registryRepo, $tag)) !== null) {
                 return $this->jsonError($response, $verifyErr, 400);
             }
+            // 以仓库当前 digest 为准：未上报则解析，已上报则与仓库比对（不一致以仓库为准）
+            $repoDigest = $this->resolveRegistryDigest($registryRepo, $tag);
+            $bodyDigest = trim((string) ($body['digest'] ?? $body['image_digest'] ?? ''));
+            $finalDigest = $repoDigest !== '' ? $repoDigest : $bodyDigest;
         }
 
         $txStarted = false;
@@ -224,7 +229,8 @@ final class BuildReportController extends BaseBuildController
                         $tag,
                         $registryRepo,
                         'success',
-                        $finishedAt
+                        $finishedAt,
+                        $finalDigest
                     )
                 ) {
                     if ($txStarted) {
@@ -291,6 +297,38 @@ final class BuildReportController extends BaseBuildController
     }
 
     /**
+     * 从镜像仓库解析指定 tag 当前的 digest（以仓库为准）。失败或不可达返回空串。
+     */
+    private function resolveRegistryDigest(string $repo, string $tag): string
+    {
+        if (!$this->registryProvider || $tag === '') {
+            return '';
+        }
+        try {
+            $details = $this->registryProvider->getTagDetails($repo);
+            if (isset($details['error'])) {
+                return '';
+            }
+            foreach ($details as $row) {
+                if (!is_array($row)) {
+                    continue;
+                }
+                $name = (string) ($row['name'] ?? $row['tag'] ?? '');
+                if ($name !== $tag) {
+                    continue;
+                }
+                $d = trim((string) ($row['digest'] ?? ''));
+                if ($d !== '') {
+                    return $d;
+                }
+            }
+        } catch (\Throwable $e) {
+            \App\Helper\Log::exception($e);
+        }
+        return '';
+    }
+
+    /**
      * 把仓库提供方错误数组翻译成对用户明确的错误描述（据 http_code 区分不可达/认证失败/资源不存在）。
      *
      * @param array{http_code?: int, error?: string} $err
@@ -322,7 +360,8 @@ final class BuildReportController extends BaseBuildController
         string $registryRepo = '',
         string $status = '',
         ?string $sourceUpdatedAt = null,
-        ?string $createdAt = null
+        ?string $createdAt = null,
+        ?string $digest = null
     ): bool {
         if (empty($projectKey) || $identity->pipelineIid <= 0 || empty($tag) || empty($registryRepo)) {
             return false;
@@ -339,7 +378,8 @@ final class BuildReportController extends BaseBuildController
                 $registryRepo,
                 $status,
                 $sourceUpdatedAt,
-                $createdAt
+                $createdAt,
+                $digest
             );
             if (!$artifact['written'] && !$artifact['ignored']) {
                 return false;

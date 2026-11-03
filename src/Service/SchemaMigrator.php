@@ -166,6 +166,7 @@ class SchemaMigrator
             repository {$VARCHAR} DEFAULT '',
             digest {$VARCHAR} DEFAULT NULL,
             source {$VARCHAR} DEFAULT 'log',
+            status {$VARCHAR} DEFAULT '',
             created_at {$TS_TYPE} DEFAULT ({$NOW}),
             updated_at {$TS_TYPE} DEFAULT ({$NOW}),
             UNIQUE(provider, project_id, pipeline_id)
@@ -536,6 +537,7 @@ class SchemaMigrator
                 'project_id' => "{$VARCHAR} DEFAULT ''",
                 'repository' => "{$VARCHAR} DEFAULT ''",
                 'digest'     => "{$VARCHAR} DEFAULT NULL",
+                'status'     => "{$VARCHAR} DEFAULT ''",
             ],
             \App\Config\AppConfig::TABLE_PERMISSIONS => [
                 'parent_key' => $isMySQL ? 'VARCHAR(128)' : 'TEXT',

@@ -214,6 +214,7 @@ CREATE TABLE IF NOT EXISTS `ci_build_tag_cache` (
     `repository`  VARCHAR(255) DEFAULT '',
     `digest`      VARCHAR(255) DEFAULT NULL,
     `source`      VARCHAR(255) DEFAULT 'log',
+    `status`      VARCHAR(255) DEFAULT '',
     `created_at`  DATETIME DEFAULT (NOW()),
     `updated_at`  DATETIME DEFAULT (NOW()),
     UNIQUE KEY `uq_build_tag_cache` (`provider`, `project_id`, `pipeline_id`)

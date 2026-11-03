@@ -64,14 +64,14 @@ class BuildTagCacheRepository
         ];
     }
 
-    /** upsert 一条 sha→tag 缓存（含日志提取的 digest）。 */
-    public function upsert(string $projectKey, string $provider, string $projectId, string $sha, string $pipelineId, string $tag, string $repository, string $source, string $digest = ''): void
+    /** upsert 一条 sha→tag 缓存（含日志提取的 digest 与 CI 状态，回填时据此过滤成功构建）。 */
+    public function upsert(string $projectKey, string $provider, string $projectId, string $sha, string $pipelineId, string $tag, string $repository, string $source, string $digest = '', string $status = ''): void
     {
         $sql = Database::sqlUpsert(
             AppConfig::TABLE_BUILD_TAG_CACHE,
-            'project_key, provider, project_id, sha, pipeline_id, tag, repository, source, digest, updated_at',
-            '?, ?, ?, ?, ?, ?, ?, ?, ?, ' . Database::sqlNow()
+            'project_key, provider, project_id, sha, pipeline_id, tag, repository, source, digest, status, updated_at',
+            '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ' . Database::sqlNow()
         );
-        $this->pdo->prepare($sql)->execute([$projectKey, $provider, $projectId, $sha, $pipelineId, $tag, $repository, $source, $digest]);
+        $this->pdo->prepare($sql)->execute([$projectKey, $provider, $projectId, $sha, $pipelineId, $tag, $repository, $source, $digest, $status]);
     }
 }

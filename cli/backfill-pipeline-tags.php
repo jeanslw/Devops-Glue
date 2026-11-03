@@ -96,7 +96,7 @@ try {
     $svc  = new PipelineTagService($pdo, $registry);
     $stat = $svc->backfillTagsFromBuildLog();
     echo "✓ 回填完成：提升 {$stat['promoted']} 条"
-        . "（核对 {$stat['checked']} / 镜像仓库不可达跳过 {$stat['unreachable']} / 无 repository 或 tag 跳过 {$stat['unverifiable']} / 已有 canonical tag 跳过 {$stat['skipped']}）\n";
+        . "（核对 {$stat['checked']} / 镜像仓库不可达跳过 {$stat['unreachable']} / 无 repository 或 tag 跳过 {$stat['unverifiable']} / 已有相同 tag 与 digest 跳过 {$stat['skipped']}）\n";
 } catch (\Throwable $e) {
     fwrite(STDERR, "错误：回填失败: {$e->getMessage()}\n");
     $failed = true;

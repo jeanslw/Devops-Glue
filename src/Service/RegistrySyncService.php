@@ -136,8 +136,12 @@ class RegistrySyncService
                 break;
             }
         }
-        if ($digest === '' && $tagVerified && $this->registry !== null && $tag !== '') {
-            $digest = $this->resolveDigestFromRegistry($repository, $tag);
+        // 回写以仓库当前 digest 为准：tag 已校验时始终解析仓库，仓库优先于上报（上报缺失或陈旧时以仓库为准）
+        if ($tagVerified && $this->registry !== null && $tag !== '') {
+            $repoDigest = $this->resolveDigestFromRegistry($repository, $tag);
+            if ($repoDigest !== '') {
+                $digest = $repoDigest;
+            }
         }
 
         $bodySha = is_string($body['sha'] ?? null) ? trim($body['sha']) : '';

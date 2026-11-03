@@ -116,7 +116,7 @@ function ciBuildTagCacheMigrateKey(\PDO $pdo, string $driver): void
     }
     // SQLite：重建表（SQLite 不便直接 DROP 命名 UNIQUE 约束），保留每 (provider, project_id, pipeline_id) 最新一行
     // 注意：不写 created_at/updated_at 的 DEFAULT(datetime(...))，旧版 SQLite 不支持非常量默认值；
-    // 下面 SELECT 会从旧表搬运这两列的值，重建后不影响既有数据。
+    // 下面 SELECT 会从旧表搬运这两列的值，重建后不影响既有数据。status 列需一并保留（migrateNow 已补列，重建不能丢）。
     $pdo->exec("CREATE TABLE `{$table}_new` (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         project_key TEXT DEFAULT '',
@@ -128,12 +128,13 @@ function ciBuildTagCacheMigrateKey(\PDO $pdo, string $driver): void
         repository TEXT DEFAULT '',
         digest TEXT DEFAULT NULL,
         source TEXT DEFAULT 'log',
+        status TEXT DEFAULT '',
         created_at TEXT,
         updated_at TEXT,
         UNIQUE(provider, project_id, pipeline_id)
     )");
-    $pdo->exec("INSERT INTO `{$table}_new` (id, project_key, provider, project_id, sha, pipeline_id, tag, repository, digest, source, created_at, updated_at)
-        SELECT t.id, t.project_key, t.provider, t.project_id, t.sha, t.pipeline_id, t.tag, t.repository, t.digest, t.source, t.created_at, t.updated_at
+    $pdo->exec("INSERT INTO `{$table}_new` (id, project_key, provider, project_id, sha, pipeline_id, tag, repository, digest, source, status, created_at, updated_at)
+        SELECT t.id, t.project_key, t.provider, t.project_id, t.sha, t.pipeline_id, t.tag, t.repository, t.digest, t.source, t.status, t.created_at, t.updated_at
         FROM `{$table}` t
         WHERE t.id = (SELECT MAX(id) FROM `{$table}` WHERE provider = t.provider AND project_id = t.project_id AND pipeline_id = t.pipeline_id)");
     $pdo->exec("DROP TABLE `{$table}`");

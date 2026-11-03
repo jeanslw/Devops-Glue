@@ -215,7 +215,7 @@ export async function resolvePullTag(idx, force) {
         const res = await fetch('/api/build/' + encodePath(currentPullPath) + '/pipelines/' + runId + '/resolve-tag', {
             method: 'POST',
             headers: Object.assign({'Content-Type':'application/json'}, authHeaders()),
-            body: JSON.stringify({ sha: r.sha || '', force: !!force })
+            body: JSON.stringify({ sha: r.sha || '', force: !!force, status: r.status || '' })
         });
         if (handle401(res)) return;
         if (!res.ok) throw new Error(await readErrorMessage(res));
@@ -305,7 +305,7 @@ export function closePullLog() {
 export async function loadPushRecords() {
     const tbody = document.getElementById('push-records-tbody');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#9ca3af;">' + __.t('common.loading') + '</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#9ca3af;">' + __.t('common.loading') + '</td></tr>';
     try {
         const res = await fetch('/api/admin/custom_builds?page=' + pushPage + '&per_page=20', { headers: authHeaders() });
         if (handle401(res)) return;
@@ -318,7 +318,7 @@ export async function loadPushRecords() {
 
         const pagination = document.getElementById('push-pagination');
         if (!records.length) {
-            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#9ca3af;">' + __.t('push.no_records') + '</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#9ca3af;">' + __.t('push.no_records') + '</td></tr>';
             if (pagination) pagination.innerHTML = '';
             return;
         }
@@ -349,6 +349,7 @@ export async function loadPushRecords() {
                 + '<td>' + esc(String(r.pipeline_iid)) + '</td>'
                 + '<td>' + statusBadge(r.status) + '</td>'
                 + '<td>' + (r.tag ? '<code style="font-size:11px;">' + esc(r.tag) + '</code>' : '—') + '</td>'
+                + '<td>' + (r.digest ? '<code style="font-size:11px;word-break:break-all;">' + esc(r.digest) + '</code>' : '—') + '</td>'
                 + '<td>' + shaCell + '</td>'
                 + '<td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + (vars ? esc(vars) : '') + '">' + (vars ? esc(vars) : '—') + '</td>'
                 + '<td>' + logCell + '</td>'
@@ -367,7 +368,7 @@ export async function loadPushRecords() {
             pagination.innerHTML = pag;
         }
     } catch (e) {
-        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#dc2626;">' + __.t('js.network_error') + ': ' + esc(e.message) + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#dc2626;">' + __.t('js.network_error') + ': ' + esc(e.message) + '</td></tr>';
     }
 }
 
