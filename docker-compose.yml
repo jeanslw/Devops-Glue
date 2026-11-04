@@ -63,6 +63,12 @@ services:
       - SETUID
       - SETGID
     logging: *default-logging
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:80/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
     depends_on:
       web:
         condition: service_healthy
@@ -194,7 +200,7 @@ services:
       MYSQL_PASSWORD: ${DB_PASS:-}
     volumes:
       - mysql-data:/var/lib/mysql
-      - ./database/mysql_init.sql:/docker-entrypoint-initdb.d/01-ci.sql:ro
+      # - ./database/mysql_init.sql:/docker-entrypoint-initdb.d/01-ci.sql:ro
       # - ../devops_cd/database/init_mysql.sql:/docker-entrypoint-initdb.d/02-cd.sql:ro
     restart: unless-stopped
     logging: *default-logging
@@ -215,6 +221,10 @@ services:
 #    depends_on:
 #      env-check:
 #        condition: service_completed_successfully
+#      nginx:
+#        condition: service_healthy
+#      web:
+#        condition: service_healthy
 #    env_file:
 #      - .env
 #    environment:

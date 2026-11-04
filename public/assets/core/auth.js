@@ -5,6 +5,7 @@ let token = sessionStorage.getItem('admin_token') || '';
 let currentUserRole = sessionStorage.getItem('admin_role') || '';
 let currentUserName = sessionStorage.getItem('admin_user') || '';
 let currentUserIsRoot = sessionStorage.getItem('admin_is_root') === 'true';
+let currentMustChange = sessionStorage.getItem('admin_must_change') === '1';
 let currentPermissions = normalizePerms(
     (() => { try { return JSON.parse(sessionStorage.getItem('admin_perms') || '[]'); } catch(e) { return []; } })()
 );
@@ -14,6 +15,7 @@ export function getRole() { return currentUserRole; }
 export function getUserName() { return currentUserName; }
 export function isRoot() { return currentUserIsRoot; }
 export function getPermissions() { return currentPermissions; }
+export function mustChangeRequired() { return currentMustChange; }
 
 export function authHeaders() {
     return token ? { 'Authorization': 'Bearer ' + token } : {};
@@ -30,7 +32,9 @@ export function setSession(data) {
     currentUserRole = data.role || '';
     currentUserName = data.user || '';
     currentUserIsRoot = data.is_root === true;
+    currentMustChange = !!(data.must_change_password);
     sessionStorage.setItem('admin_token', token);
+    sessionStorage.setItem('admin_must_change', currentMustChange ? '1' : '0');
     sessionStorage.setItem('admin_role', currentUserRole);
     sessionStorage.setItem('admin_user', currentUserName);
     sessionStorage.setItem('admin_is_root', currentUserIsRoot ? 'true' : 'false');
@@ -54,7 +58,9 @@ export function clearSession() {
     currentUserName = '';
     currentUserIsRoot = false;
     currentPermissions = [];
+    currentMustChange = false;
     sessionStorage.removeItem('admin_token');
+    sessionStorage.removeItem('admin_must_change');
     sessionStorage.removeItem('admin_role');
     sessionStorage.removeItem('admin_user');
     sessionStorage.removeItem('admin_is_root');

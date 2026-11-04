@@ -123,11 +123,14 @@ class MainController extends BaseController
             sort($item['jobs']);
         }
 
-        $harborRaw = $this->config->getHarborConfig()['url'] ?? '';
+        $registryType = $this->config->getRegistryType();
+        $registryRaw = rtrim($this->config->getHarborConfig()['url'] ?? '', '/');
+        // 配置了什么就显示什么：Harbor 用 harbor_url、标准 Registry 用 registry_url，字段名与 registry_type 一致，避免歧义
+        $registryKey = $registryType === 'harbor' ? 'harbor_url' : 'registry_url';
         $result = [
-            'projects'    => $grouped,
-            'jenkins_url' => rtrim($this->config->getJenkinsConfig()['url'] ?? '', '/'),
-            'harbor_url'  => rtrim($harborRaw, '/'),
+            'projects'      => $grouped,
+            'jenkins_url'   => rtrim($this->config->getJenkinsConfig()['url'] ?? '', '/'),
+            $registryKey    => $registryRaw,
         ];
 
         try {
@@ -148,11 +151,14 @@ class MainController extends BaseController
             return $resp;
         }
 
-        $harborRaw = $this->config->getHarborConfig()['url'] ?? '';
+        $registryType = $this->config->getRegistryType();
+        $registryRaw = rtrim($this->config->getHarborConfig()['url'] ?? '', '/');
+        // 配置了什么就显示什么：Harbor 用 harbor_url、标准 Registry 用 registry_url，字段名与 registry_type 一致
+        $registryKey = $registryType === 'harbor' ? 'harbor_url' : 'registry_url';
         $data = [
             'git_platforms' => $this->config->getGitPlatformsConfig(),
             'harbor'        => $this->config->getHarborApiInfo(),
-            'harbor_url'    => rtrim($harborRaw, '/'),
+            $registryKey    => $registryRaw,
             'jenkins_url'   => rtrim($this->config->getJenkinsConfig()['url'] ?? '', '/'),
         ];
         return $this->output($response, $data, $request);

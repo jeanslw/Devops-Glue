@@ -2,7 +2,7 @@ import './core/theme.js';
 import { toggleTheme } from './core/theme.js';
 import {
     doLogout, setTopUser, toggleTopMenu, refreshPermissions, setSession,
-    hasPermission, getRole
+    hasPermission, getRole, mustChangeRequired
 } from './core/auth.js';
 import { toast, confirmDialog, resolveConfirm } from './core/toast.js';
 import { resolveTab } from './core/router.js';
@@ -60,10 +60,11 @@ function applyRoleMenuVisibility() {
     const listItem = document.querySelector('.submenu .menu-item[data-tab="users"]');
     const rolesItem = document.querySelector('.submenu .menu-item[data-tab="roles"]');
     const passwordItem = document.querySelector('.submenu .menu-item[data-tab="password"]');
+    const forcePwd = mustChangeRequired();
     if (listItem) listItem.style.display = hasPermission('ci.users.list') ? '' : 'none';
     if (rolesItem) rolesItem.style.display = hasPermission('ci.users.manage_admin') ? '' : 'none';
-    if (passwordItem) passwordItem.style.display = hasPermission('ci.users.password') ? '' : 'none';
-    const showGroup = hasPermission('ci.users.list') || hasPermission('ci.users.manage_admin') || hasPermission('ci.users.password');
+    if (passwordItem) passwordItem.style.display = (hasPermission('ci.users.password') || forcePwd) ? '' : 'none';
+    const showGroup = hasPermission('ci.users.list') || hasPermission('ci.users.manage_admin') || hasPermission('ci.users.password') || forcePwd;
     if (group) group.style.display = showGroup ? '' : 'none';
 }
 function applyPermMenuVisibility() {
@@ -224,7 +225,14 @@ function navigate(name) {
     else location.hash = target;
 }
 function switchTab(name) { navigate(name); }
-window.addEventListener('hashchange', () => doSwitch(resolveTab()));
+function enforceMustChange(tab) {
+    // 后端强制首次改密（must_change_password=1）时仅放行改密/登出，其余 API 全拒；
+    // 前端同步把用户钉在「修改密码」页，避免切走后找不到入口（非 super_admin 没有 ci.users.password，
+    // 菜单项会被权限藏掉，导致彻底锁死无法改密）。
+    if (mustChangeRequired() && tab !== 'password') return 'password';
+    return tab;
+}
+window.addEventListener('hashchange', () => doSwitch(enforceMustChange(resolveTab())));
 
 // ═══════════ 语言切换 ═══════════
 document.addEventListener('i18n-changed', function() {
@@ -307,6 +315,6 @@ document.addEventListener('DOMContentLoaded', function() {
     setTopUser();
     await refreshPermissions();
     applyAllMenuVisibility();
-    doSwitch(resolveTab());
+    doSwitch(enforceMustChange(resolveTab()));
     loadSettings();
 })();
