@@ -171,7 +171,7 @@ class Database
     {
         try {
             $pdo   = self::pdo();
-            $since = gmdate('Y-m-d H:i:s', time() - self::SYSTEM_AUDIT_DEDUPE_WINDOW);
+            $since = date('Y-m-d H:i:s', time() - self::SYSTEM_AUDIT_DEDUPE_WINDOW);
 
             $sql    = 'SELECT 1 FROM ' . \App\Config\AppConfig::TABLE_OPERATION_LOGS
                 . ' WHERE action = ? AND target = ? AND created_at >= ?';

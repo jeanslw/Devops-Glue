@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Service;
 
 /**
- * 由原 Database 拆分出的「DistributedLock」职责（门面转调，行为不变）。
+ * 由原 Database 拆分出的「DistributedLock」职责。
  */
 class DistributedLock
 {
@@ -22,7 +22,7 @@ class DistributedLock
     {
         $pdo = $this->pdo;
         try {
-            $pdo->query('SELECT 1 FROM cache LIMIT 1');
+            $pdo->query('SELECT 1 FROM ' . \App\Config\AppConfig::TABLE_CACHE . ' LIMIT 1');
             return;
         } catch (\Throwable $e) {
         }
@@ -30,10 +30,7 @@ class DistributedLock
         $ddl = $isMySQL
         ? 'CREATE TABLE IF NOT EXISTS ' . \App\Config\AppConfig::TABLE_CACHE . ' (cache_key VARCHAR(255) PRIMARY KEY, `value` MEDIUMTEXT NOT NULL, expires_at INTEGER) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
         : 'CREATE TABLE IF NOT EXISTS ' . \App\Config\AppConfig::TABLE_CACHE . ' (cache_key TEXT PRIMARY KEY, value TEXT NOT NULL, expires_at INTEGER)';
-        try {
-            Database::buildTable($pdo, \App\Config\AppConfig::TABLE_CACHE, $ddl);
-        } catch (\Throwable $e) {
-        }
+        Database::buildTable($pdo, \App\Config\AppConfig::TABLE_CACHE, $ddl);
     }
 
     public function runExclusively(string $waitKey, \Closure $critical): void
@@ -69,7 +66,6 @@ class DistributedLock
                 return;
             }
         }
-        // 等待超时仍未取得锁：不再无条件执行 critical，避免并发迁移竞态（fail-closed）
         $token = $this->tryAcquireLock(Database::MIGRATION_LOCK_KEY, Database::MIGRATION_LOCK_TTL);
         if ($token !== null) {
             try {
