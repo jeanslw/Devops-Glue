@@ -171,7 +171,8 @@ class Database
     {
         try {
             $pdo   = self::pdo();
-            $since = date('Y-m-d H:i:s', time() - self::SYSTEM_AUDIT_DEDUPE_WINDOW);
+            // 去重窗口用 UTC，与 sqlNow()（UTC_TIMESTAMP()/datetime('now')）写入的 created_at 同口径，避免跨时区错位
+            $since = gmdate('Y-m-d H:i:s', time() - self::SYSTEM_AUDIT_DEDUPE_WINDOW);
 
             $sql    = 'SELECT 1 FROM ' . \App\Config\AppConfig::TABLE_OPERATION_LOGS
                 . ' WHERE action = ? AND target = ? AND created_at >= ?';
