@@ -61,6 +61,9 @@ class ConfigController extends BaseAdminController
             'has_github_actions' => $hasGithubActions,
             'custom_push_enabled' => $this->appSettings->getCustomPushEnabled(),
             'custom_providers' => array_column($this->config->getCustomBuildProviders(), 'name'),
+            // 镜像仓库类型直接读 DB（唯一来源），供构建模式流程图渲染对应节点；
+            // 不用 Settings 的构造时注入值，避免切换类型后仍拿到旧值。
+            'registry_type' => $this->appSettings->getRegistryType(),
         ], $request);
     }
 

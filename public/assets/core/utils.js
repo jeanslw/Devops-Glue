@@ -106,3 +106,14 @@ export function normalizePerms(raw) {
     if (raw === '*') return ['*'];
     return [];
 }
+
+/**
+ * 构建模式流程图里「镜像仓库」节点的展示元数据。
+ * 仅 'registry'（标准 OCI Distribution）走 Registry 分支，其余值/字段缺失一律按 Harbor 兜底，
+ * 避免后端未返回 registry_type 时流程图变形。返回 labelKey 而非文案，保持本模块无 i18n/DOM 依赖。
+ */
+export function registryNodeMeta(registryType) {
+    return registryType === 'registry'
+        ? { icon: '📦', cls: 'registry', labelKey: 'js.mode_registry_name' }
+        : { icon: '🐳', cls: 'harbor', labelKey: 'js.mode_harbor_name' };
+}

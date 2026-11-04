@@ -548,6 +548,7 @@ return [
     'js.provider_unspecified'   => 'Build source unspecified',
     'js.mode_custom_push_name'  => 'Custom_Push',
     'js.mode_harbor_name'       => 'Harbor',
+    'js.mode_registry_name'     => 'Registry',
     'js.mode_pull_title'        => 'Pull-based',
     'js.mode_pull_desc'         => 'Glue triggers CI; CI pulls code and pushes images',
     'js.mode_push_title'        => 'Push-based',

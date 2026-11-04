@@ -548,6 +548,7 @@ return [
     'js.provider_unspecified'   => '未指定构建源',
     'js.mode_custom_push_name'  => 'Custom_Push',
     'js.mode_harbor_name'       => 'Harbor',
+    'js.mode_registry_name'     => 'Registry',
     'js.mode_pull_title'        => '拉取式',
     'js.mode_pull_desc'         => 'Glue 触发 CI 构建，CI 拉取代码并推送镜像',
     'js.mode_push_title'        => '推送式',
