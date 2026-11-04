@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Service;
 
 /**
- * 由原 Database 拆分出的「BootstrapOrchestrator」职责（门面转调，行为不变）。
+ * 由原 Database 拆分出的「BootstrapOrchestrator」职责。
  */
 class BootstrapOrchestrator
 {
@@ -35,16 +35,15 @@ class BootstrapOrchestrator
 
         if (! $this->migrator->isVersionCurrent($recorded)) {
             $seedMode = $this->migrator->isVersionAhead($recorded) ? Database::SEED_MODE_MERGE : Database::SEED_MODE_PRUNE;
-            if ($autoMigrate) {
-                $this->lock->ensureCacheTable();
-            }
             $this->lock->runExclusively($versionKey, function () use ($autoMigrate, $seedMode, $recorded): void {
                 $key = $autoMigrate ? Database::SCHEMA_VERSION_KEY : Database::SEED_VERSION_KEY;
                 if ($this->migrator->isVersionCurrent($this->migrator->recordedVersion($key))) {
                     return;
                 }
                 if ($autoMigrate) {
+                    // 避免“新旧表并存”导致旧表回收被跳过；ci_cache 缺失时首启退化为无锁直跑、建表后后续有锁
                     $this->migrator->ensureTables($seedMode);
+                    $this->lock->ensureCacheTable();
                 } else {
                     $this->seeder->seedRbac($seedMode);
                 }
