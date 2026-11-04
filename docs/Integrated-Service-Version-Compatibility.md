@@ -2,7 +2,7 @@
 
 > This document lists the version support and key version boundaries for each service Devops-Glue integrates with (Jenkins / GitLab / Gitea / Harbor / Registry).
 > All version boundaries come from each service's official documentation / release notes.
-> Document version: v2.11.2 (2026-10-30)
+> Document version: v2.11.4 (2026-11-03)
 
 ---
 
