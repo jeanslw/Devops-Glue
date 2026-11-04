@@ -16,6 +16,7 @@ import {
     encodePath,
     fmtYmd,
     normalizePerms,
+    registryNodeMeta,
 } from '../../public/assets/core/utils.js';
 
 test('esc 转义 HTML 关键字符', () => {
@@ -152,4 +153,21 @@ test('js 输出解码后可被 JSON.parse 还原（onclick 属性场景）', () 
     // 浏览器还原实体后，属性里传给 activateMap 的第二参数
     const seenByJs = decodeEntities(js(obj));
     assert.deepEqual(JSON.parse(seenByJs), obj);
+});
+
+// ── 构建模式流程图：镜像仓库节点随 registry_type 切换 ──
+test('registryNodeMeta: registry 类型渲染 📦 Registry 短文案节点', () => {
+    assert.deepEqual(registryNodeMeta('registry'), {
+        icon: '📦', cls: 'registry', labelKey: 'js.mode_registry_name'
+    });
+});
+
+test('registryNodeMeta: harbor 与缺省/未知值一律回退 Harbor 节点', () => {
+    const harbor = { icon: '🐳', cls: 'harbor', labelKey: 'js.mode_harbor_name' };
+    assert.deepEqual(registryNodeMeta('harbor'), harbor);
+    assert.deepEqual(registryNodeMeta(undefined), harbor);
+    assert.deepEqual(registryNodeMeta(null), harbor);
+    assert.deepEqual(registryNodeMeta(''), harbor);
+    assert.deepEqual(registryNodeMeta('REGISTRY'), harbor, '仅小写 registry 生效，避免大小写误判');
+    assert.deepEqual(registryNodeMeta('unknown'), harbor);
 });

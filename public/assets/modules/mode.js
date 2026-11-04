@@ -1,5 +1,5 @@
 import { authHeaders, handle401 } from '../core/api.js';
-import { esc } from '../core/utils.js';
+import { esc, registryNodeMeta } from '../core/utils.js';
 import { toast, confirmDialog } from '../core/toast.js';
 import {
     PULL_PROVIDERS,
@@ -74,6 +74,10 @@ export async function loadSettings() {
             + '</div>';
         const arrow = '<div class="mf-arrow">→</div>';
         const split = '<div class="mf-arrow">/</div>';
+        // 镜像仓库节点随 registry_type 变化：Harbor 🐳 / 标准 Registry 📦。
+        // 拉取式与推送式共用同一个节点，保证切换仓库类型后两处一起更新。
+        const reg = registryNodeMeta(data.registry_type);
+        const registryNode = () => node(reg.cls, reg.icon, esc(__.t(reg.labelKey)));
         const customBadge = (cpEnabled && hasCustom)
             ? '<span class="badge" style="background:#fef3c7;color:#d97706;font-size:11px;margin-left:6px;">📤 ' + customNames.map(esc).join(', ') + ' ✓</span>'
             : '';
@@ -93,7 +97,7 @@ export async function loadSettings() {
                 + arrow
                 + ciNodes
                 + arrow
-                + node('harbor', '🐳', __.t('js.mode_harbor_name'));
+                + registryNode();
         }
 
         const hasPush = cpEnabled && hasCustom;
@@ -101,7 +105,7 @@ export async function loadSettings() {
         if (hasPush) {
             pushInner = node('user-ci', '📤', __.t('js.mode_user_ci'))
                 + arrow
-                + node('harbor', '🐳', __.t('js.mode_harbor_name'))
+                + registryNode()
                 + arrow
                 + node('glue', '📋', 'Devops-Glue');
         }

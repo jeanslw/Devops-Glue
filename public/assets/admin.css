@@ -670,13 +670,20 @@
         .mf-row--single .mf-side { flex:1 1 260px; max-width:460px; }
         .mf-side-title { font-size:12px; font-weight:700; letter-spacing:2px; color:#6b7280; }
         .mf-side-desc { font-size:11px; color:#9ca3af; text-align:center; max-width:250px; line-height:1.5; }
-        .mf-flow { display:flex; align-items:center; gap:8px; flex-wrap:nowrap; justify-content:center; }
+        /* 节点固定等宽，容器不足时整行换行（箭头随行），避免溢出卡片 */
+        .mf-flow { display:flex; align-items:center; gap:8px; flex-wrap:wrap; row-gap:8px; justify-content:center; }
         .mf-node {
             background:#f3f4f6; border:2px solid #d1d5db; border-radius:10px;
-            padding:10px 14px; text-align:center; min-width:78px;
+            padding:6px 4px; text-align:center;
+            /* 所有节点等宽等高：文案长短不再撑开方块，长名称在块内折行 */
+            box-sizing:border-box; width:96px; flex:0 0 96px; height:80px;
+            display:flex; flex-direction:column; align-items:center; justify-content:center;
         }
-        .mf-node-icon { font-size:24px; line-height:1; }
-        .mf-node-name { margin-top:6px; font-size:13px; font-weight:600; white-space:nowrap; }
+        .mf-node-icon { font-size:24px; line-height:1; flex:0 0 auto; }
+        .mf-node-name {
+            margin-top:4px; font-size:13px; font-weight:600; line-height:1.2;
+            max-width:100%; overflow-wrap:anywhere;
+        }
         .mf-node.git { background:#f3f4f6; border-color:#d1d5db; }
         .mf-node.git .mf-node-name { color:#374151; }
         .mf-node.jenkins { background:#fff8e1; border-color:#f59e0b; }
@@ -689,6 +696,8 @@
         .mf-node.gitea .mf-node-name { color:#0369a1; }
         .mf-node.harbor { background:#ecfeff; border-color:#0891b2; }
         .mf-node.harbor .mf-node-name { color:#0e7490; }
+        .mf-node.registry { background:#eef2ff; border-color:#6366f1; }
+        .mf-node.registry .mf-node-name { color:#4338ca; }
         .mf-node.glue { background:#f0fdf4; border-color:#16a34a; }
         .mf-node.glue .mf-node-name { color:#15803d; }
         .mf-arrow { color:#9ca3af; font-size:22px; line-height:1; }
@@ -774,10 +783,6 @@
             .topbar .top-right > * { margin-right:0 !important; }
             .topbar .top-right a, .topbar .top-right .lang-switch { font-size:12px; }
             .topbar .top-right select { padding:2px 6px; font-size:12px; }
-            /* 流程图节点允许换行/收缩；配置卡片头部允许换行 */
-            .mf-flow { flex-wrap:wrap; }
-            .mf-node { min-width:0; padding:8px 10px; }
-            .mf-node-name { white-space:normal; }
             .mode-card-hd, .build-mode-row { flex-wrap:wrap; }
             .mode-card-hd select { min-width:0; flex:1 1 120px; }
         }
@@ -884,6 +889,7 @@
 [data-theme="dark"] .mf-node.gitlab { background:#3a0f1e; border-color:#e91e63; }
 [data-theme="dark"] .mf-node.gitea { background:#0a2a3a; border-color:#0284c7; }
 [data-theme="dark"] .mf-node.harbor { background:#0a2e30; border-color:#0891b2; }
+[data-theme="dark"] .mf-node.registry { background:#1e1b4b; border-color:#6366f1; }
 [data-theme="dark"] .mf-node.glue { background:#0a2a1a; border-color:#16a34a; }
 [data-theme="dark"] .mf-divider { background:#334155; }
 
