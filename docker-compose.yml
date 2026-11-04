@@ -153,9 +153,6 @@ services:
           echo '[ABORT] Missing sensitive-field encryption key DATA_ENC_KEY: set it in config/app.env or the root .env'
           fail=1
         fi
-        # OIDC 签名私钥：显式配置时必须像 PEM，否则启动即中止。
-        # 非 PEM 占位值会让 /oauth/token 与 /.well-known/jwks.json 双双 500，CD 侧只报
-        # 「统一登录服务暂时不可用」，极易误诊为客户端密钥/网络问题。留空 = 自动生成，最安全。
         if [ -n "$$OIDC_RSA_PRIVATE_KEY" ]; then
           case "$$OIDC_RSA_PRIVATE_KEY" in
             *-----BEGIN*) : ;;
@@ -198,7 +195,7 @@ services:
     volumes:
       - mysql-data:/var/lib/mysql
       - ./database/mysql_init.sql:/docker-entrypoint-initdb.d/01-ci.sql:ro
-      # - ../Devops_CD/database/init_mysql.sql:/docker-entrypoint-initdb.d/02-cd.sql:ro
+      # - ../devops_cd/database/init_mysql.sql:/docker-entrypoint-initdb.d/02-cd.sql:ro
     restart: unless-stopped
     logging: *default-logging
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
@@ -211,7 +208,7 @@ services:
 
 #  devops-cd:
 #    build:
-#      context: ../Devops_CD
+#      context: ../devops_cd
 #      dockerfile: Dockerfile
 #    image: devops-cd:latest
 #    container_name: devops-cd

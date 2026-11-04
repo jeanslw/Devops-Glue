@@ -1,6 +1,6 @@
 # User Manual
 
-> Written for backend administrators and daily users, this manual covers the main functions of Devops-Glue from a **user's point of view**. Menu names and button labels match the admin UI so you can follow along step by step. It focuses on **how to use** things, not how they work inside. For detailed configuration, please see the Admin Configuration Manual.
+> Introducing the main functions and operations of Devops-Glue for administrators and everyday users. Menu names and button labels match the admin UI so you can follow along step by step. It focuses on **how to use** things, not how they work inside. For detailed configuration, please see the Admin Configuration Manual.
 
 ## Contents
 
