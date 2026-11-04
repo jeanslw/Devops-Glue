@@ -241,6 +241,18 @@ Then recreate the containers: `docker compose up -d --force-recreate web worker`
    `docker exec <web-container> chown www-data:www-data /data/cache/oidc_rsa.pem`
    When php-fpm generates it normally, it is already owned by `www-data` — no action needed.
 
+### Q: Why doesn't `restart` pick up my changes to the root `.env`?
+
+The root `.env` (`DB_*` / `CD_OIDC_SECRET` / `CD_OIDC_REDIRECT_URI` / `CI_API_TOKEN` / `SECRET_KEY`, etc.) is injected into the container as **real environment variables** by Compose's `env_file` **at container-create time**. `docker compose restart` only stops and starts the same container — the env vars were baked in at creation and are **not re-read from `.env`** — so after editing and restarting, the app still sees the old values (classic symptom: you set `CI_API_TOKEN`, restart CD, and it still complains about a bad token — you must `down` then `up` for it to take effect).
+
+The correct approach: after editing the root `.env`, run `docker compose up -d` (or a full-stack `docker compose down && docker compose up -d`) to **recreate the containers**; Compose compares the `env_file` content hash and automatically recreates the changed containers (data volumes are preserved by default). Add `--force-recreate` to force a full rebuild.
+
+In a joint deployment that includes CD, **do not recreate only web/worker**: `CD_OIDC_SECRET` / `CD_OIDC_REDIRECT_URI` / `CI_API_TOKEN` are all read by the CD container via `env_file`, so omitting CD leaves it in the same "set the token, still need down-then-up" trap. Recreate scope by deployment shape:
+- CD and CI share one Compose file (uncomment `devops-cd`): `docker compose up -d --force-recreate web worker devops-cd`;
+- CD is a separate Compose file: go to the CD directory and run `docker compose up -d` there.
+
+> Contrast: `config/app.env` is a bind-mount file that Glue reads live through `EnvFileLoader` at startup, so editing it and running `restart web` is enough (but do **not** edit it with `sed -i` — that swaps the inode and breaks the mount, see the next entry).
+
 ### Q: Login works without `CD_OIDC_SYSTEM=cd` — why?
 
 Because it is **not a CD-side setting at all**, and the problem it addresses already has fallbacks:

@@ -497,8 +497,14 @@ Clicking sign-in in CD → redirect to Glue's authorize page → back to CD to e
 
 ### 9.2 Five steps from scratch (each with a way to confirm)
 
-**Step 0 · Make sure Glue is running**
-Open `http://<glue>/admin`; getting a login page is enough (a fresh database creates its tables and seeds the admin account on first start).
+**Step 0 · From-scratch prep (fresh database to a bootable state)**
+
+1. Prepare Glue config: `cp config/app.env.example config/app.env`, at minimum set `DATA_ENC_KEY` (`php -r "echo base64_encode(random_bytes(32));"` — missing it is fail-closed).
+2. Prepare the root `.env`: `cp .env.example .env` (same level as `docker-compose.yml`, **not** `config/.env`). For a centralised deployment fill in `DB_*` (`DB_HOST=mysql`, `DB_USER`/`DB_PASS`/`DB_ROOT_PASS`), and pre-place `CD_OIDC_SECRET`, `CD_OIDC_REDIRECT_URI` (real values in Step 1), and `CI_API_TOKEN` (filled back after Step 3 generates it).
+3. Enable CD: edit `docker-compose.yml` and uncomment the `devops-cd` block (commented out by default — CD will not start unless uncommented); CD can also be deployed with a separate Compose file.
+4. Start: `docker compose up -d --build`, then open `http://<glue>/admin` — getting a login page is enough (a fresh database creates its tables and seeds the admin account on first start).
+
+> **You must recreate the container after editing `.env`**: the root `.env` is injected via `env_file` **at container-create time**, so after editing you must `docker compose up -d` (or a full-stack `down && up`) to recreate for it to take effect; `docker compose restart` reuses the old environment and does **not** re-read `.env`. In a joint deployment that includes CD, the CD container must be recreated too (if CD uses a separate Compose file, run `up -d` in its directory). See the FAQ entry "Why doesn't `restart` pick up my changes to the root `.env`?".
 
 **Step 1 · Configure OIDC / SSO in the Glue admin**
 Path: "System Settings → Platform Management → **OIDC / SSO Config**".
@@ -534,7 +540,7 @@ Path: the **🔌 Integrated Services** card at the top of the "**API Management*
 
 - In the same transaction Glue issues a scope-limited service token (named `cd-service`, with `build.read` / `build.write` / `git` / `rbac.user.write`);
 - **The plaintext is shown only once** — copy it into CD's `CI_API_TOKEN`;
-- Ticking "Enable" is also the moment Glue creates CD's tables according to the current migration mode (a prerequisite for CD to work at all);
+- Ticking "Enable" is also the moment CD is authorized; **table creation is performed by CD itself per its migration mode (not by Glue)**: under `provision=auto` (default, following `DB_AUTO_MIGRATE=true`) CD creates its tables in the shared database automatically, whereas under `provision=manual` the operator must first run `../devops_cd/database/init_mysql.sql` by hand; if the tables are not ready CD's login reports `cd_not_deployed` (a prerequisite for CD to work at all);
 - ✅ Confirm: the card reads "✅ enabled" and `cd-service` appears in the token list;
 - ❌ Not enabled: CD's deployment gate blocks the login flow and bounces to `/login?error=errors.cd_not_enabled`;
 - To pause it, untick the box (freeze: the credential is kept, re-ticking restores the **same** token and CD needs no changes); to retire or rotate it, ⛔ revoke that token in the list and tick "Enable" again to reissue (remember to update CD).
@@ -645,7 +651,8 @@ The order below is for **upgrading from an earlier version**; on a **fresh datab
 6. **Re-create the containers and smoke-test once**:
 
    ```bash
-   docker compose up -d --force-recreate web worker
+   # when deployed in the same Compose file, recreate cd as well; for a separate CD Compose file, run up -d in its directory
+   docker compose up -d --force-recreate web worker devops-cd
    ```
    Then verify in order: console login → mapping / build pages show data → registry query works → CD login works.
 
