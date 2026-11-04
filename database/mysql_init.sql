@@ -5,6 +5,8 @@
 -- 使用: mysql -u root -p < database/mysql_init.sql
 -- =============================================================
 
+SET NAMES utf8mb4;
+
 CREATE DATABASE IF NOT EXISTS `devops_glue` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE `devops_glue`;
 
@@ -85,7 +87,7 @@ CREATE TABLE IF NOT EXISTS `ci_admin_users` (
     `id`            BIGINT AUTO_INCREMENT PRIMARY KEY,
     `username`      VARCHAR(255) NOT NULL UNIQUE,
     `password_hash` TEXT NOT NULL,
-    `role`          VARCHAR(255) NOT NULL DEFAULT 'admin',
+    `role`          VARCHAR(255) NOT NULL DEFAULT 'root',
     `systems`       VARCHAR(255) NOT NULL DEFAULT 'ci,cd',
     `email`         VARCHAR(255) NOT NULL DEFAULT '',
     `avatar_url`    TEXT,

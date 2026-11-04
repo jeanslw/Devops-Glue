@@ -23,8 +23,9 @@ export async function loadTopology() {
         if (handle401(res)) return;
         const data = await res.json();
         topoPlatformUrls = {
-            jenkins_url: (data.jenkins_url || '').replace(/\/+$/, ''),
-            harbor_url:  (data.harbor_url || '').replace(/\/+$/, ''),
+            jenkins_url:  (data.jenkins_url || '').replace(/\/+$/, ''),
+            harbor_url:   (data.harbor_url || '').replace(/\/+$/, ''),
+            registry_url: (data.registry_url || '').replace(/\/+$/, ''),
         };
         processTopoData(data);
     } catch(e) {
@@ -86,9 +87,10 @@ export function renderTopology() {
             : '<span class="topo-empty-field">' + __.t('js.topo_not_configured') + '</span>';
 
         const harbor = p.registry_repository || '';
-        const harborUrl = topoPlatformUrls.harbor_url || '';
-        // Harbor 未配置或 safeUrl 拒绝时回退纯文本，避免 href 为空/站内坏链接
-        const safeHarborUrl = harborUrl ? safeUrl(harborUrl + '/harbor') : '';
+        // 字段名即类型：harbor_url=Harbor（可拼 /harbor 浏览页），registry_url=标准 Registry（无统一 Web UI）
+        const isHarborType = !!topoPlatformUrls.harbor_url;
+        const registryUrl = topoPlatformUrls.harbor_url || topoPlatformUrls.registry_url || '';
+        const safeHarborUrl = (registryUrl && isHarborType) ? safeUrl(registryUrl + '/harbor') : '';
         const harborDisplay = harbor
             ? (safeHarborUrl
                 ? `<a href="${esc(safeHarborUrl)}" target="_blank" title="${esc(__.t('js.topo_open_harbor'))}">${esc(harbor)}</a>`

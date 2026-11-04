@@ -54,6 +54,7 @@
             <span class="top-user-wrap" id="top-user-wrap">
                 <button type="button" id="top-user" onclick="toggleTopMenu()" data-i18n-title="admin.account_logout"><span id="top-user-name"></span><span class="top-user-caret">▾</span></button>
                 <div class="top-user-menu" id="top-user-menu">
+                    <a href="#" onclick="switchTab('password'); toggleTopMenu();" data-i18n="admin.sidebar_password">修改密码</a>
                     <a href="#" onclick="doLogout()" data-i18n="auth.logout">退出</a>
                 </div>
             </span>

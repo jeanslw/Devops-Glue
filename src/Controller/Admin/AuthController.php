@@ -116,9 +116,8 @@ class AuthController extends BaseAdminController
     public function changePassword(Request $request, Response $response): Response
     {
         $this->initAuthFromRequest($request);
-        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_USERS_PASSWORD)) {
-            return $resp;
-        }
+        // 本人改密是基本权利：任何已登录用户（含被强制首次改密、无 ci.users.password 的普通角色）
+        // 都可发起；安全性由「校验旧密码」保证，不依赖 ci.users.password（该权限用于重置他人密码）。
 
         $body = $request->getParsedBody() ?? json_decode($request->getBody()->__toString(), true) ?? [];
         $oldPass = $body['old_password'] ?? '';

@@ -1690,7 +1690,7 @@
         "tags": [
           "Main"
         ],
-        "summary": "Job / Git / Harbor 三方映射",
+        "summary": "Job / Git / Container Registry 三方映射",
         "description": "按项目分组返回映射关系，结果按启用集合缓存 30s。",
         "operationId": "mainMapList",
         "security": [
@@ -1720,7 +1720,7 @@
         "tags": [
           "Main"
         ],
-        "summary": "Job / Git / Harbor 三方映射",
+        "summary": "Job / Git / Container Registry 三方映射",
         "description": "与 GET 行为一致，参数走 Query String。",
         "operationId": "mainMapListPost",
         "security": [

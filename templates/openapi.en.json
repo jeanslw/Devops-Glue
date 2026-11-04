@@ -1675,7 +1675,7 @@
         "tags": [
           "Main"
         ],
-        "summary": "Job / Git / Harbor mapping",
+        "summary": "Job / Git / Container Registry mapping",
         "description": "Returns mappings grouped by project; cached 30s per enabled-provider set",
         "operationId": "mainMapList",
         "security": [
@@ -1705,7 +1705,7 @@
         "tags": [
           "Main"
         ],
-        "summary": "Job / Git / Harbor mapping",
+        "summary": "Job / Git / Container Registry mapping",
         "description": "Same as GET; parameters go in the query string.",
         "operationId": "mainMapListPost",
         "security": [
