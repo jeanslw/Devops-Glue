@@ -114,6 +114,19 @@ class OAuthController extends BaseController
             return $response->withStatus(401)->withHeader('Content-Type', 'text/html; charset=utf-8');
         }
         $this->auth->clearLoginFailure($clientIp, $username);
+        // 强制改密账号不得进入授权码流程：错误留在登录页，不 302 回 redirect_uri。
+        if (!empty($result['must_change_password'])) {
+            $this->operationLog->record((string)$result['user'], 'login_failed', '', [], $clientIp, 'failure');
+            $response->getBody()->write($this->renderLoginForm(
+                $clientId,
+                $redirectUri,
+                $state,
+                $scope,
+                $nonce,
+                $this->__('auth.must_change_password')
+            ));
+            return $response->withStatus(403)->withHeader('Content-Type', 'text/html; charset=utf-8');
+        }
         $this->operationLog->record((string)$result['user'], 'login', '', [], $clientIp, 'success');
 
         $code = $this->oauth->issueCode(

@@ -63,12 +63,18 @@ final class AppConfig
      *   - build.write ：触发构建 / retry / cancel
      *   - git         ：读 job 绑定 Git 仓库的分支 / tag
      *   - rbac.user.write：CD 账号管理通道
+     *   - registry.read  ：查镜像仓库项目 / 仓库 / tag；契约端点据此下发 registry_url/registry_type，
+     *                      缺了它 CD 默认拿不到镜像地址、也调不了 /api/registry/*（403）
+     *
+     * 新增 scope 一律追加在尾部：healCdServiceTokenScopes() 对存量凭据是「只增不删、尾部追加」，
+     * 顺序一致才能让新旧凭据的 scopes 完全相同（幂等自愈不反复写库）。
      */
     public const CD_SERVICE_TOKEN_SCOPES = [
         self::API_SCOPE_BUILD_READ,
         self::API_SCOPE_BUILD_WRITE,
         self::API_SCOPE_GIT,
         self::API_SCOPE_RBAC_USER_WRITE,
+        self::API_SCOPE_REGISTRY_READ,
     ];
 
     // ── 角色常量 ──
@@ -359,7 +365,7 @@ final class AppConfig
         self::API_SCOPE_REGISTRY_READ => ['registry.read', 'registry.projects', 'registry.repositories'],
         self::API_SCOPE_HARBOR_SCAN  => ['harbor.scan'],
         self::API_SCOPE_BUILD_READ   => ['build.read'],
-        self::API_SCOPE_BUILD_WRITE  => ['trigger', 'retry', 'cancel'],
+        self::API_SCOPE_BUILD_WRITE  => ['trigger', 'retry', 'cancel', 'resolve-tag'],
         self::API_SCOPE_BUILD_REPORT => ['scan-sync', 'registry-sync', 'commit-status', 'report'],
         self::API_SCOPE_RBAC_USER_WRITE => ['rbac.users', 'rbac.roles'],
     ];

@@ -226,6 +226,44 @@ class OAuthService
     }
 
     /**
+     * 按用户名吊销全部 OAuth 授权码与访问令牌（改密 / 重置密码后调用）。
+     *
+     * @return int 实际删除的记录数
+     */
+    public static function revokeUserTokens(\PDO $pdo, string $username): int
+    {
+        if ($username === '') {
+            return 0;
+        }
+        $deleted = 0;
+        foreach ([self::CODE_PREFIX, self::ACCESS_PREFIX] as $prefix) {
+            $escaped = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $prefix);
+            $stmt = $pdo->prepare(
+                "SELECT cache_key, value FROM " . AppConfig::TABLE_CACHE
+                . " WHERE cache_key LIKE ? ESCAPE '!'"
+            );
+            $stmt->execute([$escaped . '%']);
+            $keys = [];
+            foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $row) {
+                $data = json_decode((string)($row['value'] ?? ''), true);
+                if (is_array($data) && (string)($data['user'] ?? '') === $username) {
+                    $keys[] = (string)$row['cache_key'];
+                }
+            }
+            if ($keys === []) {
+                continue;
+            }
+            $ph = implode(',', array_fill(0, count($keys), '?'));
+            $del = $pdo->prepare(
+                "DELETE FROM " . AppConfig::TABLE_CACHE . " WHERE cache_key IN ({$ph})"
+            );
+            $del->execute($keys);
+            $deleted += (int)$del->rowCount();
+        }
+        return $deleted;
+    }
+
+    /**
      * 校验访问令牌，成功返回用户信息，失败返回 null
      *
      * @return array<string,mixed>|null
@@ -273,7 +311,7 @@ class OAuthService
         }
         try {
             $stmt = $this->pdo->prepare(
-                "SELECT status, role FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE username = ?"
+                "SELECT status, role, must_change_password FROM " . AppConfig::TABLE_ADMIN_USERS . " WHERE username = ?"
             );
             $stmt->execute([$user]);
             $acc = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -282,6 +320,12 @@ class OAuthService
             }
             $status = $acc['status'] ?? null;
             if ($status !== null && (int)$status === 0) {
+                return false;
+            }
+            // 改密前签发的令牌必须立即失效，否则最长还能用 ACCESS_TOKEN_TTL。
+            // 旧库缺 must_change_password 列时整条 SELECT 失败，走下方 SchemaCompat 放行，
+            // 迁移窗口不会把 SSO 锁死（代价是该窗口内 status/role 也不回查）。
+            if ((int)($acc['must_change_password'] ?? 0) === 1) {
                 return false;
             }
             if (!empty($acc['role'])) {

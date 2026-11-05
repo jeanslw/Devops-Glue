@@ -7,6 +7,7 @@ namespace App\Controller\Build;
 use App\Config\AppConfig;
 use App\Service\AppSettingRepository;
 use App\Service\Build\BuildProviderRegistry;
+use App\Service\Build\BuildStatus;
 use App\Service\BuildTagCacheRepository;
 use App\Service\I18nService;
 use App\Service\MappingManager;
@@ -110,8 +111,14 @@ final class PipelineTagController extends BaseBuildController
     public function resolveTag(Request $request, Response $response, array $args): Response
     {
         $this->initAuthFromRequest($request);
-        if ($resp = $this->requirePermission($response, AppConfig::PERM_CI_BUILD_RECORDS_PULL)) {
-            return $resp;
+        // resolve-tag 会写 ci_build_tag_cache：API token 已被 ApiScopeResolver 限定为
+        // build.write（注入 ci.trigger）；后台登录态只读用户只有 ci.build-records.pull。
+        // 两者任一放行，避免收紧 scope 后把后台只读用户的「刷新 tag」按钮打回 403。
+        if (
+            !$this->hasPermission(AppConfig::PERM_CI_TRIGGER)
+            && !$this->hasPermission(AppConfig::PERM_CI_BUILD_RECORDS_PULL)
+        ) {
+            return $this->jsonError($response, 'auth.forbidden', 403);
         }
 
         $path       = $args['path'] ?? '';
@@ -158,6 +165,7 @@ final class PipelineTagController extends BaseBuildController
         $keyword = $this->appSettings->getTagLogKeyword();
         $tag = '';
         $digest = '';
+        $matchedJob = [];
         try {
             $p = $this->registry->create($provider);
             $jobs = $p->getJobs($projectId, $pipelineId);
@@ -171,6 +179,7 @@ final class PipelineTagController extends BaseBuildController
                 if ($parsed['tag'] !== '') {
                     $tag = $parsed['tag'];
                     $digest = $parsed['digest'];
+                    $matchedJob = $j;
                     break;
                 }
             }
@@ -178,9 +187,13 @@ final class PipelineTagController extends BaseBuildController
             \App\Helper\Log::exception($e);
             $tag = '';
             $digest = '';
+            $matchedJob = [];
         }
 
-        $status = trim((string) ($body['status'] ?? ''));
+        // 状态取自 CI 返回的命中 job，不再信任请求体（客户端可伪造 status=success）。
+        // 未知归一为 'unknown' 而非空串：回填条件含 status = ''，空串会被当成成功。
+        // 注意这是 job 级状态，非 pipeline 聚合状态；各 provider 的 getJobs() 已归一化。
+        $status = BuildStatus::normalize((string) ($matchedJob['status'] ?? 'unknown'));
         // 仅当本次成功解析出 tag 才写回缓存。解析失败（CI 瞬时故障）或日志已被保留策略
         // 清理导致 $tag 为空时跳过，避免 REPLACE INTO 把缓存中已解析的 tag/digest 清空
         // （手动刷新 force=1 会跳过缓存直读，此路径尤需防护）。

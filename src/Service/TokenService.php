@@ -230,6 +230,7 @@ class TokenService
      */
     public function revokeAllForUser(string $username): int
     {
+        $deleted = 0;
         try {
             // 用 '!' 作 LIKE 转义符：MySQL 默认未启用 NO_BACKSLASH_ESCAPES 时，ESCAPE '\'
             // 会被当成「转义后的引号」导致 SQL 语法错误、异常被吞、旧会话未吊销。
@@ -242,10 +243,17 @@ class TokenService
                 AppConfig::CACHE_KEY_ADMIN_TOKEN_PREFIX . '%',
                 $escaped . '|%',
             ]);
-            return (int)$stmt->rowCount();
+            $deleted = (int)$stmt->rowCount();
         } catch (\Exception $e) {
-            return 0;
+            // 会话吊销失败不阻断后续 OAuth 凭据吊销
         }
+        // 改密/重置密码是全部改密入口的共用收口，OAuth code 与 access token 一并吊销，避免逐处补调用时漏掉某个入口。
+        try {
+            $deleted += OAuthService::revokeUserTokens($this->pdo, $username);
+        } catch (\Throwable $e) {
+            \App\Helper\Log::exception($e);
+        }
+        return $deleted;
     }
 
     /** 登录成功后写 cache token（先清过期同前缀，再 upsert）。失败向上抛出。 */

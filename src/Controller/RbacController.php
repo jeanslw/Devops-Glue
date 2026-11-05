@@ -232,7 +232,7 @@ class RbacController extends BaseController
         }
     }
 
-    /** GET /api/rbac/users — 用户列表（全量，无分页，不含哈希） */
+    /** GET /api/rbac/users — CD 账号列表（全量，无分页，不含哈希；CI-only / root / 超管不可见） */
     public function userList(Request $request, Response $response): Response
     {
         $this->initAuthFromRequest($request);
@@ -240,7 +240,10 @@ class RbacController extends BaseController
             return $resp;
         }
         try {
-            $users = $this->adminUserRepository->listUsersForApi();
+            $users = array_values(array_filter(
+                $this->adminUserRepository->listUsersForApi(),
+                fn(array $u): bool => $this->belongsToCd($u)
+            ));
             return $this->output($response, ['users' => $users], $request);
         } catch (\Exception $e) {
             return $this->jsonError($response, $this->__('build.modify_failed') . ': ' . $e->getMessage(), 500);
@@ -264,7 +267,8 @@ class RbacController extends BaseController
         }
         try {
             $user = $this->adminUserRepository->findUserForApi($username);
-            if (!$user) {
+            // 非 CD 账号与不存在一律 404：用 403 会泄露该账号是否存在。
+            if (!$user || !$this->belongsToCd($user)) {
                 return $this->jsonError($response, 'user.not_found', 404);
             }
             return $this->output($response, $user, $request);

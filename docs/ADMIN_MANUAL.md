@@ -729,7 +729,7 @@ Go to "API Management" (requires the relevant permission) and choose the require
 |---|---|
 | `main` | Read-only: job list, mapping, Git platforms, Git discovery |
 | `git` | Read-only: Git branches / tags (`/api/git/*`, usable as build-ref candidates) |
-| `registry.read` | Read-only: image-registry projects / repositories / tags; also all `/api/registry/*` endpoints for **both** registry types (`harbor` / `registry:2`). Not included in the CD service credential |
+| `registry.read` | Read-only: image-registry projects / repositories / tags; also all `/api/registry/*` endpoints for **both** registry types (`harbor` / `registry:2`). Included in the CD service credential by default |
 | `harbor.scan` | Trigger Harbor image scans |
 | `build.read` | Read-only: build pipelines / logs / branches |
 | `build.write` | Write: trigger / retry / cancel builds |
@@ -762,8 +762,10 @@ Entry point: "API Management → 🔌 Integrated services" (the card sits above 
    - captures the provision mode from this platform **current** migration mode (`DB_AUTO_MIGRATE`) — it is sampled only at enable time and does **not** change when you switch migration mode later:
      - `auto` (automatic schema mode): CD is authorized to **create/upgrade its tables automatically** in the shared database, for both MySQL and SQLite;
      - `manual` (manual schema mode): CD **never creates tables** and only accepts pre-created tables — import CD's bundled `database/init_mysql.sql` first, then enable;
-   - auto-issues a service token restricted to the scopes `build.read`, `build.write`, `git`, `rbac.user.write` (no access to any management endpoint).
+   - auto-issues a service token restricted to the scopes `build.read`, `build.write`, `git`, `rbac.user.write`, `registry.read` (no access to any management endpoint).
      - `git` is read-only and lets CD fetch branches / tags as build refs (`/api/git/{path}/refs`).
+     - `registry.read` is read-only: CD uses it to query image-registry projects / repositories / tags, and the contract endpoint delivers `registry_url` / `registry_type` on that basis. Without it CD cannot obtain the image registry address by default.
+     - Credentials issued before v2.11.4 lack `registry.read`: the **first bootstrap after upgrading heals them automatically** (union only, digest and plaintext untouched, so CD's `CI_API_TOKEN` needs no replacement).
      - Credentials issued by v2.8.x lack `git`: after upgrading to v2.9.0 the **first bootstrap heals them automatically** (union only, digest and plaintext untouched, so CD's `CI_API_TOKEN` needs no replacement). No need to disable and re-enable the integrated service.
 2. The plaintext token in the popup is shown **only once** (only its SHA-256 digest is stored); copy it somewhere safe immediately.
 3. Put the token into CD's `app.env` as described in section 16.2, then start CD.
@@ -844,6 +846,7 @@ Copy `config/app.env.example` to `config/app.env` and fill in your real values. 
 ```ini
 # ============ CI Systems ============
 BUILD_MODE=jenkins,gitlab_ci,gitea_ci   # enabled CI sources, comma-separated (seed value on first boot)
+CUSTOM_PUSH_LOG_ALLOWED_HOSTS=logs.example.com,ci.example.com   # required allowlist of hosts for the custom_push log proxy (comma-separated); unset = fail-closed, all log fetches rejected
 
 # ============ Git Platforms ============
 DEFAULT_GIT_PLATFORM=gitlab   # Fallback when a repository URL cannot be auto-detected

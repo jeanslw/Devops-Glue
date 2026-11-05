@@ -24,7 +24,7 @@ class CustomPushBuildProvider implements BuildProviderInterface
     private string $name;
 
     /**
-     * 允许服务端代理拉取的日志主机白名单（可选；空数组 = 不启用白名单，走 IP 段校验）
+     * 允许服务端代理拉取的日志主机白名单（必填，fail-closed；空数组 = 拒绝全部拉取）
      * @var list<string>
      */
     private array $allowedLogHosts = [];
@@ -156,7 +156,8 @@ class CustomPushBuildProvider implements BuildProviderInterface
             if (!in_array($scheme, ['http', 'https'], true) || $host === '') {
                 return $this->i18n->trans('build.log_url_invalid', ['url' => (string)$logUrl]);
             }
-            if ($this->allowedLogHosts !== [] && !in_array($host, $this->allowedLogHosts, true)) {
+            // fail-closed：白名单为空时拒绝所有代理拉取，避免默认配置下任意主机可达。
+            if ($this->allowedLogHosts === [] || !in_array($host, $this->allowedLogHosts, true)) {
                 $this->logger?->error('custom_push 日志 URL 校验失败（疑似 SSRF）', ['project' => $projectId, 'job' => $jobId]);
                 return $this->i18n->trans('build.log_url_invalid', ['url' => (string)$logUrl]);
             }
@@ -175,7 +176,10 @@ class CustomPushBuildProvider implements BuildProviderInterface
                 'connect_timeout' => 5,
                 'http_errors'     => false,
                 'allow_redirects' => false,
-                'curl'            => ['resolve' => $resolve],
+                // Guzzle 的 curl 选项要求 CURLOPT_* 整数常量作键；字符串键会在
+                // CurlFactory::applyCurlOptions 抛 Invalid cURL option 而使拉取必失败，
+                // 且 DNS pin 不生效会重新打开 rebinding 窗口。
+                'curl'            => [\CURLOPT_RESOLVE => $resolve],
                 'stream'          => true, // 流式读取并按上限截断，避免超大响应占满内存
             ]);
             $resp = $client->get((string)$logUrl);

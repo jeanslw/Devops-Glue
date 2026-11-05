@@ -12,6 +12,13 @@
   - Fix the image-tag cache refresh flaw: a manual refresh parses empty on a transient CI failure or when build logs have been purged by the retention policy; the cache is now written back only when a tag is actually resolved this time.
   - Harden the legacy timezone migration script: fix zero dates being converted to an invalid year and written back, and values with milliseconds being skipped outright; a strict format check is now applied and millisecond values are converted normally.
   - Correct the display-timezone comments: an empty string actually falls back to UTC; align the wording of the comments to remove the misleading description.
+  - The service token auto-issued by the CD enable wizard now includes `registry.read`, so CD can query the image registry by default; existing credentials are healed on the first bootstrap after upgrading, with no token replacement needed.
+  - OAuth honours forced password change: a pending account gets 403 before any code is issued, existing tokens fail the userinfo re-check, and changing a password revokes the OAuth codes and access tokens too.
+  - Fix the curl DNS-pin option key in the custom_push log proxy (use the integer constant CURLOPT_RESOLVE; previously every log fetch failed).
+  - The log host allowlist is now fail-closed: without `CUSTOM_PUSH_LOG_ALLOWED_HOSTS`, all log fetches are rejected.
+  - resolve-tag now requires the build.write scope, so a build.read-only token cannot call it; the cached status comes from the CI job that matched the tag instead of the request body.
+  - Jenkins paths are validated and encoded per segment; `..` and its encoded variants return 400.
+  - RBAC user list and single-user read expose CD accounts only; non-CD accounts return 404.
 - **Added**
   - A migration script backfills missing image digests from the registry by repository and tag.
   - The tag backfill task now also resolves and backfills the image digest while backfilling tags, and fixes its hard-coded harbor connection key so registry-type deployments can fetch the connection correctly.
@@ -26,6 +33,7 @@
   - Image-tag log backfill now writes only candidates from successful CI builds and takes the registry's current digest as authoritative.
 - **Changed**
   - Docker drops the timezone setting so the container runs in UTC, avoiding pollution of the database timezone.
+  - After upgrading, `CUSTOM_PUSH_LOG_ALLOWED_HOSTS` must be set, otherwise custom_push logs cannot be fetched.
 - **Refactored**
   - Database-related code is split from a single file into several single-responsibility files: schema migration, seeding, data repair, distributed lock, and bootstrap orchestration, for easier maintenance.
 
