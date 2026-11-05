@@ -500,8 +500,32 @@ class SchemaMigrator
                 $this->pdo->exec("CREATE INDEX IF NOT EXISTS {$index} ON {$table} ({$columns})");
             }
         } catch (\Exception $e) {
+            if (self::isDuplicateIndexError($e)) {
+                return;
+            }
             \App\Helper\Log::exception($e);
         }
+    }
+
+    /**
+     * 判断异常是否仅为「同名索引已存在」（幂等冲突），而非真正的建索引失败。
+     *
+     * MySQL/MariaDB：SQLSTATE 42000 + 驱动码 1061，消息含 "Duplicate key name"；
+     * SQLite：CREATE INDEX IF NOT EXISTS 正常不会冲突。
+     */
+    public static function isDuplicateIndexError(\Throwable $e): bool
+    {
+        if (!$e instanceof \PDOException) {
+            return false;
+        }
+        if ((int) ($e->errorInfo[1] ?? 0) === 1061) {
+            return true;
+        }
+        $message = $e->getMessage();
+        if (stripos($message, 'Duplicate key name') !== false) {
+            return true;
+        }
+        return stripos($message, 'already exists') !== false && stripos($message, 'index') !== false;
     }
 
     /**

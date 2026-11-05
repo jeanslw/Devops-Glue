@@ -82,7 +82,17 @@ return [
 
     // 运行时配置
     Settings::class => function (\Psr\Container\ContainerInterface $c) use ($settings) {
-        $conns = $c->get(PlatformConnectionRepository::class)->resolveConnections();
+        // 运行时配置必须容错：某个平台的密文解不开时置空该凭据，而不是抛异常让
+        // 所有页面在 DI 阶段 500（那样后台连「哪个平台解密失败」都看不到）。
+        // 失败平台在后台平台管理页会逐行标出，由管理员清空重填。
+        $repo = $c->get(PlatformConnectionRepository::class);
+        $display = $repo->listForDisplay(false);
+        if ($display['errors'] !== []) {
+            \App\Helper\Log::warning('平台连接凭据解密失败，已置空这些凭据', [
+                'platforms' => array_keys($display['errors']),
+            ]);
+        }
+        $conns = $repo->resolveConnections($display['rows']);
         $settings['git'] = array_merge($settings['git'], [
             'gitlab' => $conns['gitlab'],
             'github' => $conns['github'],
@@ -95,7 +105,13 @@ return [
         $settings['jenkins'] = $conns['jenkins'];
 
         $settings['harbor']['registry_type'] = $c->get(AppSettingRepository::class)->getRegistryType();
-        return new Settings($settings, $c->get(PlatformVersionRepository::class));
+        // 把「哪些平台凭据解不开」带进 Settings，供状态接口区分
+        // 「未配置 / 平台不可达」与「凭据不可用（需重填）」。
+        return new Settings(
+            $settings,
+            $c->get(PlatformVersionRepository::class),
+            array_map('strval', array_keys($display['errors']))
+        );
     },
 
     // ci_app_settings 运行时开关/配置

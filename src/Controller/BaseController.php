@@ -13,6 +13,8 @@ class BaseController
     protected string $currentRole = AppConfig::ROLE_ADMIN;
     /** @var list<string> 用户权限键列表 */
     protected array $userPermissions = [];
+    /** 当前请求语言；未设置时 __()/jsonError() 回退 I18nService 默认语言 */
+    protected string $requestLocale = '';
 
     public function __construct(protected I18nService $i18n)
     {
@@ -25,7 +27,7 @@ class BaseController
      */
     protected function __(string $key, array $params = []): string
     {
-        return $this->i18n->trans($key, $params);
+        return $this->i18n->trans($key, $params, $this->requestLocale !== '' ? $this->requestLocale : null);
     }
 
     /**
@@ -45,6 +47,7 @@ class BaseController
         $this->currentUser     = $request->getAttribute('currentUser', '');
         $this->currentRole     = $request->getAttribute('currentRole', AppConfig::ROLE_ADMIN);
         $this->userPermissions = $request->getAttribute('userPermissions', []);
+        $this->requestLocale   = $this->i18n->detectLocale($request);
     }
 
     /**
@@ -185,11 +188,29 @@ class BaseController
     {
 
         if (str_contains($message, '.') && !str_contains($message, ' ')) {
-            $translated = $this->i18n->trans($message);
+            $translated = $this->i18n->trans($message, [], $this->requestLocale !== '' ? $this->requestLocale : null);
 
             if ($translated !== $message) {
                 $message = $translated;
             }
+        }
+        // 各处 catch 会把 $e->getMessage() 拼进「查询失败: …」。加解密异常是硬编码中文，
+        // 与界面语言无关；统一在此按特征子串翻成当前语言，避免英文界面冒出中文提示。
+        // 放在 BaseController 一处，覆盖所有 Controller 的同类拼接。
+        foreach (\App\Service\Encryptor::MESSAGE_KEYS as $needle => $key) {
+            if (!str_contains($message, $needle)) {
+                continue;
+            }
+            $translated = $this->__($key);
+            if ($translated !== $key) {
+                // 保留「查询失败: 」这类已翻译前缀，把后面整段异常原文换成译文，
+                // 否则只替子串会残留「（密钥不匹配或密文被篡改）」等中文尾巴。
+                $sep = strpos($message, ': ');
+                $message = $sep === false
+                    ? $translated
+                    : substr($message, 0, $sep + 2) . $translated;
+            }
+            break;
         }
         $response->getBody()->write((string) json_encode(array_merge(['code' => $code, 'message' => $message], $extra)));
         return $response->withStatus($code)->withHeader('Content-Type', 'application/json');

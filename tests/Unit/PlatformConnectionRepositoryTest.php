@@ -131,4 +131,91 @@ class PlatformConnectionRepositoryTest extends TestCase
         $this->assertSame('', $conns['gitlab']['base_url'], '删除后回退代码默认空值，无 env 兜底');
         $this->assertSame('', $conns['gitlab']['token']);
     }
+
+    /**
+     * 某个平台的密文用另一把密钥加密（迁移时 DATA_ENC_KEY 不一致）时：
+     * listForDisplay 只标记该平台，其余平台仍正常解密，不再整接口 500。
+     */
+    public function testListForDisplayReportsOnlyThePlatformWithBadCipher(): void
+    {
+        $this->repo->save('gitlab', [
+            'url' => 'https://gitlab.example.com', 'token' => 'glpat-ok', 'username' => '', 'password' => '', 'description' => '',
+        ]);
+        $otherKey = new Encryptor(base64_encode(random_bytes(32)));
+        $this->pdo->prepare(
+            'INSERT INTO ' . AppConfig::TABLE_PLATFORM_CONNECTIONS . ' (platform, url, token) VALUES (?, ?, ?)'
+        )->execute(['gitee', 'https://gitee.com/api/v5', $otherKey->encrypt('gitee-token')]);
+
+        $display = $this->repo->listForDisplay();
+
+        $this->assertArrayHasKey('gitee', $display['errors'], '只应标记解不开的 gitee');
+        $this->assertArrayNotHasKey('gitlab', $display['errors'], '其他平台不得被连带标记');
+        $this->assertStringContainsString('解密失败', $display['errors']['gitee']);
+
+        $byPlatform = [];
+        foreach ($display['rows'] as $row) {
+            $byPlatform[$row['platform']] = $row;
+        }
+        $this->assertSame('glpat-ok', $byPlatform['gitlab']['token'], '正常平台须返回明文');
+        $this->assertStringStartsWith(
+            Encryptor::PREFIX,
+            (string)$byPlatform['gitee']['token'],
+            '坏凭据保留原密文，避免置空后用户重填前丢数据'
+        );
+    }
+
+    /** 展示路径可注入容错行；业务路径不传 source 时仍严格抛异常，绝不把密文当 token 用。 */
+    public function testResolveConnectionsIsStrictByDefaultAndTolerantWithSource(): void
+    {
+        $otherKey = new Encryptor(base64_encode(random_bytes(32)));
+        $this->pdo->prepare(
+            'INSERT INTO ' . AppConfig::TABLE_PLATFORM_CONNECTIONS . ' (platform, url, token) VALUES (?, ?, ?)'
+        )->execute(['gitee', 'https://gitee.com/api/v5', $otherKey->encrypt('gitee-token')]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->repo->resolveConnections();
+    }
+
+    /**
+     * 运行时配置模式（DI 构造 Settings 用）：坏凭据置空而非抛异常，
+     * 这样后台页面能正常打开并逐行提示；也绝不把密文当 token 发给 CI。
+     */
+    public function testListForDisplayRuntimeModeBlanksBadCipher(): void
+    {
+        $this->repo->save('gitlab', [
+            'url' => 'https://gitlab.example.com', 'token' => 'glpat-ok', 'username' => '', 'password' => '', 'description' => '',
+        ]);
+        $otherKey = new Encryptor(base64_encode(random_bytes(32)));
+        $this->pdo->prepare(
+            'INSERT INTO ' . AppConfig::TABLE_PLATFORM_CONNECTIONS . ' (platform, url, token) VALUES (?, ?, ?)'
+        )->execute(['gitee', 'https://gitee.com/api/v5', $otherKey->encrypt('gitee-token')]);
+
+        $display = $this->repo->listForDisplay(false);
+        $this->assertArrayHasKey('gitee', $display['errors']);
+
+        $byPlatform = [];
+        foreach ($display['rows'] as $row) {
+            $byPlatform[$row['platform']] = $row;
+        }
+        $this->assertSame('', $byPlatform['gitee']['token'], '解不开的凭据必须置空，不能发给 CI');
+        $this->assertSame('glpat-ok', $byPlatform['gitlab']['token'], '正常凭据不受影响');
+
+        $conns = $this->repo->resolveConnections($display['rows']);
+        $this->assertSame('', $conns['gitee']['token']);
+        $this->assertSame('https://gitee.com/api/v5', $conns['gitee']['base_url'], 'URL 等非机密字段仍可用');
+    }
+
+    /** 后台保存路径的 find(tolerant) 不抛异常，用户才有重填坏凭据的入口。 */
+    public function testFindTolerantKeepsCipherForReentry(): void
+    {
+        $otherKey = new Encryptor(base64_encode(random_bytes(32)));
+        $cipher = $otherKey->encrypt('gitee-token');
+        $this->pdo->prepare(
+            'INSERT INTO ' . AppConfig::TABLE_PLATFORM_CONNECTIONS . ' (platform, url, token) VALUES (?, ?, ?)'
+        )->execute(['gitee', 'https://gitee.com/api/v5', $cipher]);
+
+        $row = $this->repo->find('gitee', true);
+        $this->assertNotNull($row);
+        $this->assertSame($cipher, $row['token']);
+    }
 }

@@ -18,11 +18,37 @@ class Settings
 {
     /**
      * @param array<string,mixed> $config
+     * @param list<string> $credentialFailures 凭据解密失败的 DB platform 键（由 DI 注入）
      */
     public function __construct(
         private array $config,
-        private ?PlatformVersionRepository $platformVersions = null
+        private ?PlatformVersionRepository $platformVersions = null,
+        private array $credentialFailures = []
     ) {
+    }
+
+    /**
+     * 该平台凭据是否因解密失败被置空（而非「未配置」或「平台不可达」）。
+     *
+     * 只对需要凭据的探测有意义：Git 连通性 HEAD 探测、Registry /v2/ 版本头探测
+     * 不带认证，凭据坏了仍然能跑；Jenkins /api/json 版本探测带 Basic Auth，
+     * 凭据置空后必然 401，此时应显示「凭据不可用」而不是「未知」。
+     *
+     * 镜像仓库的 platform 键随 registry_type 变化（harbor / registry），两者任一失败都算。
+     */
+    public function credentialUnavailable(string $platform): bool
+    {
+        if (in_array($platform, ['harbor', 'registry'], true)) {
+            return in_array('harbor', $this->credentialFailures, true)
+                || in_array('registry', $this->credentialFailures, true);
+        }
+        return in_array($platform, $this->credentialFailures, true);
+    }
+
+    /** @return list<string> */
+    public function credentialFailures(): array
+    {
+        return $this->credentialFailures;
     }
 
     // Jenkins

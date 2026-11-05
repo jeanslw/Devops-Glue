@@ -82,11 +82,54 @@ class PlatformConnectionRepository
     }
 
     /**
+     * 容错读取：逐行解密并捕获失败，不让某个平台的坏凭据拖垮整个请求。
+     *
+     * 默认 $keepCipher=true（后台展示）：失败字段保留原密文，「已配置」仍成立，且 save()
+     * 遇到 enc:v1: 前缀会原样写回、不二次加密，用户重填前不丢数据。
+     * $keepCipher=false（运行时配置）：失败字段置空，绝不把密文当 token 发给 CI；
+     * 这样 DI 构造 Settings 不会抛异常，页面能正常渲染并逐行提示。
+     *
+     * @return array{rows: list<array<string,mixed>>, errors: array<string,string>}
+     */
+    public function listForDisplay(bool $keepCipher = true): array
+    {
+        if (!Database::tableExists($this->pdo, AppConfig::TABLE_PLATFORM_CONNECTIONS)) {
+            return ['rows' => [], 'errors' => []];
+        }
+        $rows = array_values($this->pdo->query(
+            'SELECT platform, url, token, username, password, description, created_at, updated_at'
+            . ' FROM ' . AppConfig::TABLE_PLATFORM_CONNECTIONS . ' ORDER BY platform'
+        )->fetchAll(\PDO::FETCH_ASSOC) ?: []);
+        $errors = [];
+        foreach ($rows as &$row) {
+            $platform = trim((string)($row['platform'] ?? ''));
+            foreach (['token', 'username', 'password'] as $col) {
+                $raw = (string)($row[$col] ?? '');
+                if (!str_starts_with($raw, Encryptor::PREFIX)) {
+                    continue;
+                }
+                try {
+                    $row[$col] = $this->encryptor->decrypt($raw);
+                } catch (\Throwable $e) {
+                    $errors[$platform] = $e->getMessage();
+                    if (!$keepCipher) {
+                        $row[$col] = '';
+                    }
+                }
+            }
+        }
+        unset($row);
+        return ['rows' => $rows, 'errors' => $errors];
+    }
+
+    /**
      * 取单个平台原始行（不存在返回 null）。
+     *
+     * $tolerant=true 时解密失败保留原密文、不抛异常，供后台保存路径使用：
      *
      * @return array<string,mixed>|null
      */
-    public function find(string $platform): ?array
+    public function find(string $platform, bool $tolerant = false): ?array
     {
         $stmt = $this->pdo->prepare(
             'SELECT platform, url, token, username, password, description, created_at, updated_at'
@@ -97,9 +140,17 @@ class PlatformConnectionRepository
         if ($row === false) {
             return null;
         }
-        $row['token']    = $this->encryptor->decrypt((string)($row['token'] ?? ''));
-        $row['username'] = $this->encryptor->decrypt((string)($row['username'] ?? ''));
-        $row['password'] = $this->encryptor->decrypt((string)($row['password'] ?? ''));
+        foreach (['token', 'username', 'password'] as $col) {
+            $raw = (string)($row[$col] ?? '');
+            if ($tolerant && str_starts_with($raw, Encryptor::PREFIX)) {
+                try {
+                    $row[$col] = $this->encryptor->decrypt($raw);
+                } catch (\Throwable) {
+                }
+            } else {
+                $row[$col] = $this->encryptor->decrypt($raw);
+            }
+        }
         return $row;
     }
 
@@ -149,12 +200,15 @@ class PlatformConnectionRepository
      * 解析 6 个平台的连接配置（DB 唯一权威、无 env 兜底）。
      * DB 行存在但某列空 → 该键空串；整行不存在 → DEFAULTS[platform] 代码默认。
      *
+     * $source 仅供后台展示路径传入 listForDisplay() 的容错行；业务调用不传，仍走严格 list()
+     *
+     * @param list<array<string,mixed>>|null $source
      * @return array<string,array<string,string>>
      */
-    public function resolveConnections(): array
+    public function resolveConnections(?array $source = null): array
     {
         $rows = [];
-        foreach ($this->list() as $row) {
+        foreach ($source ?? $this->list() as $row) {
             $platform = trim((string)($row['platform'] ?? ''));
             if ($platform !== '') {
                 $rows[$platform] = $row;

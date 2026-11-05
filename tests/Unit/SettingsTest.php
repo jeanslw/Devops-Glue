@@ -235,4 +235,44 @@ class SettingsTest extends TestCase
         ]))->getPlatformApiVersions();
         $this->assertSame('v3', $versions['gitlab'], 'config 显式覆盖优先于默认');
     }
+
+    /** 凭据解密失败平台按 DB platform 键精确判定，未失败的平台不得被连带标记。 */
+    public function testCredentialUnavailableTracksFailedPlatformsOnly(): void
+    {
+        $s = new Settings([], null, ['jenkins', 'gitee']);
+
+        $this->assertTrue($s->credentialUnavailable('jenkins'));
+        $this->assertTrue($s->credentialUnavailable('gitee'));
+        $this->assertFalse($s->credentialUnavailable('gitlab'));
+        $this->assertSame(['jenkins', 'gitee'], $s->credentialFailures());
+    }
+
+    /** 镜像仓库 platform 键随 registry_type 变化，harbor / registry 任一失败都要认。 */
+    public function testCredentialUnavailableCoversBothRegistryKeys(): void
+    {
+        $this->assertTrue((new Settings([], null, ['harbor']))->credentialUnavailable('registry'));
+        $this->assertTrue((new Settings([], null, ['registry']))->credentialUnavailable('harbor'));
+        $this->assertFalse((new Settings([], null, ['jenkins']))->credentialUnavailable('harbor'));
+    }
+
+    /** 未注入失败列表时全部可用（绝大多数单测与默认部署路径）。 */
+    public function testCredentialUnavailableDefaultsToNone(): void
+    {
+        $s = new Settings([]);
+        $this->assertSame([], $s->credentialFailures());
+        $this->assertFalse($s->credentialUnavailable('jenkins'));
+    }
+
+    /** 接线：DI 必须把解密失败平台传给 Settings，否则所有「凭据不可用」提示都不会出现。 */
+    public function testDiPassesCredentialFailuresToSettings(): void
+    {
+        $src = (string) file_get_contents(__DIR__ . '/../../config/container.php');
+        $this->assertStringContainsString("array_map('strval', array_keys(\$display['errors']))", $src);
+        $this->assertStringContainsString('->credentialUnavailable(', $src . (string) file_get_contents(
+            __DIR__ . '/../../src/Controller/MainController.php'
+        ));
+        $this->assertStringContainsString('credentialUnavailable', (string) file_get_contents(
+            __DIR__ . '/../../src/Controller/Admin/VersionController.php'
+        ));
+    }
 }

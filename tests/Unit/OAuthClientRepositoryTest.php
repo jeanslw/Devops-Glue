@@ -147,4 +147,56 @@ class OAuthClientRepositoryTest extends TestCase
         ]);
         $this->assertSame('env-secret', $merged['cd']['secret'], '删除后应回退 env 兜底');
     }
+
+    /**
+     * DATA_ENC_KEY 变更后：后台 OIDC 面板只判断 secret_set，必须仍可列出客户端，
+     * 否则 GET /api/admin/oidc_config 500 → 面板展不开、管理员无法重填。
+     */
+    public function testListForDisplaySurvivesUndecryptableSecret(): void
+    {
+        $otherKey = new Encryptor(base64_encode(random_bytes(32)));
+        $this->pdo->prepare(
+            'INSERT INTO ' . AppConfig::TABLE_OAUTH_CLIENTS . ' (client_id, secret, redirect_uri) VALUES (?, ?, ?)'
+        )->execute(['cd', $otherKey->encrypt('old-secret'), 'https://cd/cb']);
+
+        $rows = $this->repo->listForDisplay();
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('cd', $rows[0]['client_id']);
+        $this->assertStringStartsWith(Encryptor::PREFIX, (string)$rows[0]['secret'], '展示读取不解密，保留原密文');
+    }
+
+    /** 严格路径仍必须抛异常：绝不把密文当 secret 交给 OAuthService。 */
+    public function testResolveClientsStillRejectsUndecryptableSecret(): void
+    {
+        $otherKey = new Encryptor(base64_encode(random_bytes(32)));
+        $this->pdo->prepare(
+            'INSERT INTO ' . AppConfig::TABLE_OAUTH_CLIENTS . ' (client_id, secret, redirect_uri) VALUES (?, ?, ?)'
+        )->execute(['cd', $otherKey->encrypt('old-secret'), 'https://cd/cb']);
+
+        $this->expectException(\RuntimeException::class);
+        $this->repo->resolveClients();
+    }
+
+    /** 保存路径容错：解不开的旧 secret 不阻断重填，且不会被二次加密。 */
+    public function testFindTolerantAndSaveDoNotDoubleEncrypt(): void
+    {
+        $otherKey = new Encryptor(base64_encode(random_bytes(32)));
+        $cipher = $otherKey->encrypt('old-secret');
+        $this->pdo->prepare(
+            'INSERT INTO ' . AppConfig::TABLE_OAUTH_CLIENTS . ' (client_id, secret, redirect_uri) VALUES (?, ?, ?)'
+        )->execute(['cd', $cipher, 'https://cd/cb']);
+
+        $row = $this->repo->find('cd', true);
+        $this->assertNotNull($row);
+        $this->assertSame($cipher, $row['secret']);
+
+        $this->repo->save('cd', [
+            'secret' => $cipher, 'redirect_uri' => 'https://cd/cb', 'system' => 'cd', 'enabled' => true, 'description' => '',
+        ]);
+        $saved = (string)$this->pdo->query(
+            'SELECT secret FROM ' . AppConfig::TABLE_OAUTH_CLIENTS . " WHERE client_id = 'cd'"
+        )->fetchColumn();
+        $this->assertSame($cipher, $saved, 'enc:v1: 前缀须原样写回，不得二次加密');
+    }
 }

@@ -110,4 +110,22 @@ class PlatformConnectionWiringTest extends TestCase
         $this->assertSame('admin', $settings->getHarborConfig()['username']);
         $this->assertSame('admin', $settings->getJenkinsConfig()['user']);
     }
+
+    /**
+     * 迁移时 DATA_ENC_KEY 不一致：DI 构造 Settings 不得抛异常让所有页面 500，
+     * 否则后台根本没有机会显示「哪个平台解密失败」。坏凭据置空、URL 仍可读。
+     */
+    public function testSettingsStillBuildsWhenCipherCannotBeDecrypted(): void
+    {
+        $pdo = $this->memoryPdo();
+        $otherKey = new \App\Service\Encryptor(base64_encode(random_bytes(32)));
+        $pdo->prepare(
+            'INSERT INTO ' . AppConfig::TABLE_PLATFORM_CONNECTIONS . ' (platform, url, token) VALUES (?, ?, ?)'
+        )->execute(['gitee', 'https://gitee.com/api/v5', $otherKey->encrypt('gitee-token')]);
+
+        $settings = $this->buildContainer($pdo)->get(Settings::class);
+
+        $this->assertSame('https://gitee.com/api/v5', $settings->getGiteeConfig()['base_url']);
+        $this->assertSame('', $settings->getGiteeConfig()['token'], '解不开的凭据置空，不得把密文当 token');
+    }
 }

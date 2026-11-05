@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.11.5 (2026-11-06)
+
+- **Fixed**
+  - Fix a spurious 1061 ERROR log when containers create the same index concurrently on first boot .
+  - A platform credential that fails to decrypt no longer makes the whole page return 500: the DI-built runtime config is now tolerant , failures are reported per platform with a "✕ Decryption failed" badge shown after its "✓ Configured" status (hidden when unconfigured), other platforms render normally, and the broken credential can be re-entered directly.
+  - Fix the OIDC/SSO card becoming impossible to expand after the encryption key changes: the config endpoint only needs to know whether a secret is set, yet it decrypted strictly and returned 500.
+  - Fix Chinese API error messages in the English UI: requests now carry the interface language and the backend translates error messages accordingly; encryption/decryption errors are wired into i18n too.
+  - When platform credentials fail to decrypt, credential-dependent probes and statuses now report "Credential unavailable": Jenkins version probing is skipped and labelled instead of showing "unknown" or "unreachable".
+
 ## v2.11.4 (2026-11-03)
 
 - **Fixed**

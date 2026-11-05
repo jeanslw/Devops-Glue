@@ -18,7 +18,16 @@ export function getPermissions() { return currentPermissions; }
 export function mustChangeRequired() { return currentMustChange; }
 
 export function authHeaders() {
-    return token ? { 'Authorization': 'Bearer ' + token } : {};
+    const headers = {};
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    // 界面语言存在 localStorage（i18n.js），浏览器的 Accept-Language 与之无关。
+    // 显式带给后端，让 API 错误文案按当前界面语言翻译，而不是永远用默认 zh_CN。
+    try {
+        if (typeof window !== 'undefined' && window.__) {
+            headers['X-DG-Lang'] = window.__.lang === 'en' ? 'en' : 'zh_CN';
+        }
+    } catch (e) { /* 语言包未就绪时省略，后端回退默认 */ }
+    return headers;
 }
 
 export function hasPermission(permKey) {

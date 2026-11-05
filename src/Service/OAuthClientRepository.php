@@ -45,11 +45,34 @@ class OAuthClientRepository
     }
 
     /**
+     * 后台展示用：只判断凭据是否已设置，不解密 secret。
+     *
+     * oidcConfigPayload() 只需要 secret_set 布尔，明文 secret 永不下发；若走严格 list()
+     * 解密，DATA_ENC_KEY 变更时整接口 500，OIDC/SSO 面板会打不开，管理员也无法重填。
+     * 业务路径 resolveClients() 仍走严格 list()，绝不把密文当 secret 用。
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function listForDisplay(): array
+    {
+        if (!Database::tableExists($this->pdo, AppConfig::TABLE_OAUTH_CLIENTS)) {
+            return [];
+        }
+        return array_values($this->pdo->query(
+            'SELECT client_id, secret, redirect_uri, `system`, enabled, description, created_at, updated_at'
+            . ' FROM ' . AppConfig::TABLE_OAUTH_CLIENTS . ' ORDER BY client_id'
+        )->fetchAll(\PDO::FETCH_ASSOC) ?: []);
+    }
+
+    /**
      * 取单个客户端原始行（不存在返回 null）。
+     *
+     * $tolerant=true 时跳过解密、保留原密文，供后台保存路径使用：
+     * 解不开的旧 secret 留空时 encrypt() 会原样写回，不会二次加密。
      *
      * @return array<string,mixed>|null
      */
-    public function find(string $clientId): ?array
+    public function find(string $clientId, bool $tolerant = false): ?array
     {
         $stmt = $this->pdo->prepare(
             'SELECT client_id, secret, redirect_uri, `system`, enabled, description, created_at, updated_at'
@@ -60,7 +83,9 @@ class OAuthClientRepository
         if ($row === false) {
             return null;
         }
-        $row['secret'] = $this->encryptor->decrypt((string)($row['secret'] ?? ''));
+        if (!$tolerant) {
+            $row['secret'] = $this->encryptor->decrypt((string)($row['secret'] ?? ''));
+        }
         return $row;
     }
 
@@ -79,7 +104,8 @@ class OAuthClientRepository
         $enabled     = !empty($data['enabled']) ? 1 : 0;
         $description = trim((string)$data['description']);
 
-        if ($this->find($clientId) === null) {
+        // 只判行是否存在，不需要明文 secret；容错读取避免解不开旧密文时保存失败。
+        if ($this->find($clientId, true) === null) {
             $stmt = $this->pdo->prepare(
                 'INSERT INTO ' . AppConfig::TABLE_OAUTH_CLIENTS
                 . ' (client_id, secret, redirect_uri, `system`, enabled, description, created_at, updated_at)'
