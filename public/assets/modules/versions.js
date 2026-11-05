@@ -81,6 +81,7 @@ export async function loadVersions() {
         if (data && data.jenkins) {
             const j = currentVersions.jenkins || (currentVersions.jenkins = {});
             if (data.jenkins.detected_version != null) j.detected_version = data.jenkins.detected_version;
+            j.credential_unavailable = !!data.jenkins.credential_unavailable;
         }
         renderHarborCompat();
         renderJenkinsCompat();
@@ -125,7 +126,10 @@ function renderJenkinsCompat() {
     const j = currentVersions.jenkins || {};
     if (!j.configured) { el.style.display = 'none'; return; }
     const ver = j.detected_version || null;
-    const verText = ver ? ver : __.t('js.jenkins_version_unknown');
+    // 凭据解不开时版本探测已被跳过：显示原因，而不是笼统的「未知」。
+    const verText = j.credential_unavailable
+        ? __.t('common.credential_unavailable')
+        : (ver ? ver : __.t('js.jenkins_version_unknown'));
     el.style.display = 'block';
     el.innerHTML = '<strong>⚡ Jenkins</strong> · ' + __.t('js.jenkins_detected_version')
         + ': <code>' + esc(verText) + '</code>';

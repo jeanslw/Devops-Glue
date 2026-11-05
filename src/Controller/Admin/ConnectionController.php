@@ -49,9 +49,11 @@ class ConnectionController extends BaseAdminController
      */
     private function platformConnectionsPayload(): array
     {
-        $resolved = $this->platformConnections->resolveConnections();
+        // 逐行容错读取：某个平台凭据解不开时只标记该平台，不再让整个页面 500。
+        $display  = $this->platformConnections->listForDisplay();
+        $resolved = $this->platformConnections->resolveConnections($display['rows']);
         $rows = [];
-        foreach ($this->platformConnections->list() as $row) {
+        foreach ($display['rows'] as $row) {
             $p = trim((string)($row['platform'] ?? ''));
             if ($p !== '') {
                 $rows[$p] = $row;
@@ -88,6 +90,17 @@ class ConnectionController extends BaseAdminController
                 $configured  = $url !== '' && $tokenSet;
             }
 
+            // 解密失败按 DB 里实际的 platform 键标记；镜像仓库两键都要查，
+            // 否则切过 registry_type 的库会漏报。
+            $decryptError = (string)($display['errors'][$p] ?? '');
+            if ($decryptError === '' && $isRegistry) {
+                foreach (PlatformConnectionRepository::REGISTRY_PLATFORMS as $rp) {
+                    if (isset($display['errors'][$rp])) {
+                        $decryptError = (string)$display['errors'][$rp];
+                        break;
+                    }
+                }
+            }
             $platforms[] = [
                 'platform'     => $p,
                 'url'          => $url,
@@ -97,6 +110,7 @@ class ConnectionController extends BaseAdminController
                 'description'  => (string)($row['description'] ?? ''),
                 'registry_type' => $isRegistry ? $this->appSettings->getRegistryType() : null,
                 'configured'   => $configured,
+                'decrypt_error' => $decryptError,
                 'hosting'      => in_array($p, AppConfig::GIT_PLATFORMS, true) ? HostingType::classify($url) : null,
                 'ci_capable'   => $p === 'jenkins' || isset(AppConfig::GIT_PLATFORM_CI_CAPABILITIES[$p]),
                 'ci_enabled'   => $p === 'jenkins' ? $jenkinsEnabled : in_array($p, $gitCiPlatforms, true),
@@ -170,7 +184,7 @@ class ConnectionController extends BaseAdminController
                     }
 
                     if ($isRegistry && $platform !== $registryTarget) {
-                        $oldRow = $this->platformConnections->find($platform);
+                        $oldRow = $this->platformConnections->find($platform, true);
                         if (is_array($oldRow)) {
                             $carryToken    = (string)($oldRow['token'] ?? '');
                             $carryPassword = (string)($oldRow['password'] ?? '');
@@ -229,7 +243,7 @@ class ConnectionController extends BaseAdminController
                         }
                         continue;
                     }
-                    $existing = $this->platformConnections->find($platform);
+                    $existing = $this->platformConnections->find($platform, true);
                     $url      = trim((string)($p['url'] ?? ''));
                     $username = trim((string)($p['username'] ?? ''));
                     // 切换 registry_type 时旧键行的凭据由 $carry* 兜底，避免凭据丢失。

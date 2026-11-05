@@ -102,10 +102,17 @@ class I18nService
 
     /**
      * 从请求中检测语言
-     * 优先级：query param ?lang= > Accept-Language header > 默认语言
+     * 优先级：X-DG-Lang（前端界面语言）> query param ?lang= > Accept-Language > 默认语言
+     *
+     * 前端把界面语言存在 localStorage，浏览器 Accept-Language 与之无关；
+     * 不显式带过来会导致「界面英文、API 报错中文」。
      */
     public function detectLocale(\Psr\Http\Message\ServerRequestInterface $request): string
     {
+        $uiLang = $request->getHeaderLine('X-DG-Lang');
+        if (in_array($uiLang, ['zh_CN', 'en'], true)) {
+            return $uiLang;
+        }
 
         $queryLang = $request->getQueryParams()['lang'] ?? '';
         if (in_array($queryLang, ['zh_CN', 'en'])) {

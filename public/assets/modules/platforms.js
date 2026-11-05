@@ -110,13 +110,23 @@ function renderPlatforms() {
         const mismatchWarn = typeMismatch
             ? '<div style="margin:6px 0 0 18px;color:#dc2626;font-size:12px;">⚠ ' + esc(__.t('platform_conn.registry_type_mismatch')) + '</div>'
             : '';
+        // 仅在「已配置」且凭据解不开时标在本行状态之后；徽标不带平台名（本行已有名字）。
+        // 未配置的行不显示——没有可用凭据时谈解密失败只会误导。hover 给出原因与处置。
+        const decryptBadge = (ok && p.decrypt_error)
+            ? '<span style="margin-left:8px;padding:1px 6px;border-radius:4px;background:#fef2f2;color:#dc2626;font-size:11px;font-weight:600;"'
+                + ' title="' + esc(p.decrypt_error) + ' — ' + esc(__.t('platform_conn.decrypt_hint')) + '">'
+                + '✕ ' + esc(__.t('platform_conn.decrypt_failed')) + '</span>'
+            : '';
         return '<div class="pc-row" data-key="' + esc(def.key) + '">'
             + '<div class="pc-row-hd" onclick="togglePlatformRow(this)">'
                 + '<span class="pc-caret">▸</span>'
                 + '<span style="width:10px;height:10px;border-radius:50%;background:' + dot + ';flex-shrink:0;display:inline-block;"></span>'
                 + '<span class="pc-name">' + esc(platformName(def)) + hostingBadge + '</span>'
-                + '<span style="margin-left:auto;color:' + (ok ? '#16a34a' : '#dc2626') + ';font-weight:600;font-size:12px;">'
-                    + (ok ? '✓ ' : '✗ ') + (ok ? __.t('sys.configured') : __.t('sys.not_configured'))
+                + '<span style="margin-left:auto;display:inline-flex;align-items:center;">'
+                    + '<span style="color:' + (ok ? '#16a34a' : '#dc2626') + ';font-weight:600;font-size:12px;">'
+                        + (ok ? '✓ ' : '✗ ') + (ok ? __.t('sys.configured') : __.t('sys.not_configured'))
+                    + '</span>'
+                    + decryptBadge
                 + '</span>'
                 + '<button class="btn btn-sm btn-del" onclick="event.stopPropagation();onPlatformDelete(\'' + esc(def.key) + '\')">🗑 ' + esc(__.t('platform_conn.delete')) + '</button>'
             + '</div>'

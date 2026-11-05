@@ -543,6 +543,7 @@ class MainController extends BaseController
                 'kind'       => 'git',
                 'enabled'    => in_array($ci, $enabled, true),
                 'configured' => !empty($cfg['base_url'] ?? '') && !empty($cfg['token'] ?? ''),
+                'credential_unavailable' => $this->config->credentialUnavailable($platform),
             ];
         }
 
@@ -553,6 +554,7 @@ class MainController extends BaseController
             'kind'       => 'standalone',
             'enabled'    => in_array(AppConfig::PROVIDER_JENKINS, $enabled, true),
             'configured' => !empty($jenkins['url'] ?? ''),
+            'credential_unavailable' => $this->config->credentialUnavailable(AppConfig::PROVIDER_JENKINS),
         ];
 
         $sources[] = [
@@ -561,6 +563,7 @@ class MainController extends BaseController
             'kind'       => 'standalone',
             'enabled'    => $this->appSettings->getCustomPushEnabled(),
             'configured' => $this->config->getCustomBuildProviders() !== [],
+            'credential_unavailable' => false,
         ];
 
         return $sources;

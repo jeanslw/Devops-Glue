@@ -54,7 +54,8 @@ class OidcController extends BaseAdminController
 
 
         $clients = [];
-        foreach ($this->oauthClients->list() as $row) {
+        // 只回 secret_set 布尔，不解密：DATA_ENC_KEY 变更时仍能打开 OIDC/SSO 面板并重填。
+        foreach ($this->oauthClients->listForDisplay() as $row) {
             $id = trim((string)($row['client_id'] ?? ''));
             if ($id === '') {
                 continue;
@@ -131,7 +132,7 @@ class OidcController extends BaseAdminController
                         $this->oauthClients->delete($id);
                         continue;
                     }
-                    $existing = $this->oauthClients->find($id);
+                    $existing = $this->oauthClients->find($id, true);
                     $secret   = (string)($existing['secret'] ?? '');
                     $redirect = (string)($existing['redirect_uri'] ?? '');
                     if (array_key_exists('secret', $c)) {

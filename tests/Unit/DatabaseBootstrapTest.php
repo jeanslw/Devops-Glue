@@ -1506,4 +1506,45 @@ class DatabaseBootstrapTest extends TestCase
         $pdo->setAttribute(\PDO::ATTR_DEFAULT_FETCH_MODE, \PDO::FETCH_ASSOC);
         return $pdo;
     }
+
+    /**
+     * 多容器首启并发建索引会撞 MySQL 1061；「同名索引已存在」是幂等成功，
+     * 不得记成 ERROR。但真正的 DDL 失败（语法错 / 权限不足）仍须照常上报。
+     */
+    public function testDuplicateIndexErrorIsIdempotentButOtherDdlErrorsAreNot(): void
+    {
+        $dup = new \PDOException("SQLSTATE[42000]: Syntax error or access violation: 1061 Duplicate key name 'idx_api_access_logs_result'");
+        $dup->errorInfo = ['42000', 1061, "Duplicate key name 'idx_api_access_logs_result'"];
+        $this->assertTrue(\App\Service\SchemaMigrator::isDuplicateIndexError($dup));
+
+        // 包装层丢掉 errorInfo 时，仅凭消息也要能识别
+        $byMessage = new \PDOException("SQLSTATE[42000]: 1061 Duplicate key name 'idx_x'");
+        $this->assertTrue(\App\Service\SchemaMigrator::isDuplicateIndexError($byMessage));
+
+        // SQLite 分支的历史库冲突
+        $this->assertTrue(\App\Service\SchemaMigrator::isDuplicateIndexError(
+            new \PDOException('index idx_x already exists')
+        ));
+
+        $syntax = new \PDOException('SQLSTATE[42000]: Syntax error near CREATE INDEX');
+        $syntax->errorInfo = ['42000', 1064, 'syntax error'];
+        $this->assertFalse(\App\Service\SchemaMigrator::isDuplicateIndexError($syntax));
+        $this->assertFalse(\App\Service\SchemaMigrator::isDuplicateIndexError(
+            new \PDOException('SQLSTATE[42000]: Access denied for user')
+        ));
+        $this->assertFalse(\App\Service\SchemaMigrator::isDuplicateIndexError(
+            new \RuntimeException('Duplicate key name')
+        ));
+    }
+
+    /** createIndex 的 catch 必须挂上幂等判定，否则每次并发首启都会刷一条 ERROR 日志。 */
+    public function testCreateIndexWiringUsesDuplicateIndexGuard(): void
+    {
+        $source = (string) file_get_contents(__DIR__ . '/../../src/Service/SchemaMigrator.php');
+        $this->assertStringContainsString('self::isDuplicateIndexError($e)', $source);
+        $this->assertStringContainsString(
+            'if (self::isDuplicateIndexError($e)) {',
+            $source
+        );
+    }
 }

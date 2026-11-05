@@ -188,15 +188,18 @@ class ConfigController extends BaseAdminController
 
 
             $git = fn(array $cfg) => !empty($cfg['base_url']) && !empty($cfg['token']);
+            // 凭据解不开时 token 被置空，configured=false；带上 credential_unavailable
+            // 让前端能区分「未配置」与「已配置但需重填凭据」。
+            $unavailable = fn(string $p): bool => $c->credentialUnavailable($p);
 
             return $this->output($response, [
                 'platforms' => [
-                    'jenkins'     => ['configured' => !empty($jenkins['url'])],
-                    'gitlab'      => ['configured' => $git($gitlab)],
-                    'github'      => ['configured' => $git($github)],
-                    'gitee'       => ['configured' => $git($gitee)],
-                    'gitea'       => ['configured' => $git($gitea)],
-                    'harbor'      => ['configured' => !empty($harbor['url']) && ($c->getRegistryType() === 'registry' || !empty($harbor['password']))],
+                    'jenkins'     => ['configured' => !empty($jenkins['url']), 'credential_unavailable' => $unavailable('jenkins')],
+                    'gitlab'      => ['configured' => $git($gitlab), 'credential_unavailable' => $unavailable('gitlab')],
+                    'github'      => ['configured' => $git($github), 'credential_unavailable' => $unavailable('github')],
+                    'gitee'       => ['configured' => $git($gitee), 'credential_unavailable' => $unavailable('gitee')],
+                    'gitea'       => ['configured' => $git($gitea), 'credential_unavailable' => $unavailable('gitea')],
+                    'harbor'      => ['configured' => !empty($harbor['url']) && ($c->getRegistryType() === 'registry' || !empty($harbor['password'])), 'credential_unavailable' => $unavailable('harbor')],
                 ],
                 // 平台级 tag 设置（清理/回填/日志关键字）
                 'stale_tag_cleanup_enabled' => $this->appSettings->getStaleTagCleanupEnabled(),

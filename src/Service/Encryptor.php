@@ -27,6 +27,23 @@ class Encryptor
     public const TAG_LENGTH = 16;
     public const KEY_LENGTH = 32;
 
+    /**
+     * 异常文案特征子串 → i18n 键（按定义的顺序做 str_contains 匹配）。
+     *
+     * 异常 message 保持中文（日志 / CLI 可读），由 BaseController::jsonError()
+     * 在下发前按界面语言翻译，避免英文界面出现「查询失败: 字段解密失败…」这类硬编码中文。
+     * 用子串而非全等：部分文案是动态拼接的（如 rawKey() 会带上生成命令）。
+     *
+     * @var array<string,string>
+     */
+    public const MESSAGE_KEYS = [
+        '字段解密失败' => 'encryptor.decrypt_failed',
+        '密文格式损坏' => 'encryptor.cipher_corrupt',
+        '字段加密失败' => 'encryptor.encrypt_failed',
+        '未配置 DATA_ENC_KEY' => 'encryptor.missing_key',
+        '必须是 base64 编码的 32 字节密钥' => 'encryptor.invalid_key',
+    ];
+
     private ?string $key = null;
 
     /**

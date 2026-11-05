@@ -107,7 +107,12 @@ class VersionController extends BaseAdminController
             }
         }
 
-        if (!empty($this->config->getJenkinsConfig()['url'])) {
+        // Jenkins 版本探测走 /api/json + Basic Auth；凭据解不开时已被置空，
+        // 再发请求只会拿到 401 并显示「未知」。直接标注「凭据不可用」，
+        // 让管理员知道要去平台管理页重填，而不是去查 Jenkins 是否宕机。
+        $jenkinsCredentialUnavailable = $this->config->credentialUnavailable('jenkins');
+        $result['jenkins']['credential_unavailable'] = $jenkinsCredentialUnavailable;
+        if (!empty($this->config->getJenkinsConfig()['url']) && !$jenkinsCredentialUnavailable) {
             try {
                 $result['jenkins']['detected_version'] = $this->jenkins?->getVersion();
             } catch (\Throwable $e) {

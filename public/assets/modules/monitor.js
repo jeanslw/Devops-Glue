@@ -59,6 +59,13 @@ export async function loadMonitor() {
             if (!s.enabled) continue; // 只展示已启用的 CI 平台
             const name = __.t('build.mode_' + s.ci);
 
+            // 凭据解不开（DATA_ENC_KEY 变更）时明确标注，不要误报成「未配置」或「不可达」：
+            // 平台是配好的，只是需要去平台管理页清空重填。
+            if (s.credential_unavailable) {
+                items.push({ icon: '🔑', name: name, ver: '', stat: __.t('common.credential_unavailable'), key: 'common.credential_unavailable', cls: 'err', state: 'err' });
+                continue;
+            }
+
             if (s.ci === 'jenkins') {
                 if (!s.configured) {
                     items.push({ icon: '⚪', name: name, ver: '', stat: __.t('common.not_configured'), key: 'common.not_configured', cls: 'off', state: 'off' });
