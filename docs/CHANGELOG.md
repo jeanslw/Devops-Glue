@@ -3,31 +3,29 @@
 ## v2.11.4 (2026-11-03)
 
 - **Fixed**
-  - Artifacts table restores the image digest field, lost during the v2.8.0 rename; it is added back automatically on upgrade/deploy.
-  - Image sync and scan sync can now report the image digest; when not reported and the tag is verified, it is resolved from the registry and persisted.
+  - The artifacts table restores the image digest field, lost during the v2.8.0 rename; the column is added back automatically on upgrade/deploy.
+  - Image sync and scan sync can now report the image digest; when it is not reported and the tag is verified, the digest is resolved from the registry and persisted.
   - Artifact API responses and queries return the image digest.
-  - Database time storage and writes are unified to UTC; all repositories now persist build/pipeline/log timestamps in UTC instead of the container local time, fixing cross-timezone display drift and the SQLite incremental-schema default-value gap.
-  - Joint-deployment docs add from-scratch prerequisites (prepare two environment examples, enable devops-cd), and fix the container-rebuild steps that omitted the CD service and failed to note that editing the root .env requires rebuilding the container rather than restart; also correct the CD table-creation wording to state that CD builds its own tables per its migration mode (not Glue).
-  - Fix forced first-login password-change deadlock: a non-super-admin account (lacking ci.users.password) was locked out and had no way to reach the change-password page when must_change_password=1; the self-service change-password endpoint no longer requires that permission (safety is guaranteed by verifying the old password), the frontend now unconditionally shows the entry and pins the user to the change-password tab while forced, and the username dropdown gains a persistent "Change Password" entry.
-  - Fix misleading registry display: the map-list and platform endpoints now return the address field named after the actual configured type (Harbor → harbor_url, standard Registry → registry_url) — a single address field with no redundant type field, removing the "two configured / type mismatch" ambiguity; the topology view infers the type from the field name and no longer forces the /harbor link for Registry.
-  - OpenAPI docs (zh/en) rename Harbor to Container Registry in the "three-party mapping" title, aligning with the registry-type naming.
-  - Fix image-tag cache refresh regression: a manual refresh (force=1) that fails to parse a tag (CI transient failure or build logs purged by retention) previously wiped the already-resolved tag/digest via REPLACE INTO (page fell back from "has tag" to "no tag"); now the cache is only written back when a tag is actually resolved this time.
-  - Harden the one-off timezone migration script: zero dates (0000-00-00 00:00:00) were previously converted to an invalid year and written back (data-corruption risk), and values with fractional seconds were skipped outright (missed migration); now a strict format check is added — zero dates are written as NULL and millisecond values are converted normally.
-  - Correct the display-timezone comments: an empty string actually falls back to UTC (not "follow browser"); align the comments in AppSettingRepository and SystemController to remove the misleading wording.
+  - Database time storage and writes are unified to UTC; all repositories now persist build/pipeline/log timestamps in UTC instead of the container's local time, fixing cross-timezone display drift and the missing defaults in SQLite incremental schema creation.
+  - Fix the forced first-login password-change deadlock: a non-super-admin account was locked out when must_change_password=1; the username dropdown now has a permanent "Change Password" entry.
+  - OpenAPI docs rename Harbor to Container Registry in the "three-party mapping" title, aligning with the registry-type naming.
+  - Fix the image-tag cache refresh flaw: a manual refresh parses empty on a transient CI failure or when build logs have been purged by the retention policy; the cache is now written back only when a tag is actually resolved this time.
+  - Harden the legacy timezone migration script: fix zero dates being converted to an invalid year and written back, and values with milliseconds being skipped outright; a strict format check is now applied and millisecond values are converted normally.
+  - Correct the display-timezone comments: an empty string actually falls back to UTC; align the wording of the comments to remove the misleading description.
 - **Added**
   - A migration script backfills missing image digests from the registry by repository and tag.
   - The tag backfill task now also resolves and backfills the image digest while backfilling tags, and fixes its hard-coded harbor connection key so registry-type deployments can fetch the connection correctly.
   - When extracting the image tag from build logs, the sha256 is parsed from the successful-push line as the image digest and cached, returned together with backfills and API responses; the fallback backfill prefers the log digest and falls back to registry resolution when absent.
-  - Image sync, scan sync and custom-push report now uniformly take the image digest from the registry's current state: a reported digest that differs from the registry's is overwritten by the registry, and an absent one is resolved from the registry; the build and push records views gain an image digest column.
-  - The image-tag log cache table gains a status field, custom_push reporting/write-back/log-backfill function, and dual verification of tag name and digest.
-  - A configurable display timezone (admin console → Data Management): the frontend renders all UTC timestamps in this timezone; defaults to UTC, with a dropdown of common timezones plus a free-text field for any IANA timezone, validated server-side.
-  - A one-off migration script `cli/migrate-timezone.php` converts legacy local-time timestamps in the database to UTC (dry-run by default; `--from-tz` selects the source timezone, `--apply` writes). Run it before upgrading to the UTC-storing release.
+  - Image sync, scan sync and custom-push reporting now uniformly take the registry's current digest as authoritative: a reported digest that differs from the registry's is overwritten by the registry, and an absent one is resolved from the registry and written.
+  - The image-tag log cache table gains a status field, custom_push reporting/write-back/log-backfill support, and dual verification of tag name and digest.
+  - A configurable display timezone in Data Management: the frontend renders all UTC timestamps in this timezone; defaults to UTC and is validated server-side.
+  - The UTC migration script converts legacy local-time timestamps in the database to UTC; run it before upgrading to the release that stores times in UTC.
 - **Optimized**
   - Empty image digests no longer overwrite existing values, supporting historical records that did not report a digest.
   - Image-tag projection now resolves and backfills by pipeline instead of aggregating by commit sha, fixing the collapse where repeated builds of the same commit produced multiple tags but were all wrongly shown with the same tag.
-  - Image-tag log backfill now writes only CI-success candidates and follows the registry's current digest: a different digest updates to the registry's, instead of being blindly skipped when an in-house same-name tag exists; identical entries are skipped naturally and the run stays safe to re-run.
+  - Image-tag log backfill now writes only candidates from successful CI builds and takes the registry's current digest as authoritative.
 - **Changed**
-  - Removed the `TZ` setting from `docker-compose.yml` so the container runs in UTC and no longer pollutes the database or PHP timezone.
+  - Docker drops the timezone setting so the container runs in UTC, avoiding pollution of the database timezone.
 - **Refactored**
   - Database-related code is split from a single file into several single-responsibility files: schema migration, seeding, data repair, distributed lock, and bootstrap orchestration, for easier maintenance.
 
