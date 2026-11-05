@@ -106,9 +106,29 @@ try {
                 if ($v === '') {
                     continue;
                 }
-                $dt = \DateTime::createFromFormat('Y-m-d H:i:s', (string) $v, new \DateTimeZone($fromTz));
-                if ($dt === false) {
-                    fwrite(STDERR, "  警告：{$table}.{$col}={$v} 无法按 {$fromTz} 解析，跳过该行此列\n");
+                $v = (string) $v;
+                // 严格格式校验：仅接受 Y-m-d H:i:s（可选毫秒）。避免 createFromFormat 对
+                // 零日期在某些 PHP 版本返回对象+警告（非 false）而被换算成非法年份写回造成
+                // 数据损坏；也避免带毫秒的值被 createFromFormat 判为不可解析而直接跳过（漏迁移）。
+                $matched = preg_match('/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(\.\d+)?$/', $v, $m) === 1;
+                if (!$matched) {
+                    fwrite(STDERR, "  警告：{$table}.{$col}={$v} 时间格式异常，跳过该行此列\n");
+                    continue;
+                }
+                $clean = "{$m[1]}-{$m[2]}-{$m[3]} {$m[4]}:{$m[5]}:{$m[6]}";
+                // 零日期（含 0000 年或 00 月/日）无实际意义，按 NULL 处理，避免换算成非法年份写回
+                if ($m[1] === '0000' || $m[2] === '00' || $m[3] === '00') {
+                    $sets[] = "{$col} = ?";
+                    $params[] = null;
+                    continue;
+                }
+                $dt = \DateTime::createFromFormat('Y-m-d H:i:s', $clean, new \DateTimeZone($fromTz));
+                $dtErrors = \DateTime::getLastErrors();
+                if (!is_array($dtErrors)) {
+                    $dtErrors = ['error_count' => 0, 'warning_count' => 0];
+                }
+                if ($dt === false || $dtErrors['warning_count'] > 0 || $dtErrors['error_count'] > 0) {
+                    fwrite(STDERR, "  警告：{$table}.{$col}={$v} 无法按 {$fromTz} 安全解析，跳过该行此列\n");
                     continue;
                 }
                 $dt->setTimezone(new \DateTimeZone($toTz));

@@ -492,11 +492,11 @@ class AppSettingRepository
         $this->setString(AppConfig::SETTING_OIDC_ID_TOKEN_TTL, (string)$ttl);
     }
 
-    // ─── 显示时区（前端按此 TZ 渲染 UTC 时间；空串=回退浏览器时区）───
+    // ─── 显示时区（前端按此 TZ 渲染 UTC 时间；空串=前端回落 UTC 默认，非浏览器时区）───
 
     /**
      * 当前显示时区（IANA，如 Asia/Shanghai / America/New_York）。空串表示未配置，
-     * 前端回退到浏览器本地时区。
+     * 前端回落显示 UTC（系统默认），并非按浏览器本地时区渲染。
      */
     public function getDisplayTimezone(): string
     {
@@ -504,7 +504,7 @@ class AppSettingRepository
     }
 
     /**
-     * 设置显示时区；空串清除配置（回退浏览器时区）。
+     * 设置显示时区；空串清除配置（前端回落 UTC 默认，不跟随浏览器）。
      */
     public function setDisplayTimezone(string $tz): void
     {
