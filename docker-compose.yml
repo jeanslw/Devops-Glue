@@ -234,9 +234,6 @@ services:
 #      # ── CI API ──
 #      #CI_API_URL: http://nginx
 #      #CI_API_TOKEN: dg_xxx
-#      # ── SSO / OIDC ──
-#      CD_OIDC_SECRET: ${CD_OIDC_SECRET:-}
-#      CD_OIDC_REDIRECT_URI: ${CD_OIDC_REDIRECT_URI:-}
 #    ports:
 #      - "${CD_BIND_IP:-127.0.0.1}:8081:8081"
 #    restart: unless-stopped
