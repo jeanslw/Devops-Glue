@@ -215,7 +215,7 @@ export async function resolvePullTag(idx, force) {
         const res = await fetch('/api/build/' + encodePath(currentPullPath) + '/pipelines/' + runId + '/resolve-tag', {
             method: 'POST',
             headers: Object.assign({'Content-Type':'application/json'}, authHeaders()),
-            body: JSON.stringify({ sha: r.sha || '', force: !!force, status: r.status || '' })
+            body: JSON.stringify({ sha: r.sha || '', force: !!force })
         });
         if (handle401(res)) return;
         if (!res.ok) throw new Error(await readErrorMessage(res));

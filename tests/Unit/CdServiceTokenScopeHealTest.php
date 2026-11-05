@@ -55,9 +55,14 @@ class CdServiceTokenScopeHealTest extends TestCase
         $resolved = $tokens->resolve(hash('sha256', $legacy['token']));
         $this->assertNotNull($resolved, '自愈不得改动摘要/启用态：原明文必须继续可用（CD 无需换 Token）');
         $this->assertSame(
-            array_merge($this->legacyScopes(), [AppConfig::API_SCOPE_GIT]),
+            array_merge($this->legacyScopes(), [AppConfig::API_SCOPE_GIT, AppConfig::API_SCOPE_REGISTRY_READ]),
             $resolved['scopes'],
-            '只补不删：原有顺序不变，新增的 git 追加在尾部'
+            '只补不删：原有顺序不变，新增的 git / registry.read 追加在尾部'
+        );
+        $this->assertContains(
+            AppConfig::API_SCOPE_REGISTRY_READ,
+            $resolved['scopes'],
+            '存量 CD 凭据升级后必须能查镜像仓库，否则默认拉不到镜像'
         );
     }
 

@@ -655,7 +655,7 @@ Call `POST /api/build/{path}/registry-sync` with `ci_status` (required), `tag` (
 
 ### Q: On a `registry:2` deployment, how do I list the projects / repositories / tags in the image registry?
 
-Use `/api/registry/*` (scope `registry.read` — tokens that already hold that scope keep working; note the **CD service credential does not include `registry.read`**, so grant it to an API token in *API Management* first). It is registry-type agnostic — Harbor and `registry:2` both work:
+Use `/api/registry/*` (scope `registry.read` — tokens that already hold that scope keep working; since v2.11.4 the **CD service credential includes `registry.read` by default**, and existing credentials are healed on the first bootstrap after upgrading). It is registry-type agnostic — Harbor and `registry:2` both work:
 
 ```bash
 curl "http://URL/api/registry/projects" -H "Authorization: Bearer $TOKEN"

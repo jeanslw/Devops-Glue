@@ -148,7 +148,7 @@ class ApiTokenServiceTest extends TestCase
         $list = $this->service->listTokens();
         $this->assertSame(['git', 'build.write'], $list[0]['scopes'], '列表应显示编辑后的 scope');
         $this->assertSame(
-            ['git.branches', 'git.tags', 'git.refs', 'trigger', 'retry', 'cancel'],
+            ['git.branches', 'git.tags', 'git.refs', 'trigger', 'retry', 'cancel', 'resolve-tag'],
             $list[0]['capabilities'],
             '能力清单应随 scope 重算（去重且保持目录顺序；git 展开为三个只读端点）'
         );
@@ -245,9 +245,9 @@ class ApiTokenServiceTest extends TestCase
         $this->assertSame($digest, $row['token_hash'], '补齐 scope 不得改动摘要：调用方无需换 token');
         $this->assertNotNull($this->service->resolve($hash), '原明文必须继续可用（CD 无需更换 CI_API_TOKEN）');
         $this->assertSame(
-            ['build.read', 'build.write', 'git', 'rbac.user.write'],
+            ['build.read', 'build.write', 'git', 'rbac.user.write', 'registry.read'],
             $this->service->resolve($hash)['scopes'],
-            '只补不删：原有顺序不变，新 scope 追加在尾部'
+            '只补不删：原有顺序不变，新增的 registry.read 追加在尾部'
         );
     }
 

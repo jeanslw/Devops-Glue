@@ -311,7 +311,7 @@ Steps:
 |---|---|
 | `main` | Read-only: job list, mappings, git platforms, git discovery |
 | `git` | Read-only: git branches / tags (includes the combined `/api/git/{path}/refs`, used by CD's build page to pick a ref) |
-| `registry.read` | Read-only: Harbor projects / repositories / tags; also all `/api/registry/*` endpoints for **both** registry types (`harbor` / `registry:2`). Not included in the CD service credential |
+| `registry.read` | Read-only: Harbor projects / repositories / tags; also all `/api/registry/*` endpoints for **both** registry types (`harbor` / `registry:2`). Included in the CD service credential by default |
 | `harbor.scan` | Trigger Harbor image scans |
 | `build.read` | Read-only: build pipelines / logs / branches |
 | `build.write` | Write: trigger / retry / cancel builds |
@@ -355,7 +355,7 @@ Above the token list there is also an **🔌 Integrated services** card; current
 - **How to toggle**: the **Enable** checkbox on the card is the switch (same interaction as the switches on the Platform Management page) — **tick = enable** (issues the service token in the same transaction), **untick = disable (freeze)**. Both directions ask for confirmation first, and cancelling that dialog or a failed request reverts the checkbox to its previous state.
 - **Status**: ⚪ not enabled (if the credential is merely frozen with the service, the card adds a line saying re-enabling restores the same token) / ✅ enabled (auto provision) / ✅ enabled (manual provision) / ⚠️ enabled but credential dead (red; the checkbox then falls back to unticked — see below).
 - **Provision mode (`provision`)**: captured from this platform's **current migration mode** ("Data Management → Migration mode") **at the moment you tick Enable** — **switching the migration mode afterwards does not change it**. While not enabled the card shows "Provision mode when enabled", i.e. what would be written if you enabled now.
-- **Enable (first time)**: tick **Enable** on the right of the card and confirm; in a single transaction it issues a restricted **service token** (`build.read` + `build.write` + `git` + `rbac.user.write`; no admin endpoint scopes), whose plaintext is **shown only once** — paste it into CD's `CI_API_TOKEN`. That token (named `cd-service`) appears in the list below right away.
+- **Enable (first time)**: tick **Enable** on the right of the card and confirm; in a single transaction it issues a restricted **service token** (`build.read` + `build.write` + `git` + `rbac.user.write` + `registry.read`; no admin endpoint scopes), whose plaintext is **shown only once** — paste it into CD's `CI_API_TOKEN`. That token (named `cd-service`) appears in the list below right away.
 - **Enable (restore)**: if the previous action was **Disable (freeze)**, enabling again does **not** issue a new token — the platform simply re-activates the *very same* one, whose original plaintext keeps working, so **CD's `CI_API_TOKEN` needs no change** (the confirm dialog says "♻ restore" and no plaintext popup appears).
 - **Disable (freeze)**: untick **Enable** and confirm; CD immediately rejects every request and the paired service token is **disabled** (`enabled=0`) in the same transaction. **Disabled ≠ burned**: both the credential record and the binding are kept, CD's tables and data are **not** deleted, and **enabling again restores the very same token** (the original plaintext keeps working — no CD change).
 - **Permission**: this page is `super_admin` only, and enabling / disabling is likewise `super_admin` only.
@@ -538,7 +538,7 @@ In "User Management → Add user", watch the **"Access Systems"** field:
 **Step 3 · Enable the "integrated service" in the Glue admin (authorize CD)**
 Path: the **🔌 Integrated Services** card at the top of the "**API Management**" page → tick "Enable" on `CD 部署服务` (CD deployment service) → confirm.
 
-- In the same transaction Glue issues a scope-limited service token (named `cd-service`, with `build.read` / `build.write` / `git` / `rbac.user.write`);
+- In the same transaction Glue issues a scope-limited service token (named `cd-service`, with `build.read` / `build.write` / `git` / `rbac.user.write` / `registry.read`);
 - **The plaintext is shown only once** — copy it into CD's `CI_API_TOKEN`;
 - Ticking "Enable" is also the moment CD is authorized; **table creation is performed by CD itself per its migration mode (not by Glue)**: under `provision=auto` (default, following `DB_AUTO_MIGRATE=true`) CD creates its tables in the shared database automatically, whereas under `provision=manual` the operator must first run `../devops_cd/database/init_mysql.sql` by hand; if the tables are not ready CD's login reports `cd_not_deployed` (a prerequisite for CD to work at all);
 - ✅ Confirm: the card reads "✅ enabled" and `cd-service` appears in the token list;

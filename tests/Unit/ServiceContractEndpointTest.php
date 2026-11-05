@@ -206,6 +206,29 @@ class ServiceContractEndpointTest extends TestCase
         );
     }
 
+    /**
+     * CD 服务凭据必须持有 registry.read：契约端点用它做 gate，缺了它 registry_url /
+     * registry_type 会下发空串，且 /api/registry/* 判该 scope 会直接 403，CD 默认拉不到镜像。
+     */
+    public function testCdServiceCredentialIncludesRegistryReadScope(): void
+    {
+        $this->assertContains(
+            AppConfig::API_SCOPE_REGISTRY_READ,
+            AppConfig::CD_SERVICE_TOKEN_SCOPES,
+            'CD 服务凭据缺 registry.read 时默认拿不到镜像仓库地址'
+        );
+        $this->assertSame(
+            AppConfig::API_SCOPE_REGISTRY_READ,
+            ApiScopeResolver::resolve('GET', '/api/registry/projects'),
+            '仓库查询端点判 registry.read，须与契约 gate 用同一个 scope'
+        );
+        $this->assertStringContainsString(
+            'AppConfig::API_SCOPE_REGISTRY_READ',
+            (string) file_get_contents(self::ROOT . '/src/Controller/ServiceContractController.php'),
+            '契约端点的下发 gate 必须用同一常量，避免两处漂移'
+        );
+    }
+
     public function testOpenApiDocumentsTheContractEndpointInBothLanguages(): void
     {
         foreach (['templates/openapi.json', 'templates/openapi.en.json'] as $file) {

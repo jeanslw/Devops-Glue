@@ -435,11 +435,41 @@ class JenkinsService
         return $success;
     }
 
+    /**
+     * 拼 Jenkins job 路径（folder/sub → base/job/folder/job/sub）。
+     *
+     * 所有入口（直连回退与映射表 job_name）都经过这里。
+     *
+     * @throws \App\Exceptions\ApiException 400 非法路径
+     */
     public function getJobUrl(string $path): string
     {
-        $parts = explode('/', $path);
-        $segments = array_map(fn($p) => "job/{$p}", $parts);
-        return $this->baseUrl . '/' . implode('/', $segments);
+        $parts = explode('/', str_replace('\\', '/', trim($path)));
+        $segments = [];
+        foreach ($parts as $part) {
+            if ($part === '') {
+                continue;
+            }
+            $decoded = $part;
+            for ($i = 0; $i < 3; $i++) {
+                $next = rawurldecode($decoded);
+                if ($next === $decoded) {
+                    break;
+                }
+                $decoded = $next;
+            }
+            if (
+                $decoded === '.' || $decoded === '..'
+                || str_contains($decoded, '/') || str_contains($decoded, '\\')
+            ) {
+                throw new \App\Exceptions\ApiException('Jenkins 路径含非法段', 400);
+            }
+            $segments[] = 'job/' . rawurlencode($decoded);
+        }
+        if ($segments === []) {
+            throw new \App\Exceptions\ApiException('Jenkins 路径为空', 400);
+        }
+        return rtrim($this->baseUrl, '/') . '/' . implode('/', $segments);
     }
 
     private function getBuildUrl(string $jobPath, int $buildId): string

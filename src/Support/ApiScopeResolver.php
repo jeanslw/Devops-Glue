@@ -76,7 +76,9 @@ class ApiScopeResolver
         if (preg_match('#^/api/build/.+/trigger$#', $path)) {
             return AppConfig::API_SCOPE_BUILD_WRITE;
         }
-
+        if (preg_match('#^/api/build/.+/pipelines/\d+/resolve-tag$#', $path)) {
+            return AppConfig::API_SCOPE_BUILD_WRITE;
+        }
 
         if (preg_match('#^/api/build/.+/(scan-sync|registry-sync|commit-status|report)$#', $path)) {
             return AppConfig::API_SCOPE_BUILD_REPORT;

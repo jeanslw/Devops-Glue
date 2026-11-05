@@ -14,16 +14,6 @@ use GuzzleHttp\Exception\ServerException;
  * message 与状态码，其余异常一律吞成「500 + 通用文案」。因此 provider 直接抛
  * RuntimeException 时，CI 服务器宕机（连接超时 / 上游 5xx）传到前端只剩一句
  * 「服务器内部错误」：既与程序缺陷无法区分，也无法让前端按「服务不可达」引导用户。
- *
- * 语义约定（4xx 属配置错误、透传上游状态码；只有连接失败 / 5xx 才是故障）：
- *   - 上游 404        → 404（Job / 项目不存在，属配置错误，不是故障）
- *   - 上游 401 / 403  → 401 / 403（凭证无效或权限不足，同样是配置错误。
- *                        归入「服务不可用」会让运维去查 CI 是否宕机，而实际是凭据配错了）
- *   - 连接失败 / 5xx  → 502（CI 服务不可达）—— 与 Jenkins 原有约定一致
- *   - 其余（含本地 DB 故障、解析失败）→ 500，保留原始 message
- *
- * 注：ApiException 继承自 RuntimeException，因此 API token 调用路径（AuthMiddleware）
- * 必须先判 ApiException 再判 RuntimeException，否则上述 404/500 会被一律压成 502。
  */
 final class BuildProviderError
 {
@@ -35,6 +25,9 @@ final class BuildProviderError
      */
     public static function throwFor(\Exception $e, string $label): never
     {
+        if ($e instanceof ApiException) {
+            throw $e;
+        }
         if ($e instanceof ClientException) {
             $status = $e->getResponse()->getStatusCode();
             if ($status === 404) {

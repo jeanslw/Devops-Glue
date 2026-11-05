@@ -65,7 +65,16 @@ class CustomPushBuildProviderTest extends TestCase
 
     private function makeProvider(array $config = []): CustomPushBuildProvider
     {
-        return new CustomPushBuildProvider($config, $this->pdo, new \App\Service\I18nService(__DIR__ . '/../../lang'));
+        // 默认给一份覆盖各拒绝用例 host 的白名单：白名单 fail-closed 后若留空，
+        // 所有用例都会在白名单阶段被拒，看似通过实则根本没测到 isSafeIp/IPv6 校验。
+        $defaults = ['log_url_allowed_hosts' => [
+            '127.0.0.1', '169.254.169.254', '[fc00::1]', 'logs.example.com',
+        ]];
+        return new CustomPushBuildProvider(
+            array_merge($defaults, $config),
+            $this->pdo,
+            new \App\Service\I18nService(__DIR__ . '/../../lang')
+        );
     }
 
     // ── getName ──
@@ -419,6 +428,44 @@ class CustomPushBuildProviderTest extends TestCase
         $id = (int) $provider->findByIid('jobA', 95)['id'];
 
         $this->assertStringContainsString('日志 URL 不合法', $provider->getJobTrace('jobA', $id));
+    }
+
+    /** 白名单未配置（空）时 fail-closed：不发起任何请求，直接返回不合法文案。 */
+    public function testGetJobTraceRejectsWhenAllowlistEmpty(): void
+    {
+        $provider = $this->makeProvider(['log_url_allowed_hosts' => []]);
+        $provider->report('jobA', [
+            'pipeline_iid' => 96, 'status' => 'success', 'finished_at' => '2026-08-18 10:05:30',
+            'log_url' => 'http://logs.example.com/build.log',
+        ]);
+        $id = (int) $provider->findByIid('jobA', 96)['id'];
+
+        $this->assertStringContainsString('日志 URL 不合法', $provider->getJobTrace('jobA', $id));
+    }
+
+    /** RFC1918 字面量不在白名单时拒绝（内网 CI 必须显式列入白名单才可拉取）。 */
+    public function testGetJobTraceRejectsPrivateIpOutsideAllowlist(): void
+    {
+        $provider = $this->makeProvider(['log_url_allowed_hosts' => ['logs.example.com']]);
+        $provider->report('jobA', [
+            'pipeline_iid' => 97, 'status' => 'success', 'finished_at' => '2026-08-18 10:05:30',
+            'log_url' => 'http://10.1.2.3/build.log',
+        ]);
+        $id = (int) $provider->findByIid('jobA', 97)['id'];
+
+        $this->assertStringContainsString('日志 URL 不合法', $provider->getJobTrace('jobA', $id));
+    }
+
+    /**
+     * curl 选项必须用 CURLOPT_* 整数常量作键。字符串键 'resolve' 会被
+     * Guzzle CurlFactory::applyCurlOptions 判为非法选项并抛异常，日志拉取 100% 失败。
+     */
+    public function testCurlResolveOptionUsesIntegerConstant(): void
+    {
+        $source = (string) file_get_contents(__DIR__ . '/../../src/Service/Build/CustomPushBuildProvider.php');
+        $this->assertIsInt(\CURLOPT_RESOLVE, 'CURLOPT_RESOLVE 必须是整数常量');
+        $this->assertStringContainsString('[\CURLOPT_RESOLVE => $resolve]', $source);
+        $this->assertStringNotContainsString("'resolve' =>", $source, '不得回退成字符串键');
     }
 
     // ── getVariables ──

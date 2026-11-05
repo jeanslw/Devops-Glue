@@ -376,7 +376,7 @@ GET /api/git/{path}/refs
 
 ## Registry 模块 (`/api/registry`)
 
-> **认证：** 所有 Registry 接口需要 Bearer Token，scope 为 `registry.read`（复用现有 Harbor 读权限，已持有 `registry.read` 的 Token 对两种仓库类型都继续可用，无需重签）。**注意：CD 服务凭据不含 `registry.read`**，用服务凭据调用本模块会被判 403——请在「API 管理」新建或编辑一个 API Token 并授予 `registry.read`，或改用 `POST /api/admin/login` 登录。请在请求中添加 `Authorization: Bearer <token>` 头。
+> **认证：** 所有 Registry 接口需要 Bearer Token，scope 为 `registry.read`（复用现有 Harbor 读权限，已持有 `registry.read` 的 Token 对两种仓库类型都继续可用，无需重签）。v2.11.4 起 **CD 服务凭据已自动包含 `registry.read`**，存量凭据在升级后首次引导自动补齐，可直接用服务凭据调用本模块。请在请求中添加 `Authorization: Bearer <token>` 头。
 >
 > **与 `/api/harbor` 的关系：** 本模块按全局镜像仓库类型（`ci_app_settings.registry_type`：`harbor` | `registry`）分派到当前提供方，Harbor 与标准 OCI Distribution（`registry:2`）**都可用**；`/api/harbor` 保持 Harbor 专用契约不变（扫描触发/扫描报告等仅 Harbor 有），已对接方无需改动。因此 `registry:2` 部署下想列出项目/仓库/tag，请用本模块。
 
@@ -453,7 +453,7 @@ curl "http://URL/api/registry/mycode/repositories/diagnosis-runtime/tags" -H "Au
 > - **scope：** 复用 `build.read`（CD 服务凭据已持有，无需扩权）；控制器内二次校验 `ci.build-records.pull`（由 scope 自动注入）。
 > - **`token_active` 仅供展示**（契约行绑定凭据的活性，如提示「凭据已失效，请在 CI 重新启用集成服务」），它与调用方自己的 Token 通常是同一枚（否则本次调用已被拒），**不可作为闸门条件**。
 > - 本端点刻意**不返回** `token_id` / `token_name` / `token_scopes` / `updated_by`（管理面字段，见 `/api/admin/integrated_services/{service}`）。字段名与管理的同名子集保持一致，便于同时使用两条通道的消费方共用映射。
-> - **`registry_type` / `registry_url`（v2.11 起）**：镜像仓库类型（`harbor` | `registry`）与地址。Glue 是镜像仓库的事实源（镜像 push 由 Glue 构建任务完成），消费方应以契约值为准、本地环境变量仅作端点不可用（旧版 CI / 网络异常）时的兜底。**两字段仅当凭据持有 镜像仓库 查询 scope（registry.read，同时管 Harbor 与 registry:2 查询）时下发**——消费方拿到地址后会用自己的凭据直连仓库，此后不再经过 Glue 接口，闸门必须设在下发这一步；无该 scope 或 `registry_url` 未配置时均为空串。CD 的服务凭据默认不含该 scope：需要使用镜像制品库时，在「API 管理」中为凭据勾选 镜像仓库 查询。契约四要素（service / enabled / provision / token_active）不受该 scope 影响。`registry:2` 的认证方式由消费方按 Docker Auth 规范自动探测，不经契约传递。
+> - **`registry_type` / `registry_url`（v2.11 起）**：镜像仓库类型（`harbor` | `registry`）与地址。Glue 是镜像仓库的事实源（镜像 push 由 Glue 构建任务完成），消费方应以契约值为准、本地环境变量仅作端点不可用（旧版 CI / 网络异常）时的兜底。**两字段仅当凭据持有 镜像仓库 查询 scope（registry.read，同时管 Harbor 与 registry:2 查询）时下发**——消费方拿到地址后会用自己的凭据直连仓库，此后不再经过 Glue 接口，闸门必须设在下发这一步；无该 scope 或 `registry_url` 未配置时均为空串。v2.11.4 起 CD 的服务凭据已默认包含该 scope（存量凭据在升级后首次引导自动补齐），无需手工勾选。契约四要素（service / enabled / provision / token_active）不受该 scope 影响。`registry:2` 的认证方式由消费方按 Docker Auth 规范自动探测，不经契约传递。
 
 ---
 
@@ -617,7 +617,7 @@ Token 有效期 24 小时。`super_admin` 角色的 permissions 返回 `"*"` 通
 | `/api/admin/api_tokens/{id}/scopes` | PUT | **编辑 Scope**：只改元数据（明文与 sha256 摘要不变，**无需更换 Token**，下一个请求即按新 Scope 校验）；scope 须全部来自目录且至少一个（否则 400），Token 不存在 404 |
 | `/api/admin/api_tokens/{id}/revoke` | POST | 撤销（**停用**，保留记录与摘要；它是**可恢复**的：集成服务的配套凭据在「该服务重新启用」时被恢复成同一枚 —— 原明文继续可用），返回 `{"ok":true}` |
 | `/api/admin/api_tokens/{id}` | DELETE | 删除（**硬删除**记录，摘要一并消失，不可恢复 → 集成服务再次启用时只能补发新凭据），返回 `{"ok":true}` |
-| `/api/admin/integrated_services/{service}/enable` | POST | 启用集成服务：事务内 upsert 契约行（provision 默认按当前 `DB_AUTO_MIGRATE` 取 auto/manual，可 body 显式覆盖），并按状态走三条路径 —— ① 首次启用：签发限定 scope（build.read / build.write / rbac.user.write）服务 Token，响应一次性返回明文 `token`；② **冻结恢复**：契约行未启用、凭据只是被停用（撤销）且未过期 → **恢复同一枚凭据**（原明文重新生效，CD 无需改配置），响应 `reused=true` 且 `token` 为 null；③ **作废补发**：凭据被撤销（契约行仍启用）/ 删除 / 过期 → 同事务作废旧凭据 + 签发新凭据并重绑，响应 `reissued=true` + 新明文。仅当「已启用且凭据有效」时 409；仅 super_admin |
+| `/api/admin/integrated_services/{service}/enable` | POST | 启用集成服务：事务内 upsert 契约行（provision 默认按当前 `DB_AUTO_MIGRATE` 取 auto/manual，可 body 显式覆盖），并按状态走三条路径 —— ① 首次启用：签发限定 scope（build.read / build.write / git / rbac.user.write / registry.read）服务 Token，响应一次性返回明文 `token`；② **冻结恢复**：契约行未启用、凭据只是被停用（撤销）且未过期 → **恢复同一枚凭据**（原明文重新生效，CD 无需改配置），响应 `reused=true` 且 `token` 为 null；③ **作废补发**：凭据被撤销（契约行仍启用）/ 删除 / 过期 → 同事务作废旧凭据 + 签发新凭据并重绑，响应 `reissued=true` + 新明文。仅当「已启用且凭据有效」时 409；仅 super_admin |
 | `/api/admin/integrated_services/{service}/disable` | POST | 禁用（冻结）：事务内置 enabled=0 并**停用**（**非**作废）配套 Token —— 凭据行与绑定关系都保留，再次启用即恢复同一枚（CD 无需改配置，要作废/换发请先撤销或删除那枚 Token）；不删表不删数据；未启用 409；仅 super_admin |
 
 #### 创建 Token
