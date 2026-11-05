@@ -181,7 +181,10 @@ final class PipelineTagController extends BaseBuildController
         }
 
         $status = trim((string) ($body['status'] ?? ''));
-        if ($sha !== '') {
+        // 仅当本次成功解析出 tag 才写回缓存。解析失败（CI 瞬时故障）或日志已被保留策略
+        // 清理导致 $tag 为空时跳过，避免 REPLACE INTO 把缓存中已解析的 tag/digest 清空
+        // （手动刷新 force=1 会跳过缓存直读，此路径尤需防护）。
+        if ($sha !== '' && $tag !== '') {
             try {
                 $this->buildTagCache->upsert($path, $provider, (string) $projectId, $sha, (string) $pipelineId, $tag, $registryRepo, 'log', $digest, $status);
             } catch (\Throwable $e) {

@@ -70,7 +70,7 @@ class SystemController extends BaseAdminController
     }
 
     /**
-     * POST /api/admin/display_timezone — 保存显示时区（IANA，如 Asia/Shanghai / America/New_York；空=浏览器时区）
+     * POST /api/admin/display_timezone — 保存显示时区（IANA，如 Asia/Shanghai / America/New_York；空=前端回落 UTC 默认，不跟随浏览器）
      * 权限：ci.system
      */
     public function saveDisplayTimezone(Request $request, Response $response): Response
