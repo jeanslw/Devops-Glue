@@ -108,6 +108,29 @@ export function normalizePerms(raw) {
 }
 
 /**
+ * 归一化日志筛选日期：YYYY-MM-DD / YYYY/MM/DD → YYYY-MM-DD。
+ * 返回 '' 表示未填（不加该筛选条件），null 表示格式非法或日期不存在（如 2026-02-30）。
+ *
+ * 日期输入框是文本框而非 <input type="date">：后者的占位格式由浏览器/系统语言决定，
+ * 英文界面下中文浏览器仍会显示「日」。改用文本框后必须由前端把关，因为后端会把
+ * date_from/date_to 直接拼 ' 00:00:00' / ' 23:59:59' 参与 SQL 比较，脏值会静默查错。
+ */
+export function normalizeDateFilter(raw) {
+    const s = String(raw ?? '').trim();
+    if (s === '') return '';
+    const m = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/.exec(s);
+    if (!m) return null;
+    const y = Number(m[1]);
+    const mo = Number(m[2]);
+    const d = Number(m[3]);
+    if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+    const dt = new Date(Date.UTC(y, mo - 1, d));
+    if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return null;
+    const p = n => (n < 10 ? '0' : '') + n;
+    return y + '-' + p(mo) + '-' + p(d);
+}
+
+/**
  * 构建模式流程图里「镜像仓库」节点的展示元数据。
  * 仅 'registry'（标准 OCI Distribution）走 Registry 分支，其余值/字段缺失一律按 Harbor 兜底，
  * 避免后端未返回 registry_type 时流程图变形。返回 labelKey 而非文案，保持本模块无 i18n/DOM 依赖。

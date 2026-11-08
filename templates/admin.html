@@ -54,11 +54,11 @@
             <span class="top-user-wrap" id="top-user-wrap">
                 <button type="button" id="top-user" onclick="toggleTopMenu()" data-i18n-title="admin.account_logout"><span id="top-user-name"></span><span class="top-user-caret">▾</span></button>
                 <div class="top-user-menu" id="top-user-menu">
-                    <a href="#" onclick="switchTab('password'); toggleTopMenu();" data-i18n="admin.sidebar_password">修改密码</a>
-                    <a href="#" onclick="doLogout()" data-i18n="auth.logout">退出</a>
+                    <a href="#" onclick="event.preventDefault(); switchTab('password'); toggleTopMenu();" data-i18n="admin.sidebar_password">修改密码</a>
+                    <a href="#" onclick="event.preventDefault(); doLogout()" data-i18n="auth.logout">退出</a>
                 </div>
             </span>
-            <a href="#" onclick="goToDocs()"><span class="menu-icon">📖</span> <span data-i18n="admin.api_docs">API 文档</span></a>
+            <a href="#" onclick="event.preventDefault(); goToDocs()"><span class="menu-icon">📖</span> <span data-i18n="admin.api_docs">API 文档</span></a>
         </div>
     </div>
 
@@ -1003,11 +1003,11 @@
                         </div>
                         <div>
                             <label data-i18n="oplog.date_from">起始日期</label>
-                            <input type="date" id="oplog-date-from" style="width:150px;">
+                            <input type="text" id="oplog-date-from" placeholder="YYYY-MM-DD" maxlength="10" inputmode="numeric" autocomplete="off" style="width:150px;">
                         </div>
                         <div>
                             <label data-i18n="oplog.date_to">结束日期</label>
-                            <input type="date" id="oplog-date-to" style="width:150px;">
+                            <input type="text" id="oplog-date-to" placeholder="YYYY-MM-DD" maxlength="10" inputmode="numeric" autocomplete="off" style="width:150px;">
                         </div>
                         <div>
                             <button class="btn btn-pri" onclick="loadOperationLogs(1)" data-i18n="oplog.search">查询</button>
@@ -1077,11 +1077,11 @@
                         </div>
                         <div>
                             <label data-i18n="deploylog.date_from">起始日期</label>
-                            <input type="date" id="deploylog-date-from" style="width:150px;">
+                            <input type="text" id="deploylog-date-from" placeholder="YYYY-MM-DD" maxlength="10" inputmode="numeric" autocomplete="off" style="width:150px;">
                         </div>
                         <div>
                             <label data-i18n="deploylog.date_to">结束日期</label>
-                            <input type="date" id="deploylog-date-to" style="width:150px;">
+                            <input type="text" id="deploylog-date-to" placeholder="YYYY-MM-DD" maxlength="10" inputmode="numeric" autocomplete="off" style="width:150px;">
                         </div>
                         <div>
                             <button class="btn btn-pri" onclick="loadDeployLogs(1)" data-i18n="deploylog.search">查询</button>
@@ -1156,11 +1156,11 @@
                         </div>
                         <div>
                             <label data-i18n="deploylog.date_from">起始日期</label>
-                            <input type="date" id="apilog-date-from" style="width:150px;">
+                            <input type="text" id="apilog-date-from" placeholder="YYYY-MM-DD" maxlength="10" inputmode="numeric" autocomplete="off" style="width:150px;">
                         </div>
                         <div>
                             <label data-i18n="deploylog.date_to">结束日期</label>
-                            <input type="date" id="apilog-date-to" style="width:150px;">
+                            <input type="text" id="apilog-date-to" placeholder="YYYY-MM-DD" maxlength="10" inputmode="numeric" autocomplete="off" style="width:150px;">
                         </div>
                         <div>
                             <button class="btn btn-pri" onclick="loadApiAccessLogs(1)" data-i18n="deploylog.search">查询</button>

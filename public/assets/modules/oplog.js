@@ -1,10 +1,16 @@
 import { authHeaders, handle401 } from '../core/api.js';
-import { esc, fmtUtc } from '../core/utils.js';
+import { esc, fmtUtc, normalizeDateFilter } from '../core/utils.js';
 import { toast } from '../core/toast.js';
 
 let oplogPage = 1;
 
 export async function loadOperationLogs(page) {
+    const dateFrom = normalizeDateFilter(document.getElementById('oplog-date-from').value);
+    const dateTo = normalizeDateFilter(document.getElementById('oplog-date-to').value);
+    if (dateFrom === null || dateTo === null) {
+        toast(__.t('js.invalid_date'), false, true);
+        return;
+    }
     if (typeof page === 'number') oplogPage = page;
     const loading = document.getElementById('oplog-loading');
     const wrap = document.getElementById('oplog-table-wrap');
@@ -16,8 +22,6 @@ export async function loadOperationLogs(page) {
     const action = document.getElementById('oplog-action').value.trim();
     const result = document.getElementById('oplog-result').value;
     const operatorType = document.getElementById('oplog-operator-type').value;
-    const dateFrom = document.getElementById('oplog-date-from').value;
-    const dateTo = document.getElementById('oplog-date-to').value;
     if (username) q.set('username', username);
     if (action) q.set('action', action);
     if (result) q.set('result', result);
