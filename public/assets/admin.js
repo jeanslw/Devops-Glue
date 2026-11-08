@@ -159,7 +159,16 @@ async function doLogin() {
     }
 }
 
-function goToDocs() { location.href = '/api/docs'; }
+function goToDocs() {
+    // 新窗口打开文档，后台标签页保持在原页。
+    // 必须用 window.open 而非 target="_blank" rel="noopener"：/api/docs 的登录态由同源
+    // sessionStorage 承载（swagger.html 读 admin_token），no-opener 的新标签页不会克隆
+    // sessionStorage，会误弹登录框要求重新登录。同源 window.open 创建时会克隆一份。
+    // 打开后立即切断 opener，避免新页通过 window.opener 反向操作后台（tabnabbing）。
+    const win = window.open('/api/docs', '_blank');
+    if (!win) { location.href = '/api/docs'; return; } // 弹窗被拦截时退回当前窗口，链接仍可用
+    win.opener = null;
+}
 
 function toggleSidebar() {
     const sb = document.querySelector('.sidebar');

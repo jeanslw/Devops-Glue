@@ -1,10 +1,16 @@
 import { authHeaders, handle401 } from '../core/api.js';
-import { esc, fmtUtc } from '../core/utils.js';
+import { esc, fmtUtc, normalizeDateFilter } from '../core/utils.js';
 import { toast } from '../core/toast.js';
 
 let apilogPage = 1;
 
 export async function loadApiAccessLogs(page) {
+    const dateFrom = normalizeDateFilter(document.getElementById('apilog-date-from').value);
+    const dateTo = normalizeDateFilter(document.getElementById('apilog-date-to').value);
+    if (dateFrom === null || dateTo === null) {
+        toast(__.t('js.invalid_date'), false, true);
+        return;
+    }
     if (typeof page === 'number') apilogPage = page;
     const loading = document.getElementById('apilog-loading');
     const wrap = document.getElementById('apilog-table-wrap');
@@ -17,8 +23,6 @@ export async function loadApiAccessLogs(page) {
     const route = document.getElementById('apilog-route').value.trim();
     const method = document.getElementById('apilog-method').value;
     const result = document.getElementById('apilog-result').value;
-    const dateFrom = document.getElementById('apilog-date-from').value;
-    const dateTo = document.getElementById('apilog-date-to').value;
     if (tokenName) q.set('token_name', tokenName);
     if (route) q.set('route', route);
     if (method) q.set('method', method);

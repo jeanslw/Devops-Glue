@@ -1,10 +1,21 @@
 import { authHeaders, handle401 } from '../core/api.js';
-import { esc, fmtUtc } from '../core/utils.js';
+import { esc, fmtUtc, normalizeDateFilter } from '../core/utils.js';
 import { toast } from '../core/toast.js';
 
 let deploylogPage = 1;
 
 export async function loadDeployLogs(page) {
+    const fromInput = document.getElementById('deploylog-date-from');
+    const toInput = document.getElementById('deploylog-date-to');
+    // 未手填时预填近 3 个月（空框却只返回默认窗口会让用户误以为看到全量）
+    if (!fromInput.value) fromInput.value = deploylogDefaultFrom();
+    if (!toInput.value) toInput.value = deploylogDefaultTo();
+    const dateFrom = normalizeDateFilter(fromInput.value);
+    const dateTo = normalizeDateFilter(toInput.value);
+    if (dateFrom === null || dateTo === null) {
+        toast(__.t('js.invalid_date'), false, true);
+        return;
+    }
     if (typeof page === 'number') deploylogPage = page;
     const loading = document.getElementById('deploylog-loading');
     const wrap = document.getElementById('deploylog-table-wrap');
@@ -16,13 +27,6 @@ export async function loadDeployLogs(page) {
     const project = document.getElementById('deploylog-project').value.trim();
     const status = document.getElementById('deploylog-status').value;
     const deployType = document.getElementById('deploylog-deploy-type').value;
-    const fromInput = document.getElementById('deploylog-date-from');
-    const toInput = document.getElementById('deploylog-date-to');
-    // 未手填时预填近 3 个月（空框却只返回默认窗口会让用户误以为看到全量）
-    if (!fromInput.value) fromInput.value = deploylogDefaultFrom();
-    if (!toInput.value) toInput.value = deploylogDefaultTo();
-    const dateFrom = fromInput.value;
-    const dateTo = toInput.value;
     if (project) q.set('project', project);
     if (status) q.set('status', status);
     if (deployType) q.set('deploy_type', deployType);

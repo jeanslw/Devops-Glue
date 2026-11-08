@@ -8,6 +8,8 @@
   - Fix the OIDC/SSO card becoming impossible to expand after the encryption key changes: the config endpoint only needs to know whether a secret is set, yet it decrypted strictly and returned 500.
   - Fix Chinese API error messages in the English UI: requests now carry the interface language and the backend translates error messages accordingly; encryption/decryption errors are wired into i18n too.
   - When platform credentials fail to decrypt, credential-dependent probes and statuses now report "Credential unavailable": Jenkins version probing is skipped and labelled instead of showing "unknown" or "unreachable".
+  - Fix the top user menu ("Change Password" / "Log Out" / "API Docs") redirecting to `admin#`: the anchor's default navigation overwrote the tab hash, so it is now prevented. "API Docs" now opens in a new window, leaving the admin page in place.
+  - Date filters on the operation / deploy / API-access log pages now use plain `YYYY-MM-DD` text inputs with client-side validation. This removes the browser-native date control whose placeholder showed a Chinese "日" in the English UI, and blocks malformed dates from reaching the query.
 
 ## v2.11.4 (2026-11-03)
 

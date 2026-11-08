@@ -16,6 +16,7 @@ import {
     encodePath,
     fmtYmd,
     normalizePerms,
+    normalizeDateFilter,
     registryNodeMeta,
 } from '../../public/assets/core/utils.js';
 
@@ -118,6 +119,31 @@ test('normalizePerms 归一化权限数组 / 通配符', () => {
     assert.deepEqual(normalizePerms(''), []);
     assert.deepEqual(normalizePerms(null), []);
     assert.deepEqual(normalizePerms({}), []);
+});
+
+test('normalizeDateFilter 归一合法日期，空值不过滤', () => {
+    assert.equal(normalizeDateFilter('2026-11-08'), '2026-11-08');
+    assert.equal(normalizeDateFilter('2026/11/8'), '2026-11-08');
+    assert.equal(normalizeDateFilter('  2026-2-3 '), '2026-02-03');
+    assert.equal(normalizeDateFilter('2024-02-29'), '2024-02-29', '闰年 2 月 29 日合法');
+    assert.equal(normalizeDateFilter(''), '');
+    assert.equal(normalizeDateFilter('   '), '');
+    assert.equal(normalizeDateFilter(null), '');
+    assert.equal(normalizeDateFilter(undefined), '');
+});
+
+test('normalizeDateFilter 拒绝非法 / 不存在的日期，避免脏值进 SQL', () => {
+    assert.equal(normalizeDateFilter('2026-02-30'), null, '不存在的日期必须拒绝');
+    assert.equal(normalizeDateFilter('2025-02-29'), null, '平年 2 月 29 日不存在');
+    assert.equal(normalizeDateFilter('2026-13-01'), null);
+    assert.equal(normalizeDateFilter('2026-00-10'), null);
+    assert.equal(normalizeDateFilter('2026-01-00'), null);
+    assert.equal(normalizeDateFilter('2026-01-32'), null);
+    assert.equal(normalizeDateFilter('2026/11'), null);
+    assert.equal(normalizeDateFilter('08/11/2026'), null);
+    assert.equal(normalizeDateFilter('2026-11-08 00:00:00'), null);
+    assert.equal(normalizeDateFilter("2026-11-08' OR 1=1--"), null, '注入式载荷必须拒绝');
+    assert.equal(normalizeDateFilter('abc'), null);
 });
 
 /**
