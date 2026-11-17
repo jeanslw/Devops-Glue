@@ -16,6 +16,7 @@ use App\Service\Registry\RegistryProviderInterface;
 use App\Service\SecurityCheckRepository;
 use App\Service\Settings;
 use App\Service\TransactionManager;
+use App\Service\WritebackQueueRepository;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -34,7 +35,8 @@ final class BuildReportController extends BaseBuildController
         private ?RegistryProviderInterface $registryProvider,
         private PipelineArtifactService $artifacts,
         private SecurityCheckRepository $securityChecks,
-        private TransactionManager $tx
+        private TransactionManager $tx,
+        private WritebackQueueRepository $writebackQueue
     ) {
         parent::__construct($i18n, $config, $mapping, $operationLog);
     }
@@ -63,9 +65,16 @@ final class BuildReportController extends BaseBuildController
         $targetUrl   = trim($body['target_url'] ?? '');
         $checkType   = trim($body['check_type'] ?? $context);
         $tag         = trim($body['tag'] ?? '');
+        $pipelineId  = trim((string)($body['pipeline_iid'] ?? ''));
 
         if (empty($sha) || empty($state) || empty($context) || empty($description)) {
             return $this->jsonError($response, $this->__('build.commit_status_missing_fields'), 400);
+        }
+
+        // MySQL DDL 里 context 是 VARCHAR(255) NOT NULL：超长会在 strict mode 下让入队 500，
+        // 非 strict 下静默截断并把两个不同 context 合并成同一个 Git 状态键。
+        if (mb_strlen($context) > 255 || mb_strlen($checkType) > 255) {
+            return $this->jsonError($response, 'build.commit_status_context_too_long', 400);
         }
 
         $validStates = ['pending', 'success', 'failed', 'error'];
@@ -90,22 +99,36 @@ final class BuildReportController extends BaseBuildController
             return $this->jsonError($response, $this->__('build.git_platform_not_available', ['platform' => $gitPlatform]), 400);
         }
 
+        // 异步回写：仅入队，不在此请求内调用 Git 平台。
+        // Git Provider 的 HTTP 调用受调用方（CI 脚本）超时约束，历史上有 15s 超时失败且不可重投；
+        // 入队后由 worker 消费，失败按退避重投，Git 平台按 (sha, context) 覆盖写故幂等。
+        $gitRepo = $gitProjectId ? (string) $gitProjectId
+            : (!empty($gitCurrentPath) ? $gitCurrentPath : $path);
         try {
-            $gitProvider = $this->gitRegistry->create($gitPlatform);
-            $gitRepo = $gitProjectId ? (string) $gitProjectId
-                : (!empty($gitCurrentPath) ? $gitCurrentPath : $path);
-            $result = $gitProvider->setCommitStatus($gitRepo, $sha, $state, $context, $description, $targetUrl);
-        } catch (\Exception $e) {
-            if ($e instanceof \RuntimeException) {
-                throw $e;
-            }
-            $result = ['success' => false, 'message' => $e->getMessage()];
+            $jobId = $this->writebackQueue->enqueue([
+                'git_platform' => $gitPlatform,
+                'repo'         => $gitRepo,
+                'sha'          => $sha,
+                'state'        => $state,
+                'context'      => $context,
+                'description'  => $description,
+                'target_url'   => $targetUrl,
+                'project_path' => $path,
+                'check_type'   => $checkType,
+                'tag'          => $tag,
+                'pipeline_id'  => $pipelineId,
+            ]);
+        } catch (\Throwable $e) {
+            // DB 异常（表未迁移/连接耗尽）不能变成裸 500：CI 回调方会重试，且原本同步版本
+            // 对 Git 侧失败是容错的。这里明确返回 503 让 CI 稍后重试入队。
+            \App\Helper\Log::exception($e);
+            return $this->jsonError($response, $this->__('build.writeback_enqueue_failed'), 503);
         }
 
-        $writebackStatus = $result['success'] ? 'success' : 'failed';
-        $this->securityChecks->record($path, $sha, $state, $context, $description, $checkType, $tag, $writebackStatus, $result['message']);
-
-        return $this->output($response, [
+        $payload = [
+            'code'          => 202,
+            'queued'        => true,
+            'job_id'        => $jobId,
             'project'       => $path,
             'sha'           => $sha,
             'state'         => $state,
@@ -113,8 +136,20 @@ final class BuildReportController extends BaseBuildController
             'description'   => $description,
             'check_type'    => $checkType,
             'git_platform'  => $gitPlatform,
-            'commit_status' => $result,
-        ], $request);
+            // 兼容旧 CI 脚本：它们会读 commit_status.success 判断回写是否成功。
+            // 异步后此处只表示「入队成功」，真正的 Git 回写结果稍后由 worker 完成。
+            'commit_status' => [
+                'success' => true,
+                'message' => $this->__('build.writeback_queued'),
+            ],
+            'message'       => $this->__('build.writeback_queued'),
+        ];
+        // 保留旧版 ?format=xml 输出能力（旧版经 output() 支持），状态码同样为 202。
+        if (($request->getQueryParams()['format'] ?? '') === 'xml') {
+            return $this->xmlResponse($response, $payload, 202);
+        }
+        $response->getBody()->write((string) json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        return $response->withStatus(202)->withHeader('Content-Type', 'application/json');
     }
 
     /**

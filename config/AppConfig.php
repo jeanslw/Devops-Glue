@@ -14,7 +14,7 @@ namespace App\Config;
  */
 final class AppConfig
 {
-    public const APP_VERSION = '2.11.5';
+    public const APP_VERSION = '2.11.6';
 
 
     // ── 表名常量 ──
@@ -38,6 +38,7 @@ final class AppConfig
     public const TABLE_INTEGRATED_SERVICES = 'ci_integrated_services';
     public const TABLE_OAUTH_CLIENTS      = 'ci_oauth_clients';
     public const TABLE_PLATFORM_CONNECTIONS = 'ci_platform_connections';
+    public const TABLE_WRITEBACK_QUEUE    = 'ci_writeback_queue';
 
     public const LEGACY_TABLE_NAMES = [
         'admin_users'        => 'ci_admin_users',

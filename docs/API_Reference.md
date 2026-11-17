@@ -284,7 +284,9 @@ Body root-level keys (except `ref`, `variables`, `format`, `token`) are merged i
 Required: `sha`, `state` (`pending`/`success`/`failed`/`error`), `context`, `description`.
 Optional: `target_url`, `check_type` (defaults to `context`), `tag`.
 
-Works with all Git providers (GitLab/GitHub/Gitee/Gitea), independent of CI system. Also records to `ci_security_checks` table for audit.
+Works with all Git providers (GitLab/GitHub/Gitee/Gitea), independent of CI system.
+
+**As of v2.11.6 this endpoint is asynchronous**: after validation it only enqueues a write-back job and immediately returns `202 Accepted` (`queued:true`, `job_id`); the Git commit status is **not yet visible when the response returns**. A background worker submits it and writes the `ci_security_checks` audit; failures are retried with backoff (max 5). Git providers overwrite by `(sha, context)`, so retries are idempotent. Eventual consistency is usually within seconds. Optionally pass `pipeline_iid` for per-build audit correlation.
 
 ### Scan Sync
 
@@ -688,12 +690,12 @@ curl "http://URL/api/main/map/list" \
   -H "Authorization: Bearer $NEW_TOKEN"
 
 # Trigger Harbor scan (requires harbor.scan scope)
-curl -X POST "http://URL/api/harbor/mycode/repositories/diagnosis-runtime/tags/v1.0.0/scan" \
+curl --max-time 60 --connect-timeout 10 -X POST "http://URL/api/harbor/mycode/repositories/diagnosis-runtime/tags/v1.0.0/scan" \
   -H "Authorization: Bearer $NEW_TOKEN"
 
 # Write back scan results (requires build.report scope, called from CI scripts)
 # ci_status is REQUIRED: success=artifact+writeback, failed/running=writeback only (no artifact)
-curl -X POST "http://URL/api/build/static/scan-sync" \
+curl --max-time 60 --connect-timeout 10 -X POST "http://URL/api/build/static/scan-sync" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $NEW_TOKEN" \
   -d '{
@@ -704,7 +706,7 @@ curl -X POST "http://URL/api/build/static/scan-sync" \
   }'
 
 # Base write-back for any registry (no scan results read; use this for registry:2)
-curl -X POST "http://URL/api/build/static/registry-sync" \
+curl --max-time 60 --connect-timeout 10 -X POST "http://URL/api/build/static/registry-sync" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $NEW_TOKEN" \
   -d '{
@@ -715,7 +717,7 @@ curl -X POST "http://URL/api/build/static/registry-sync" \
   }'
 
 # Custom Push CI result report (requires build.report scope, custom_push only)
-curl -X POST "http://URL/api/build/php/myapp/report" \
+curl --max-time 60 --connect-timeout 10 -X POST "http://URL/api/build/php/myapp/report" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $NEW_TOKEN" \
   -d '{"pipeline_iid":123,"status":"success","finished_at":"2026-08-18T10:05:12+08:00","exit_code":0,"log_url":"https://ci.example.com/build/123/log","tag":"v1.0.0","env":"prod"}'
@@ -727,7 +729,7 @@ curl -X PUT "http://URL/api/admin/api_tokens/1/scopes" \
   -d '{"scopes":["main","build.read"]}'
 
 # ⑤ Revoke a token (disable, keeps the record)
-curl -X POST "http://URL/api/admin/api_tokens/1/revoke" \
+curl --max-time 60 --connect-timeout 10 -X POST "http://URL/api/admin/api_tokens/1/revoke" \
   -H "Authorization: Bearer $ADMIN_TOKEN"
 
 # ⑥ Delete a token (hard delete the record)
@@ -756,7 +758,7 @@ curl "http://URL/api/health/static" \
   -H "Authorization: Bearer $TOKEN"
 
 # Trigger build (POST JSON, requires auth)
-curl -X POST "http://URL/api/build/static/trigger" \
+curl --max-time 60 --connect-timeout 10 -X POST "http://URL/api/build/static/trigger" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{"ref":"master","variables":{"branches":"master"}}'
@@ -808,7 +810,7 @@ curl "http://URL/api/registry/mycode/repositories" -H "Authorization: Bearer $TO
 curl "http://URL/api/registry/mycode/repositories/diagnosis-runtime/tags" -H "Authorization: Bearer $TOKEN"
 
 # Trigger Harbor scan (requires auth)
-curl -X POST "http://URL/api/harbor/mycode/repositories/diagnosis-runtime/tags/v1.0.0/scan" \
+curl --max-time 60 --connect-timeout 10 -X POST "http://URL/api/harbor/mycode/repositories/diagnosis-runtime/tags/v1.0.0/scan" \
   -H "Authorization: Bearer $TOKEN"
 
 # Get Harbor scan report (requires auth)
@@ -816,7 +818,7 @@ curl "http://URL/api/harbor/mycode/repositories/diagnosis-runtime/tags/v1.0.0/sc
   -H "Authorization: Bearer $TOKEN"
 
 # Commit status write-back (requires auth)
-curl -X POST "http://URL/api/build/static/commit-status" \
+curl --max-time 60 --connect-timeout 10 -X POST "http://URL/api/build/static/commit-status" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{"sha":"abc123","state":"success","context":"security-scan","description":"No vulnerabilities"}'

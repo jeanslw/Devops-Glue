@@ -284,7 +284,9 @@ body 根级字段（除 `ref`、`variables`、`format`、`token` 外）会自动
 必填：`sha`、`state`（`pending`/`success`/`failed`/`error`）、`context`、`description`。
 可选：`target_url`、`check_type`（默认等于 `context`）、`tag`。
 
-支持所有 Git 提供商（GitLab/GitHub/Gitee/Gitea），与 CI 系统无关。同时记录到 `ci_security_checks` 表用于审计追踪。
+支持所有 Git 提供商（GitLab/GitHub/Gitee/Gitea），与 CI 系统无关。
+
+**v2.11.6 起该端点为异步**：校验通过后仅把回写任务入队，立即返回 `202 Accepted`（`queued:true`、`job_id`），**响应时 Git 平台上的 commit status 尚未可见**。由后台 worker 异步提交并写 `ci_security_checks` 审计；失败按退避重投（最多 5 次）。Git 平台按 `(sha, context)` 覆盖写，重投幂等。GitHub/GitLab 等平台的状态最终一致通常在数秒内。可选传 `pipeline_iid` 用于审计按构建维度关联。
 
 ### 扫描同步
 
@@ -688,12 +690,12 @@ curl "http://URL/api/main/map/list" \
   -H "Authorization: Bearer $NEW_TOKEN"
 
 # 触发 Harbor 扫描（需 harbor.scan scope）
-curl -X POST "http://URL/api/harbor/mycode/repositories/diagnosis-runtime/tags/v1.0.0/scan" \
+curl --max-time 60 --connect-timeout 10 -X POST "http://URL/api/harbor/mycode/repositories/diagnosis-runtime/tags/v1.0.0/scan" \
   -H "Authorization: Bearer $NEW_TOKEN"
 
 # 扫描结果回写（需 build.report scope，CI 脚本中调用）
 # ci_status 必填：success=artifact+回写，failed/running=仅回写（不写 artifact）
-curl -X POST "http://URL/api/build/static/scan-sync" \
+curl --max-time 60 --connect-timeout 10 -X POST "http://URL/api/build/static/scan-sync" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $NEW_TOKEN" \
   -d '{
@@ -704,7 +706,7 @@ curl -X POST "http://URL/api/build/static/scan-sync" \
   }'
 
 # 任意镜像仓库的基础回写（不读取扫描结果；registry:2 场景使用）
-curl -X POST "http://URL/api/build/static/registry-sync" \
+curl --max-time 60 --connect-timeout 10 -X POST "http://URL/api/build/static/registry-sync" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $NEW_TOKEN" \
   -d '{
@@ -715,7 +717,7 @@ curl -X POST "http://URL/api/build/static/registry-sync" \
   }'
 
 # 自定义推送式 CI 结果上报（需 build.report scope，custom_push 专用）
-curl -X POST "http://URL/api/build/php/myapp/report" \
+curl --max-time 60 --connect-timeout 10 -X POST "http://URL/api/build/php/myapp/report" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $NEW_TOKEN" \
   -d '{"pipeline_iid":123,"status":"success","finished_at":"2026-08-18T10:05:12+08:00","exit_code":0,"log_url":"https://ci.example.com/build/123/log","tag":"v1.0.0","env":"prod"}'
@@ -727,7 +729,7 @@ curl -X PUT "http://URL/api/admin/api_tokens/1/scopes" \
   -d '{"scopes":["main","build.read"]}'
 
 # ⑤ 撤销 Token（禁用，保留记录）
-curl -X POST "http://URL/api/admin/api_tokens/1/revoke" \
+curl --max-time 60 --connect-timeout 10 -X POST "http://URL/api/admin/api_tokens/1/revoke" \
   -H "Authorization: Bearer $ADMIN_TOKEN"
 
 # ⑥ 删除 Token（硬删除记录）
@@ -756,7 +758,7 @@ curl "http://URL/api/health/static" \
   -H "Authorization: Bearer $TOKEN"
 
 # 触发构建（POST JSON，需要认证）
-curl -X POST "http://URL/api/build/static/trigger" \
+curl --max-time 60 --connect-timeout 10 -X POST "http://URL/api/build/static/trigger" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{"ref":"master","variables":{"branches":"master"}}'
@@ -807,7 +809,7 @@ curl "http://URL/api/registry/mycode/repositories" -H "Authorization: Bearer $TO
 curl "http://URL/api/registry/mycode/repositories/diagnosis-runtime/tags" -H "Authorization: Bearer $TOKEN"
 
 # 触发 Harbor 扫描（需要认证）
-curl -X POST "http://URL/api/harbor/mycode/repositories/diagnosis-runtime/tags/v1.0.0/scan" \
+curl --max-time 60 --connect-timeout 10 -X POST "http://URL/api/harbor/mycode/repositories/diagnosis-runtime/tags/v1.0.0/scan" \
   -H "Authorization: Bearer $TOKEN"
 
 # 获取 Harbor 扫描报告（需要认证）
@@ -815,7 +817,7 @@ curl "http://URL/api/harbor/mycode/repositories/diagnosis-runtime/tags/v1.0.0/sc
   -H "Authorization: Bearer $TOKEN"
 
 # 提交状态回写（需要认证）
-curl -X POST "http://URL/api/build/static/commit-status" \
+curl --max-time 60 --connect-timeout 10 -X POST "http://URL/api/build/static/commit-status" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{"sha":"abc123","state":"success","context":"security-scan","description":"No vulnerabilities"}'

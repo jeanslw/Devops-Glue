@@ -34,6 +34,7 @@ use App\Service\SecurityCheckRepository;
 use App\Service\BuildTagCacheRepository;
 use App\Service\CustomBuildRepository;
 use App\Service\TransactionManager;
+use App\Service\WritebackQueueRepository;
 use App\Service\Git\ProviderRegistry;
 use App\Service\Git\GitProviderFactory;
 use App\Service\Build\BuildProviderRegistry;
@@ -762,9 +763,13 @@ return [
             $c->get('registryProvider'),
             $c->get(PipelineArtifactService::class),
             $c->get(SecurityCheckRepository::class),
-            $c->get(TransactionManager::class)
+            $c->get(TransactionManager::class),
+            $c->get(WritebackQueueRepository::class)
         );
     },
+
+    // 异步 Git commit status 回写队列
+    WritebackQueueRepository::class => fn($c) => new WritebackQueueRepository($c->get(\PDO::class)),
 
     // Build 镜像仓库同步（registry-sync / harbor-scan）
     RegistrySyncController::class => function (\Psr\Container\ContainerInterface $c) {

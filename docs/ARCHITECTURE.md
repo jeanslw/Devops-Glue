@@ -1,8 +1,10 @@
 # Devops-Glue Architecture Overview
 
-## Overall Data Flow
+## System Architecture
 
-![CI 数据流全景](Image/glue-data-flow.png)
+![System Architecture](Image/devops-glue-arch.png)
+
+> **Security-scan write-back** (since v2.11.6): a CI scan step calls `POST /api/build/{path}/commit-status`, which only enqueues a job and returns 202. A resident worker in the worker container consumes the queue and calls the Git Provider `setCommitStatus` to publish the status badge. This endpoint does not write `ci_pipeline_artifacts` — image tags are written by `/scan-sync` and `/report` only.
 
 ## Component Relationships
 ```

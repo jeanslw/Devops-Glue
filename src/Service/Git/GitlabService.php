@@ -55,8 +55,12 @@ class GitlabService extends AbstractGitProvider
 
 
         $encoded = urlencode($repository);
+        // GitLab Commit Status API 合法值为 pending/running/success/failed/canceled/skipped，
+        // 不接受 error（其余平台接受或映射为 failure）；这里把 error 归一为 failed，
+        // 否则 state=error 的异步任务会重试 5 次后 dead，安全扫描错误态永远显示不出来。
+        $apiState = $state === 'error' ? 'failed' : $state;
         $body = [
-            'state'       => $state,
+            'state'       => $apiState,
             'name'        => $context,
             'description' => $description,
         ];

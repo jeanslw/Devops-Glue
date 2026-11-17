@@ -696,6 +696,8 @@ Through the Commit Status endpoint (`POST /api/build/{path}/commit-status`), any
 
 All scan records are stored centrally in the `ci_security_checks` audit table.
 
+> **Asynchronous write-back since v2.11.6**: calling `commit-status` only enqueues a job and returns 202 immediately; the status badge on the Git platform usually appears within seconds (≤10s). CI scripts no longer fail because of a slow Git platform. To confirm the final result, check the "Write-back" column on the Security Audit page or the Git platform directly.
+
 ### Q: What does the "Write-back" column on the Security Audit page show?
 
 It records the result of each Commit Status write-back:

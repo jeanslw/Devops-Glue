@@ -131,6 +131,30 @@ CREATE TABLE IF NOT EXISTS `ci_security_checks` (
     `created_at`        DATETIME DEFAULT (UTC_TIMESTAMP())
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- ── 8.0 ci_writeback_queue（异步 Git commit status 回写队列）──
+-- CI 回调仅入队立即返回，worker 消费；Git 按 (sha, context) 覆盖写故重投幂等
+CREATE TABLE IF NOT EXISTS `ci_writeback_queue` (
+    `id`             INT AUTO_INCREMENT PRIMARY KEY,
+    `git_platform`   VARCHAR(255) NOT NULL,
+    `repo`           VARCHAR(255) NOT NULL,
+    `sha`            VARCHAR(64) NOT NULL,
+    `state`          VARCHAR(16) NOT NULL,
+    `context`        VARCHAR(255) NOT NULL,
+    `description`    TEXT NOT NULL,
+    `target_url`     TEXT,
+    `project_path`   VARCHAR(255) NOT NULL DEFAULT '',
+    `check_type`     VARCHAR(255) NOT NULL DEFAULT '',
+    `tag`            VARCHAR(255) NOT NULL DEFAULT '',
+    `pipeline_id`    VARCHAR(255) NOT NULL DEFAULT '',
+    `status`         VARCHAR(16) NOT NULL DEFAULT 'pending',
+    `attempts`       INT NOT NULL DEFAULT 0,
+    `last_error`     TEXT,
+    `next_retry_at`  DATETIME DEFAULT (UTC_TIMESTAMP()),
+    `created_at`     DATETIME DEFAULT (UTC_TIMESTAMP()),
+    `updated_at`     DATETIME DEFAULT (UTC_TIMESTAMP()),
+    KEY `idx_wb_status_retry` (`status`, `next_retry_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- ── 8.1 ci_operation_logs（后台操作审计日志，append-only，只增不删）──
 CREATE TABLE IF NOT EXISTS `ci_operation_logs` (
     `id`            INT AUTO_INCREMENT PRIMARY KEY,

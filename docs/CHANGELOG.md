@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.11.6 (2026-11-17)
+
+- **Added**
+  - Git commit status write-back is now asynchronous: the `commit-status` endpoint only enqueues and returns 202 immediately. A new `ci_writeback_queue` table and a resident worker in the worker container consume jobs, with exponential-backoff retries, eliminating CI-side failures caused by the synchronous 15s Git-platform call timing out.
+  - All `curl -X POST` examples in CI integration docs now include `--max-time 60 --connect-timeout 10` so the CI side does not time out before the server.
+- **Fixed**
+  - Jobs left in `processing` by a crashed worker are automatically requeued, preventing them from getting stuck forever.
+- **Changed**
+  - Landing page architecture with arrow colors normalized to the four-color scheme (blue / green / orange / black); the same diagram is now also embedded in the READMEs (SVG) and in `ARCHITECTURE.md` / `架构全景图.md` (PNG).
+
 ## v2.11.5 (2026-11-06)
 
 - **Fixed**

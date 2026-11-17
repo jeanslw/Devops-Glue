@@ -125,6 +125,28 @@ CREATE TABLE IF NOT EXISTS ci_security_checks (
     created_at        TEXT DEFAULT (datetime('now'))
 );
 
+-- ── 8.0 ci_writeback_queue（异步 Git commit status 回写队列）──
+CREATE TABLE IF NOT EXISTS ci_writeback_queue (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    git_platform   TEXT NOT NULL,
+    repo           TEXT NOT NULL,
+    sha            TEXT NOT NULL,
+    state          TEXT NOT NULL,
+    context        TEXT NOT NULL,
+    description    TEXT NOT NULL,
+    target_url     TEXT,
+    project_path   TEXT NOT NULL DEFAULT '',
+    check_type     TEXT NOT NULL DEFAULT '',
+    tag            TEXT NOT NULL DEFAULT '',
+    pipeline_id    TEXT NOT NULL DEFAULT '',
+    status         TEXT NOT NULL DEFAULT 'pending',
+    attempts       INTEGER NOT NULL DEFAULT 0,
+    last_error     TEXT,
+    next_retry_at  TEXT DEFAULT (datetime('now')),
+    created_at     TEXT DEFAULT (datetime('now')),
+    updated_at     TEXT DEFAULT (datetime('now'))
+);
+
 -- ── 8.1 ci_operation_logs（后台操作审计日志，append-only，只增不删）──
 CREATE TABLE IF NOT EXISTS ci_operation_logs (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -264,6 +286,7 @@ CREATE INDEX IF NOT EXISTS idx_pipeline_artifacts_digest     ON ci_pipeline_arti
 CREATE INDEX IF NOT EXISTS idx_job_git_map_current_path   ON ci_job_git_map(current_path);
 CREATE INDEX IF NOT EXISTS idx_security_checks_project    ON ci_security_checks(project, check_type);
 CREATE INDEX IF NOT EXISTS idx_security_checks_sha        ON ci_security_checks(sha);
+CREATE INDEX IF NOT EXISTS idx_wb_status_retry            ON ci_writeback_queue(status, next_retry_at);
 CREATE INDEX IF NOT EXISTS idx_custom_builds_job          ON ci_custom_builds(job_name);
 CREATE INDEX IF NOT EXISTS idx_custom_builds_status       ON ci_custom_builds(status);
 CREATE INDEX IF NOT EXISTS idx_operation_logs_created     ON ci_operation_logs(created_at);

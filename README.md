@@ -54,7 +54,7 @@ DevOps-Glue API is a Slim 4–based integration platform designed to enhance Dev
 
 ##  Architecture Overview
 
-![CI Data Flow](docs/Image/glue-data-flow.png)
+![System Architecture](public/assets/devops-glue-arch.svg)
 
 ## Quick Start
 <details>

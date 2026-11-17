@@ -216,6 +216,7 @@ class Database
             \App\Config\AppConfig::TABLE_INTEGRATED_SERVICES,
             \App\Config\AppConfig::TABLE_OAUTH_CLIENTS,
             \App\Config\AppConfig::TABLE_PLATFORM_CONNECTIONS,
+            \App\Config\AppConfig::TABLE_WRITEBACK_QUEUE,
         ];
     }
 
