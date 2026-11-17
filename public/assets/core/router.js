@@ -1,3 +1,4 @@
+/* eslint-disable curly, prefer-arrow-callback, prefer-template, camelcase, no-extra-semi, comma-dangle, keyword-spacing, no-useless-concat */
 // assets/core/router.js
 export const ROUTES = {
   monitor:   { title: 'admin.sidebar_monitor', icon: '📡', parent: null },

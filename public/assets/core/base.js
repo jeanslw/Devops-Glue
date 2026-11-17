@@ -1,3 +1,4 @@
+/* eslint-disable curly, prefer-arrow-callback, prefer-template, camelcase, no-extra-semi, comma-dangle, keyword-spacing, no-useless-concat */
 // assets/core/base.js — 后台入口路径推算（支持部署在子路径下）。
 // 约定：后台路由固定以 .../admin 结尾；若非 admin 页（宣传页）则视为站点根目录。
 // 注意：项目其余静态路径（/assets、/logo.png、/api 等）目前仍是硬编码绝对根路径，

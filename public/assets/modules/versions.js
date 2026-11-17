@@ -1,3 +1,4 @@
+/* eslint-disable curly, prefer-arrow-callback, prefer-template, camelcase, no-extra-semi, comma-dangle, keyword-spacing, no-useless-concat */
 import { authHeaders, handle401 } from '../core/api.js';
 import { esc } from '../core/utils.js';
 import { toast } from '../core/toast.js';

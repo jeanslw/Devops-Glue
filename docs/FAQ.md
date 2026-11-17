@@ -802,6 +802,21 @@ Typical causes: the table was changed by hand to disagree with the code (a dropp
 
 **Rotating the key**: this release provides no automatic rotation tool. Encryption means "the old key cannot decrypt new ciphertext and the new key cannot decrypt old ciphertext", and the admin panel only returns `*_set` booleans (no plaintext), so before rotating, back up the plaintext first (old env values or an ops ledger). After rotating, the old ciphertext is void — re-enter the values on the "Platform Connections" / "OIDC / SSO Config" page (or re-run the migration scripts) so the new key re-encrypts them.
 
+### Q: Why do all credentials show "decryption failed" after I changed `DATA_ENC_KEY`, and what do I do next?
+
+**Cause**: platform credentials (token/username/password) and OIDC client secrets are encrypted with `DATA_ENC_KEY` (AES-256-GCM, ciphertext prefixed `enc:v1:`) before being stored. GCM provides both confidentiality and integrity, so once the key changes, decrypting old ciphertext with the new key always fails authentication — every credential uniformly reports "decryption failed". **The ciphertext is still in the DB, nothing is lost; the key simply no longer matches.** Likewise, in multi-replica deployments where only some replicas got the new key, you will see "some replicas work, others report decryption failed".
+
+**What to do (pick one, depending on whether the old key is recoverable)**:
+
+- **A. Old key still available (preferred, zero re-entry)**: set `DATA_ENC_KEY` back to the old value (`config/app.env` or the orchestration Secret) and recreate/restart the containers — every credential works again immediately. Then follow the rotation procedure in the previous Q carefully if you still want to rotate.
+- **B. Old key lost or definitely retired**: the old ciphertext is permanently undecryptable (no backdoor), so re-enter the values — **no need to wipe the DB or drop tables**, just overwrite:
+  1. On "System Settings → Platform Management / Platform Connections", re-fill each platform's token/username/password;
+  2. On "OIDC / SSO Config", re-fill each client secret;
+  3. If the old env still holds the plaintext connection values, you can instead re-run `php cli/migrate-platform-connections.php` / `php cli/migrate-oidc.php` to re-import in bulk;
+  on save, the values are re-encrypted with the new key and the pages return to normal.
+- **Multi-replica must-check**: make sure every web replica and the worker mounts the same key (Docker shares `./config/app.env`; K8s shares the `devops-glue-app-env` Secret), otherwise some replicas will still fail to decrypt after the change.
+- **Prevention**: back up the plaintext before rotating (old env values or an ops ledger); keep the key backed up separately from the database — losing it means permanent loss of readability.
+
 ### Q: I need to roll back (downgrade) to an older version after an upgrade — how?
 
 First decide whether the old code can run against the current database. Migrations here are **additive only and there are no down scripts** (`ensureTables()` only does `CREATE TABLE IF NOT EXISTS` and `ALTER ADD COLUMN`):
