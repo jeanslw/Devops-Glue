@@ -1,4 +1,4 @@
-# Devops-Glue API Admin Manual v2.11.5
+# Devops-Glue API Admin Manual v2.11.6
 
 > This manual is organized in a "from zero to usable" order, covering the installation, initialization, and full configuration of Devops-Glue API. Once you complete it in order, you will be able to: log in to the admin panel, connect CI / Git / Harbor platforms, configure build mode and mapping, manage permissions and roles, issue API tokens, and have the companion Devops-Glue CD call it correctly.
 
@@ -38,6 +38,7 @@ Devops-Glue API is a Slim4-based unified API layer that provides a single manage
 
 | Devops-Glue API | Devops-Glue CD |
 |:---:|:---:|
+| v2.11.6 | v1.6.2 |
 | v2.11.5 | v1.6.2 |
 | v2.11.4 | v1.6.2 |
 | v2.11.3 | v1.6.1 |
@@ -488,7 +489,7 @@ BASE="http://localhost:8080/api/build/tools/runner-ci"
 TOKEN="<API token with build.report scope>"
 
 # Report the terminal result (and image tag) in one call
-curl -X POST "$BASE/report" \
+curl --max-time 60 --connect-timeout 10 -X POST "$BASE/report" \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"pipeline_iid": 12345, "status": "success", "finished_at": "2026-08-18 18:05:30", "started_at": "2026-08-18 18:00:00", "ref": "master", "sha": "a3f8c1d2", "exit_code": 0, "tag": "master-a3f8c1d2", "env": "staging"}'
 ```
@@ -630,7 +631,7 @@ steps:
     commands:
       - |
         STATUS="success"; [ "$DRONE_BUILD_STATUS" = "failure" ] && STATUS="failed"
-        curl -X POST "$BASE/report" \
+        curl --max-time 60 --connect-timeout 10 -X POST "$BASE/report" \
           -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
           -d "{\"pipeline_iid\": $DRONE_BUILD_NUMBER, \"status\": \"$STATUS\", \"finished_at\": \"$(date '+%Y-%m-%d %H:%M:%S')\", \"ref\": \"$DRONE_COMMIT_BRANCH\", \"sha\": \"$DRONE_COMMIT_SHA\", \"tag\": \"v1.0.$DRONE_BUILD_NUMBER\"}"
 ```
@@ -645,7 +646,7 @@ Add a "Command Line" build step, set `Execute step` to "Even if some of the prev
 
 ```bash
 STATUS="success"; [ "%teamcity.build.status%" = "FAILURE" ] && STATUS="failed"
-curl -X POST "http://glue:8080/api/build/tools/runner-ci/report" \
+curl --max-time 60 --connect-timeout 10 -X POST "http://glue:8080/api/build/tools/runner-ci/report" \
   -H "Authorization: Bearer %env.GLUE_TOKEN%" \
   -H "Content-Type: application/json" \
   -d "{\"pipeline_iid\": %build.number%, \"status\": \"$STATUS\", \"finished_at\": \"$(date '+%Y-%m-%d %H:%M:%S')\", \"ref\": \"%teamcity.build.branch%\", \"sha\": \"%build.vcs.number%\", \"tag\": \"v1.0.%build.number%\"}"

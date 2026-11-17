@@ -53,7 +53,7 @@ Devops-Glue API 是基于 Slim4 为小团队打造的 DevOps 工具链增强集�
 
 ## 架构全景图
 
-![CI 数据流](docs/Image/glue-data-flow.png)
+![系统架构图](public/assets/devops-glue-arch.svg)
 
 ## 快速开始
 <details>

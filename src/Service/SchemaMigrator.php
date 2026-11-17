@@ -392,6 +392,31 @@ class SchemaMigrator
             )");
         }
 
+        // 异步 Git commit status 回写队列：CI 回调仅入队立即返回，worker 消费并重投。
+        // Git 平台按 (sha, context) 覆盖写，重投幂等。
+        $writebackQueueTable = \App\Config\AppConfig::TABLE_WRITEBACK_QUEUE;
+        $this->buildTable($pdo, $writebackQueueTable, "CREATE TABLE IF NOT EXISTS {$writebackQueueTable} (
+            id {$PK},
+            git_platform {$VARCHAR} NOT NULL,
+            repo {$VARCHAR} NOT NULL,
+            sha VARCHAR(64) NOT NULL,
+            state VARCHAR(16) NOT NULL,
+            context {$VARCHAR} NOT NULL,
+            description TEXT NOT NULL,
+            target_url TEXT,
+            project_path {$VARCHAR} NOT NULL DEFAULT '',
+            check_type {$VARCHAR} NOT NULL DEFAULT '',
+            tag {$VARCHAR} NOT NULL DEFAULT '',
+            pipeline_id {$VARCHAR} NOT NULL DEFAULT '',
+            status {$VARCHAR} NOT NULL DEFAULT 'pending',
+            attempts INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT,
+            next_retry_at {$TS_TYPE} DEFAULT ({$NOW}),
+            created_at {$TS_TYPE} DEFAULT ({$NOW}),
+            updated_at {$TS_TYPE} DEFAULT ({$NOW})
+        ){$ENGINE}");
+        $this->createIndex('idx_wb_status_retry', $writebackQueueTable, 'status, next_retry_at');
+
 
 
         foreach ($this->columnMigrations() as $table => $columns) {

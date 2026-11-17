@@ -40,9 +40,9 @@
         .lang-switch select { border:1px solid rgba(255,255,255,0.5); border-radius:6px; padding:4px 10px; font-size:13px; background:rgba(255,255,255,0.2); color:#fff; cursor:pointer; }
         .lang-switch select option { color:#333; background:#fff; }
 
-        .main { max-width:960px; margin:0 auto; padding:32px 20px; }
+        .main { max-width:960px; margin:0 auto; padding:0 20px 32px; }
 
-        .hero { text-align:center; color:#fff; padding-bottom:12px; }
+        .hero { display:flex; align-items:center; justify-content:center; gap:16px; flex-wrap:wrap; text-align:center; color:#fff; margin-top:4px; padding-bottom:22px; }
         .hero-title { display:inline-flex; align-items:center; justify-content:center; gap:12px; flex-wrap:wrap; }
         .hero h1 { font-size:28px; font-weight:700; margin-bottom:8px; display:inline-block; }
         .status-badge {
@@ -80,7 +80,7 @@
 
         /* ── 视图切换：宣传卡片 / 架构图 ── */
         .view-switch {
-            display:inline-flex; gap:0; margin:0 auto 22px;
+            display:inline-flex; gap:0; margin:0;
             background:rgba(255,255,255,.14); border:1px solid rgba(255,255,255,.25);
             border-radius:999px; padding:3px; backdrop-filter:blur(6px);
         }
@@ -110,32 +110,37 @@
         .arch-placeholder { color:#6b7280; font-size:14px; padding:48px 16px; text-align:center; }
 
         /* ── 数据流动画 ── */
-        /* Visio 导出的箭头线用 .st8/.st10/.st15/.st22/.st40/.st42 六个 class 绘制。
-           大部分线走流动虚线（虚线沿 path 方向移动即表达数据走向）；
-           唯独 .st8（Internal，绿实线）保持实线 + 亮度呼吸，
-           以便与同为绿色但走虚线流动的 .st10（Data Flow）区分开。
+        /* Visio 导出的箭头线共 7 个 class（2026-11-18 改色版 v3）：
+           .st8 绿(Internal) / .st11 橙虚(Async) / .st17 黑(Data Flow)
+           .st24/.st36/.st38 蓝(BuildProvider) / .st43 绿双向(Git Pull)
+           灰色控制线已从 Visio 源图移除；新图所有线靠颜色区分语义，统一用流动虚线动画。
            换图后须按新导出的 class 更新这里。 */
-        .arch-stage svg .st10,
-        .arch-stage svg .st15,
-        .arch-stage svg .st22,
-        .arch-stage svg .st40,
-        .arch-stage svg .st42 {
+        .arch-stage svg .st8,
+        .arch-stage svg .st11,
+        .arch-stage svg .st17,
+        .arch-stage svg .st24,
+        .arch-stage svg .st36,
+        .arch-stage svg .st38,
+        .arch-stage svg .st43 {
             stroke-dasharray: 8 6;
             animation: dg-dataflow 1.4s linear infinite;
         }
-        .arch-stage svg .st8 {
-            animation: dg-flow-glow 2s ease-in-out infinite;
+        /* 按语义分组错开延迟，形成绿→橙→蓝→黑的分段节奏 */
+        .arch-stage svg .st8 { animation-delay:0s; }
+        .arch-stage svg .st11 { animation-delay:.25s; }
+        .arch-stage svg .st24, .arch-stage svg .st36, .arch-stage svg .st38 { animation-delay:.5s; }
+        .arch-stage svg .st17 { animation-delay:.75s; }
+        /* Git Pull 是双向箭头（marker-start + marker-end），用 alternate 让虚线往返流动，
+           与双向语义一致；周期减半保持与其他线相近的视觉速度 */
+        .arch-stage svg .st43 {
+            animation: dg-dataflow .7s linear infinite alternate;
+            animation-delay:0s;
         }
-        /* 按颜色分组错开延迟，形成绿色→蓝色→灰色的分段节奏 */
-        .arch-stage svg .st8,  .arch-stage svg .st10 { animation-delay:0s; }
-        .arch-stage svg .st22, .arch-stage svg .st40,
-        .arch-stage svg .st42 { animation-delay:.45s; }
-        .arch-stage svg .st15 { animation-delay:.9s; }
-        @keyframes dg-dataflow    { to { stroke-dashoffset: -14; } }
-        @keyframes dg-flow-glow   { 0%,100% { opacity:1; } 50% { opacity:.55; } }
+        @keyframes dg-dataflow { to { stroke-dashoffset: -14; } }
         @media (prefers-reduced-motion:reduce) {
-            .arch-stage svg .st8, .arch-stage svg .st10, .arch-stage svg .st15,
-            .arch-stage svg .st22, .arch-stage svg .st40, .arch-stage svg .st42 {
+            .arch-stage svg .st8, .arch-stage svg .st11, .arch-stage svg .st17,
+            .arch-stage svg .st24, .arch-stage svg .st36, .arch-stage svg .st38,
+            .arch-stage svg .st43 {
                 animation:none;
             }
         }
@@ -158,10 +163,9 @@
             .nav-links { gap:10px; flex-wrap:nowrap; margin-left:auto; justify-content:flex-end; }
             .nav-links a { font-size:12px; }
             .lang-switch select { padding:3px 8px; font-size:12px; }
-            .main { padding:20px 12px; }
-            .hero { padding-bottom:10px; }
+            .main { padding:0 12px 20px; }
+            .hero { padding-bottom:16px; gap:10px; }
             .hero h1 { font-size:20px; }
-            .view-switch { margin-bottom:16px; }
             .view-switch button { padding:6px 12px; font-size:12px; }
             .arch-panel { padding:10px; }
             .feat-card { padding:18px 16px; }
@@ -193,9 +197,6 @@
         <div class="hero-title">
             <a href="/admin" class="status-badge" data-dg-home><span class="status-dot" id="status-dot"></span><span id="status-text">运行中</span></a>
         </div>
-    </div>
-
-    <div style="text-align:center;">
         <div class="view-switch" role="tablist" aria-label="view">
             <button type="button" id="view-cards" class="active" role="tab" aria-selected="true"
                     onclick="switchLandingView('cards')" data-i18n="index.view_cards">功能简要</button>

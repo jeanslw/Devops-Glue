@@ -1,18 +1,10 @@
 import { authHeaders, handle401 } from '../core/api.js';
 import { esc, fmtUtc } from '../core/utils.js';
 
-// 把指定时区同步到「显示时区」UI：下拉选中匹配项，未匹配则归为自定义并填入输入框
+// 把指定时区同步到「显示时区」UI：单个 input+datalist，预设时区由浏览器下拉提示，自定义时区直接输入
 function applyTzToUI(tz) {
     window.DG_TZ = tz || '';
-    const sel = document.getElementById('sys-tz-select');
     const input = document.getElementById('sys-tz-input');
-    let matched = false;
-    if (sel) {
-        for (const o of sel.options) {
-            if (o.value && o.value === window.DG_TZ) { o.selected = true; matched = true; break; }
-        }
-        if (!matched) sel.value = '';
-    }
     if (input) input.value = window.DG_TZ;
 }
 import { toast, confirmDialog } from '../core/toast.js';
@@ -108,12 +100,6 @@ export async function loadSystemInfo() {
         loading.style.display = 'none';
         body.style.display = 'block';
         applyTzToUI(d.display_timezone || 'UTC');
-        const tzSelect = document.getElementById('sys-tz-select');
-        if (tzSelect) tzSelect.onchange = () => {
-            const inp = document.getElementById('sys-tz-input');
-            if (tzSelect.value) { if (inp) inp.value = tzSelect.value; }
-            else { if (inp) { inp.value = ''; inp.focus(); } }
-        };
         const tzSave = document.getElementById('sys-tz-save');
         if (tzSave) tzSave.onclick = saveDisplayTimezone;
         // 集成服务面板已迁至 API 管理页（Token 列表上方；由 admin.js 的 api-tokens 分支加载）：

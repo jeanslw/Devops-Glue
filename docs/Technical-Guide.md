@@ -651,25 +651,37 @@ If only `ref` is present without other parameters, auto-convert to `{branches: r
 | `check_type` | Audit classification label, defaults to context |
 | `tag` | Associated image tag |
 
-**Execution Flow:**
+**Execution Flow (asynchronous since v2.11.6):**
 
 ```
-1. Parameter validation (sha/state/context/description required, state validity check)
+1. Parameter validation (sha/state/context/description required, state validity check,
+   context/check_type ≤255 chars)
 2. Query ci_job_git_map for git_platform
    └─ Not configured → 400 "git_platform not configured, cannot write back"
 3. Git Provider matching
    └─ Not registered → 400 "Git platform xxx not configured or unavailable"
-4. Call GitProvider::setCommitStatus(sha, state, context, description, target_url)
-   ├─ GitLab: POST /api/v4/projects/{id}/statuses/{sha}
+4. Enqueue a write-back job in ci_writeback_queue, return 202 Accepted immediately
+   (response has queued:true, job_id, and keeps the commit_status sub-object for
+    legacy scripts; success=true here only means "queued", not "written to Git")
+   └─ Enqueue failure (DB error) → 503, CI may retry later
+5. Resident worker in the worker container consumes the queue (every 10s by default):
+   calls GitProvider::setCommitStatus(sha, state, context, description, target_url)
+   ├─ GitLab: POST /api/v4/projects/{id}/statuses/{sha} (state=error mapped to failed)
    ├─ GitHub:  POST /repos/{owner}/{repo}/statuses/{sha}
    ├─ Gitee:   POST /api/v5/repos/{owner}/{repo}/statuses/{sha}
    └─ Gitea:   POST /api/v1/repos/{owner}/{repo}/statuses/{sha}
-5. Record to ci_pipeline_artifacts (when tag is provided)
-6. Write to ci_security_checks audit table (UPSERT, unique by project+sha+check_type)
-7. Return result (with git_platform, commit_status sub-object)
+6. Worker writes ci_security_checks audit (UPSERT, unique by project+sha+check_type),
+   then deletes the queue job; failures retry with backoff (30s→1h, max 5) then dead
+7. Final Git status usually visible within seconds (≤10s interval + one HTTP call)
 ```
 
-**Commit status writeback is independent of the CI system** — it only depends on Git platform configuration. Jenkins projects can also write back commit status through this endpoint.
+**Important:**
+- **This endpoint does not write `ci_pipeline_artifacts`** — image tag/digest is written only by `/scan-sync` and `/report`.
+- **Commit status writeback is independent of the CI system** — it only depends on Git platform configuration. Jenkins projects can also write back commit status through this endpoint.
+- Async benefit: CI scan steps (Gitleaks/Trivy/SonarQube) no longer wait synchronously for the 15s Git-platform call, so a slow Git platform cannot fail the CI job. Trade-off: Git status is visible up to ~10s later.
+- To confirm the final result: query `GET /api/admin/security_checks?writeback=failed`, or check the Git platform directly.
+
+**Additional optional parameter:** `pipeline_iid` (for per-build audit correlation).
 
 ---
 
