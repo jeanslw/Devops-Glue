@@ -84,10 +84,19 @@ export async function loadMonitor() {
                     });
                 }
             } else if (s.kind === 'git') {
-                // git 平台派生的 CI：未配置时显式提示（「开了 CI 但平台没配好」）
-                items.push(s.configured
-                    ? { icon: '✅', name: name, ver: '', stat: __.t('common.enabled'), key: 'common.enabled', cls: 'ok', state: 'ok' }
-                    : { icon: '⚪', name: name, ver: '', stat: __.t('common.not_configured'), key: 'common.not_configured', cls: 'off', state: 'off' });
+                // git 平台派生的 CI：configured 只说明「填了地址和 token」，不代表平台在线。
+                // 交叉核对 /api/health 的 git 探测结果（同名平台），否则会出现
+                // 「构建平台=启用、GIT 连通性=API 不可达」的自相矛盾。
+                if (!s.configured) {
+                    items.push({ icon: '⚪', name: name, ver: '', stat: __.t('common.not_configured'), key: 'common.not_configured', cls: 'off', state: 'off' });
+                } else {
+                    const g = Array.isArray(chk.git) ? chk.git.find(x => x.name === s.platform) : null;
+                    if (g && g.reachable === false) {
+                        items.push({ icon: '❌', name: name, ver: '', stat: __.t('monitor.git_unreachable'), key: 'monitor.git_unreachable', cls: 'err', state: 'err' });
+                    } else {
+                        items.push({ icon: '✅', name: name, ver: '', stat: __.t('common.enabled'), key: 'common.enabled', cls: 'ok', state: 'ok' });
+                    }
+                }
             } else {
                 // 独立 CI（custom_push 等）
                 items.push({ icon: '✅', name: name, ver: '', stat: __.t('common.enabled'), key: 'common.enabled', cls: 'ok', state: 'ok' });
