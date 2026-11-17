@@ -42,10 +42,9 @@
 
         .main { max-width:960px; margin:0 auto; padding:32px 20px; }
 
-        .hero { text-align:center; color:#fff; padding-bottom:28px; }
+        .hero { text-align:center; color:#fff; padding-bottom:12px; }
         .hero-title { display:inline-flex; align-items:center; justify-content:center; gap:12px; flex-wrap:wrap; }
         .hero h1 { font-size:28px; font-weight:700; margin-bottom:8px; display:inline-block; }
-        .hero p  { font-size:15px; opacity:.8; }
         .status-badge {
             display:inline-flex; align-items:center; gap:6px;
             background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.25);
@@ -79,6 +78,68 @@
         .feat-card h2 { font-size:17px; margin-bottom:6px; font-weight:700; }
         .feat-card p  { font-size:13px; opacity:.82; line-height:1.6; }
 
+        /* ── 视图切换：宣传卡片 / 架构图 ── */
+        .view-switch {
+            display:inline-flex; gap:0; margin:0 auto 22px;
+            background:rgba(255,255,255,.14); border:1px solid rgba(255,255,255,.25);
+            border-radius:999px; padding:3px; backdrop-filter:blur(6px);
+        }
+        .view-switch button {
+            border:0; background:transparent; color:rgba(255,255,255,.8);
+            font-size:13px; font-weight:600; padding:7px 18px; border-radius:999px;
+            cursor:pointer; transition:background .2s,color .2s;
+        }
+        .view-switch button:hover { color:#fff; }
+        .view-switch button.active {
+            background:#fff; color:#5b4bb5; box-shadow:0 2px 8px rgba(0,0,0,.12);
+        }
+
+        /* ── 架构图容器 ── */
+        .arch-panel {
+            display:none; background:rgba(255,255,255,.94); border-radius:16px;
+            padding:16px; box-shadow:0 8px 30px rgba(0,0,0,.18);
+            border:1px solid rgba(255,255,255,.5);
+        }
+        .arch-panel.show { display:block; }
+        .arch-stage {
+            width:100%; overflow:hidden; border-radius:10px;
+            background:#fff; display:flex; align-items:center; justify-content:center;
+            min-height:220px;
+        }
+        .arch-stage svg { display:block; width:100%; height:auto; max-width:900px; }
+        .arch-placeholder { color:#6b7280; font-size:14px; padding:48px 16px; text-align:center; }
+
+        /* ── 数据流动画 ── */
+        /* Visio 导出的箭头线用 .st8/.st10/.st15/.st22/.st40/.st42 六个 class 绘制。
+           大部分线走流动虚线（虚线沿 path 方向移动即表达数据走向）；
+           唯独 .st8（Internal，绿实线）保持实线 + 亮度呼吸，
+           以便与同为绿色但走虚线流动的 .st10（Data Flow）区分开。
+           换图后须按新导出的 class 更新这里。 */
+        .arch-stage svg .st10,
+        .arch-stage svg .st15,
+        .arch-stage svg .st22,
+        .arch-stage svg .st40,
+        .arch-stage svg .st42 {
+            stroke-dasharray: 8 6;
+            animation: dg-dataflow 1.4s linear infinite;
+        }
+        .arch-stage svg .st8 {
+            animation: dg-flow-glow 2s ease-in-out infinite;
+        }
+        /* 按颜色分组错开延迟，形成绿色→蓝色→灰色的分段节奏 */
+        .arch-stage svg .st8,  .arch-stage svg .st10 { animation-delay:0s; }
+        .arch-stage svg .st22, .arch-stage svg .st40,
+        .arch-stage svg .st42 { animation-delay:.45s; }
+        .arch-stage svg .st15 { animation-delay:.9s; }
+        @keyframes dg-dataflow    { to { stroke-dashoffset: -14; } }
+        @keyframes dg-flow-glow   { 0%,100% { opacity:1; } 50% { opacity:.55; } }
+        @media (prefers-reduced-motion:reduce) {
+            .arch-stage svg .st8, .arch-stage svg .st10, .arch-stage svg .st15,
+            .arch-stage svg .st22, .arch-stage svg .st40, .arch-stage svg .st42 {
+                animation:none;
+            }
+        }
+
         .footer { text-align:center; padding:16px; color:rgba(255,255,255,.55); font-size:12px; border-top:1px solid rgba(255,255,255,.08); margin-top:32px; line-height:1.8; }
         .footer a { color:rgba(255,255,255,.75); text-decoration:none; }
         .footer a:hover { color:#fff; text-decoration:underline; }
@@ -98,9 +159,11 @@
             .nav-links a { font-size:12px; }
             .lang-switch select { padding:3px 8px; font-size:12px; }
             .main { padding:20px 12px; }
-            .hero { padding-bottom:18px; }
+            .hero { padding-bottom:10px; }
             .hero h1 { font-size:20px; }
-            .hero p  { font-size:13px; }
+            .view-switch { margin-bottom:16px; }
+            .view-switch button { padding:6px 12px; font-size:12px; }
+            .arch-panel { padding:10px; }
             .feat-card { padding:18px 16px; }
             .feat-icon { font-size:32px; margin-bottom:8px; }
             .feat-card h2 { font-size:15px; margin-bottom:4px; }
@@ -130,10 +193,18 @@
         <div class="hero-title">
             <a href="/admin" class="status-badge" data-dg-home><span class="status-dot" id="status-dot"></span><span id="status-text">运行中</span></a>
         </div>
-        <p data-i18n="index.subtitle">Jenkins · Git · Container Registry 一站式 DevOps 工具链集成平台</p>
     </div>
 
-    <div class="features">
+    <div style="text-align:center;">
+        <div class="view-switch" role="tablist" aria-label="view">
+            <button type="button" id="view-cards" class="active" role="tab" aria-selected="true"
+                    onclick="switchLandingView('cards')" data-i18n="index.view_cards">功能简要</button>
+            <button type="button" id="view-arch" role="tab" aria-selected="false"
+                    onclick="switchLandingView('arch')" data-i18n="index.view_arch">架构图</button>
+        </div>
+    </div>
+
+    <div id="panel-cards" class="features">
         <!-- 1 -->
         <div class="feat-card">
             <div class="feat-icon">🔀</div>
@@ -169,6 +240,12 @@
             <div class="feat-icon">📡</div>
             <h2 data-i18n="index.feat_health_title">服务健康自检</h2>
             <p data-i18n="index.feat_health_desc">实时检测 Jenkins · Git 平台 · Container Registry 连通性与版本号，故障快速定位，状态一目了然。</p>
+        </div>
+    </div>
+
+    <div id="panel-arch" class="arch-panel">
+        <div class="arch-stage" id="arch-stage">
+            <div class="arch-placeholder" data-i18n="index.arch_loading">架构图加载中…</div>
         </div>
     </div>
 
@@ -230,6 +307,66 @@
     document.addEventListener('i18n-changed', render);
     render();
     probe();
+})();</script>
+<script>/* 落地页视图切换：宣传卡片 / 架构图。
+    架构图 SVG 异步 fetch 后注入 DOM（而非内联进 HTML）：首页首屏体积不变，
+    同时保留内联 <svg> 的动画控制能力（CSS 作用于内部箭头连线 class，见上方动画样式注释）。
+    子路径部署与 data-dg-home 同口径拼前缀。 */
+(function(){
+    var KEY = 'dg_landing_view';
+    var cards = document.getElementById('panel-cards');
+    var arch  = document.getElementById('panel-arch');
+    var stage = document.getElementById('arch-stage');
+    var btnCards = document.getElementById('view-cards');
+    var btnArch  = document.getElementById('view-arch');
+    var loaded = false, loading = false;
+
+    function basePath() {
+        return location.pathname.replace(/\/+$/, '').replace(/\/admin$/, '');
+    }
+    function render(view) {
+        var isArch = view === 'arch';
+        if (cards) cards.style.display = isArch ? 'none' : '';
+        if (arch)  arch.classList.toggle('show', isArch);
+        if (btnCards) { btnCards.classList.toggle('active', !isArch); btnCards.setAttribute('aria-selected', String(!isArch)); }
+        if (btnArch)  { btnArch.classList.toggle('active', isArch);  btnArch.setAttribute('aria-selected', String(isArch)); }
+        if (isArch) loadArch();
+    }
+    function loadArch() {
+        if (loaded || loading || !stage) return;
+        loading = true;
+        var url = basePath() + '/assets/devops-glue-arch.svg?v={{APP_VERSION}}';
+        fetch(url)
+            .then(function(r){ if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+            .then(function(text){
+                var doc = new DOMParser().parseFromString(text, 'image/svg+xml');
+                var svg = doc.querySelector('svg');
+                if (!svg) throw new Error('no svg');
+                // 去掉 Visio 可能夹带的脚本，保留图形与内嵌 <style>
+                Array.prototype.forEach.call(svg.querySelectorAll('script'), function(s){ s.remove(); });
+                stage.innerHTML = '';
+                stage.appendChild(document.importNode(svg, true));
+                loaded = true;
+            })
+            .catch(function(){
+                if (stage) {
+                    stage.textContent = '';
+                    var d = document.createElement('div');
+                    d.className = 'arch-placeholder';
+                    d.setAttribute('data-i18n', 'index.arch_error');
+                    d.textContent = __.t('index.arch_error');
+                    stage.appendChild(d);
+                }
+            })
+            .finally(function(){ loading = false; });
+    }
+    window.switchLandingView = function(view) {
+        try { localStorage.setItem(KEY, view); } catch (e) {}
+        render(view);
+    };
+    var saved = null;
+    try { saved = localStorage.getItem(KEY); } catch (e) {}
+    render(saved === 'arch' ? 'arch' : 'cards');
 })();</script>
 
 </body>

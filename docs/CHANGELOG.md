@@ -11,6 +11,8 @@
   - Fix the top user menu ("Change Password" / "Log Out" / "API Docs") redirecting to `admin#`: the anchor's default navigation overwrote the tab hash, so it is now prevented. "API Docs" now opens in a new window, leaving the admin page in place.
   - Date filters on the operation / deploy / API-access log pages now use plain `YYYY-MM-DD` text inputs with client-side validation. This removes the browser-native date control whose placeholder showed a Chinese "日" in the English UI, and blocks malformed dates from reaching the query.
   - Git-derived CI entries on the "Build Platforms" monitor card (GitLab CI / Gitea Actions) no longer show "Enabled" merely because a URL and token are filled in. They now cross-check the connectivity probe and show "API Unreachable" in red when the platform is down, removing the contradiction with the "Git Connectivity" card.
+- **Added**
+  - Landing page now offers a "Features / Architecture" view switcher: the architecture diagram is loaded asynchronously as an SVG with flowing dashes and staggered timing to illustrate data flow, and the choice is remembered locally. Removed the former subtitle to reduce page height.
 
 ## v2.11.4 (2026-11-03)
 
