@@ -1,3 +1,4 @@
+/* eslint-disable curly, no-extra-semi, keyword-spacing */
 // assets/core/theme.js
 export function applyTheme() {
     const saved = localStorage.getItem('theme') || 'light';

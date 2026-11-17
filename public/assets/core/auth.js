@@ -1,3 +1,4 @@
+/* eslint-disable curly, prefer-arrow-callback, prefer-template, camelcase, no-extra-semi, comma-dangle, keyword-spacing, no-useless-concat */
 // assets/core/auth.js
 import { normalizePerms } from './utils.js';
 

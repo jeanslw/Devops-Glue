@@ -1,3 +1,4 @@
+/* eslint-disable curly, prefer-arrow-callback, prefer-template, camelcase, no-extra-semi, comma-dangle, keyword-spacing, no-useless-concat */
 /**
  * Devops-Glue 前端国际化 (lightweight)
  *

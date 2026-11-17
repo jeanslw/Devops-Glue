@@ -1,3 +1,4 @@
+/* eslint-disable curly, prefer-arrow-callback, prefer-template, camelcase, no-extra-semi, comma-dangle, keyword-spacing, no-useless-concat */
 // assets/breadcrumb.js
 import { ROUTES } from './core/router.js';
 import { esc } from './core/utils.js';
