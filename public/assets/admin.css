@@ -795,7 +795,7 @@
 [data-theme="dark"] .sidebar .menu-item:hover { background:#26334a; color:#f1f5f9; }
 [data-theme="dark"] .sidebar .menu-item.active,
 [data-theme="dark"] .sidebar .menu-group-title.active {
-    background:#312e81; color:#4f46e5; border-left-color:#818cf8;
+    background:#312e81; color:#c7d2fe; border-left-color:#818cf8;
 }
 [data-theme="dark"] .sidebar .menu-div { border-top:1px solid #334155; }
 
@@ -827,7 +827,7 @@
 [data-theme="dark"] .topo-node .node-main a,
 [data-theme="dark"] .topo-node .node-main a:hover,
 [data-theme="dark"] .topo-node .node-sub a,
-[data-theme="dark"] .topo-node .node-sub a:hover { color:#4f46e5; }
+[data-theme="dark"] .topo-node .node-sub a:hover { color:#818cf8; }
 [data-theme="dark"] .svc-row.parent { background:#26334a; }
 
 [data-theme="dark"] input,
@@ -844,7 +844,7 @@
 [data-theme="dark"] .btn-save { background:#4f46e5; color:#fff; }
 [data-theme="dark"] .btn-discover { background:linear-gradient(135deg,#f59e0b,#d97706); color:#fff; }
 [data-theme="dark"] .btn-cancel { background:#334155; color:#e5e7eb; }
-[data-theme="dark"] .btn-edit { background:#312e81; color:#4f46e5; }
+[data-theme="dark"] .btn-edit { background:#312e81; color:#c7d2fe; }
 [data-theme="dark"] .btn-del { background:#7f1d1d; color:#fecaca; }
 [data-theme="dark"] .btn-warn { background:#78350f; color:#fde68a; }
 
@@ -855,12 +855,12 @@
 
 [data-theme="dark"] .badge-github,
 [data-theme="dark"] .badge-default { background:#334155; color:#e5e7eb; }
-[data-theme="dark"] .badge-sys { background:#312e81; color:#4f46e5; }
+[data-theme="dark"] .badge-sys { background:#312e81; color:#c7d2fe; }
 
 [data-theme="dark"] .perm-check { border-color:#334155; }
-[data-theme="dark"] .perm-check.checked { background:#312e81; border-color:#818cf8; color:#4f46e5; }
+[data-theme="dark"] .perm-check.checked { background:#312e81; border-color:#818cf8; color:#c7d2fe; }
 [data-theme="dark"] .perm-tag { background:#26334a; border-color:#334155; color:#94a3b8; }
-[data-theme="dark"] .perm-tag.on { background:#312e81; color:#4f46e5; border-color:#818cf8; }
+[data-theme="dark"] .perm-tag.on { background:#312e81; color:#c7d2fe; border-color:#818cf8; }
 [data-theme="dark"] .perm-sect-hd { border-bottom:1px solid #334155; color:#e5e7eb; }
 [data-theme="dark"] .perm-sub { border-left:3px solid #334155; }
 
@@ -895,7 +895,7 @@
 
 [data-theme="dark"] .topo-node { background:#1e293b; }
 [data-theme="dark"] .topo-jobs { border-top:1px dashed #334155; }
-[data-theme="dark"] .topo-jobs .job-tag { background:#312e81; color:#4f46e5; border:1px solid #3730a3; }
+[data-theme="dark"] .topo-jobs .job-tag { background:#312e81; color:#c7d2fe; border:1px solid #3730a3; }
 [data-theme="dark"] .topo-header { border-bottom:1px solid #26334a; }
 
 [data-theme="dark"] .modal-content {
@@ -918,7 +918,7 @@
 /* 对接版本兼容提示条（Harbor/Jenkins 探测版本） */
 .ver-compat { padding:12px 16px; border-radius:8px; border:1px solid #e5e7eb; background:#f9fafb; font-size:13px; }
 [data-theme="dark"] .ver-compat { border-color:#334155; background:#1e293b; color:#e5e7eb; }
-[data-theme="dark"] .ver-compat code { color:#4f46e5; }
+[data-theme="dark"] .ver-compat code { color:#818cf8; }
 
 /* ── 面包屑导航 ── */
 .breadcrumb {
@@ -946,4 +946,48 @@
 [data-theme="dark"] .breadcrumb,
 [data-theme="dark"] .breadcrumb .bc-item { color: #94a3b8; }
 [data-theme="dark"] .breadcrumb .bc-current { color: #e5e7eb; }
-[data-theme="dark"] .breadcrumb a.bc-item:hover { background: #312e81; color: #4f46e5; }
+[data-theme="dark"] .breadcrumb a.bc-item:hover { background: #312e81; color: #c7d2fe; }
+
+/* ═══════════ 深色补全：基础元素 & 对比度 ═══════════ */
+/* 顶栏：深色下改用低饱和靛紫渐变，与整体深蓝调统一 */
+[data-theme="dark"] .topbar {
+    background:linear-gradient(135deg,#1e1b4b 0%,#312e81 100%);
+    border-bottom:1px solid #334155;
+}
+/* 全局链接 */
+[data-theme="dark"] a { color:#818cf8; }
+[data-theme="dark"] a:hover { color:#a5b4fc; }
+/* 标题 */
+[data-theme="dark"] h1, [data-theme="dark"] h2,
+[data-theme="dark"] h3, [data-theme="dark"] h4,
+[data-theme="dark"] .toolbar h3, [data-theme="dark"] .toolbar-map h3 { color:#e5e7eb; }
+/* 行内代码 / 代码块 */
+[data-theme="dark"] code, [data-theme="dark"] kbd {
+    background:#0f172a; color:#e5e7eb; border:1px solid #334155;
+}
+[data-theme="dark"] pre {
+    background:#0f172a; color:#e5e7eb; border:1px solid #334155;
+}
+[data-theme="dark"] .modal-note code, [data-theme="dark"] .modal-note kbd {
+    background:#0f172a; color:#a5b4fc; border:1px solid #334155;
+}
+/* 分割线 */
+[data-theme="dark"] hr { border-color:#334155; background:#334155; }
+/* 次要文字（继承兜底） */
+[data-theme="dark"] .stat-label, [data-theme="dark"] .svc-ver,
+[data-theme="dark"] .monitor-time { color:#94a3b8; }
+/* Toast：浅底深字 → 深底亮字 */
+[data-theme="dark"] .toast-ok  { background:#064e3b; color:#a7f3d0; border:1px solid #047857; }
+[data-theme="dark"] .toast-err { background:#4c0519; color:#fecaca; border:1px solid #7f1d1d; }
+[data-theme="dark"] .toast-warn{ background:#451a03; color:#fde68a; border:1px solid #78350f; }
+/* 滚动条 */
+[data-theme="dark"] ::-webkit-scrollbar { width:10px; height:10px; }
+[data-theme="dark"] ::-webkit-scrollbar-track { background:#0f172a; }
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+    background:#334155; border-radius:6px; border:2px solid #0f172a;
+}
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover { background:#475569; }
+/* 模态框正文兜底（防止浅色背景透出） */
+[data-theme="dark"] .modal-body { background:transparent; color:#e5e7eb; }
+/* 选中文字 */
+[data-theme="dark"] ::selection { background:#4f46e5; color:#fff; }

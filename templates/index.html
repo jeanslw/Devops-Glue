@@ -173,6 +173,21 @@
             .feat-card h2 { font-size:15px; margin-bottom:4px; }
             .feat-card p  { font-size:12px; line-height:1.5; }
         }
+        /* 深色模式：把近白底元素调暗，与整体深蓝紫调统一 */
+        [data-theme="dark"] body {
+            background:linear-gradient(135deg,#0f0a2e 0%,#1e1b4b 55%,#312e81 100%);
+            color:#e5e7eb;
+        }
+        [data-theme="dark"] .arch-panel {
+            background:rgba(15,23,42,.92); border:1px solid rgba(129,140,248,.25);
+            box-shadow:0 8px 30px rgba(0,0,0,.4);
+        }
+        [data-theme="dark"] .arch-stage { background:#0f172a; }
+        [data-theme="dark"] .arch-placeholder { color:#94a3b8; }
+        [data-theme="dark"] .view-switch button.active {
+            background:#312e81; color:#c7d2fe; box-shadow:0 2px 8px rgba(0,0,0,.3);
+        }
+        [data-theme="dark"] .lang-switch select option { color:#e5e7eb; background:#1e293b; }
     </style>
 </head>
 <body>
