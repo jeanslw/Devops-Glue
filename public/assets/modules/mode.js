@@ -27,7 +27,7 @@ export function renderBuildModeSummary(availability, selected) {
                 + '</span>';
         }).join('');
     if (html === '') {
-        box.innerHTML = '<span style="color:#9ca3af;font-size:13px;">' + __.t('js.no_pull_ci') + '</span>';
+        box.innerHTML = '<span style="color:var(--text-muted);font-size:13px;">' + __.t('js.no_pull_ci') + '</span>';
         return;
     }
     box.innerHTML = html;
@@ -39,7 +39,7 @@ export async function loadSettings() {
     const cpToggle = document.getElementById('custom-push-toggle');
     try {
         const res = await fetch('/api/admin/build_mode', { headers: authHeaders() });
-        if (res.status === 401) { display.innerHTML = '<span style="color:#9ca3af;">' + __.t('auth.please_login_first') + '</span>'; return; }
+        if (res.status === 401) { display.innerHTML = '<span style="color:var(--text-muted);">' + __.t('auth.please_login_first') + '</span>'; return; }
         const data = await res.json();
         const modes = Array.isArray(data.modes) ? data.modes : [];
         const availability = {
@@ -58,8 +58,8 @@ export async function loadSettings() {
         setCpEnabled(cpEnabled);
 
         const srcLabel = source === 'database'
-            ? '<span class="badge" style="background:#f0fdf4;color:#16a34a;font-size:11px;margin-left:6px;" title="' + __.t('js.mode_persisted') + '">✓ ' + __.t('js.mode_persisted') + '</span>'
-            : '<span class="badge" style="background:#fefce8;color:#ca8a04;font-size:11px;margin-left:6px;" title="' + __.t('js.mode_temp') + '">⚠️ ' + __.t('js.mode_temp') + '</span>';
+            ? '<span class="badge" style="background:var(--bd-ok);color:var(--bd-ok-fg);font-size:11px;margin-left:6px;" title="' + __.t('js.mode_persisted') + '">✓ ' + __.t('js.mode_persisted') + '</span>'
+            : '<span class="badge" style="background:var(--bd-warn);color:var(--bd-warn-fg);font-size:11px;margin-left:6px;" title="' + __.t('js.mode_temp') + '">⚠️ ' + __.t('js.mode_temp') + '</span>';
 
         renderBuildModeSummary(availability, modes);
         if (cpToggle) cpToggle.checked = cpEnabled;
@@ -80,14 +80,14 @@ export async function loadSettings() {
         const reg = registryNodeMeta(data.registry_type);
         const registryNode = () => node(reg.cls, reg.icon, esc(__.t(reg.labelKey)));
         const customBadge = (cpEnabled && hasCustom)
-            ? '<span class="badge" style="background:#fef3c7;color:#d97706;font-size:11px;margin-left:6px;">📤 ' + customNames.map(esc).join(', ') + ' ✓</span>'
+            ? '<span class="badge" style="background:var(--bd-warn);color:var(--bd-warn-fg);font-size:11px;margin-left:6px;">📤 ' + customNames.map(esc).join(', ') + ' ✓</span>'
             : '';
 
         const enabledPull = PULL_PROVIDERS.filter(bp => availability[bp] && modes.includes(bp));
         const hasPull = enabledPull.length > 0;
         let pullInner = '';
         if (hasPull) {
-            modeBadge = '<span class="badge" style="background:#dbeafe;color:#1d4ed8;font-size:13px;">'
+            modeBadge = '<span class="badge" style="background:var(--bd-info);color:var(--bd-info-fg);font-size:13px;">'
                 + enabledPull.map(bp => pullProviderMeta(bp).icon + ' ' + pullProviderMeta(bp).label).join(' + ')
                 + ' ' + __.t('js.mode_mode') + '</span>';
             const ciNodes = enabledPull.map(bp => {
@@ -137,7 +137,7 @@ export async function loadSettings() {
         display.innerHTML = '<div class="mf-badges">' + modeBadge + srcLabel + customBadge + '</div>' + flow;
         if (window.updateDiscoverButton) window.updateDiscoverButton();
     } catch(e) {
-        display.innerHTML = '<span style="color:#9ca3af;">' + __.t('js.mode_cannot_detect') + '</span>';
+        display.innerHTML = '<span style="color:var(--text-muted);">' + __.t('js.mode_cannot_detect') + '</span>';
     }
 }
 

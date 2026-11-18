@@ -30,7 +30,7 @@ export async function loadTopology() {
         };
         processTopoData(data);
     } catch(e) {
-        loading.innerHTML = '<p style="color:#dc2626;">⚠️ ' + __.t('js.network_error') + '</p><p style="font-size:13px;color:#9ca3af;margin-top:6px;">' + __.t('js.load_failed') + ': ' + esc(e.message) + '</p>';
+        loading.innerHTML = '<p style="color:#dc2626;">⚠️ ' + __.t('js.network_error') + '</p><p style="font-size:13px;color:var(--text-muted);margin-top:6px;">' + __.t('js.load_failed') + ': ' + esc(e.message) + '</p>';
     }
 }
 
@@ -38,7 +38,7 @@ function processTopoData(data) {
     const loading = document.getElementById('topo-loading');
     const empty   = document.getElementById('topo-empty');
     if (data && data.code) {
-        loading.innerHTML = `<p style="color:#dc2626;">⚠️ ${esc(data.message || '')}</p><p style="font-size:13px;color:#9ca3af;margin-top:4px;">HTTP ${esc(data.code)}</p>`;
+        loading.innerHTML = `<p style="color:#dc2626;">⚠️ ${esc(data.message || '')}</p><p style="font-size:13px;color:var(--text-muted);margin-top:4px;">HTTP ${esc(data.code)}</p>`;
         return;
     }
     const projects = data.projects || data.data || data;
@@ -73,9 +73,9 @@ export function renderTopology() {
         const source   = p.platform_source || '';
         const method   = p.detection_method || '';
         let detectBadge = '';
-        if (source === 'manual') detectBadge = '<span class="badge" style="background:#fef3c7;color:#d97706;">' + __.t('js.topo_manual') + '</span>';
-        else if (method === 'fallback') detectBadge = '<span class="badge" style="background:#fef2f2;color:#dc2626;">' + __.t('js.topo_fallback') + '</span>';
-        else if (method === 'exact') detectBadge = '<span class="badge" style="background:#ecfdf5;color:#065f46;">' + __.t('js.topo_exact') + '</span>';
+        if (source === 'manual') detectBadge = '<span class="badge" style="background:var(--bd-warn);color:var(--bd-warn-fg);">' + __.t('js.topo_manual') + '</span>';
+        else if (method === 'fallback') detectBadge = '<span class="badge" style="background:var(--bd-err);color:var(--bd-err-fg);">' + __.t('js.topo_fallback') + '</span>';
+        else if (method === 'exact') detectBadge = '<span class="badge" style="background:var(--bd-ok);color:var(--bd-ok-fg);">' + __.t('js.topo_exact') + '</span>';
 
         const gitUrl = p.git_remote || '';
         // 仅 http(s):// 或 / 开头才渲染为链接：safeUrl 会把 git@host:path 这类无 scheme 的
@@ -150,7 +150,7 @@ export function renderTopology() {
         pagination.style.display = 'none';
     } else {
         pagination.style.display = 'flex';
-        let pagHtml = '<span style="color:#6b7280;">' + __.t('js.topo_total_items', {total: total}) + '</span>';
+        let pagHtml = '<span style="color:var(--text-weak);">' + __.t('js.topo_total_items', {total: total}) + '</span>';
         pagHtml += '<button class="btn btn-sm" onclick="setTopoPage(1);renderTopology()" ' + (topoPage<=1?'disabled':'') + '>« ' + __.t('js.page_first') + '</button>';
         pagHtml += '<button class="btn btn-sm" onclick="setTopoPage(Math.max(1,getTopoPage()-1));renderTopology()" ' + (topoPage<=1?'disabled':'') + '>‹ ' + __.t('js.page_prev') + '</button>';
         pagHtml += '<span style="color:#374151;font-weight:600;">' + topoPage + ' / ' + topoTotalPages + '</span>';

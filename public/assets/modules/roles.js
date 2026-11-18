@@ -110,7 +110,7 @@ export function togglePermGroup(containerId, btn) {
 
 export async function loadRoleList() {
     const tbody = document.getElementById('role-tbody');
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#9ca3af;">' + __.t('common.loading') + '</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">' + __.t('common.loading') + '</td></tr>';
     try {
         const [rolesRes, perms] = await Promise.all([
             fetch('/api/admin/roles', { headers: authHeaders() }),
@@ -119,7 +119,7 @@ export async function loadRoleList() {
         if (handle401(rolesRes)) return;
         const roles = await rolesRes.json();
         if (!roles || roles.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#9ca3af;">' + __.t('role.no_roles') + '</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">' + __.t('role.no_roles') + '</td></tr>';
             return;
         }
         const ciKeys = getAllCiKeys(perms);
@@ -132,7 +132,7 @@ export async function loadRoleList() {
                 : '<span class="badge badge-cus">' + __.t('role.custom_role') + '</span>';
             let actions;
             if (r.is_system) {
-                actions = '<span style="color:#9ca3af;font-size:12px;" title="' + __.t('role.sys_cannot_edit') + '">' + __.t('role.locked') + '</span>';
+                actions = '<span style="color:var(--text-muted);font-size:12px;" title="' + __.t('role.sys_cannot_edit') + '">' + __.t('role.locked') + '</span>';
             } else {
                 actions = '<button class="btn btn-sm btn-edit" onclick="showRoleForm(' + r.id + ',\'' + escJs(esc(r.name)) + '\',\'' + escJs(esc(r.description||'')) + '\',' + js(rPerms) + ')" title="' + esc(__.t('common.edit')) + '">✏️</button> '
                     + '<button class="btn btn-sm btn-del" onclick="deleteRole(' + r.id + ',\'' + escJs(esc(r.name)) + '\')" title="' + esc(__.t('common.delete')) + '">🗑</button>';

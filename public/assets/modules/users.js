@@ -39,7 +39,7 @@ export async function loadUsers() {
         const users = isAdminRole(currentUserRole) ? allUsers : allUsers.filter(u => !isAdminRole(u.role));
         const tbody = document.getElementById('user-tbody');
         if (!users.length) {
-            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#9ca3af;">' + __.t('user.no_users') + '</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);">' + __.t('user.no_users') + '</td></tr>';
             return;
         }
         const currentUserName = getUserName();
@@ -65,12 +65,12 @@ export async function loadUsers() {
                 : '';
             if (isSuperAdmin) {
                 if (isSelf) actions = `<button class="btn btn-sm btn-edit" onclick='showUserEditForm(${js(u)})'>✏️ ${__.t('common.edit')}</button>`;
-                else actions = modPwBtn || `<span style="color:#9ca3af;font-size:12px;">${__.t('user.role_super_admin')}</span>`;
+                else actions = modPwBtn || `<span style="color:var(--text-muted);font-size:12px;">${__.t('user.role_super_admin')}</span>`;
             } else if (isSelf) {
-                actions = `<span style="color:#9ca3af;font-size:12px;">${__.t('user.role_admin')}</span>`;
+                actions = `<span style="color:var(--text-muted);font-size:12px;">${__.t('user.role_admin')}</span>`;
             } else if (isAdmin) {
                 if (currentUserIsRoot) actions = modPwBtn + `<button class="btn btn-sm btn-del" onclick="deleteUser('${escJs(esc(u.username))}')">🗑 ${__.t('common.delete')}</button>`;
-                else actions = modPwBtn || `<span style="color:#9ca3af;font-size:12px;">${__.t('user.role_admin')}</span>`;
+                else actions = modPwBtn || `<span style="color:var(--text-muted);font-size:12px;">${__.t('user.role_admin')}</span>`;
             } else {
                 actions = modPwBtn + `<button class="btn btn-sm btn-edit" onclick='showUserEditForm(${js(u)})'>✏️ ${__.t('common.edit')}</button>
                     <button class="btn btn-sm btn-del" onclick="deleteUser('${escJs(esc(u.username))}')">🗑 ${__.t('common.delete')}</button>`;
@@ -79,8 +79,8 @@ export async function loadUsers() {
                 <td><strong>${esc(u.username)}</strong></td>
                 <td>${esc(roleLabel(u))}</td>
                 <td>${esc(u.systems || '-')}</td>
-                <td style="font-size:12px;color:#6b7280;">${esc(u.email || '-')}</td>
-                <td style="font-size:12px;color:#6b7280;">${esc(time)}</td>
+                <td style="font-size:12px;color:var(--text-weak);">${esc(u.email || '-')}</td>
+                <td style="font-size:12px;color:var(--text-weak);">${esc(time)}</td>
                 <td>${statusBadge}</td>
                 <td style="white-space:nowrap">${toggleBtn}${actions}</td>
             </tr>`;

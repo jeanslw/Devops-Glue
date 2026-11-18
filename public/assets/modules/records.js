@@ -82,7 +82,7 @@ export async function loadPullProjects() {
         }
         if (projects.length === 0) {
             const tb = document.getElementById('pull-records-tbody');
-            if (tb) tb.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#9ca3af;padding:30px;">' + esc(__.t('pull.no_projects')) + '</td></tr>';
+            if (tb) tb.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:30px;">' + esc(__.t('pull.no_projects')) + '</td></tr>';
         }
     } catch (e) {
         sel.innerHTML = '<option value="">' + esc(__.t('pull.load_failed')) + '</option>';
@@ -97,7 +97,7 @@ export async function loadPullRecords(silent) {
     const path = sel.value;
     if (!path) {
         if (!silent) toast(__.t('pull.select_first'), false);
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#9ca3af;padding:30px;">' + esc(__.t('pull.select_first')) + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:30px;">' + esc(__.t('pull.select_first')) + '</td></tr>';
         if (pagination) pagination.style.display = 'none';
         return;
     }
@@ -105,7 +105,7 @@ export async function loadPullRecords(silent) {
     // 表头常驻，加载态只替换 tbody，标题行第一时间可见
     if (!silent) {
         pullPage = 1;
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#9ca3af;padding:30px;">' + esc(__.t('common.loading')) + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:30px;">' + esc(__.t('common.loading')) + '</td></tr>';
         if (pagination) pagination.style.display = 'none';
     }
     try {
@@ -123,19 +123,19 @@ export async function loadPullRecords(silent) {
         pullFailCount = 0;
         if (!records.length) {
             if (pagination) pagination.style.display = 'none';
-            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#9ca3af;padding:30px;">' + esc(__.t('pull.no_records')) + '</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:30px;">' + esc(__.t('pull.no_records')) + '</td></tr>';
             return;
         }
         const statusBadge = (s) => {
             const st = (s || '').toLowerCase();
-            let bg = '#f3f4f6', fg = '#6b7280';
-            if (st === 'success') { bg = '#ecfdf5'; fg = '#065f46'; }
-            else if (st === 'failed' || st === 'canceled') { bg = '#fef2f2'; fg = '#dc2626'; }
-            else if (st === 'running') { bg = '#dbeafe'; fg = '#1d4ed8'; }
-            else if (st === 'pending') { bg = '#fef3c7'; fg = '#d97706'; }
-            else if (st === 'unstable') { bg = '#fff7ed'; fg = '#c2410c'; }
-            else if (st === 'manual') { bg = '#f5f3ff'; fg = '#6d28d9'; }
-            return '<span class="badge" style="background:' + bg + ';color:' + fg + ';">' + esc(s || '—') + '</span>';
+            let v = 'default';
+            if (st === 'success') { v = 'ok'; }
+            else if (st === 'failed' || st === 'canceled') { v = 'err'; }
+            else if (st === 'running') { v = 'info'; }
+            else if (st === 'pending') { v = 'warn'; }
+            else if (st === 'unstable') { v = 'unstable'; }
+            else if (st === 'manual') { v = 'manual'; }
+            return '<span class="badge" style="background:var(--bd-' + v + ');color:var(--bd-' + v + '-fg);">' + esc(s || '—') + '</span>';
         };
         const totalPages = Math.max(1, Math.ceil(records.length / pullPageSize));
         if (pullPage > totalPages) pullPage = totalPages;
@@ -175,7 +175,7 @@ export async function loadPullRecords(silent) {
         if (pagination) {
             if (records.length > pullPageSize) {
                 pagination.style.display = 'flex';
-                let pag = '<span style="color:#6b7280;">' + __.t('js.total_items', {total: records.length}) + '</span>';
+                let pag = '<span style="color:var(--text-weak);">' + __.t('js.total_items', {total: records.length}) + '</span>';
                 pag += '<button class="btn btn-sm" onclick="setPullPage(1)" ' + (pullPage <= 1 ? 'disabled' : '') + '>« ' + __.t('js.page_first') + '</button>';
                 pag += '<button class="btn btn-sm" onclick="setPullPage(Math.max(1,getPullPage()-1))" ' + (pullPage <= 1 ? 'disabled' : '') + '>‹ ' + __.t('js.page_prev') + '</button>';
                 pag += '<span style="color:#374151;font-weight:600;">' + pullPage + ' / ' + totalPages + '</span>';
@@ -211,7 +211,7 @@ export async function resolvePullTag(idx, force) {
     if (!r || !cell) return;
     const runId = r._runId || r.id || 0;
     if (!runId) return;
-    cell.innerHTML = '<span style="color:#9ca3af;font-size:12px;">' + esc(__.t('common.loading')) + '</span>';
+    cell.innerHTML = '<span style="color:var(--text-muted);font-size:12px;">' + esc(__.t('common.loading')) + '</span>';
     try {
         const res = await fetch('/api/build/' + encodePath(currentPullPath) + '/pipelines/' + runId + '/resolve-tag', {
             method: 'POST',
@@ -306,7 +306,7 @@ export function closePullLog() {
 export async function loadPushRecords() {
     const tbody = document.getElementById('push-records-tbody');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#9ca3af;">' + __.t('common.loading') + '</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--text-muted);">' + __.t('common.loading') + '</td></tr>';
     try {
         const res = await fetch('/api/admin/custom_builds?page=' + pushPage + '&per_page=20', { headers: authHeaders() });
         if (handle401(res)) return;
@@ -319,20 +319,20 @@ export async function loadPushRecords() {
 
         const pagination = document.getElementById('push-pagination');
         if (!records.length) {
-            tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#9ca3af;">' + __.t('push.no_records') + '</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--text-muted);">' + __.t('push.no_records') + '</td></tr>';
             if (pagination) pagination.innerHTML = '';
             return;
         }
         const statusBadge = (s) => {
             const st = (s || '').toLowerCase();
-            let bg = '#f3f4f6', fg = '#6b7280';
-            if (st === 'success') { bg = '#ecfdf5'; fg = '#065f46'; }
-            else if (st === 'failed' || st === 'canceled') { bg = '#fef2f2'; fg = '#dc2626'; }
-            else if (st === 'running') { bg = '#dbeafe'; fg = '#1d4ed8'; }
-            else if (st === 'pending') { bg = '#fef3c7'; fg = '#d97706'; }
-            else if (st === 'unstable') { bg = '#fff7ed'; fg = '#c2410c'; }
-            else if (st === 'manual') { bg = '#f5f3ff'; fg = '#6d28d9'; }
-            return '<span class="badge" style="background:' + bg + ';color:' + fg + ';">' + esc(s || '—') + '</span>';
+            let v = 'default';
+            if (st === 'success') { v = 'ok'; }
+            else if (st === 'failed' || st === 'canceled') { v = 'err'; }
+            else if (st === 'running') { v = 'info'; }
+            else if (st === 'pending') { v = 'warn'; }
+            else if (st === 'unstable') { v = 'unstable'; }
+            else if (st === 'manual') { v = 'manual'; }
+            return '<span class="badge" style="background:var(--bd-' + v + ');color:var(--bd-' + v + '-fg);">' + esc(s || '—') + '</span>';
         };
         tbody.innerHTML = records.map(r => {
             const vars = r.variables_json || '';
@@ -360,7 +360,7 @@ export async function loadPushRecords() {
         }).join('');
 
         if (pagination) {
-            let pag = '<span style="color:#6b7280;">' + __.t('js.total_items', {total: total}) + '</span>';
+            let pag = '<span style="color:var(--text-weak);">' + __.t('js.total_items', {total: total}) + '</span>';
             pag += '<button class="btn btn-sm" onclick="setPushPage(1)" ' + (pushPage<=1?'disabled':'') + '>« ' + __.t('js.page_first') + '</button>';
             pag += '<button class="btn btn-sm" onclick="setPushPage(Math.max(1,getPushPage()-1))" ' + (pushPage<=1?'disabled':'') + '>‹ ' + __.t('js.page_prev') + '</button>';
             pag += '<span style="color:#374151;font-weight:600;">' + pushPage + ' / ' + pushTotalPages + '</span>';

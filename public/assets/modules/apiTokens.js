@@ -41,7 +41,7 @@ export async function loadApiTokens() {
                 const scopes = (t.capabilities || t.scopes || []).map(esc).join(', ');
                 const exp = t.expires_at ? fmtYmd(t.expires_at) : esc(__.t('api_token.never'));
                 const status = t.enabled === false
-                    ? '<span style="color:#9ca3af;">🚫 ' + esc(__.t('api_token.disabled')) + '</span>'
+                    ? '<span style="color:var(--text-muted);">🚫 ' + esc(__.t('api_token.disabled')) + '</span>'
                     : (t.expired
                         ? '<span style="color:#dc2626;">⏳ ' + esc(__.t('api_token.expired')) + '</span>'
                         : '<span style="color:#16a34a;">✅ ' + esc(__.t('api_token.active')) + '</span>');
@@ -51,7 +51,7 @@ export async function loadApiTokens() {
                     '<button class="btn btn-sm btn-warn" onclick="revokeApiToken(' + t.id + ')">⛔ ' + esc(__.t('api_token.revoke')) + '</button> ')
                     + '<button class="btn btn-sm btn-del" onclick="deleteApiToken(' + t.id + ')">🗑 ' + esc(__.t('api_token.delete')) + '</button>';
                 return '<tr>' +
-                    '<td style="font-size:12px;color:#6b7280;">' + esc(t.id) + '</td>' +
+                    '<td style="font-size:12px;color:var(--text-weak);">' + esc(t.id) + '</td>' +
                     '<td>' + esc(t.name) + '</td>' +
                     '<td class="scope-cell" style="font-size:12px;max-width:260px;">' + scopes + '</td>' +
                     '<td>' + exp + '</td>' +

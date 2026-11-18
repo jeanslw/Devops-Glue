@@ -46,14 +46,14 @@ export async function loadApiAccessLogs(page) {
             tbody.innerHTML = rows.map(function(r) {
                 const time = fmtUtc(r.created_at);
                 return '<tr>' +
-                    '<td style="font-size:12px;white-space:nowrap;color:#6b7280;">' + esc(time) + '</td>' +
+                    '<td style="font-size:12px;white-space:nowrap;color:var(--text-weak);">' + esc(time) + '</td>' +
                     '<td style="font-size:12px;white-space:nowrap;">' + esc(r.token_name || '') + '</td>' +
                     '<td style="font-size:12px;white-space:nowrap;">' + esc(r.method || '') + '</td>' +
                     '<td style="font-size:12px;max-width:260px;overflow-wrap:anywhere;white-space:normal;">' + esc(r.route || '') + '</td>' +
                     '<td style="font-size:12px;">' + esc(String(r.status_code ?? '')) + '</td>' +
                     '<td>' + apilogResultBadge(r.result) + '</td>' +
-                    '<td style="font-size:12px;max-width:220px;overflow-wrap:anywhere;white-space:normal;color:#6b7280;">' + esc(r.error_reason || '') + '</td>' +
-                    '<td style="font-size:12px;max-width:180px;overflow-wrap:anywhere;white-space:normal;color:#6b7280;">' + esc(r.scopes || '') + '</td>' +
+                    '<td style="font-size:12px;max-width:220px;overflow-wrap:anywhere;white-space:normal;color:var(--text-weak);">' + esc(r.error_reason || '') + '</td>' +
+                    '<td style="font-size:12px;max-width:180px;overflow-wrap:anywhere;white-space:normal;color:var(--text-weak);">' + esc(r.scopes || '') + '</td>' +
                     '<td style="font-size:12px;white-space:nowrap;">' + esc(r.ip || '') + '</td>' +
                     '<td style="font-size:12px;white-space:nowrap;text-align:right;">' + esc(String(r.duration_ms ?? 0)) + '</td>' +
                 '</tr>';
@@ -96,7 +96,7 @@ function renderApilogPagination(data) {
     const pager = document.getElementById('apilog-pagination');
     if (data.total_pages <= 1) { pager.style.display = 'none'; return; }
     const page = data.page, total = data.total_pages, totalItems = data.total;
-    let pag = '<span style="color:#6b7280;">' + __.t('js.total_items', {total: totalItems}) + '</span>';
+    let pag = '<span style="color:var(--text-weak);">' + __.t('js.total_items', {total: totalItems}) + '</span>';
     pag += '<button class="btn btn-sm" onclick="loadApiAccessLogs(1)" ' + (page<=1?'disabled':'') + '>« ' + __.t('js.page_first') + '</button>';
     pag += '<button class="btn btn-sm" onclick="loadApiAccessLogs(Math.max(1,' + (page-1) + '))" ' + (page<=1?'disabled':'') + '>‹ ' + __.t('js.page_prev') + '</button>';
     pag += '<span style="color:#374151;font-weight:600;">' + page + ' / ' + total + '</span>';

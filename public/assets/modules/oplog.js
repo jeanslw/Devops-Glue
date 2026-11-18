@@ -60,12 +60,12 @@ export async function loadOperationLogs(page) {
                     : '';
                 const time = fmtUtc(r.created_at);
                 return '<tr>' +
-                    '<td style="font-size:12px;white-space:nowrap;color:#6b7280;">' + esc(time) + '</td>' +
+                    '<td style="font-size:12px;white-space:nowrap;color:var(--text-weak);">' + esc(time) + '</td>' +
                     '<td>' + esc(r.username) + opBadge + '</td>' +
                     '<td>' + esc(oplogActionLabel(r.action)) + '</td>' +
                     '<td>' + esc(r.target || '') + '</td>' +
                     '<td style="font-size:12px;max-width:320px;overflow-wrap:anywhere;">' + detail + '</td>' +
-                    '<td style="font-size:12px;color:#6b7280;">' + esc(r.ip || '') + '</td>' +
+                    '<td style="font-size:12px;color:var(--text-weak);">' + esc(r.ip || '') + '</td>' +
                     '<td>' + resultHtml + '</td>' +
                 '</tr>';
             }).join('');
@@ -100,7 +100,7 @@ function renderOplogPagination(data) {
     const pager = document.getElementById('oplog-pagination');
     if (data.total_pages <= 1) { pager.style.display = 'none'; return; }
     const page = data.page, total = data.total_pages, totalItems = data.total;
-    let pag = '<span style="color:#6b7280;">' + __.t('js.total_items', {total: totalItems}) + '</span>';
+    let pag = '<span style="color:var(--text-weak);">' + __.t('js.total_items', {total: totalItems}) + '</span>';
     pag += '<button class="btn btn-sm" onclick="loadOperationLogs(1)" ' + (page<=1?'disabled':'') + '>« ' + __.t('js.page_first') + '</button>';
     pag += '<button class="btn btn-sm" onclick="loadOperationLogs(Math.max(1,' + (page-1) + '))" ' + (page<=1?'disabled':'') + '>‹ ' + __.t('js.page_prev') + '</button>';
     pag += '<span style="color:#374151;font-weight:600;">' + page + ' / ' + total + '</span>';

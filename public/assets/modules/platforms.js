@@ -63,7 +63,7 @@ function fieldHtml(p, field) {
         const set = !!p[meta.setKey];
         const hint = set
             ? '<span style="color:#16a34a;font-size:11px;">(' + esc(__.t('platform_conn.secret_set')) + ')</span>'
-            : '<span style="color:#9ca3af;font-size:11px;">(' + esc(__.t('platform_conn.secret_unset')) + ')</span>';
+            : '<span style="color:var(--text-muted);font-size:11px;">(' + esc(__.t('platform_conn.secret_unset')) + ')</span>';
         return '<label class="pc-lbl">' + esc(label) + ' ' + hint + '</label>'
             + '<input type="password" class="pc-field-' + field + '" value="" placeholder="' + esc(__.t('platform_conn.secret_keep')) + '" autocomplete="new-password">';
     }
@@ -71,7 +71,7 @@ function fieldHtml(p, field) {
     // SaaS 平台的 URL 是固定默认地址，自建平台 URL 为必填
     let labelExtra = '';
     if (field === 'url' && p.hosting === 'saas') {
-        labelExtra = ' <span style="color:#9ca3af;font-size:11px;font-weight:400;">(' + esc(__.t('platform_conn.url_fixed_hint')) + ')</span>';
+        labelExtra = ' <span style="color:var(--text-muted);font-size:11px;font-weight:400;">(' + esc(__.t('platform_conn.url_fixed_hint')) + ')</span>';
     } else if (field === 'url' && p.hosting === 'self-hosted') {
         labelExtra = ' <span style="color:#dc2626;">*</span>';
     }
@@ -103,7 +103,7 @@ function renderPlatforms() {
         // 托管类型徽标：saas=固定地址、self-hosted=自定义地址（与 CI 能力正交）
         const hostingBadge = (p.hosting === 'saas' || p.hosting === 'self-hosted')
             ? '<span style="margin-left:6px;padding:1px 6px;border-radius:4px;font-size:11px;font-weight:600;'
-                + (p.hosting === 'saas' ? 'background:#eef2ff;color:#4f46e5;' : 'background:#ecfdf5;color:#059669;') + '">'
+                + (p.hosting === 'saas' ? 'background:var(--bd-saas);color:var(--bd-saas-fg);' : 'background:var(--bd-hosted);color:var(--bd-hosted-fg);') + '">'
                 + esc(__.t(p.hosting === 'saas' ? 'platform_conn.hosting_saas' : 'platform_conn.hosting_self_hosted'))
                 + '</span>'
             : '';
@@ -114,7 +114,7 @@ function renderPlatforms() {
         // 仅在「已配置」且凭据解不开时标在本行状态之后；徽标不带平台名（本行已有名字）。
         // 未配置的行不显示——没有可用凭据时谈解密失败只会误导。hover 给出原因与处置。
         const decryptBadge = (ok && p.decrypt_error)
-            ? '<span style="margin-left:8px;padding:1px 6px;border-radius:4px;background:#fef2f2;color:#dc2626;font-size:11px;font-weight:600;"'
+            ? '<span style="margin-left:8px;padding:1px 6px;border-radius:4px;background:var(--bd-mismatch);color:var(--bd-mismatch-fg);font-size:11px;font-weight:600;"'
                 + ' title="' + esc(p.decrypt_error) + ' — ' + esc(__.t('platform_conn.decrypt_hint')) + '">'
                 + '✕ ' + esc(__.t('platform_conn.decrypt_failed')) + '</span>'
             : '';

@@ -61,20 +61,20 @@ export async function loadSecurityChecks() {
                 const wb = c.writeback_status || '';
                 const wbCell = wb
                     ? `<span class="svc-stat ${wb === 'success' ? 'ok' : wb === 'failed' ? 'err' : 'off'}" title="${esc(c.writeback_message || '')}">${WB_ICONS[wb] || ''} ${WB_LABELS[wb] ? __.t(WB_LABELS[wb]) : wb}</span>`
-                    : '<span style="color:#9ca3af;">—</span>';
+                    : '<span style="color:var(--text-muted);">—</span>';
                 return `<tr>
-                    <td style="font-size:12px;white-space:nowrap;color:#6b7280;">${esc(time)}</td>
+                    <td style="font-size:12px;white-space:nowrap;color:var(--text-weak);">${esc(time)}</td>
                     <td><strong>${esc(c.project)}</strong></td>
                     <td><span class="badge badge-default">${esc(c.check_type || '—')}</span></td>
                     <td><span class="svc-stat ${cls}">${icon} ${label}</span></td>
                     <td>${esc(c.tag || '—')}</td>
                     <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(c.description||'')}">${esc(c.description || '—')}</td>
-                    <td><code style="font-size:11px;color:#6b7280;" title="${esc(c.sha||'')}">${esc(shaShort)}</code></td>
+                    <td><code style="font-size:11px;color:var(--text-weak);" title="${esc(c.sha||'')}">${esc(shaShort)}</code></td>
                     <td>${wbCell}</td>
                 </tr>`;
             }).join('');
 
-            let pag = '<span style="color:#6b7280;">' + __.t('js.total_items', {total: total}) + '</span>';
+            let pag = '<span style="color:var(--text-weak);">' + __.t('js.total_items', {total: total}) + '</span>';
             pag += '<button class="btn btn-sm" onclick="secSetPage(1)" ' + (secPage<=1?'disabled':'') + '>« ' + __.t('js.page_first') + '</button>';
             pag += '<button class="btn btn-sm" onclick="secSetPage(Math.max(1,getSecPage()-1))" ' + (secPage<=1?'disabled':'') + '>‹ ' + __.t('js.page_prev') + '</button>';
             pag += '<span style="color:#374151;font-weight:600;">' + secPage + ' / ' + secTotalPages + '</span>';

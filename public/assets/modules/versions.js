@@ -42,28 +42,28 @@ export async function loadVersions() {
             const isDefault = val === defVer || val === '';
 
             let srcBadge;
-            if (src === 'config')  srcBadge = '<span class="badge" style="background:#fde8e8;color:#c81e1e;">' + __.t('js.version_source_config') + '</span>';
-            else if (src === 'json') srcBadge = '<span class="badge" style="background:#dbeafe;color:#1d4ed8;">' + __.t('js.version_source_admin') + '</span>';
-            else srcBadge = '<span class="badge" style="background:#f3f4f6;color:#6b7280;">' + __.t('js.version_source_default') + '</span>';
+            if (src === 'config')  srcBadge = '<span class="badge" style="background:var(--bd-err);color:var(--bd-err-fg);">' + __.t('js.version_source_config') + '</span>';
+            else if (src === 'json') srcBadge = '<span class="badge" style="background:var(--bd-info);color:var(--bd-info-fg);">' + __.t('js.version_source_admin') + '</span>';
+            else srcBadge = '<span class="badge" style="background:var(--bd-default);color:var(--bd-default-fg);">' + __.t('js.version_source_default') + '</span>';
 
             const readonly = src === 'config';
             const displayVal = readonly ? val : (isDefault ? '' : val);
             const ph = readonly ? val : defVer;
             const inputStyle = readonly
-                ? 'width:120px;padding:6px 10px;background:#f9fafb;color:#9ca3af;cursor:not-allowed;'
-                : (isDefault ? 'width:120px;padding:6px 10px;' : 'width:120px;padding:6px 10px;border-color:#f59e0b;background:#fffbeb;');
+                ? 'width:120px;padding:6px 10px;background:var(--surface-2);color:var(--text-muted);cursor:not-allowed;'
+                : (isDefault ? 'width:120px;padding:6px 10px;' : 'width:120px;padding:6px 10px;border-color:#f59e0b;background:var(--bd-warn);');
 
             const isPlainRegistry = key === 'harbor' && registryType === 'registry';
             const label = isPlainRegistry ? __.t('platform.registry_label') : info.label;
             const desc = isPlainRegistry ? __.t('platform.registry_desc') : info.desc();
 
             return `<tr>
-                <td><strong>${label}</strong> <span style="color:#9ca3af;font-size:11px;">(${key === 'harbor' ? registryType : key})</span></td>
-                <td><code style="font-size:12px;color:#6b7280;">${esc(defVer)}</code></td>
+                <td><strong>${label}</strong> <span style="color:var(--text-muted);font-size:11px;">(${key === 'harbor' ? registryType : key})</span></td>
+                <td><code style="font-size:12px;color:var(--text-weak);">${esc(defVer)}</code></td>
                 <td>${srcBadge}</td>
                 <td><input data-platform="${key}" value="${esc(displayVal)}" data-initial="${esc(displayVal)}" placeholder="${esc(ph)}"
                       style="${inputStyle}" ${readonly ? 'readonly title="' + esc(__.t('js.version_config_readonly_title')) + '"' : ''}></td>
-                <td style="font-size:12px;color:#6b7280;">${desc}</td>
+                <td style="font-size:12px;color:var(--text-weak);">${desc}</td>
             </tr>`;
         }).join('');
     } catch(e) {

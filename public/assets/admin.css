@@ -1,4 +1,32 @@
 * { margin:0; padding:0; box-sizing:border-box; }
+        /* ── 主题变量（供 JS 内联样式引用，深色模式覆盖）── */
+        :root {
+            --line:#e5e7eb; --surface-2:#f9fafb; --text-muted:#9ca3af; --text-weak:#6b7280;
+            --bd-default:#f3f4f6; --bd-default-fg:#6b7280;
+            --bd-ok:#ecfdf5; --bd-ok-fg:#065f46;
+            --bd-err:#fef2f2; --bd-err-fg:#dc2626;
+            --bd-info:#dbeafe; --bd-info-fg:#1d4ed8;
+            --bd-warn:#fef3c7; --bd-warn-fg:#d97706;
+            --bd-unstable:#fff7ed; --bd-unstable-fg:#c2410c;
+            --bd-manual:#f5f3ff; --bd-manual-fg:#6d28d9;
+            --bd-saas:#eef2ff; --bd-saas-fg:#4f46e5;
+            --bd-hosted:#ecfdf5; --bd-hosted-fg:#059669;
+            --bd-mismatch:#fef2f2; --bd-mismatch-fg:#dc2626;
+        }
+        [data-theme="dark"] {
+            color-scheme:dark;
+            --line:#26334a; --surface-2:#1e293b; --text-muted:#94a3b8; --text-weak:#94a3b8;
+            --bd-default:#334155; --bd-default-fg:#e5e7eb;
+            --bd-ok:#064e3b; --bd-ok-fg:#a7f3d0;
+            --bd-err:#4c0519; --bd-err-fg:#fecaca;
+            --bd-info:#1e3a5f; --bd-info-fg:#bfdbfe;
+            --bd-warn:#451a03; --bd-warn-fg:#fbbf24;
+            --bd-unstable:#3a2a0a; --bd-unstable-fg:#fbbf24;
+            --bd-manual:#312e81; --bd-manual-fg:#c7d2fe;
+            --bd-saas:#312e81; --bd-saas-fg:#c7d2fe;
+            --bd-hosted:#064e3b; --bd-hosted-fg:#a7f3d0;
+            --bd-mismatch:#4c0519; --bd-mismatch-fg:#fecaca;
+        }
         body {
             font-family:'Segoe UI','Microsoft YaHei',sans-serif;
             background:#f3f4f6; color:#333; min-height:100vh;
@@ -856,6 +884,10 @@
 [data-theme="dark"] .badge-github,
 [data-theme="dark"] .badge-default { background:#334155; color:#e5e7eb; }
 [data-theme="dark"] .badge-sys { background:#312e81; color:#c7d2fe; }
+[data-theme="dark"] .badge-gitlab { background:#7f1d1d; color:#fecaca; }
+[data-theme="dark"] .badge-gitee,
+[data-theme="dark"] .badge-cus { background:#451a03; color:#fbbf24; }
+[data-theme="dark"] .badge-gitea { background:#1e3a5f; color:#bfdbfe; }
 
 [data-theme="dark"] .perm-check { border-color:#334155; }
 [data-theme="dark"] .perm-check.checked { background:#312e81; border-color:#818cf8; color:#c7d2fe; }

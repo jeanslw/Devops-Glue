@@ -25,15 +25,15 @@ export async function loadPermList() {
                 ? '<span class="badge badge-sys">' + __.t('perm.builtin') + '</span>'
                 : '<span class="badge badge-cus">' + __.t('perm.registered') + '</span>';
             let actions;
-            if (p.is_builtin) actions = '<span style="color:#9ca3af;font-size:12px;" title="' + __.t('permission.builtin_protected') + '">🔒</span>';
+            if (p.is_builtin) actions = '<span style="color:var(--text-muted);font-size:12px;" title="' + __.t('permission.builtin_protected') + '">🔒</span>';
             else if (canDelete) actions = '<button class="btn btn-sm btn-del" onclick="deletePermission(\'' + p.perm_key + '\')" title="' + __.t('common.delete') + '">🗑</button>';
-            else actions = '<span style="color:#9ca3af;font-size:12px;">—</span>';
+            else actions = '<span style="color:var(--text-muted);font-size:12px;">—</span>';
             return '<tr>' +
                 '<td><code>' + esc(p.perm_key) + '</code></td>' +
                 '<td>' + esc(p.description || '-') + '</td>' +
                 '<td>' + (p.parent_key ? '<code>' + esc(p.parent_key) + '</code>' : '-') + '</td>' +
                 '<td>' + type + '</td>' +
-                '<td style="font-size:12px;color:#6b7280;">' + (fmtUtc(p.created_at) || '—') + '</td>' +
+                '<td style="font-size:12px;color:var(--text-weak);">' + (fmtUtc(p.created_at) || '—') + '</td>' +
                 '<td>' + actions + '</td>' +
                 '</tr>';
         }).join('');
@@ -122,7 +122,7 @@ export async function loadImpliedRules() {
                 ? '<span class="badge badge-sys">' + __.t('perm.builtin') + '</span>'
                 : '<span class="badge badge-cus">' + __.t('perm.registered') + '</span>';
             const actions = isBuiltin
-                ? '<span style="color:#9ca3af;font-size:12px;" title="' + __.t('implied.builtin_protected') + '">🔒</span>'
+                ? '<span style="color:var(--text-muted);font-size:12px;" title="' + __.t('implied.builtin_protected') + '">🔒</span>'
                 : '<button class="btn btn-danger btn-sm" onclick="deleteImpliedRule(\'' + r.source + '\',\'' + r.target + '\')">' + __.t('common.delete') + '</button>';
             return '<tr>' +
                 '<td><code>' + r.source + '</code></td>' +

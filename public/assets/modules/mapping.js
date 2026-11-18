@@ -131,7 +131,7 @@ export async function loadMaps() {
                 </tr>`;
             }).join('');
 
-            let pagHtml = '<span style="color:#6b7280;">' + __.t('js.total_items', {total: displayTotal}) + '</span>';
+            let pagHtml = '<span style="color:var(--text-weak);">' + __.t('js.total_items', {total: displayTotal}) + '</span>';
             pagHtml += '<button class="btn btn-sm" onclick="setMapPage(1);loadMaps()" ' + (mapPage<=1?'disabled':'') + '>« ' + __.t('js.page_first') + '</button>';
             pagHtml += '<button class="btn btn-sm" onclick="setMapPage(Math.max(1,getMapPage()-1));loadMaps()" ' + (mapPage<=1?'disabled':'') + '>‹ ' + __.t('js.page_prev') + '</button>';
             pagHtml += '<span style="color:#374151;font-weight:600;">' + mapPage + ' / ' + mapTotalPages + '</span>';
@@ -284,9 +284,9 @@ export function editMap(item) { showForm(item); }
 
 export function statusBadge(s) {
     s = s || 'active';
-    if (s === 'pending') return '<span class="badge" style="background:#fef3c7;color:#d97706;">' + __.t('common.pending') + '</span>';
-    if (s === 'disabled') return '<span class="badge" style="background:#fef2f2;color:#dc2626;">' + __.t('common.disabled') + '</span>';
-    return '<button class="btn btn-sm" disabled style="background:#dcfce7;color:#16a34a;border:1px solid #86efac;cursor:default;">✅ ' + __.t('common.enabled') + '</button>';
+    if (s === 'pending') return '<span class="badge" style="background:var(--bd-warn);color:var(--bd-warn-fg);">' + __.t('common.pending') + '</span>';
+    if (s === 'disabled') return '<span class="badge" style="background:var(--bd-err);color:var(--bd-err-fg);">' + __.t('common.disabled') + '</span>';
+    return '<button class="btn btn-sm" disabled style="background:var(--bd-ok);color:var(--bd-ok-fg);border:1px solid transparent;cursor:default;opacity:1;">✅ ' + __.t('common.enabled') + '</button>';
 }
 
 export async function activateMap(jobName, item) {

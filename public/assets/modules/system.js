@@ -85,7 +85,7 @@ export async function loadSystemInfo() {
         Object.keys(tables).forEach(function(name) {
             const ok = tables[name];
             const row = document.createElement('div');
-            row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px;border-bottom:1px solid #f3f4f6;';
+            row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px;border-bottom:1px solid var(--line);';
             row.innerHTML = '<span style="width:10px;height:10px;border-radius:50%;background:' + (ok ? '#16a34a' : '#dc2626') + ';flex-shrink:0;"></span>'
                 + '<span style="min-width:0;word-break:break-all;">' + esc(name) + '</span>'
                 + '<span style="margin-left:auto;color:' + (ok ? '#16a34a' : '#dc2626') + ';white-space:nowrap;">' + (ok ? '✓' : '✗') + '</span>';
@@ -121,7 +121,7 @@ function renderMigrateLog(log) {
             + '<span style="word-break:break-all;">' + esc(r.table) + '</span>'
             + '<span style="margin-left:auto;white-space:nowrap;color:' + (ok ? '#16a34a' : '#dc2626') + ';">' + (ok ? __.t('sys.migrate_tbl_ok') : __.t('sys.migrate_tbl_fail')) + '</span>'
             + (r.error ? '<span style="flex-basis:100%;color:#dc2626;font-size:11px;word-break:break-all;">' + esc(r.error) + '</span>' : '');
-        return '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:3px 0;font-size:13px;border-bottom:1px solid #f3f4f6;">' + row + '</div>';
+        return '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:3px 0;font-size:13px;border-bottom:1px solid var(--line);">' + row + '</div>';
     }).join('');
 }
 
@@ -240,20 +240,20 @@ export async function loadBackups() {
             const dt = new Date(f.mtime * 1000);
             const t = dt.getFullYear() + '/' + String(dt.getMonth() + 1).padStart(2, '0') + '/' + String(dt.getDate()).padStart(2, '0')
                 + ' ' + String(dt.getHours()).padStart(2, '0') + ':' + String(dt.getMinutes()).padStart(2, '0') + ':' + String(dt.getSeconds()).padStart(2, '0');
-            return '<div style="padding:6px 0;border-bottom:1px solid #f3f4f6;">'
+            return '<div style="padding:6px 0;border-bottom:1px solid var(--line);">'
                 + '<div style="display:flex;align-items:center;gap:6px;">'
                 + '<span>🗜️</span>'
                 + '<span style="overflow-wrap:anywhere;min-width:0;font-size:13px;">' + esc(f.name) + '</span>'
                 + '</div>'
-                + '<div style="display:flex;gap:8px;color:#9ca3af;font-size:11px;margin-top:3px;padding-left:20px;">'
+                + '<div style="display:flex;gap:8px;color:var(--text-muted);font-size:11px;margin-top:3px;padding-left:20px;">'
                 + '<span style="white-space:nowrap;">' + formatSize(f.size) + '</span>'
                 + '<span style="white-space:nowrap;">' + esc(t) + '</span>'
                 + '</div>'
                 + '</div>';
         }).join('');
-        el.innerHTML = '<div style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:10px 12px;font-weight:600;font-size:13px;background:#f9fafb;user-select:none;" onclick="toggleSysBackups()">'
+        el.innerHTML = '<div style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:10px 12px;font-weight:600;font-size:13px;background:var(--surface-2);user-select:none;" onclick="toggleSysBackups()">'
             + '<span>🗜️ ' + __.t('sys.backup_list') + '</span>'
-            + '<span style="color:#6b7280;font-weight:400;">(' + d.files.length + ')</span>'
+            + '<span style="color:var(--text-weak);font-weight:400;">(' + d.files.length + ')</span>'
             + '<span id="sys-backups-arrow" style="margin-left:auto;">▶</span>'
             + '</div>'
             + '<div id="sys-backups-list" style="padding:10px 12px;display:none;">' + items + '</div>';
@@ -379,12 +379,12 @@ function renderCdService(d) {
         if (tokenFrozen) {
             // 冻结状态（上一次禁用留下的结果）：说明再启用即恢复同一枚，避免运营以为每次启用都会换 Token
             const frozenToken = d.token_name ? (d.token_name + (d.token_id ? ' (#' + d.token_id + ')' : '')) : '-';
-            lines.push('<span style="color:#9ca3af;">'
+            lines.push('<span style="color:var(--text-muted);">'
                 + esc(__.t('sys.isvc_token_frozen', { token: frozenToken })) + '</span>');
         }
         if (d.default_provision) {
             // 启用前提示：点启用那一刻将按哪种方式写入契约
-            lines.push('<span style="color:#9ca3af;">' + esc(__.t('sys.isvc_will_provision')) + '：'
+            lines.push('<span style="color:var(--text-muted);">' + esc(__.t('sys.isvc_will_provision')) + '：'
                 + (d.default_provision === 'manual' ? esc(__.t('sys.isvc_provision_manual')) : esc(__.t('sys.isvc_provision_auto')))
                 + '</span>');
         }

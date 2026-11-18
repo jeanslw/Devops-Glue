@@ -8,7 +8,7 @@ let _oidc = null;
 // 来源徽标：database=绿（已持久化，DB 权威）；无来源时返回空（issuer/ttl 未在 DB 配置时为空）
 function sourceBadge(source) {
     if (source === 'database') {
-        return '<span class="badge" style="background:#f0fdf4;color:#16a34a;font-size:11px;margin-left:6px;white-space:nowrap;">✓ ' + esc(__.t('oidc.source_db')) + '</span>';
+        return '<span class="badge" style="background:var(--bd-ok);color:var(--bd-ok-fg);font-size:11px;margin-left:6px;white-space:nowrap;">✓ ' + esc(__.t('oidc.source_db')) + '</span>';
     }
     return '';
 }
@@ -21,7 +21,7 @@ function renderClientRow(c, idx) {
         : '<span class="oidc-cid">' + esc(c.client_id) + '</span>';
     const secretHint = c.secret_set
         ? '<span style="color:#16a34a;font-size:11px;">(' + esc(__.t('oidc.secret_set')) + ')</span>'
-        : '<span style="color:#9ca3af;font-size:11px;">(' + esc(__.t('oidc.secret_unset')) + ')</span>';
+        : '<span style="color:var(--text-muted);font-size:11px;">(' + esc(__.t('oidc.secret_unset')) + ')</span>';
     // 所有客户端都是 DB 行，可删除（删除后该客户端不再可用）
     const delBtn = '<button class="btn btn-sm btn-del" onclick="onOidcClientDelete(' + idx + ')">🗑 ' + esc(__.t('oidc.delete')) + '</button>';
 
@@ -53,7 +53,7 @@ function renderOidc() {
     if (!body || !_oidc) return;
     const clients = _oidc.clients || [];
     const rows = clients.map(renderClientRow).join('')
-        || '<div style="color:#9ca3af;font-size:12px;padding:6px 0;">' + esc(__.t('oidc.no_clients')) + '</div>';
+        || '<div style="color:var(--text-muted);font-size:12px;padding:6px 0;">' + esc(__.t('oidc.no_clients')) + '</div>';
     body.innerHTML =
         '<div style="display:flex;flex-direction:column;gap:12px;">'
         + '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'
