@@ -109,6 +109,25 @@
         .arch-stage svg { display:block; width:100%; height:auto; max-width:900px; }
         .arch-placeholder { color:#6b7280; font-size:14px; padding:48px 16px; text-align:center; }
 
+        /* ── 架构图交互：hover 高亮连线 + 节点点击白话解释 ── */
+        .arch-stage { position:relative; }
+        .arch-stage svg .arch-node { cursor:pointer; }
+        .arch-stage svg .arch-line-faded { opacity:.12 !important; transition:opacity .25s; }
+        .arch-stage svg .arch-line-hot {
+            opacity:1 !important;
+            stroke-width:2.5 !important;
+            filter:drop-shadow(0 0 3px currentColor);
+            transition:opacity .25s;
+        }
+        .arch-tip {
+            position:absolute; z-index:5; max-width:320px; pointer-events:none;
+            background:rgba(17,24,39,.94); color:#fff; border-radius:8px;
+            padding:10px 12px; font-size:13px; line-height:1.6;
+            box-shadow:0 4px 18px rgba(0,0,0,.3);
+            opacity:0; transform:translateY(4px); transition:opacity .18s,transform .18s;
+        }
+        .arch-tip.show { opacity:1; transform:translateY(0); }
+
         /* ── 数据流动画 ── */
         /* Visio 导出的箭头线共 7 个 class（2026-11-18 改色版 v3）：
            .st8 绿(Internal) / .st11 橙虚(Async) / .st17 黑(Data Flow)
@@ -348,6 +367,201 @@
         if (btnArch)  { btnArch.classList.toggle('active', isArch);  btnArch.setAttribute('aria-selected', String(isArch)); }
         if (isArch) loadArch();
     }
+    // ── 架构图交互：节点 hover 高亮相连线 + 点击显示白话解释 ──
+    // 不依赖在 SVG 源码里手工加 id/data-*（Visio 重新导出会覆盖），全部运行时识别：
+    //   节点 = <text> 内容匹配 → 最近 <g id="shape...">；
+    //   连线 = 带 marker 箭头的 <path>；
+    //   归属 = path 端点与节点 bbox 的几何邻近匹配。
+    var NODE_TIPS = {
+        'jenkins':        'index.arch_tip_jenkins',
+        'database':       'index.arch_tip_database',
+        'container registry': 'index.arch_tip_registry',
+        'user ci':        'index.arch_tip_user_ci',
+        'custom_push':    'index.arch_tip_custom_push',
+        'buildprovider':  'index.arch_tip_buildprovider',
+        'mappingmanager': 'index.arch_tip_mapping',
+        'ci trigger':     'index.arch_tip_trigger',
+        'devops cd':      'index.arch_tip_cd',
+    };
+    var NODE_ALIASES = {
+        'Gitlab/Gitea/GitHub Ations': 'buildprovider',
+        'Gitlab/Gitea/GitHub Actions': 'buildprovider',
+    };
+    function nodeKeyOf(text) {
+        var t = text.toLowerCase().replace(/\s+/g, ' ').trim();
+        if (NODE_ALIASES[text]) return NODE_ALIASES[text];
+        for (var key in NODE_TIPS) {
+            if (t === key || t.indexOf(key) === 0) return key;
+        }
+        return null;
+    }
+    function setupArchInteractions(svg, host) {
+        var tip = document.createElement('div');
+        tip.className = 'arch-tip';
+        host.appendChild(tip);
+
+        // 所有箭头线（Visio 用 marker-end 画箭头；排除图例短线：图例在 <g> 里没有 marker 属性？
+        // 这里直接按 CSS class 收集动画线，与上方动画选择器一致）
+        var lineClasses = ['st8','st11','st17','st24','st36','st38','st43'];
+        var lines = [];
+        lineClasses.forEach(function(c) {
+            Array.prototype.forEach.call(svg.querySelectorAll('path.' + c), function(p) { lines.push(p); });
+        });
+        if (!lines.length) return;
+
+        // 预计算每条线的端点，统一转成 SVG 根坐标系（getPointAtLength 是 path 局部坐标，
+        // 与节点 getBBox 所在坐标系不同，直接比较会全部误命中）。
+        function toRoot(pt, el) {
+            try {
+                var m = el.getScreenCTM();
+                var root = svg.getScreenCTM();
+                if (!m || !root) return pt;
+                var inv = root.inverse();
+                return pt.matrixTransform(m).matrixTransform(inv);
+            } catch (e) { return pt; }
+        }
+        var lineEnds = lines.map(function(p) {
+            try {
+                var len = p.getTotalLength();
+                return [toRoot(p.getPointAtLength(0), p), toRoot(p.getPointAtLength(len), p)];
+            } catch (e) { return []; }
+        });
+
+        // 找节点组
+        var nodes = [];
+        Array.prototype.forEach.call(svg.querySelectorAll('text'), function(t) {
+            var key = nodeKeyOf((t.textContent || '').trim());
+            if (!key) return;
+            var g = t.closest('g[id^="shape"]') || t.parentNode;
+            if (!g || nodes.some(function(n) { return n.g === g; })) return;
+            nodes.push({ g: g, key: key, text: t });
+        });
+        if (!nodes.length) return;
+
+        function toRootBox(el) {
+            try {
+                var b = el.getBBox();
+                // 用 DOMPoint 逐角变换（createSVGPoint 在部分浏览器已废弃）
+                var pts = [[b.x,b.y],[b.x+b.width,b.y],[b.x,b.y+b.height],[b.x+b.width,b.y+b.height]]
+                    .map(function(c) {
+                        var p = svg.createSVGPoint(); p.x = c[0]; p.y = c[1];
+                        return toRoot(p, el);
+                    });
+                return {
+                    x: Math.min.apply(null, pts.map(function(p){return p.x;})),
+                    y: Math.min.apply(null, pts.map(function(p){return p.y;})),
+                    width: Math.max.apply(null, pts.map(function(p){return p.x;})) - Math.min.apply(null, pts.map(function(p){return p.x;})),
+                    height: Math.max.apply(null, pts.map(function(p){return p.y;})) - Math.min.apply(null, pts.map(function(p){return p.y;})),
+                };
+            } catch (e) { return null; }
+        }
+        var activeNode = null;
+        function clearHighlight() {
+            lines.forEach(function(p) {
+                p.style.opacity = ''; p.style.strokeWidth = ''; p.style.filter = '';
+            });
+            tip.classList.remove('show');
+            activeNode = null;
+        }
+        function highlight(n, message, event) {
+            activeNode = n;
+            lines.forEach(function(p) {
+                var related = n.lines.indexOf(p) >= 0;
+                p.style.transition = 'opacity .25s';
+                p.style.opacity = related ? '1' : '.1';
+                p.style.strokeWidth = related ? '2.5px' : '';
+                p.style.filter = related ? 'drop-shadow(0 0 3px currentColor)' : '';
+            });
+            tip.textContent = message;
+            positionTip(n.g, host, tip, event);
+            tip.classList.add('show');
+        }
+        function nodeMessage(n) {
+            var msg = __.t(NODE_TIPS[n.key]);
+            return msg !== NODE_TIPS[n.key] ? msg : (n.text.textContent || '');
+        }
+
+        nodes.forEach(function(n) {
+            n.g.classList.add('arch-node');
+            var box = toRootBox(n.g);
+            if (!box) return;
+            var pad = 14;
+            n.lines = [];
+            lines.forEach(function(p, i) {
+                var ends = lineEnds[i];
+                if (!ends.length) return;
+                var hit = ends.some(function(pt) {
+                    return pt.x >= box.x - pad && pt.x <= box.x + box.width + pad &&
+                           pt.y >= box.y - pad && pt.y <= box.y + box.height + pad;
+                });
+                if (hit) n.lines.push(p);
+            });
+            // 桌面：hover 预览（相关线亮、其余变暗），移出复原
+            n.g.addEventListener('mouseenter', function(e) {
+                highlight(n, __.t('index.arch_hover_hint'), e);
+            });
+            n.g.addEventListener('mouseleave', function() {
+                if (activeNode === n && !tip.dataset.pinned) clearHighlight();
+            });
+            // 点击：固定显示节点说明（桌面点击 / 触屏点按共用）
+            n.g.addEventListener('click', function(e) {
+                if (e) e.stopPropagation();
+                tip.dataset.pinned = '1';
+                highlight(n, nodeMessage(n), e);
+            });
+            // 触屏：点按节点等同点击（部分 WebView 不派发 click）
+            n.g.addEventListener('touchstart', function(e) {
+                if (e) e.stopPropagation();
+                tip.dataset.pinned = '1';
+                var t = e.touches && e.touches[0];
+                highlight(n, nodeMessage(n), t || e);
+            }, { passive: true });
+        });
+        // 点击/点按空白处复原
+        function maybeClear(e) {
+            if (tip.dataset.pinned && e.target.closest && e.target.closest('.arch-node')) return;
+            delete tip.dataset.pinned;
+            clearHighlight();
+        }
+        host.addEventListener('click', function(e) {
+            if (!e.target.closest || !e.target.closest('.arch-node')) maybeClear(e);
+        });
+        host.addEventListener('touchstart', function(e) {
+            if (!e.target.closest || !e.target.closest('.arch-node')) maybeClear(e);
+        }, { passive: true });
+    }
+    // tooltip 定位：先按指针右下方放，但与节点矩形相交时推到节点下方/上方，
+    // 保证不遮住节点文字（Visio 节点 <g> 含图标+文字，指针就在节点里，
+    // 单纯按指针偏移仍会盖住节点标签）。
+    function positionTip(el, host, tip, event) {
+        try {
+            var h = host.getBoundingClientRect();
+            var r = el.getBoundingClientRect();
+            var tw = tip.offsetWidth || 300, th = tip.offsetHeight || 70;
+            var px, py;
+            if (event && typeof event.clientX === 'number') {
+                px = event.clientX - h.left + 14;
+                py = event.clientY - h.top + 14;
+            } else {
+                px = r.right - h.left + 8;
+                py = r.bottom - h.top + 8;
+            }
+            // 节点在 host 容器内的矩形（用于避让）
+            var nx = r.left - h.left, ny = r.top - h.top;
+            var overlap = px < nx + r.width + 6 && px + tw > nx - 6 &&
+                          py < ny + r.height + 6 && py + th > ny - 6;
+            if (overlap) {
+                var below = ny + r.height + 12;
+                var above = ny - th - 12;
+                py = (below + th <= h.height - 8) ? below : Math.max(8, above);
+            }
+            // 边界 clamp
+            if (px + tw > h.width - 8) px = Math.max(8, h.width - tw - 8);
+            tip.style.left = Math.max(8, Math.min(px, h.width - tw - 8)) + 'px';
+            tip.style.top  = Math.max(8, Math.min(py, h.height - th - 8)) + 'px';
+        } catch (e) {}
+    }
+
     function loadArch() {
         if (loaded || loading || !stage) return;
         loading = true;
@@ -360,8 +574,13 @@
                 if (!svg) throw new Error('no svg');
                 // 去掉 Visio 可能夹带的脚本，保留图形与内嵌 <style>
                 Array.prototype.forEach.call(svg.querySelectorAll('script'), function(s){ s.remove(); });
+                // 移除 Visio 给每个 <g> 写的 <title>（如「矩形.6」）：否则浏览器会把它当
+                // 原生 tooltip 弹出，和我们自定义的 arch-tip 重叠、干扰交互。
+                Array.prototype.forEach.call(svg.querySelectorAll('title'), function(s){ s.remove(); });
                 stage.innerHTML = '';
-                stage.appendChild(document.importNode(svg, true));
+                var liveSvg = document.importNode(svg, true);
+                stage.appendChild(liveSvg);
+                setupArchInteractions(liveSvg, stage);
                 loaded = true;
             })
             .catch(function(){
