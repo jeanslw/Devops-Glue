@@ -9,6 +9,7 @@
   - Jobs left in `processing` by a crashed worker are automatically requeued, preventing them from getting stuck forever.
 - **Changed**
   - Landing page architecture with arrow colors normalized to the four-color scheme (blue / green / orange / black); the same diagram is now also embedded in the READMEs (SVG) and in `ARCHITECTURE.md` / `架构全景图.md` (PNG).
+  - Interactive architecture diagram: hovering a node highlights connected lines and fades the rest; clicking shows a plain-language description. Touch devices support tap-to-highlight and tap-empty-to-reset. The tooltip avoids nodes and container edges, and Visio's native `<title>` elements are stripped to prevent browser tooltip overlap.
 
 ## v2.11.5 (2026-11-06)
 
