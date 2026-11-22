@@ -1078,7 +1078,7 @@ return [
     'sys.wb_loaded'       => '已加载',
     'sys.wb_filter_hint'  => '点击筛选 {status}（再次点击取消筛选）',
     'sys.wb_retry'        => '重投',
-    'sys.wb_retry_confirm'=> '确定重投任务 #{id}？将清空错误并立即重新提交，Git 按 (sha, context) 覆盖写，重投安全。',
+    'sys.wb_retry_confirm' => '确定重投任务 #{id}？将清空错误并立即重新提交，Git 按 (sha, context) 覆盖写，重投安全。',
     'sys.wb_retry_ok'     => '已重投，worker 下一轮将处理',
     'sys.wb_retry_failed' => '重投失败',
     'sys.backup_list'     => '备份文件',

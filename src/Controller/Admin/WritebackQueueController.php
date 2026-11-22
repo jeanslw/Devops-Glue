@@ -72,8 +72,12 @@ final class WritebackQueueController extends BaseAdminController
         try {
             $ok = $this->queue->requeueDead($id);
             $this->opLog()->record(
-                $this->currentUser, 'writeback_retry', $id, ['ok' => $ok],
-                $this->clientIp($request), $ok ? 'success' : 'failure'
+                $this->currentUser,
+                'writeback_retry',
+                $id,
+                ['ok' => $ok],
+                $this->clientIp($request),
+                $ok ? 'success' : 'failure'
             );
             if (!$ok) {
                 return $this->jsonError($response, $this->__('build.writeback_retry_not_dead'), 409);

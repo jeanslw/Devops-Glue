@@ -174,7 +174,9 @@ final class WritebackQueueRepository
         if ($q !== '') {
             $where[] = '(repo LIKE ? OR sha LIKE ? OR context LIKE ?)';
             $like = '%' . $q . '%';
-            $args[] = $like; $args[] = $like; $args[] = $like;
+            $args[] = $like;
+            $args[] = $like;
+            $args[] = $like;
         }
         $wSql = $where ? (' WHERE ' . implode(' AND ', $where)) : '';
         $countStmt = $this->pdo->prepare("SELECT COUNT(*) FROM {$table}{$wSql}");
