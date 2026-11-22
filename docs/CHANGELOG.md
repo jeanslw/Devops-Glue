@@ -8,8 +8,11 @@
 - **Fixed**
   - Jobs left in `processing` by a crashed worker are automatically requeued, preventing them from getting stuck forever.
 - **Changed**
-  - Landing page architecture with arrow colors normalized to the four-color scheme (blue / green / orange / black); the same diagram is now also embedded in the READMEs (SVG) and in `ARCHITECTURE.md` / `架构全景图.md` (PNG).
+  - Landing page architecture with arrow colors normalized to the four-color scheme (blue / green / orange / black); the same diagram is now also embedded in the Chinese and English READMEs and architecture docs.
   - Interactive architecture diagram: hovering a node highlights connected lines and fades the rest; clicking shows a plain-language description. Touch devices support tap-to-highlight and tap-empty-to-reset. The tooltip avoids nodes and container edges, and Visio's native `<title>` elements are stripped to prevent browser tooltip overlap.
+  - "Data Management" page gains a write-back queue panel showing pending/processing/failed/dead counters and a job list, with status/keyword filters; dead jobs can be requeued in one click.
+  - Documentation now states that "resolve tag" writes `ci_build_tag_cache`: API tokens need `build.write`, while read-only admin roles can also trigger this cache write because they hold `ci.build-records.pull`.
+  - Technical Guide / FAQ clarify the write-back queue vs security audit table: audit rows are written by the worker only after calling the Git API; a queue `failed` job awaits backoff retry, which differs from a single failed audit attempt.
 
 ## v2.11.5 (2026-11-06)
 

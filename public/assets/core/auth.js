@@ -84,7 +84,11 @@ export function doLogout() {
     clearSession();
     const mu = document.getElementById('top-user-menu');
     if (mu) mu.style.display = 'none';
-    document.getElementById('login-page').style.display = 'flex';
+    const loginPage = document.getElementById('login-page');
+    loginPage.style.display = 'flex';
+    // 登录框始终用浅色：登出时临时移除根元素的 data-theme，
+    // 下次登录成功再恢复用户保存的主题（见 admin.js 的 doLogin）。
+    document.documentElement.removeAttribute('data-theme');
     document.getElementById('app-page').style.display = 'none';
 }
 

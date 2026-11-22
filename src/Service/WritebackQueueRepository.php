@@ -149,6 +149,68 @@ final class WritebackQueueRepository
         return $out;
     }
 
+    /**
+     * 分页列出队列任务（后台展示 pending/failed/dead 与 last_error）。
+     *
+     * @param array<string,string> $filters 支持 status / git_platform / q（匹配 repo/sha/context）
+     * @return array{jobs:list<array<string,mixed>>, total:int, page:int, per_page:int, total_pages:int, stats:array<string,int>}
+     */
+    public function search(array $filters, int $page, int $perPage): array
+    {
+        $table = AppConfig::TABLE_WRITEBACK_QUEUE;
+        $where = [];
+        $args = [];
+        $status = trim((string)($filters['status'] ?? ''));
+        if (in_array($status, ['pending', 'processing', 'failed', 'dead'], true)) {
+            $where[] = 'status = ?';
+            $args[] = $status;
+        }
+        $platform = trim((string)($filters['git_platform'] ?? ''));
+        if ($platform !== '') {
+            $where[] = 'git_platform = ?';
+            $args[] = $platform;
+        }
+        $q = trim((string)($filters['q'] ?? ''));
+        if ($q !== '') {
+            $where[] = '(repo LIKE ? OR sha LIKE ? OR context LIKE ?)';
+            $like = '%' . $q . '%';
+            $args[] = $like; $args[] = $like; $args[] = $like;
+        }
+        $wSql = $where ? (' WHERE ' . implode(' AND ', $where)) : '';
+        $countStmt = $this->pdo->prepare("SELECT COUNT(*) FROM {$table}{$wSql}");
+        $countStmt->execute($args);
+        $total = (int)$countStmt->fetchColumn();
+        $totalPages = max(1, (int)ceil($total / max(1, $perPage)));
+        $page = min(max(1, $page), $totalPages);
+        $offset = ($page - 1) * $perPage;
+        $stmt = $this->pdo->prepare(
+            "SELECT * FROM {$table}{$wSql} ORDER BY id DESC LIMIT {$perPage} OFFSET {$offset}"
+        );
+        $stmt->execute($args);
+        $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+        return [
+            'jobs' => array_values($rows),
+            'total' => $total,
+            'page' => $page,
+            'per_page' => $perPage,
+            'total_pages' => $totalPages,
+            'stats' => $this->stats(),
+        ];
+    }
+
+    /** 重投死信任务：dead → pending，attempts 清零，错误清空，立即可被 worker 领取。 */
+    public function requeueDead(string $id): bool
+    {
+        $table = AppConfig::TABLE_WRITEBACK_QUEUE;
+        $stmt = $this->pdo->prepare(
+            "UPDATE {$table} SET status = 'pending', attempts = 0, last_error = NULL,
+             next_retry_at = " . Database::sqlNow() . ", updated_at = " . Database::sqlNow() . "
+             WHERE id = ? AND status = 'dead'"
+        );
+        $stmt->execute([$id]);
+        return $stmt->rowCount() > 0;
+    }
+
     /** @return array<string, mixed>|null */
     private function find(string $id): ?array
     {

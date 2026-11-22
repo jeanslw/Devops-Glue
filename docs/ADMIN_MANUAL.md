@@ -392,6 +392,8 @@ Both cards also expose **▶ Clean up now** / **▶ Backfill now** buttons so yo
 
 > If a record's log-derived tag was parsed incorrectly (e.g. it picked up the previous build's tag), the **↻ Re-parse** button next to that tag force-re-parses it (skips the cache and re-extracts by the current build number).
 
+> **Permission boundary:** "Re-parse / Resolve" (`resolve-tag`) **writes the derived cache table `ci_build_tag_cache`** (not a business main table). API tokens need the `build.write` scope; among admin users, **read-only roles (such as the built-in `viewer`) can also trigger this cache write because they hold `ci.build-records.pull`** — this lets read-only users correct display-only tag parsing. The server derives status from the CI job and does not trust client-supplied values; failed parses skip the write. If you require read-only roles to have zero write access, remove that permission via a custom role.
+
 ### Enabling Custom_Push
 
 No code changes needed — works out of the box:

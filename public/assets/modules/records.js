@@ -3,7 +3,7 @@ import { authHeaders, handle401 } from '../core/api.js';
 import { esc, safeUrl, encodePath, fmtUtc } from '../core/utils.js';
 import { toast } from '../core/toast.js';
 import { hasPermission } from '../core/auth.js';
-import { currentBuildModes, isPullProvider, pullProviderMeta } from '../core/state.js';
+import { currentBuildModes, currentCpEnabled, isPullProvider, pullProviderMeta } from '../core/state.js';
 
 let currentPullPath = '';
 let pullTimer = null;
@@ -45,6 +45,8 @@ export function stopPullAutoRefresh() {
 }
 
 export function applyBuildRecordsMenuVisibility(cpEnabled) {
+    // 未传时用全局状态（bootstrap 阶段 currentCpEnabled=false，loadSettings 后会更新）
+    if (typeof cpEnabled !== 'boolean') cpEnabled = currentCpEnabled;
     var group = document.getElementById('menu-group-build-records');
     var pullItem = document.querySelector('#menu-group-build-records .submenu .menu-item[data-tab="pull-records"]');
     var pushItem = document.querySelector('#menu-group-build-records .submenu .menu-item[data-tab="push-records"]');
@@ -53,6 +55,9 @@ export function applyBuildRecordsMenuVisibility(cpEnabled) {
     if (pullItem) pullItem.style.display = pullOk ? '' : 'none';
     if (pushItem) pushItem.style.display = pushOk ? '' : 'none';
     if (group) group.style.display = (pullOk || pushOk) ? '' : 'none';
+    // 组显隐变化后重算所有分割线：否则构建记录组显示时，它前后的 menu-div
+    // 仍保持上一次计算的状态，刷新瞬间出现「分割线在构建记录上方」的错位闪烁。
+    if (window.applyMenuDivVisibility) window.applyMenuDivVisibility();
 }
 
 export async function loadPullProjects() {

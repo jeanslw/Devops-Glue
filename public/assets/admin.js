@@ -49,7 +49,7 @@ import {
 import { loadOperationLogs, resetOperationLogs } from './modules/oplog.js';
 import { loadDeployLogs, resetDeployLogs } from './modules/deploylog.js';
 import { loadApiAccessLogs, resetApiAccessLogs } from './modules/apiaccesslog.js';
-import { loadSystemInfo, doMigrate, doBackup, loadPlatformConfig, toggleSysTables, toggleSysBackups, loadIntegratedServices, enableIntegratedService, disableIntegratedService, onIntegratedServiceToggle, copyIntegratedToken, hideIntegratedTokenBox } from './modules/system.js';
+import { loadSystemInfo, doMigrate, doBackup, loadPlatformConfig, toggleSysTables, toggleSysBackups, loadIntegratedServices, enableIntegratedService, disableIntegratedService, onIntegratedServiceToggle, copyIntegratedToken, hideIntegratedTokenBox, loadWritebackQueue, retryWritebackDead, filterWritebackStatus } from './modules/system.js';
 import { loadOidcConfig, saveOidcConfig, onOidcAddClient, onOidcClientDelete, toggleOidcCard } from './modules/oidc.js';
 import { loadPlatformConnections, savePlatformConnections, onPlatformDelete, togglePlatformRow } from './modules/platforms.js';
 
@@ -128,6 +128,10 @@ function applyAllMenuVisibility() {
     applyApiTokenMenuVisibility();
     applyOperationLogMenuVisibility();
     applySystemInfoMenuVisibility();
+    // 构建记录组也需在首屏就定好显隐：它初始 display:none，若只等 loadSettings()
+    // 异步返回才显示，刷新时会出现分割线/菜单项跳动。currentCpEnabled 初始 false，
+    // loadSettings 加载后会再调用一次更新。
+    applyBuildRecordsMenuVisibility();
     applyMenuDivVisibility();
 }
 
@@ -147,6 +151,9 @@ async function doLogin() {
             applyAllMenuVisibility();
             document.getElementById('login-page').style.display = 'none';
             document.getElementById('app-page').style.display = 'block';
+            // 恢复登出时临时移除的暗色主题（doLogout 为了登录框浅色而移除）
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
             setTopUser();
             doSwitch(data.must_change_password ? 'password' : resolveTab());
             loadSettings();
@@ -223,7 +230,7 @@ function doSwitch(name) {
     if (name === 'deploy-logs') loadDeployLogs(1);
     if (name === 'api-access-logs') loadApiAccessLogs(1);
     if (name === 'platform-config') loadPlatformConfig();
-    if (name === 'system-info') loadSystemInfo();
+    if (name === 'system-info') { loadSystemInfo(); loadWritebackQueue(1); }
 
     const sb = document.querySelector('.sidebar');
     if (sb && sb.classList.contains('open')) toggleSidebar();
@@ -261,7 +268,7 @@ document.addEventListener('i18n-changed', function() {
         else if (tabName === 'roles') loadRoleList();
         else if (tabName === 'api-tokens') refreshApiTokenView();
         else if (tabName === 'platform-config') loadPlatformConfig();
-        else if (tabName === 'system-info') loadSystemInfo();
+        else if (tabName === 'system-info') { loadSystemInfo(); loadWritebackQueue(1); }
     }
     renderBreadcrumb(resolveTab());
 });
@@ -270,7 +277,7 @@ document.addEventListener('i18n-changed', function() {
 Object.assign(window, {
     doLogin, doLogout, goToDocs, toggleSidebar, toggleTopMenu, toggleTheme,
     toggleUserMenu, togglePermMenu, toggleBuildRecordsMenu, toggleSettingsMenu, toggleLogMenu,
-    switchTab, resolveConfirm, toast, confirmDialog,
+    switchTab, resolveConfirm, toast, confirmDialog, applyMenuDivVisibility,
     loadMaps, onFilterChange, switchMapView, showForm, hideForm, submitForm, editMap, activateMap, deleteMap, doDiscover, copyPipelineIds,
     loadTopology, renderTopology,
     loadSecurityChecks, secOnFilterChange, secSetPage, getSecPage, getSecTotalPages,
@@ -288,6 +295,7 @@ Object.assign(window, {
     loadApiAccessLogs, resetApiAccessLogs,
     loadSystemInfo, doMigrate, doBackup, loadPlatformConfig, toggleSysTables, toggleSysBackups,
     loadIntegratedServices, enableIntegratedService, disableIntegratedService, onIntegratedServiceToggle, copyIntegratedToken, hideIntegratedTokenBox,
+    loadWritebackQueue, retryWritebackDead, filterWritebackStatus,
     loadOidcConfig, saveOidcConfig, onOidcAddClient, onOidcClientDelete, toggleOidcCard,
     loadPlatformConnections, savePlatformConnections, onPlatformDelete, togglePlatformRow,
     // 分页 / 视图
