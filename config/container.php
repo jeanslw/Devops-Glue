@@ -683,6 +683,17 @@ return [
         );
     },
 
+    // 后台：异步回写队列监控与死信重投
+    \App\Controller\Admin\WritebackQueueController::class => function (\Psr\Container\ContainerInterface $c) {
+        return new \App\Controller\Admin\WritebackQueueController(
+            $c->get(I18nService::class),
+            $c->get(Settings::class),
+            $c->get(AppSettingRepository::class),
+            $c->get(OperationLogRepository::class),
+            $c->get(WritebackQueueRepository::class)
+        );
+    },
+
     // 集成服务启停控制器
     IntegratedServiceController::class => function (\Psr\Container\ContainerInterface $c) {
         return new IntegratedServiceController(

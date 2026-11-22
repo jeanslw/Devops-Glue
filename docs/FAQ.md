@@ -711,6 +711,8 @@ It records the result of each Commit Status write-back:
 
 The result is stored in the `writeback_status` / `writeback_message` fields of `ci_security_checks` and shown on the "Security Audit" page. A failed write-back does not block the CI flow (it degrades and passes through).
 
+> **A job in the queue but no audit record?** Audit rows are written **only by the background worker after it calls the Git API**. A job still `pending` (worker has not touched it), or one created directly via Repository methods by a script (bypassing the worker), has no audit record. Queue `status=failed` (waiting for backoff retry) and audit `writeback_status=failed` (a historical failed attempt) are **not the same thing** — see Technical Guide §5.7.1.
+
 ### Q: What fields does a security audit record contain?
 
 The `ci_security_checks` table records: `project`, `sha` (commit), `check_type` (scan type, defaults to `context`), `state` (result status), `context` (check name, e.g. `harbor-scan` / `secret-scan` / `sast` / `sca` / `iac-audit`), `description`, `tag`, `writeback_status` (write-back result), and `created_at`.

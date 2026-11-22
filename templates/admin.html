@@ -14,7 +14,13 @@
          仅作用于 #app-page（主界面），登录页 #login-page 为兄弟节点、保持 100% 原样。
          如需改回原大小，把 0.9 改为 1 或删除本块即可。 -->
     <style>#app-page{zoom:0.95;}</style>
-    <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('theme') || 'light');</script>
+    <script>/* 登录页始终浅色：未登录时忽略保存的主题；已登录才应用 dark/light。
+           doLogout 只清 sessionStorage，刷新时靠这里判断，避免登录框又变暗色。 */
+          (function(){
+              var loggedIn = !!(window.sessionStorage && sessionStorage.getItem('admin_token'));
+              var theme = loggedIn ? (localStorage.getItem('theme') || 'light') : 'light';
+              document.documentElement.setAttribute('data-theme', theme);
+          })();</script>
 </head>
 <body>
 
@@ -84,7 +90,9 @@
             <div class="menu-item" data-tab="mode" onclick="switchTab('mode')">
                 <span class="menu-icon">🔧</span> <span data-i18n="admin.sidebar_mode">构建模式</span>
             </div>
-            <div class="menu-group" id="menu-group-build-records" style="display:none;">
+            <!-- 默认先显示：下方 inline 脚本在首次绘制前同步按权限决定显隐。
+                 若默认值 display:none，JS 后置显示会把下方菜单整体推移，造成刷新闪烁。 -->
+            <div class="menu-group" id="menu-group-build-records">
                 <div class="menu-item menu-group-title" onclick="toggleBuildRecordsMenu()">
                     <span class="menu-icon">📊</span>
                     <span data-i18n="admin.sidebar_build_records">构建记录</span>
@@ -136,7 +144,8 @@
                     </div>
                 </div>
             </div>
-            <div class="menu-group" id="menu-group-logs" style="display:none;">
+            <!-- 默认先显示，下方 inline 脚本在首次绘制前按权限决定显隐（同构建记录组，防刷新布局跳动） -->
+            <div class="menu-group" id="menu-group-logs">
                 <div class="menu-item menu-group-title" onclick="toggleLogMenu()">
                     <span class="menu-icon">📝</span>
                     <span data-i18n="log.center">日志中心</span>
@@ -155,10 +164,10 @@
                 </div>
             </div>
             <div class="menu-div"></div>
-            <div class="menu-item" id="menu-api-tokens" data-tab="api-tokens" onclick="switchTab('api-tokens')" style="display:none;">
+            <div class="menu-item" id="menu-api-tokens" data-tab="api-tokens" onclick="switchTab('api-tokens')">
                 <span class="menu-icon">🔑</span> <span data-i18n="api_token.menu">API 管理</span>
             </div>
-            <div class="menu-group" id="menu-group-settings" style="display:none;">
+            <div class="menu-group" id="menu-group-settings">
                 <div class="menu-item menu-group-title" onclick="toggleSettingsMenu()">
                     <span class="menu-icon">⚙️</span>
                     <span data-i18n="sys.menu">系统设置</span>
@@ -1396,12 +1405,48 @@
                         <div id="sys-backups" class="sys-panel" style="display:none;"></div>
                     </div>
                 </div>
+                <div class="monitor-card">
+                    <h4 data-i18n="sys.panel_writeback">🔁 回写队列</h4>
+                    <div id="wb-stats" style="display:flex;flex-wrap:wrap;gap:10px;margin:10px 0;"></div>
+                    <div class="sys-actions">
+                        <span id="wb-status" class="mode-save-status"></span>
+                    </div>
+                    <div id="wb-empty" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;" data-i18n="sys.wb_empty">队列为空</div>
+                    <div id="wb-loading" style="display:none;text-align:center;padding:20px;color:var(--text-muted);" data-i18n="common.loading">加载中…</div>
+                    <div id="wb-body" style="display:none;">
+                        <div id="wb-list"></div>
+                        <div id="wb-pager" style="margin-top:10px;"></div>
+                    </div>
+                </div>
             </div>
 
         </div><!-- /content -->
     </div><!-- /layout -->
 </div><!-- /app-page -->
 
+<!-- 首屏同步修正菜单组显隐：这些组 HTML 默认显示（避免 JS 后置显示造成布局推移闪烁），
+     若当前角色没有对应权限则立即隐藏。此脚本在 admin.js 加载前同步执行，
+     浏览器首次绘制前即完成，消除刷新瞬间的错位。 -->
+<script>/* eslint-disable */(function(){
+    try {
+        var perms = JSON.parse(sessionStorage.getItem('admin_perms') || '[]');
+        var any = function(keys) {
+            return perms.indexOf('*') >= 0 || keys.some(function(k){ return perms.indexOf(k) >= 0; });
+        };
+        // 构建记录：拉取式记录权限（push 项由后续 loadSettings 按 cpEnabled 微调）
+        var g1 = document.getElementById('menu-group-build-records');
+        if (g1 && !any(['ci.build-records.pull'])) g1.style.display = 'none';
+        // 日志中心：三个日志权限之一
+        var g2 = document.getElementById('menu-group-logs');
+        if (g2 && !any(['ci.operation-logs','ci.deploy-logs','ci.api-logs'])) g2.style.display = 'none';
+        // API 管理：仅 super_admin（与 applyApiTokenMenuVisibility 一致）
+        var api = document.getElementById('menu-api-tokens');
+        if (api && sessionStorage.getItem('admin_role') !== 'super_admin') api.style.display = 'none';
+        // 系统设置：平台配置或数据管理权限
+        var g3 = document.getElementById('menu-group-settings');
+        if (g3 && !any(['ci.platform-config','ci.system'])) g3.style.display = 'none';
+    } catch (e) {}
+})();</script>
 <!-- 见 <head> 顶部说明：资源引用必须带 ?v={{APP_VERSION}} -->
 <!-- 全局注入显示时区：后台所有页面加载即生效，避免未访问「数据管理」页时 window.DG_TZ 为空导致时间回退浏览器时区（空配置=默认 UTC） -->
 <script>window.DG_TZ = {{DISPLAY_TIMEZONE}};</script>

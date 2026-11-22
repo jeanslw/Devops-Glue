@@ -717,6 +717,37 @@ If only `ref` is present without other parameters, auto-convert to `{branches: r
 
 **⚠️ Note:** `state` is `failed` (not `failure`, following the GitHub Commit Status API convention); `writeback_status` uses `skipped` for "not written back", and empty means historical/unknown.
 
+#### 5.7.1 Write-back queue vs security audit — two different "failed"s
+
+Async write-back uses two tables with separate responsibilities. Understanding the difference is key to answering "why is a job in the queue but not in the audit?"
+
+| Dimension | `ci_writeback_queue` (queue) | `ci_security_checks` (audit) |
+|---|---|---|
+| Role | **To-do state machine**: write-backs not yet finished | **Attempt-result history**: a fact for every write-back attempt |
+| Written by | `POST /commit-status` enqueues; worker updates status | **Worker only**, after calling the Git Provider |
+| Lifecycle | Deleted on success; kept for retry on failure | Permanent (UPSERT by project+sha+check_type+context) |
+| Result field | `status` = pending / processing / failed / dead | `writeback_status` = success / failed / skipped / empty |
+| Meaning of "failed" | This job **has not given up**, waiting for backoff retry | **One** Git API call failed (historical fact) |
+| UI | Data Management → Write-back Queue | Security Audit |
+
+**Why can a queue job have no audit record?**
+
+1. Job is `pending` — the worker has not attempted it yet, so there is no result to record.
+2. Job is `processing` — the worker is calling the Git API; the audit has not been written yet.
+3. **The job was created/edited by a script** — calling Repository methods (`enqueue()` / `markFailed()`) directly **without going through the worker** produces no audit record (the audit is written only after the worker's call).
+4. The worker crashed between "claim job" and "write audit" — the job stays `processing` and is later reset by `requeueStale(600)`, but that attempt has no result and writes no audit.
+
+**How to tell the two `failed`s apart:**
+
+- Audit page `writeback_status=failed`: one write-back call failed — a historical fact, **not** an indication that it is still retrying.
+- Queue panel `status=failed`: the last attempt failed and **will be retried automatically** with backoff (30s→60s→…→1h, max 5).
+- Queue `status=dead`: all 5 retries failed, given up; the audit's last record is also `failed`. Manual retry is required to try again.
+
+**Suggested troubleshooting:**
+1. Check the queue panel first: pending/failed → wait for the worker; dead → click "Retry".
+2. Then check Security Audit: a `writeback_status=failed` record shows the concrete reason in `writeback_message` (HTTP 500 / unreachable / Gitee unsupported, etc.).
+3. A job in the queue with no audit record is most likely still pending, or was constructed manually without going through the worker.
+
 ---
 
 ### 5.8 Platform Version Management

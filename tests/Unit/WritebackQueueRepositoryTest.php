@@ -143,4 +143,55 @@ final class WritebackQueueRepositoryTest extends TestCase
         $stats = $repo->stats();
         $this->assertSame(1, $stats['pending']);
     }
+
+    public function testSearchFiltersAndPaginates(): void
+    {
+        $pdo = $this->memoryPdo();
+        $repo = $this->repo($pdo);
+        $repo->enqueue($this->sampleRow());
+        $row2 = $this->sampleRow();
+        $row2['sha'] = 'feedbee';
+        $row2['git_platform'] = 'github';
+        $repo->enqueue($row2);
+
+        $all = $repo->search([], 1, 10);
+        $this->assertSame(2, $all['total']);
+        $this->assertCount(2, $all['jobs']);
+        $this->assertSame(2, $all['stats']['pending']);
+
+        $byStatus = $repo->search(['status' => 'pending'], 1, 10);
+        $this->assertSame(2, $byStatus['total']);
+
+        $byPlatform = $repo->search(['git_platform' => 'github'], 1, 10);
+        $this->assertSame(1, $byPlatform['total']);
+        $this->assertSame('github', $byPlatform['jobs'][0]['git_platform']);
+
+        $byQ = $repo->search(['q' => 'feedbee'], 1, 10);
+        $this->assertSame(1, $byQ['total']);
+
+        $paged = $repo->search([], 1, 1);
+        $this->assertCount(1, $paged['jobs']);
+        $this->assertSame(2, $paged['total_pages']);
+    }
+
+    public function testRequeueDeadOnlyTouchesDeadJobs(): void
+    {
+        $pdo = $this->memoryPdo();
+        $repo = $this->repo($pdo);
+        $deadId = $repo->enqueue($this->sampleRow());
+        $aliveId = $repo->enqueue($this->sampleRow());
+        $repo->markFailed($deadId, 'final error', 1); // attempts=1 ≥ max=1 → dead
+        $repo->markFailed($aliveId, 'first error', 5);
+
+        $this->assertFalse($repo->requeueDead($aliveId), 'failed 任务不应被 dead 重投接口改动');
+        $this->assertTrue($repo->requeueDead($deadId));
+        $this->assertFalse($repo->requeueDead($deadId), '重复重投应返回 false');
+
+        $jobs = $repo->claimDue();
+        $ids = array_map(fn($j) => (string)$j['id'], $jobs);
+        $this->assertContains($deadId, $ids, '重投后应立即可被 worker 领取');
+        $row = $pdo->query("SELECT * FROM " . AppConfig::TABLE_WRITEBACK_QUEUE . " WHERE id = {$deadId}")->fetch(\PDO::FETCH_ASSOC);
+        $this->assertSame(0, (int)$row['attempts']);
+        $this->assertNull($row['last_error']);
+    }
 }

@@ -314,7 +314,7 @@ Steps:
 | `registry.read` | Read-only: Harbor projects / repositories / tags; also all `/api/registry/*` endpoints for **both** registry types (`harbor` / `registry:2`). Included in the CD service credential by default |
 | `harbor.scan` | Trigger Harbor image scans |
 | `build.read` | Read-only: build pipelines / logs / branches |
-| `build.write` | Write: trigger / retry / cancel builds |
+| `build.write` | Write: trigger / retry / cancel builds, resolve/re-parse tag (`resolve-tag`, which writes `ci_build_tag_cache`) |
 | `build.report` | Write-back: scan-sync / commit-status / report |
 | `rbac.user.write` | CD service-account management: create/read/update/delete users and list roles via `/api/rbac/*` |
 

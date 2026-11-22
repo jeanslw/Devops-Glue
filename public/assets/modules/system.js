@@ -530,3 +530,109 @@ export function hideIntegratedTokenBox() {
     const val = document.getElementById('isvc-token-value');
     if (val) val.textContent = '';
 }
+
+// ═══════════ 回写队列（数据管理 tab）═══════════
+let wbPage = 1;
+let wbStatus = ''; // 当前状态筛选：''=全部 / pending / processing / failed / dead
+
+/** 点击统计徽标筛选状态（再次点击同一项取消筛选=全部）。 */
+export function filterWritebackStatus(status) {
+    wbStatus = (wbStatus === status) ? '' : status;
+    loadWritebackQueue(1);
+}
+
+export async function loadWritebackQueue(page) {
+    const loading = document.getElementById('wb-loading');
+    const empty = document.getElementById('wb-empty');
+    const body = document.getElementById('wb-body');
+    const list = document.getElementById('wb-list');
+    const pager = document.getElementById('wb-pager');
+    const status = document.getElementById('wb-status');
+    if (!list) return;
+    if (typeof page === 'number') wbPage = page;
+    const st = wbStatus;
+    if (empty) empty.style.display = 'none';
+    if (loading) loading.style.display = 'block';
+    if (body) body.style.display = 'none';
+    if (status) { status.textContent = '⏳ …'; status.style.color = '#6b7280'; }
+    const params = new URLSearchParams({ page: String(wbPage), per_page: '20' });
+    if (st) params.set('status', st);
+    try {
+        const res = await fetch('/api/admin/writeback_queue?' + params.toString(), { headers: authHeaders() });
+        if (handle401(res)) {
+            if (loading) loading.style.display = 'none';
+            if (empty) empty.style.display = '';
+            return;
+        }
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.message || ('HTTP ' + res.status));
+        const sb = document.getElementById('wb-stats');
+        if (sb && d.stats) {
+            sb.innerHTML = ['pending', 'processing', 'failed', 'dead'].map(function(k) {
+                const color = k === 'dead' ? '#dc2626' : (k === 'failed' ? '#d97706' : (k === 'processing' ? '#2563eb' : '#6b7280'));
+                const active = wbStatus === k;
+                return '<span role="button" tabindex="0" onclick="filterWritebackStatus(\'' + k + '\')"'
+                    + ' title="' + esc(__.t('sys.wb_filter_hint', { status: k })) + '"'
+                    + ' style="padding:4px 10px;border-radius:999px;font-size:12px;cursor:pointer;user-select:none;'
+                    + (active ? 'background:' + color + ';color:#fff;' : 'background:var(--surface-2);')
+                    + 'outline:1px solid ' + color + ';">'
+                    + esc(k) + ': <b>' + (d.stats[k] || 0) + '</b></span>';
+            }).join('');
+        }
+        const jobs = Array.isArray(d.jobs) ? d.jobs : [];
+        if (!jobs.length) {
+            list.innerHTML = '';
+            pager.innerHTML = '';
+            if (empty) empty.style.display = '';
+            if (status) { status.textContent = '✅ ' + __.t('sys.wb_loaded'); status.style.color = '#16a34a'; }
+            if (loading) loading.style.display = 'none';
+            if (body) body.style.display = 'none';
+            return;
+        } else {
+            list.innerHTML = jobs.map(function(j) {
+                const dead = j.status === 'dead';
+                const color = dead ? '#dc2626' : (j.status === 'failed' ? '#d97706' : '#6b7280');
+                const err = j.last_error ? ('<div style="font-size:11px;color:#dc2626;word-break:break-all;">' + esc(j.last_error) + '</div>') : '';
+                const btn = dead
+                    ? '<button class="btn btn-pri" style="margin-left:8px;" onclick="retryWritebackDead(' + Number(j.id) + ')">♻ ' + esc(__.t('sys.wb_retry')) + '</button>'
+                    : '';
+                return '<div style="padding:8px 4px;border-bottom:1px solid var(--line);font-size:12px;">'
+                    + '<span style="color:' + color + ';font-weight:600;">#' + Number(j.id) + ' ' + esc(String(j.status)) + '</span> '
+                    + '<span style="color:var(--text-muted);">' + esc(String(j.git_platform)) + ' / ' + esc(String(j.state)) + '</span> '
+                    + '<span style="color:var(--text-weak);">attempts=' + Number(j.attempts || 0) + '</span>'
+                    + btn
+                    + '<div style="word-break:break-all;color:var(--text-muted);">' + esc(String(j.repo)) + ' @ ' + esc(String(j.sha).slice(0, 12)) + ' · ' + esc(String(j.context)) + '</div>'
+                    + err + '</div>';
+            }).join('');
+        }
+        const totalPages = d.total_pages || 1;
+        pager.innerHTML = '<button class="btn" onclick="loadWritebackQueue(' + Math.max(1, wbPage - 1) + ')"' + (wbPage <= 1 ? ' disabled' : '') + '>«</button> '
+            + '<span style="font-size:12px;color:var(--text-muted);">' + wbPage + ' / ' + totalPages + ' (' + (d.total || 0) + ')</span> '
+            + '<button class="btn" onclick="loadWritebackQueue(' + Math.min(totalPages, wbPage + 1) + ')"' + (wbPage >= totalPages ? ' disabled' : '') + '>»</button>';
+        if (status) { status.textContent = '✅ ' + __.t('sys.wb_loaded'); status.style.color = '#16a34a'; }
+        if (loading) loading.style.display = 'none';
+        if (body) body.style.display = 'block';
+    } catch (e) {
+        if (status) { status.textContent = '❌ ' + e.message; status.style.color = '#dc2626'; }
+        if (loading) loading.style.display = 'none';
+        if (empty) empty.style.display = '';
+        toast(__.t('js.network_error') + ': ' + e.message, false);
+    }
+}
+
+export async function retryWritebackDead(id) {
+    if (!await confirmDialog({ title: __.t('common.confirm'), message: __.t('sys.wb_retry_confirm', { id: String(id) }) })) return;
+    const status = document.getElementById('wb-status');
+    if (status) { status.textContent = '⏳ …'; status.style.color = '#6b7280'; }
+    try {
+        const res = await fetch('/api/admin/writeback_queue/' + Number(id) + '/retry', { method: 'POST', headers: authHeaders() });
+        if (handle401(res)) return;
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.message || ('HTTP ' + res.status));
+        toast(__.t('sys.wb_retry_ok'), true);
+        loadWritebackQueue(wbPage);
+    } catch (e) {
+        if (status) { status.textContent = '❌ ' + e.message; status.style.color = '#dc2626'; }
+        toast(__.t('sys.wb_retry_failed') + ': ' + e.message, false);
+    }
+}
