@@ -1080,7 +1080,7 @@ return [
     'sys.wb_loaded'       => 'Loaded',
     'sys.wb_filter_hint'  => 'Click to filter {status} (click again to clear)',
     'sys.wb_retry'        => 'Retry',
-    'sys.wb_retry_confirm'=> 'Requeue job #{id}? This clears the error and resubmits immediately. Git overwrites by (sha, context), so retry is safe.',
+    'sys.wb_retry_confirm' => 'Requeue job #{id}? This clears the error and resubmits immediately. Git overwrites by (sha, context), so retry is safe.',
     'sys.wb_retry_ok'     => 'Requeued; the worker will process it next round',
     'sys.wb_retry_failed' => 'Retry failed',
     'sys.backup_list'     => 'Backup Files',

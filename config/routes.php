@@ -141,7 +141,7 @@ $app->group('/api', function (RouteCollectorProxy $api) {
             $auth->map(['GET'], '/integrated_services/{service}', [IntegratedServiceController::class, 'status']);
             $auth->map(['POST'], '/integrated_services/{service}/enable', [IntegratedServiceController::class, 'enable']);
             $auth->map(['POST'], '/integrated_services/{service}/disable', [IntegratedServiceController::class, 'disable']);
-            $auth->map(['GET'],  '/writeback_queue',            [WritebackQueueController::class, 'list']);
+            $auth->map(['GET'], '/writeback_queue', [WritebackQueueController::class, 'list']);
             $auth->map(['POST'], '/writeback_queue/{id}/retry', [WritebackQueueController::class, 'retry']);
         })->add(AuthMiddleware::class);
     });
