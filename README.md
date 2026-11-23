@@ -2,15 +2,13 @@
 DevOps-Glue API is a Slim 4–based integration platform designed to enhance DevOps toolchains for small teams. It provides a unified view, RBAC, and RESTful APIs, with support for multiple mainstream Git platforms and CI-agnostic integration.
 
 <p align="center">
-  <strong>🔧 Lightweight CI Management Service | Swiss Army Knife for Small Teams</strong><br/>
-  Built with PHP + Slim4 — A CI & CD data aggregation platform designed for small teams
+  <strong>🔧 Lightweight CI Management Service |  A CI & CD data aggregation platform designed for small teams</strong><br/>
 </p>
 
 [![Releases](https://img.shields.io/github/v/release/jeanslw/Devops-Glue?style=flat-square&label=Release)](https://github.com/jeanslw/Devops-Glue/releases/latest)
 [![CI Pipeline](https://github.com/jeanslw/Devops-Glue/actions/workflows/ci.yml/badge.svg)](https://github.com/jeanslw/Devops-Glue/actions/workflows/ci.yml)
 [![Security Check](https://github.com/jeanslw/Devops-Glue/actions/workflows/security.yml/badge.svg)](https://github.com/jeanslw/Devops-Glue/actions/workflows/security.yml)
 [![Last Commit](https://img.shields.io/github/last-commit/jeanslw/Devops-Glue?style=flat-square&label=Last%20Commit)](https://github.com/jeanslw/Devops-Glue/commits/main/)
-[![Slim4](https://img.shields.io/badge/Slim-4-00A650?logo=slim&logoColor=white)](https://www.slimframework.com)
 [![Docker Tag](https://img.shields.io/docker/v/jeanslw/devops-glue/latest?label=version&logo=docker)](https://hub.docker.com/r/jeanslw/devops-glue)
 [![Docker Pulls](https://img.shields.io/docker/pulls/jeanslw/devops-glue)](https://hub.docker.com/r/jeanslw/devops-glue)
 [![Paired](https://img.shields.io/badge/Paired-Devops__CD-green?logo=python)](https://github.com/jeanslw/Devops_CD)
