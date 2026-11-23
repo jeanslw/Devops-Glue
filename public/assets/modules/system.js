@@ -535,6 +535,18 @@ export function hideIntegratedTokenBox() {
 let wbPage = 1;
 let wbStatus = ''; // 当前状态筛选：''=全部 / pending / processing / failed / dead
 
+const WB_STATUS_LABEL_KEYS = {
+    pending: 'sys.wb_status_pending',
+    processing: 'sys.wb_status_processing',
+    failed: 'sys.wb_status_failed',
+    dead: 'sys.wb_status_dead'
+};
+
+function wbStatusLabel(status) {
+    const key = WB_STATUS_LABEL_KEYS[status];
+    return key ? __.t(key) : String(status);
+}
+
 /** 点击统计徽标筛选状态（再次点击同一项取消筛选=全部）。 */
 export function filterWritebackStatus(status) {
     wbStatus = (wbStatus === status) ? '' : status;
@@ -572,11 +584,11 @@ export async function loadWritebackQueue(page) {
                 const color = k === 'dead' ? '#dc2626' : (k === 'failed' ? '#d97706' : (k === 'processing' ? '#2563eb' : '#6b7280'));
                 const active = wbStatus === k;
                 return '<span role="button" tabindex="0" onclick="filterWritebackStatus(\'' + k + '\')"'
-                    + ' title="' + esc(__.t('sys.wb_filter_hint', { status: k })) + '"'
+                    + ' title="' + esc(__.t('sys.wb_filter_hint', { status: wbStatusLabel(k) })) + '"'
                     + ' style="padding:4px 10px;border-radius:999px;font-size:12px;cursor:pointer;user-select:none;'
                     + (active ? 'background:' + color + ';color:#fff;' : 'background:var(--surface-2);')
                     + 'outline:1px solid ' + color + ';">'
-                    + esc(k) + ': <b>' + (d.stats[k] || 0) + '</b></span>';
+                    + esc(wbStatusLabel(k)) + ': <b>' + (d.stats[k] || 0) + '</b></span>';
             }).join('');
         }
         const jobs = Array.isArray(d.jobs) ? d.jobs : [];
@@ -597,7 +609,7 @@ export async function loadWritebackQueue(page) {
                     ? '<button class="btn btn-pri" style="margin-left:8px;" onclick="retryWritebackDead(' + Number(j.id) + ')">♻ ' + esc(__.t('sys.wb_retry')) + '</button>'
                     : '';
                 return '<div style="padding:8px 4px;border-bottom:1px solid var(--line);font-size:12px;">'
-                    + '<span style="color:' + color + ';font-weight:600;">#' + Number(j.id) + ' ' + esc(String(j.status)) + '</span> '
+                    + '<span style="color:' + color + ';font-weight:600;">#' + Number(j.id) + ' ' + esc(wbStatusLabel(j.status)) + '</span> '
                     + '<span style="color:var(--text-muted);">' + esc(String(j.git_platform)) + ' / ' + esc(String(j.state)) + '</span> '
                     + '<span style="color:var(--text-weak);">attempts=' + Number(j.attempts || 0) + '</span>'
                     + btn

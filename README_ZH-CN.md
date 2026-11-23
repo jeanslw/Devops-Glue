@@ -2,15 +2,13 @@
 Devops-Glue API 是基于 Slim4 为小团队打造的 DevOps 工具链增强集成平台。支持统一视图、RBAC、API，主流多Git平台，支持任何CI。
 
 <p align="center">
-  <strong>🔧 轻量级 CI 管理服务 | 小团队的瑞士军刀</strong><br/>
-  PHP + Slim4 构建，专为小团队设计的持续集成/持续交付数据聚合平台
+  <strong>🔧 轻量级 CI 管理服务 | 专为小团队设计的持续集成/持续交付数据聚合平台</strong><br/>
 </p>
 
 [![Releases](https://img.shields.io/github/v/release/jeanslw/Devops-Glue?style=flat-square&label=Release)](https://github.com/jeanslw/Devops-Glue/releases/latest)
 [![CI Pipeline](https://github.com/jeanslw/Devops-Glue/actions/workflows/ci.yml/badge.svg)](https://github.com/jeanslw/Devops-Glue/actions/workflows/ci.yml)
 [![Security Check](https://github.com/jeanslw/Devops-Glue/actions/workflows/security.yml/badge.svg)](https://github.com/jeanslw/Devops-Glue/actions/workflows/security.yml)
 [![Last Commit](https://img.shields.io/github/last-commit/jeanslw/Devops-Glue?style=flat-square&label=Last%20Commit)](https://github.com/jeanslw/Devops-Glue/commits/main/)
-[![Slim4](https://img.shields.io/badge/Slim-4-00A650?logo=slim&logoColor=white)](https://www.slimframework.com)
 [![Docker Tag](https://img.shields.io/docker/v/jeanslw/devops-glue/latest?label=version&logo=docker)](https://hub.docker.com/r/jeanslw/devops-glue)
 [![Docker Pulls](https://img.shields.io/docker/pulls/jeanslw/devops-glue)](https://hub.docker.com/r/jeanslw/devops-glue)
 [![Paired](https://img.shields.io/badge/Paired-Devops__CD-green?logo=python)](https://gitee.com/jeanslw/devops_cd)
