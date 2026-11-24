@@ -55,15 +55,16 @@ final class PipelineTagController extends BaseBuildController
         $tags  = $this->loadPipelineTags();
         $entry = $tags[$path] ?? [];
 
-        foreach ($this->mapping->allMaps() as $m) {
-            $job = $m['job_name'] ?? '';
-            $cp  = $m['current_path'] ?? '';
-            if ($job === $path || $cp === $path) {
-                foreach (['job_name', 'current_path'] as $f) {
-                    $alias = $m[$f] ?? '';
-                    if ($alias !== '' && $alias !== $path) {
-                        $entry = ($tags[$alias] ?? []) + $entry;
-                    }
+        // 只合并 canonical 映射自身的别名（job_name / current_path），
+        // 不再遍历 allMaps() 合并任意撞名映射的 Tag。
+        $mappedRow = $this->mapping->resolveMapRow($path);
+        if ($mappedRow) {
+            foreach (['job_name', 'current_path'] as $f) {
+                $alias = trim((string)($mappedRow[$f] ?? ''));
+                if ($alias !== '' && $alias !== $path) {
+                    // 精确 path 的结果优先，别名只补足缺失键；
+                    // PHP 数组 + 保留左侧，所以 $entry 必须在左。
+                    $entry = $entry + ($tags[$alias] ?? []);
                 }
             }
         }
@@ -136,17 +137,10 @@ final class PipelineTagController extends BaseBuildController
             return $this->jsonError($response, $this->__('build.provider_not_configured', ['{provider}' => $provider]), 400);
         }
 
-        $registryRepo = '';
-        foreach ($this->mapping->allMaps() as $m) {
-            $job = $m['job_name'] ?? '';
-            $cp  = $m['current_path'] ?? '';
-            if ($job === $path || $cp === $path) {
-                if (!empty($m['registry_repository'])) {
-                    $registryRepo = trim((string) $m['registry_repository']);
-                }
-                break;
-            }
-        }
+        // canonical 解析：与 $this->resolve($path) 保持同一条 active 映射，
+        // 不再遍历 allMaps()（跨映射撞名会取到另一条映射的 registry_repository）。
+        $mappedRow = $this->mapping->resolveMapRow($path);
+        $registryRepo = $mappedRow ? trim((string)($mappedRow['registry_repository'] ?? '')) : '';
         if ($registryRepo === '') {
             return $this->output($response, ['tag' => '', 'resolved' => false, 'reason' => 'no_repository'], $request);
         }

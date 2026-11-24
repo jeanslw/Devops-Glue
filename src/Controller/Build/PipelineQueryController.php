@@ -283,14 +283,10 @@ final class PipelineQueryController extends BaseBuildController
             return $pipelines;
         }
         try {
-            $registryRepo = '';
-            foreach ($this->mapping->allMaps() as $m) {
-                if (($m['job_name'] ?? '') === $path || ($m['current_path'] ?? '') === $path) {
-                    if ($registryRepo === '' && !empty($m['registry_repository'])) {
-                        $registryRepo = (string) $m['registry_repository'];
-                    }
-                }
-            }
+            // 统一 canonical 解析：与构建 Provider/Project 的选择保持同一条映射，
+            // 不再遍历 allMaps() 自行按别名命中（会与 inactive/pending 行错配）。
+            $mappedRow = $this->mapping->resolveMapRow($path);
+            $registryRepo = $mappedRow ? trim((string)($mappedRow['registry_repository'] ?? '')) : '';
 
             $logKeys = [];
             $iids = [];
@@ -310,7 +306,7 @@ final class PipelineQueryController extends BaseBuildController
 
             // scan 源按 pipeline（iid）；log 源按 runId（gitlab=iid，其余=id），与 resolve 写入键一致；均不再按 sha 聚合
             $tagByPid = [];
-            foreach ($this->securityChecks->tagsByPipelineKeys($path, $iids) as $pid => $tag) {
+            foreach ($this->securityChecks->tagsByPipelineKeys($path, $iids, $provider, $projectId) as $pid => $tag) {
                 $tagByPid[$pid] = ['tag' => $tag, 'source' => 'scan'];
             }
             foreach ($this->buildTagCache->tagsByPipelineKeys($provider, $projectId, $logKeys) as $pid => $row) {

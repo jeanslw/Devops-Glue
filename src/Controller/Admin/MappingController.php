@@ -201,9 +201,12 @@ class MappingController extends BaseAdminController
             return $this->jsonError($response, 'map.job_name_required', 400);
         }
         $merged = array_merge($oldRow, $updatedEntry);
-        $this->mapping->saveMap($merged);
-        if ($newName !== $oldName) {
-            $this->mapping->deleteMap($oldName);
+        $result = $this->mapping->renameMap($oldName, $merged);
+        if ($result === 'conflict') {
+            return $this->jsonError($response, $this->__('map.rename_conflict', ['{name}' => $newName]), 409);
+        }
+        if ($result === 'not_found') {
+            return $this->jsonError($response, $this->__('map.not_found', ['{name}' => $oldName]), 404);
         }
         $this->mapping->invalidateMapListCache();
         $this->opLog()->record($this->currentUser, 'update_mapping', $oldName, ['job_name' => $merged['job_name'] ?? $oldName], $this->clientIp($request), 'success');

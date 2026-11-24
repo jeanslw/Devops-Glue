@@ -301,4 +301,35 @@ class MappingManagerTest extends TestCase
         $this->expectException(\App\Exceptions\ApiException::class);
         $this->makeManager()->resolveProject('inactive/job');
     }
+
+    public function testRenameMapRejectsExistingTargetWithoutChangingEitherRow(): void
+    {
+        $this->insertMap(['job_name' => 'job-A', 'build_provider' => AppConfig::PROVIDER_JENKINS, 'git_remote' => 'a.git', 'current_path' => 'path-a']);
+        $this->insertMap(['job_name' => 'job-B', 'build_provider' => AppConfig::PROVIDER_GITLAB_CI, 'git_remote' => 'b.git', 'current_path' => 'path-b']);
+
+        $result = $this->makeManager()->renameMap('job-A', [
+            'job_name' => 'job-B', 'build_provider' => AppConfig::PROVIDER_JENKINS, 'git_remote' => 'hijack.git',
+        ]);
+        $this->assertSame('conflict', $result);
+
+        $rows = $this->pdo->query('SELECT job_name, git_remote, current_path FROM ' . AppConfig::TABLE_JOB_GIT_MAP . ' ORDER BY job_name')->fetchAll();
+        $this->assertCount(2, $rows);
+        $this->assertSame('job-A', $rows[0]['job_name']);
+        $this->assertSame('a.git', $rows[0]['git_remote']);
+        $this->assertSame('job-B', $rows[1]['job_name']);
+        $this->assertSame('b.git', $rows[1]['git_remote']);
+    }
+
+    public function testRenameMapMovesRowInOneTransaction(): void
+    {
+        $this->insertMap(['job_name' => 'old-name', 'build_provider' => AppConfig::PROVIDER_JENKINS, 'git_remote' => 'x.git', 'current_path' => 'old-path']);
+        $result = $this->makeManager()->renameMap('old-name', [
+            'job_name' => 'new-name', 'build_provider' => AppConfig::PROVIDER_JENKINS, 'git_remote' => 'x.git', 'current_path' => 'new-path',
+        ]);
+        $this->assertSame('ok', $result);
+        $rows = $this->pdo->query('SELECT job_name, current_path FROM ' . AppConfig::TABLE_JOB_GIT_MAP)->fetchAll();
+        $this->assertCount(1, $rows);
+        $this->assertSame('new-name', $rows[0]['job_name']);
+        $this->assertSame('new-path', $rows[0]['current_path']);
+    }
 }

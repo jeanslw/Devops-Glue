@@ -117,6 +117,9 @@ final class BuildReportController extends BaseBuildController
                 'check_type'   => $checkType,
                 'tag'          => $tag,
                 'pipeline_id'  => $pipelineId,
+                // commit-status 的 pipeline_id 是 Git 平台流水线号，不是构建 iid；
+                // 该队列的 commit status 审计不参与构建 tag 投影，保留空 key 即可。
+                'pipeline_key' => '',
             ]);
         } catch (\Throwable $e) {
             // DB 异常（表未迁移/连接耗尽）不能变成裸 500：CI 回调方会重试，且原本同步版本
@@ -265,6 +268,7 @@ final class BuildReportController extends BaseBuildController
                         $registryRepo,
                         'success',
                         $finishedAt,
+                        null,
                         $finalDigest
                     )
                 ) {
@@ -448,7 +452,8 @@ final class BuildReportController extends BaseBuildController
             $tag,
             !empty($result['success']) ? 'success' : 'failed',
             (string) ($result['message'] ?? ''),
-            (string) $pipelineIid
+            (string) $pipelineIid,
+            $pipelineIid > 0 ? $this->mapping->pipelineIdentity($path, $pipelineIid)->storageKey() : ''
         );
     }
 }

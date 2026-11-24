@@ -35,9 +35,9 @@ final class WritebackQueueRepository
         $stmt = $this->pdo->prepare(
             "INSERT INTO {$table}
                 (git_platform, repo, sha, state, context, description, target_url,
-                 project_path, check_type, tag, pipeline_id, status, attempts,
+                 project_path, check_type, tag, pipeline_id, pipeline_key, status, attempts,
                  next_retry_at, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, {$now}, {$now}, {$now})"
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, {$now}, {$now}, {$now})"
         );
         $stmt->execute([
             (string)($row['git_platform'] ?? ''),
@@ -51,6 +51,7 @@ final class WritebackQueueRepository
             (string)($row['check_type'] ?? ''),
             (string)($row['tag'] ?? ''),
             (string)($row['pipeline_id'] ?? ''),
+            (string)($row['pipeline_key'] ?? ''),
         ]);
         return (string)$this->pdo->lastInsertId();
     }

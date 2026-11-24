@@ -251,13 +251,14 @@ class RegistrySyncService
             $writebackParts[] = $result['message'];
         }
         if ($ciStatus === 'success' && $iid > 0) {
-            // 仅当 tag 已通过镜像仓库校验（或仓库未配置、无法校验时按原行为尽力关联）才写权威 artifact
-            if ($this->registry === null || $tagVerified) {
+            // 权威 artifact 必须经 Registry 验证：未配置 Registry 或未验证的 tag 绝不写入。
+            if ($this->registry !== null && $tagVerified) {
                 $artifactOk = $this->recordArtifact($path, $iid, $tag, $repository, $scanState, $sourceUpdatedAt, $digest);
                 $artifactWritten = (bool)$artifactOk;
                 $writebackParts[] = $artifactOk ? 'artifact_write=success' : 'artifact_write=failed';
             } else {
-                $writebackParts[] = 'artifact_write=skipped (tag_not_in_registry)';
+                $reason = $this->registry === null ? 'registry_unavailable' : 'tag_not_in_registry';
+                $writebackParts[] = 'artifact_write=skipped (' . $reason . ')';
             }
         } elseif ($iid > 0) {
             $writebackParts[] = 'artifact_write=skipped (ci_status=' . $ciStatus . ')';
@@ -269,9 +270,10 @@ class RegistrySyncService
             $checkType,
             $desc,
             $tag,
-            ($this->registry === null || $tagVerified) && $ciStatus === 'success' ? 'success' : 'skipped',
+            $tagVerified && $ciStatus === 'success' ? 'success' : 'skipped',
             implode(' | ', $writebackParts),
-            (string) $iid
+            (string) $iid,
+            $iid > 0 ? $this->mapping->pipelineIdentity($path, $iid)->storageKey() : ''
         );
 
         return [
@@ -371,15 +373,15 @@ class RegistrySyncService
         return '';
     }
 
-    private function recordSecurityCheck(string $project, string $sha, string $state, string $checkType, string $description, string $tag, string $writebackStatus, string $writebackMessage, string $pipelineId = ''): void
+    private function recordSecurityCheck(string $project, string $sha, string $state, string $checkType, string $description, string $tag, string $writebackStatus, string $writebackMessage, string $pipelineId = '', string $pipelineKey = ''): void
     {
         try {
             $sql = Database::sqlUpsert(
                 AppConfig::TABLE_SECURITY_CHECKS,
-                'project, sha, check_type, state, context, description, tag, writeback_status, writeback_message, pipeline_id, created_at',
-                '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ' . Database::sqlNow()
+                'project, sha, check_type, state, context, description, tag, writeback_status, writeback_message, pipeline_id, pipeline_key, created_at',
+                '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ' . Database::sqlNow()
             );
-            $this->pdo->prepare($sql)->execute([$project, $sha, $checkType, $state, $checkType, $description, $tag, $writebackStatus, $writebackMessage, $pipelineId]);
+            $this->pdo->prepare($sql)->execute([$project, $sha, $checkType, $state, $checkType, $description, $tag, $writebackStatus, $writebackMessage, $pipelineId, $pipelineKey]);
         } catch (\Throwable $e) {
             Log::exception($e);
         }

@@ -79,6 +79,7 @@ class RegistrySyncServiceTest extends TestCase
             project TEXT NOT NULL,
             sha TEXT DEFAULT "",
             pipeline_id TEXT DEFAULT "",
+            pipeline_key TEXT DEFAULT "",
             check_type TEXT DEFAULT "",
             state TEXT DEFAULT "",
             context TEXT DEFAULT "",
@@ -268,7 +269,21 @@ class RegistrySyncServiceTest extends TestCase
         $this->assertSame([], $this->audits());
     }
 
-    public function testUnconfiguredRegistryStillWritesAudit(): void
+    public function testAuditCarriesCanonicalPipelineKey(): void
+    {
+        $this->service($this->registry(['v1']))->sync('team/app', [
+            'ci_status' => 'success',
+            'tag'       => 'v1',
+            'sha'       => 'abc123',
+            'pipeline_iid' => 10,
+        ], false, 'registry-sync');
+
+        $audits = $this->audits();
+        $this->assertCount(1, $audits);
+        $this->assertSame('custom_push:team/app:10', $audits[0]['pipeline_key']);
+    }
+
+    public function testUnconfiguredRegistrySkipsArtifactAndMarksAuditSkipped(): void
     {
         $result = $this->service(null)->sync('team/app', [
             'ci_status' => 'success',
@@ -280,11 +295,13 @@ class RegistrySyncServiceTest extends TestCase
         $this->assertSame('unknown', $result['scan_state']);
         $this->assertSame('abc123', $result['sha']);
         $this->assertSame('v1', $result['tag']);
+        $this->assertFalse($result['artifact_written']);
 
         $audits = $this->audits();
         $this->assertCount(1, $audits);
         $this->assertSame('registry-sync', $audits[0]['check_type']);
-        $this->assertSame('success', $audits[0]['writeback_status']);
+        $this->assertSame('skipped', $audits[0]['writeback_status']);
+        $this->assertStringContainsString('registry_unavailable', $audits[0]['writeback_message']);
     }
 
     public function testTagNotInRegistryDoesNotBlockAudit(): void

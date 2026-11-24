@@ -30,4 +30,18 @@ final class PipelineIdentity
     {
         return $this->provider . ':' . $this->projectId . ':' . $this->pipelineIid;
     }
+
+    /**
+     * 持久化用 key：与 key() 同语义，但超长 projectId 用 hash 压缩，
+     * 保证可直接放入 pipeline_key(191) 唯一索引前缀且不会因尾部差异被截断合并。
+     */
+    public function storageKey(): string
+    {
+        $key = $this->key();
+        if (strlen($key) <= 190) {
+            return $key;
+        }
+        return $this->provider . ':' . substr(hash('sha256', $this->projectId), 0, 64)
+            . ':' . $this->pipelineIid;
+    }
 }
