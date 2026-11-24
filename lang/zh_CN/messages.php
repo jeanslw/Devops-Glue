@@ -83,6 +83,7 @@ return [
     'map.original_name_required' => '_original_job_name 为必填字段',
     'map.already_exists'         => '映射已存在，请使用编辑功能',
     'map.not_found'              => '映射不存在',
+    'map.rename_conflict'        => '无法重命名：映射「{name}」已存在',
     'map.no_data'                => '暂无映射配置，点击上方按钮新增',
     'map.no_data_topo'           => '暂无映射数据',
     'map.no_data_topo_hint'      => '请先通过「表格」视图新增或自动发现映射关系',

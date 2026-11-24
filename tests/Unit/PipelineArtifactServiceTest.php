@@ -114,4 +114,84 @@ class PipelineArtifactServiceTest extends TestCase
             $row['digest']
         );
     }
+
+    public function testDigestChangeForcesRefreshEvenWhenSourceTimeIsOlder(): void
+    {
+        $id = new PipelineIdentity('gitlab_ci', '77', 9);
+        $this->service->record(
+            $id, 'group/app', 'v1', 'repo/app', 'success',
+            '2026-11-03 12:00:00', '2026-11-03 12:00:00',
+            'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+        );
+        $result = $this->service->record(
+            $id, 'group/app', 'v1', 'repo/app', 'success',
+            '2026-11-03 11:59:00', '2026-11-03 11:59:00',
+            'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'
+        );
+
+        $this->assertTrue($result['written']);
+        $row = $this->service->find($id);
+        $this->assertSame('sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', $row['digest']);
+        $this->assertSame('2026-11-03 11:59:00', $row['source_updated_at']);
+    }
+
+    public function testConditionalUpdateGuardIsInSql(): void
+    {
+        $src = (string) file_get_contents(dirname(__DIR__, 2) . '/src/Service/PipelineArtifactService.php');
+        $this->assertStringContainsString('? >= COALESCE(source_updated_at', $src);
+        $this->assertStringContainsString('COALESCE(digest', $src);
+        $this->assertStringContainsString('$stmt->rowCount() > 0', $src);
+        $this->assertStringNotContainsString("return ['written' => true, 'ignored' => false];\n    }", $src);
+    }
+
+    public function testTimezoneAwareSourceTimeIsNormalizedBeforeComparison(): void
+    {
+        $id = new PipelineIdentity('jenkins', 'tz-job', 1);
+        $this->service->record($id, 'tz-job', 'v1', 'repo/app', 'success', '2026-10-23T10:00:00+08:00');
+        $row = $this->service->find($id);
+        // +08:00 → UTC 02:00:00
+        $this->assertSame('2026-10-23 02:00:00', $row['source_updated_at']);
+
+        // 较早的 UTC 事件不能覆盖
+        $result = $this->service->record($id, 'tz-job', 'old', 'repo/app', 'failed', '2026-10-23 01:59:00');
+        $this->assertFalse($result['written']);
+        $this->assertSame('v1', $this->service->find($id)['tag']);
+    }
+
+    public function testIdempotentRepeatIsDistinguishedFromIgnoredStaleEvent(): void
+    {
+        $id = new PipelineIdentity('jenkins', 'idempotent', 3);
+        $first = $this->service->record($id, 'idempotent', 'v1', 'repo/app', 'success', '2026-11-03 10:00:00');
+        $this->assertSame('written', $first['outcome']);
+        $this->assertTrue($first['changed']);
+
+        $same = $this->service->record($id, 'idempotent', 'v1', 'repo/app', 'success', '2026-11-03 10:00:00');
+        $this->assertTrue($same['written'], '幂等重复写入应保持兼容 written=true');
+        $this->assertFalse($same['ignored']);
+        $this->assertFalse($same['changed']);
+        $this->assertSame('unchanged', $same['outcome']);
+
+        $stale = $this->service->record($id, 'idempotent', 'old', 'repo/app', 'failed', '2026-11-03 09:59:00');
+        $this->assertFalse($stale['written']);
+        $this->assertTrue($stale['ignored']);
+        $this->assertSame('ignored', $stale['outcome']);
+        $this->assertSame('v1', $this->service->find($id)['tag']);
+    }
+
+    public function testNullSourceTimeDoesNotClearExistingClock(): void
+    {
+        $id = new PipelineIdentity('jenkins', 'null-clock', 2);
+        $this->service->record($id, 'null-clock', 'v1', 'repo/app', 'success', '2026-11-03 10:00:00');
+        $this->service->record(
+            $id, 'null-clock', 'v2', 'repo/app', 'success', null, null,
+            'sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd'
+        );
+        $row = $this->service->find($id);
+        $this->assertSame('2026-11-03 10:00:00', $row['source_updated_at']);
+        $this->assertSame('v2', $row['tag']);
+        $this->assertSame(
+            'sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
+            $row['digest']
+        );
+    }
 }

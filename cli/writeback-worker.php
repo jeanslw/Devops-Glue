@@ -87,22 +87,27 @@ try {
                 $message = $e->getMessage();
             }
 
-            // 先写审计再删任务：否则审计失败/进程被 kill 时任务已消失、审计永久丢失（审查 M3）。
+            // 审计写失败必须让队列保留重试：Git 状态已成功但本地审计失败时，
+            // 不能 markDone，否则审计永久丢失。
+            $auditError = '';
             try {
-                $securityChecks->record(
-                    (string)($job['project_path'] ?? ''),
-                    (string)$job['sha'],
-                    (string)$job['state'],
-                    (string)$job['context'],
-                    (string)$job['description'],
-                    (string)(($job['check_type'] ?? '') ?: ($job['context'] ?? '')),
-                    (string)($job['tag'] ?? ''),
-                    $writebackStatus,
-                    $message,
-                    (string)($job['pipeline_id'] ?? '')   // 审计 pipeline_id 不断链（审查 M2）
-                );
+                $securityChecks->recordStrict([
+                    'project' => (string)($job['project_path'] ?? ''),
+                    'sha' => (string)$job['sha'],
+                    'state' => (string)$job['state'],
+                    'context' => (string)$job['context'],
+                    'description' => (string)$job['description'],
+                    'check_type' => (string)(($job['check_type'] ?? '') ?: ($job['context'] ?? '')),
+                    'tag' => (string)($job['tag'] ?? ''),
+                    'writeback_status' => $writebackStatus,
+                    'writeback_message' => $message,
+                    'pipeline_id' => (string)($job['pipeline_id'] ?? ''),
+                ]);
             } catch (\Throwable $e) {
+                $auditError = $e->getMessage();
                 \App\Helper\Log::exception($e);
+                $writebackStatus = 'failed';
+                $message = ($message !== '' ? $message . '; ' : '') . 'audit write failed: ' . $auditError;
             }
 
             if ($writebackStatus === 'success') {

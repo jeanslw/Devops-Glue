@@ -265,6 +265,7 @@ final class BuildReportController extends BaseBuildController
                         $registryRepo,
                         'success',
                         $finishedAt,
+                        null,
                         $finalDigest
                     )
                 ) {

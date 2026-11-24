@@ -161,6 +161,96 @@ class MappingManager
         ];
     }
 
+    /**
+     * 事务性重命名映射。主键 UPDATE 本身参与唯一约束：目标名已存在时数据库直接拒绝，
+     * 不依赖「先 SELECT 再 REPLACE」的竞态检查（后者在并发下会静默覆盖已有映射）。
+     *
+     * @param array<string,mixed> $newRow 已合并好的新行（job_name 为新名）
+     * @return string 'ok' | 'not_found' | 'conflict' | 'invalid'
+     */
+    public function renameMap(string $oldName, array $newRow): string
+    {
+        $oldName = trim($oldName);
+        $newName = trim((string)($newRow['job_name'] ?? ''));
+        if ($oldName === '' || $newName === '') {
+            return 'invalid';
+        }
+        $own = !$this->pdo->inTransaction();
+        if ($own) {
+            $this->pdo->beginTransaction();
+        }
+        $rollback = function () use ($own): void {
+            if (!$own || !$this->pdo->inTransaction()) {
+                return;
+            }
+            try {
+                $this->pdo->rollBack();
+            } catch (\Throwable $e) {
+                // 事务已被数据库自行回滚，忽略
+            }
+        };
+        try {
+            $stmt = $this->pdo->prepare(
+                'SELECT 1 FROM ' . AppConfig::TABLE_JOB_GIT_MAP . ' WHERE job_name = ?'
+            );
+            $stmt->execute([$oldName]);
+            if ($stmt->fetchColumn() === false) {
+                $rollback();
+                return 'not_found';
+            }
+            try {
+                if ($newName !== $oldName) {
+                    // 主键 UPDATE 由数据库保证唯一性：目标已存在直接抛异常。
+                    $this->pdo->prepare(
+                        'UPDATE ' . AppConfig::TABLE_JOB_GIT_MAP . ' SET job_name = ? WHERE job_name = ?'
+                    )->execute([$newName, $oldName]);
+                }
+                $this->pdo->prepare($this->updateRowSql())->execute($this->rowValuesWithoutName($newRow));
+            } catch (\PDOException $e) {
+                if ($this->isDuplicateKeyError($e)) {
+                    $rollback();
+                    return 'conflict';
+                }
+                throw $e;
+            }
+            if ($own) {
+                $this->pdo->commit();
+            }
+            return 'ok';
+        } catch (\Throwable $e) {
+            $rollback();
+            throw $e;
+        }
+    }
+
+    private function updateRowSql(): string
+    {
+        return 'UPDATE ' . AppConfig::TABLE_JOB_GIT_MAP . ' SET git_platform = ?, build_provider = ?,'
+            . ' git_remote = ?, project_id = ?, web_url = ?, current_path = ?,'
+            . ' registry_repository = ?, api_version = ?, status = ? WHERE job_name = ?';
+    }
+
+    /**
+     * @param array<string,mixed> $row
+     * @return list<mixed>
+     */
+    private function rowValuesWithoutName(array $row): array
+    {
+        $values = $this->rowValues($row);
+        array_shift($values);
+        $values[] = $row['job_name'];
+        return $values;
+    }
+
+    private function isDuplicateKeyError(\PDOException $e): bool
+    {
+        if ((int)($e->errorInfo[1] ?? 0) === 1062) {
+            return true; // MySQL duplicate entry
+        }
+        $msg = $e->getMessage();
+        return str_contains($msg, 'UNIQUE constraint failed') || str_contains($msg, 'Duplicate entry');
+    }
+
     /** 单条删除映射 */
     public function deleteMap(string $jobName): void
     {
@@ -288,6 +378,8 @@ class MappingManager
 
 
 
+        // job_name 是稳定主键：即使对应 provider 当前关闭，也要能解析到该行以便只读查询历史；
+        // current_path 则按当前启用集合解析（第二循环用 activeMaps），这是既有明确语义。
         foreach ($this->allMaps() as $m) {
             if (($m['status'] ?? AppConfig::STATUS_ACTIVE) !== AppConfig::STATUS_ACTIVE) {
                 continue;

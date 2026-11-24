@@ -251,13 +251,14 @@ class RegistrySyncService
             $writebackParts[] = $result['message'];
         }
         if ($ciStatus === 'success' && $iid > 0) {
-            // 仅当 tag 已通过镜像仓库校验（或仓库未配置、无法校验时按原行为尽力关联）才写权威 artifact
-            if ($this->registry === null || $tagVerified) {
+            // 权威 artifact 必须经 Registry 验证：未配置 Registry 或未验证的 tag 绝不写入。
+            if ($this->registry !== null && $tagVerified) {
                 $artifactOk = $this->recordArtifact($path, $iid, $tag, $repository, $scanState, $sourceUpdatedAt, $digest);
                 $artifactWritten = (bool)$artifactOk;
                 $writebackParts[] = $artifactOk ? 'artifact_write=success' : 'artifact_write=failed';
             } else {
-                $writebackParts[] = 'artifact_write=skipped (tag_not_in_registry)';
+                $reason = $this->registry === null ? 'registry_unavailable' : 'tag_not_in_registry';
+                $writebackParts[] = 'artifact_write=skipped (' . $reason . ')';
             }
         } elseif ($iid > 0) {
             $writebackParts[] = 'artifact_write=skipped (ci_status=' . $ciStatus . ')';
@@ -269,7 +270,7 @@ class RegistrySyncService
             $checkType,
             $desc,
             $tag,
-            ($this->registry === null || $tagVerified) && $ciStatus === 'success' ? 'success' : 'skipped',
+            $tagVerified && $ciStatus === 'success' ? 'success' : 'skipped',
             implode(' | ', $writebackParts),
             (string) $iid
         );

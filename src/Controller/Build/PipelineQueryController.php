@@ -283,14 +283,10 @@ final class PipelineQueryController extends BaseBuildController
             return $pipelines;
         }
         try {
-            $registryRepo = '';
-            foreach ($this->mapping->allMaps() as $m) {
-                if (($m['job_name'] ?? '') === $path || ($m['current_path'] ?? '') === $path) {
-                    if ($registryRepo === '' && !empty($m['registry_repository'])) {
-                        $registryRepo = (string) $m['registry_repository'];
-                    }
-                }
-            }
+            // 统一 canonical 解析：与构建 Provider/Project 的选择保持同一条映射，
+            // 不再遍历 allMaps() 自行按别名命中（会与 inactive/pending 行错配）。
+            $mappedRow = $this->mapping->resolveMapRow($path);
+            $registryRepo = $mappedRow ? trim((string)($mappedRow['registry_repository'] ?? '')) : '';
 
             $logKeys = [];
             $iids = [];

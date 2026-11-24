@@ -82,6 +82,7 @@ return [
     'map.original_name_required'  => '_original_job_name is required',
     'map.already_exists'          => 'Mapping already exists, please use edit',
     'map.not_found'               => 'Mapping not found',
+    'map.rename_conflict'         => 'Cannot rename: mapping "{name}" already exists',
     'map.no_data'                 => 'No mapping configured, click above to add',
     'map.no_data_topo'            => 'No mapping data',
     'map.no_data_topo_hint'       => 'Please add mappings via the Table view or use Auto Discovery',

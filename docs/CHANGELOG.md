@@ -14,6 +14,7 @@
   - Documentation now states that "resolve tag" writes `ci_build_tag_cache`: API tokens need `build.write`, while read-only admin roles can also trigger this cache write because they hold `ci.build-records.pull`.
   - Technical Guide / FAQ clarify the write-back queue vs security audit table: audit rows are written by the worker only after calling the Git API; a queue `failed` job awaits backoff retry, which differs from a single failed audit attempt.
   - Fix a spurious ERROR log on fresh installs where concurrent first-boot containers both tried to create `uniq_security_check` and MySQL 1061 was reported: a duplicate-index conflict is now treated as idempotent success, while other DDL failures are still logged.
+  - Mapping rename is now transactional and returns 409 when the target name exists (neither mapping is overwritten); Build/Tag queries consistently use canonical `resolveMapRow()` instead of mixing inactive/alias mappings; unverified or unavailable registries no longer write authoritative artifacts; the write-back worker uses strict audit writes and keeps the queue job for retry when audit persistence fails; pipeline artifact writes use a conditional monotonic SQL upsert that distinguishes an actual write, an idempotent no-change, and a rejected stale event, so a lost concurrent insert is no longer reported as success.
 
 ## v2.11.5 (2026-11-06)
 

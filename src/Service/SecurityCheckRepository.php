@@ -131,17 +131,37 @@ class SecurityCheckRepository
         $this->pdo->prepare($sql)->execute([$key, json_encode($value), time() + $ttlSeconds]);
     }
 
-    /** 写一条安全扫描/回写审计记录（upsert），失败仅记日志不影响主流程。pipeline_id 用于按构建维度投影 tag。 */
+    /**
+     * 严格写入审计：失败抛异常，供 worker 判断“Git 已成功但本地审计失败”，
+     * 从而保留队列任务重试，不因 best-effort 吞错导致审计永久丢失。
+     *
+     * @param array{project:string,sha:string,state:string,context:string,description:string,check_type:string,tag:string,writeback_status:string,writeback_message:string,pipeline_id:string} $row
+     */
+    public function recordStrict(array $row): void
+    {
+        $sql = Database::sqlUpsert(
+            AppConfig::TABLE_SECURITY_CHECKS,
+            'project, sha, check_type, state, context, description, tag, writeback_status, writeback_message, pipeline_id, created_at',
+            '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ' . Database::sqlNow()
+        );
+        $this->pdo->prepare($sql)->execute([
+            $row['project'], $row['sha'], $row['check_type'], $row['state'], $row['context'],
+            $row['description'], $row['tag'], $row['writeback_status'], $row['writeback_message'],
+            $row['pipeline_id'],
+        ]);
+    }
+
+    /** 写一条安全扫描/回写审计记录（upsert），失败仅记日志不影响主流程。 */
     public function record(string $project, string $sha, string $state, string $context, string $description, string $checkType, string $tag, string $writebackStatus = '', string $writebackMessage = '', string $pipelineId = ''): void
     {
         try {
-            $sql = Database::sqlUpsert(
-                AppConfig::TABLE_SECURITY_CHECKS,
-                'project, sha, check_type, state, context, description, tag, writeback_status, writeback_message, pipeline_id, created_at',
-                '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ' . Database::sqlNow()
-            );
-            $this->pdo->prepare($sql)->execute([$project, $sha, $checkType, $state, $context, $description, $tag, $writebackStatus, $writebackMessage, $pipelineId]);
-        } catch (\Exception $e) {
+            $this->recordStrict([
+                'project' => $project, 'sha' => $sha, 'state' => $state, 'context' => $context,
+                'description' => $description, 'check_type' => $checkType, 'tag' => $tag,
+                'writeback_status' => $writebackStatus, 'writeback_message' => $writebackMessage,
+                'pipeline_id' => $pipelineId,
+            ]);
+        } catch (\Throwable $e) {
             \App\Helper\Log::exception($e);
         }
     }
