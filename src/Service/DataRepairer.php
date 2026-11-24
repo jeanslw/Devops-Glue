@@ -97,7 +97,9 @@ class DataRepairer
                 $this->pdo->exec("CREATE UNIQUE INDEX IF NOT EXISTS {$index} ON {$table} ({$columns})");
             }
         } catch (\Throwable $e) {
-            \App\Helper\Log::exception($e);
+            if (!SchemaMigrator::isDuplicateIndexError($e)) {
+                \App\Helper\Log::exception($e);
+            }
         }
     }
 
