@@ -13,6 +13,7 @@
   - "Data Management" page gains a write-back queue panel showing pending/processing/failed/dead counters and a job list, with status/keyword filters; dead jobs can be requeued in one click.
   - Documentation now states that "resolve tag" writes `ci_build_tag_cache`: API tokens need `build.write`, while read-only admin roles can also trigger this cache write because they hold `ci.build-records.pull`.
   - Technical Guide / FAQ clarify the write-back queue vs security audit table: audit rows are written by the worker only after calling the Git API; a queue `failed` job awaits backoff retry, which differs from a single failed audit attempt.
+  - Fix a spurious ERROR log on fresh installs where concurrent first-boot containers both tried to create `uniq_security_check` and MySQL 1061 was reported: a duplicate-index conflict is now treated as idempotent success, while other DDL failures are still logged.
 
 ## v2.11.5 (2026-11-06)
 

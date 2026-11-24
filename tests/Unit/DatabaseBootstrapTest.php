@@ -1547,4 +1547,15 @@ class DatabaseBootstrapTest extends TestCase
             $source
         );
     }
+
+    /** DataRepairer 的 uniq_security_check 也必须走同样的 1061 幂等保护。 */
+    public function testSecurityChecksUniqueIndexUsesDuplicateIndexGuard(): void
+    {
+        $source = (string) file_get_contents(__DIR__ . '/../../src/Service/DataRepairer.php');
+        $this->assertStringContainsString('SchemaMigrator::isDuplicateIndexError($e)', $source);
+        $this->assertStringContainsString(
+            'if (!SchemaMigrator::isDuplicateIndexError($e)) {',
+            $source
+        );
+    }
 }
