@@ -79,6 +79,7 @@ class RegistrySyncServiceTest extends TestCase
             project TEXT NOT NULL,
             sha TEXT DEFAULT "",
             pipeline_id TEXT DEFAULT "",
+            pipeline_key TEXT DEFAULT "",
             check_type TEXT DEFAULT "",
             state TEXT DEFAULT "",
             context TEXT DEFAULT "",
@@ -266,6 +267,20 @@ class RegistrySyncServiceTest extends TestCase
 
         $this->assertSame(400, $result['http_status']);
         $this->assertSame([], $this->audits());
+    }
+
+    public function testAuditCarriesCanonicalPipelineKey(): void
+    {
+        $this->service($this->registry(['v1']))->sync('team/app', [
+            'ci_status' => 'success',
+            'tag'       => 'v1',
+            'sha'       => 'abc123',
+            'pipeline_iid' => 10,
+        ], false, 'registry-sync');
+
+        $audits = $this->audits();
+        $this->assertCount(1, $audits);
+        $this->assertSame('custom_push:team/app:10', $audits[0]['pipeline_key']);
     }
 
     public function testUnconfiguredRegistrySkipsArtifactAndMarksAuditSkipped(): void

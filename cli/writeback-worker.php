@@ -102,6 +102,7 @@ try {
                     'writeback_status' => $writebackStatus,
                     'writeback_message' => $message,
                     'pipeline_id' => (string)($job['pipeline_id'] ?? ''),
+                    'pipeline_key' => (string)($job['pipeline_key'] ?? ''),
                 ]);
             } catch (\Throwable $e) {
                 $auditError = $e->getMessage();

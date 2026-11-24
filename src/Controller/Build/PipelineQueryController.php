@@ -306,7 +306,7 @@ final class PipelineQueryController extends BaseBuildController
 
             // scan 源按 pipeline（iid）；log 源按 runId（gitlab=iid，其余=id），与 resolve 写入键一致；均不再按 sha 聚合
             $tagByPid = [];
-            foreach ($this->securityChecks->tagsByPipelineKeys($path, $iids) as $pid => $tag) {
+            foreach ($this->securityChecks->tagsByPipelineKeys($path, $iids, $provider, $projectId) as $pid => $tag) {
                 $tagByPid[$pid] = ['tag' => $tag, 'source' => 'scan'];
             }
             foreach ($this->buildTagCache->tagsByPipelineKeys($provider, $projectId, $logKeys) as $pid => $row) {

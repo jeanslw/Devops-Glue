@@ -23,7 +23,7 @@ final class PipelineArtifactService
      * source_updated_at 非空时采用单调更新：旧事件不能覆盖更新事件。
      * digest 入参非空时写入/更新；入参为空时不覆盖已有 digest（防止二次上报擦掉已回填值）。
      *
-     * @return array{written:bool,ignored:bool,changed:bool,outcome:string} outcome: written|unchanged|ignored
+     * @return array{written:bool,ignored:bool,changed:bool,outcome:string} outcome: written|unchanged|ignored|noop
      */
     public function record(
         PipelineIdentity $identity,
@@ -52,37 +52,53 @@ final class PipelineArtifactService
             if ($existing) {
                 // 单调比较下沉到 SQL：条件 UPDATE 原子完成「读旧时间→判断→写」，
                 // 两个并发写入者不可能都基于同一旧快照通过守卫。
-                // digest 明确变化时强制刷新，不受时间单调性拦截。
+                // digest 明确变化时允许刷新，但 source_updated_at 取更晚值，避免时钟回拨。
+                $existingDigest = $this->normalizeDigest((string)($existing['digest'] ?? ''));
+                $expectedDigest = $digest !== null ? $digest : $existingDigest;
+                $expectedCreatedAt = $createdAt ?: (string)($existing['created_at'] ?? $now);
+                $digestChanged = $digest !== null && $digest !== $existingDigest;
+                $oldSourceTime = (string)($existing['source_updated_at'] ?? '');
+                $expectedSourceTime = $digestChanged && $oldSourceTime !== ''
+                    && strcmp((string)($sourceUpdatedAt ?? ''), $oldSourceTime) < 0
+                    ? $oldSourceTime
+                    : (string)($sourceUpdatedAt ?? $oldSourceTime);
+                $sourceExpr = $digestChanged
+                    ? 'CASE WHEN ? IS NULL THEN source_updated_at ELSE '
+                        . (Database::driver() === 'mysql' ? 'GREATEST' : 'MAX')
+                        . '(COALESCE(source_updated_at, \'\'), ?) END'
+                    : 'COALESCE(?, source_updated_at)';
+                $sourceExprParams = $digestChanged ? [$sourceUpdatedAt, $sourceUpdatedAt] : [$sourceUpdatedAt];
                 $sql = 'UPDATE ' . AppConfig::TABLE_PIPELINE_ARTIFACTS . '
                     SET project_key = ?, tag = ?, repository = ?, status = ?,
                         digest = CASE WHEN ? IS NULL OR ? = \'\' THEN digest ELSE ? END,
-                        source_updated_at = COALESCE(?, source_updated_at),
+                        source_updated_at = ' . $sourceExpr . ',
                         created_at = ?, updated_at = ' . Database::sqlNow() . '
                     WHERE provider = ? AND project_id = ? AND pipeline_iid = ?
                       AND (
                           ? IS NULL OR ? = \'\'
                           OR COALESCE(source_updated_at, \'\') = \'\'
                           OR ? >= COALESCE(source_updated_at, \'\')
-                          OR (? IS NOT NULL AND ? <> \'\' AND COALESCE(digest, \'\') <> ?)
+                          OR (? IS NOT NULL AND ? <> \'\' AND TRIM(COALESCE(digest, \'\')) <> ?)
                       )
                       AND NOT (
                           project_key = ? AND tag = ? AND repository = ? AND status = ?
-                          AND COALESCE(digest, \'\') = ?
-                          AND COALESCE(source_updated_at, \'\') = COALESCE(?, \'\')
+                          AND TRIM(COALESCE(digest, \'\')) = COALESCE(?, \'\')
+                          AND COALESCE(source_updated_at, \'\') = ?
                           AND COALESCE(created_at, \'\') = ?
                       )';
                 $stmt = $this->pdo->prepare($sql);
                 $stmt->execute([
                     $projectKey, $tag, $repository, $status,
                     $digest, $digest, $digest,
-                    $sourceUpdatedAt, $createdAt ?: (string)($existing['created_at'] ?? $now),
+                    ...$sourceExprParams,
+                    $expectedCreatedAt,
                     $identity->provider, $identity->projectId, $identity->pipelineIid,
                     $sourceUpdatedAt, $sourceUpdatedAt, $sourceUpdatedAt,
                     $digest, $digest, $digest,
                     $projectKey, $tag, $repository, $status,
-                    $digest !== null && $digest !== '' ? $digest : (string)($existing['digest'] ?? ''),
-                    $sourceUpdatedAt ?? (string)($existing['source_updated_at'] ?? ''),
-                    $createdAt ?: (string)($existing['created_at'] ?? $now),
+                    $expectedDigest,
+                    $expectedSourceTime,
+                    $expectedCreatedAt,
                 ]);
                 if ($stmt->rowCount() > 0) {
                     return ['written' => true, 'ignored' => false, 'changed' => true, 'outcome' => 'written'];
@@ -90,15 +106,14 @@ final class PipelineArtifactService
                 // rowCount()==0 有两种可能：数据本来就相同（幂等成功），
                 // 或守卫拒绝了旧事件。重新读取区分：字段一致=unchanged，否则=ignored。
                 $current = $this->find($identity);
-                $expectedDigest = $digest !== null && $digest !== ''
-                    ? $digest : (string)($existing['digest'] ?? '');
                 $unchanged = $current !== null
                     && (string)($current['project_key'] ?? '') === $projectKey
                     && (string)($current['tag'] ?? '') === $tag
                     && (string)($current['repository'] ?? '') === $repository
                     && (string)($current['status'] ?? '') === $status
-                    && trim((string)($current['digest'] ?? '')) === $expectedDigest
-                    && (string)($current['source_updated_at'] ?? '') === (string)($sourceUpdatedAt ?? ($existing['source_updated_at'] ?? ''));
+                    && $this->normalizeDigest((string)($current['digest'] ?? '')) === $expectedDigest
+                    && (string)($current['source_updated_at'] ?? '') === $expectedSourceTime
+                    && (string)($current['created_at'] ?? '') === $expectedCreatedAt;
                 return $unchanged
                     ? ['written' => true, 'ignored' => false, 'changed' => false, 'outcome' => 'unchanged']
                     : ['written' => false, 'ignored' => true, 'changed' => false, 'outcome' => 'ignored'];

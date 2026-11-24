@@ -132,7 +132,7 @@ class PipelineArtifactServiceTest extends TestCase
         $this->assertTrue($result['written']);
         $row = $this->service->find($id);
         $this->assertSame('sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', $row['digest']);
-        $this->assertSame('2026-11-03 11:59:00', $row['source_updated_at']);
+        $this->assertSame('2026-11-03 12:00:00', $row['source_updated_at']);
     }
 
     public function testConditionalUpdateGuardIsInSql(): void
@@ -176,6 +176,25 @@ class PipelineArtifactServiceTest extends TestCase
         $this->assertTrue($stale['ignored']);
         $this->assertSame('ignored', $stale['outcome']);
         $this->assertSame('v1', $this->service->find($id)['tag']);
+    }
+
+    public function testDigestWhitespaceDoesNotBypassMonotonicGuard(): void
+    {
+        $id = new PipelineIdentity('gitlab_ci', 'trim-digest', 4);
+        $this->service->record(
+            $id, 'trim-digest', 'v1', 'repo/app', 'success', '2026-11-03 12:00:00', null,
+            'sha256:eee '
+        );
+        $result = $this->service->record(
+            $id, 'trim-digest', 'old', 'repo/app', 'failed', '2026-11-03 11:00:00', null,
+            'sha256:eee'
+        );
+
+        $this->assertFalse($result['written']);
+        $this->assertSame('ignored', $result['outcome']);
+        $row = $this->service->find($id);
+        $this->assertSame('v1', $row['tag']);
+        $this->assertSame('2026-11-03 12:00:00', $row['source_updated_at']);
     }
 
     public function testNullSourceTimeDoesNotClearExistingClock(): void

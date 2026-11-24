@@ -66,11 +66,22 @@ class DataRepairer
         if (!Database::tableExists($this->pdo, $table)) {
             return;
         }
+        // 历史行按映射表回填 canonical pipeline_key；只有在无法解析映射时才退回裸 id，
+        // 避免新旧写入使用不同 key 导致同一 Pipeline 出现两条审计且读取取到旧值。
+        try {
+            $this->backfillPipelineKeys($table);
+        } catch (\Throwable $e) {
+            \App\Helper\Log::error('backfill pipeline_key 失败', ['error' => $e->getMessage()]);
+            return;
+        }
+        // 按新唯一键去重：同一 Pipeline 的重复审计保留最新一条；
+        // 不同 Pipeline 的行不再互相覆盖。升级前请备份 ci_security_checks。
         try {
             $this->pdo->exec(
                 "DELETE FROM {$table} WHERE id NOT IN ("
                 . "SELECT keep_id FROM ("
-                . "SELECT MAX(id) AS keep_id FROM {$table} GROUP BY project, sha, check_type, context"
+                . "SELECT MAX(id) AS keep_id FROM {$table}"
+                . " GROUP BY project, sha, check_type, context, COALESCE(pipeline_key, '')"
                 . ") x)"
             );
         } catch (\Throwable $e) {
@@ -80,27 +91,111 @@ class DataRepairer
 
         $index   = 'uniq_security_check';
         $columns = $this->driver === 'mysql'
-            ? 'project(255), sha(64), check_type(64), context(64)'
-            : 'project, sha, check_type, context';
+            ? 'project(255), sha(64), check_type(64), context(64), pipeline_key(191)'
+            : 'project, sha, check_type, context, pipeline_key';
         try {
-            if ($this->driver === 'mysql') {
-                $stmt = $this->pdo->prepare(
-                    'SELECT COUNT(*) FROM information_schema.statistics'
-                    . ' WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?'
-                );
-                $stmt->execute([$table, $index]);
-                if ((int)$stmt->fetchColumn() > 0) {
-                    return;
+            $currentColumns = $this->indexColumns($table, $index);
+            if ($currentColumns === null) {
+                $this->pdo->exec("CREATE UNIQUE INDEX {$index} ON {$table} ({$columns})");
+                return;
+            }
+            if (count($currentColumns) !== 5) {
+                // 旧唯一键（4 列）挡住新键创建，先移除再重建；去重已在上面完成。
+                if ($this->driver === 'mysql') {
+                    $this->pdo->exec("DROP INDEX {$index} ON {$table}");
+                } else {
+                    $this->pdo->exec("DROP INDEX IF EXISTS {$index}");
                 }
                 $this->pdo->exec("CREATE UNIQUE INDEX {$index} ON {$table} ({$columns})");
-            } else {
-                $this->pdo->exec("CREATE UNIQUE INDEX IF NOT EXISTS {$index} ON {$table} ({$columns})");
             }
         } catch (\Throwable $e) {
             if (!SchemaMigrator::isDuplicateIndexError($e)) {
                 \App\Helper\Log::exception($e);
             }
         }
+    }
+
+    private function backfillPipelineKeys(string $table): void
+    {
+        $mapTable = \App\Config\AppConfig::TABLE_JOB_GIT_MAP;
+        $maps = Database::tableExists($this->pdo, $mapTable)
+            ? $this->pdo->query("SELECT * FROM {$mapTable}")->fetchAll(\PDO::FETCH_ASSOC) ?: []
+            : [];
+        $rows = $this->pdo->query(
+            "SELECT id, project, pipeline_id FROM {$table}"
+            . " WHERE pipeline_key IS NULL OR pipeline_key = ''"
+        )->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+        if ($rows === []) {
+            return;
+        }
+        $stmt = $this->pdo->prepare("UPDATE {$table} SET pipeline_key = ? WHERE id = ?");
+        foreach ($rows as $row) {
+            $project = (string)($row['project'] ?? '');
+            $iid = (int)($row['pipeline_id'] ?? 0);
+            if ($project === '' || $iid <= 0) {
+                continue;
+            }
+            $key = $this->canonicalKeyFromMaps($maps, $project, $iid);
+            $stmt->execute([$key !== '' ? $key : (string)$row['pipeline_id'], $row['id']]);
+        }
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $maps
+     */
+    private function canonicalKeyFromMaps(array $maps, string $project, int $iid): string
+    {
+        $matched = null;
+        foreach ($maps as $m) {
+            if ((string)($m['job_name'] ?? '') === $project) {
+                $matched = $m;
+                break;
+            }
+        }
+        if ($matched === null) {
+            foreach ($maps as $m) {
+                if ((string)($m['current_path'] ?? '') === $project) {
+                    $matched = $m;
+                    break;
+                }
+            }
+        }
+        if ($matched === null) {
+            return '';
+        }
+        $provider = trim((string)($matched['build_provider'] ?? ''));
+        if ($provider === '') {
+            return '';
+        }
+        $job = trim((string)($matched['job_name'] ?? ''));
+        $cp = trim((string)($matched['current_path'] ?? ''));
+        $numeric = trim((string)($matched['project_id'] ?? ''));
+        if ($provider === \App\Config\AppConfig::PROVIDER_GITLAB_CI && $numeric !== '') {
+            $projectId = $numeric;
+        } elseif ($provider === \App\Config\AppConfig::PROVIDER_JENKINS) {
+            $projectId = $job !== '' ? $job : $project;
+        } else {
+            $projectId = $job !== '' ? $job : ($cp !== '' ? $cp : $project);
+        }
+        return (new PipelineIdentity($provider, $projectId, $iid))->storageKey();
+    }
+
+    /** @return list<string>|null 索引列名；索引不存在返回 null */
+    private function indexColumns(string $table, string $index): ?array
+    {
+        if ($this->driver === 'mysql') {
+            $stmt = $this->pdo->prepare(
+                'SELECT COLUMN_NAME AS col FROM information_schema.statistics'
+                . ' WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?'
+                . ' ORDER BY SEQ_IN_INDEX'
+            );
+            $stmt->execute([$table, $index]);
+            $cols = array_column($stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [], 'col');
+            return $cols ?: null;
+        }
+        $rows = $this->pdo->query("PRAGMA index_info({$index})")->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+        $cols = array_column($rows, 'name');
+        return $cols ?: null;
     }
 
     public function renameLegacyTables(\PDO $pdo): void

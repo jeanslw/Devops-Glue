@@ -408,6 +408,7 @@ class SchemaMigrator
             check_type {$VARCHAR} NOT NULL DEFAULT '',
             tag {$VARCHAR} NOT NULL DEFAULT '',
             pipeline_id {$VARCHAR} NOT NULL DEFAULT '',
+            pipeline_key {$VARCHAR} NOT NULL DEFAULT '',
             status {$VARCHAR} NOT NULL DEFAULT 'pending',
             attempts INTEGER NOT NULL DEFAULT 0,
             last_error TEXT,
@@ -572,11 +573,15 @@ class SchemaMigrator
                 'status' => "{$VARCHAR} DEFAULT '" . \App\Config\AppConfig::STATUS_ACTIVE . "'",
                 'registry_repository' => 'TEXT',
             ],
+            \App\Config\AppConfig::TABLE_WRITEBACK_QUEUE => [
+                'pipeline_key' => "{$VARCHAR} NOT NULL DEFAULT ''",
+            ],
             \App\Config\AppConfig::TABLE_SECURITY_CHECKS => [
                 'tag'               => "{$VARCHAR} DEFAULT ''",
                 'writeback_status'  => "{$VARCHAR} DEFAULT ''",
                 'writeback_message' => 'TEXT',
                 'pipeline_id'       => "{$VARCHAR} DEFAULT ''",
+                'pipeline_key'      => "{$VARCHAR} DEFAULT ''",
             ],
             \App\Config\AppConfig::TABLE_PIPELINE_ARTIFACTS => [
                 'digest' => "{$VARCHAR} DEFAULT NULL",
