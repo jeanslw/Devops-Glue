@@ -6,7 +6,6 @@ namespace App\Service;
 
 use App\Config\AppConfig;
 
-
 /**
  * ci_security_checks 的列表查询与写入。
  */
